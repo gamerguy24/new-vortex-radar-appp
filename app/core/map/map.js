@@ -34,6 +34,10 @@ if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('vortexmapready'));
 }
 
+// Bottom-right zoom + compass controls and a compact map attribution.
+map.addControl(new mapboxgl.NavigationControl({ showZoom: true, showCompass: true, visualizePitch: false }), 'bottom-right');
+map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+
 if (require('../misc/detect_mobile_browser')) {
     const div = document.createElement('div');
     div.className = 'mapFooter';
