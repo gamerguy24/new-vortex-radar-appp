@@ -1,6 +1,6 @@
 {
   "name": "vortexradarapp",
-  "main": "main.js",
+  "main": "server.js",
   "scripts": {
     "build": "node tools/build.js",
     "serve": "node tools/build.js --watch",
