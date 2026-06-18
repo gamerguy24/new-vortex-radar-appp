@@ -17,7 +17,10 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = __dirname;
-const DATA_DIR = path.join(ROOT, 'server_data');
+// Where users/sessions/reports are stored. Override with DATA_DIR to point at a
+// persistent volume (e.g. a Render Disk mounted at /var/data) so accounts and
+// data survive deploys and restarts. Defaults to ./server_data for local dev.
+const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'server_data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const RESETS_FILE = path.join(DATA_DIR, 'reset_requests.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
