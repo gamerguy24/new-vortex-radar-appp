@@ -1,0 +1,8 @@
+node_modules
+.DS_Store
+AtticRadar*/
+server_data/
+
+# Large sample NEXRAD files (not used at runtime; app fetches live data).
+# Anchored so bundled app/**/data/ modules are still tracked.
+/data/

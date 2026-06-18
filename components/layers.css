@@ -1,0 +1,173 @@
+/* ============================================================
+   Vortex Radar feature layers — markers, popups, report form
+   ============================================================ */
+:root {
+    --vr-accent: #27beff;
+    --vr-border: rgba(255,255,255,0.12);
+    --vr-muted: #9ca3af;
+}
+
+/* ---- Dark popups for cams / spotters / reports ---- */
+.cam-popup .mapboxgl-popup-content,
+.spotter-popup .mapboxgl-popup-content,
+.mapboxgl-popup-content:has(.wr-popup) {
+    background: rgba(11, 18, 32, 0.97) !important;
+    color: #e7eef7 !important;
+    border: 1px solid var(--vr-border);
+    border-radius: 10px;
+    padding: 0;
+    overflow: hidden;
+    font-family: 'Onest', system-ui, sans-serif;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.cam-popup .mapboxgl-popup-tip,
+.spotter-popup .mapboxgl-popup-tip { border-top-color: rgba(11,18,32,0.97) !important; border-bottom-color: rgba(11,18,32,0.97) !important; }
+.cam-popup .mapboxgl-popup-content { width: 320px; }
+.spotter-popup .mapboxgl-popup-content { padding: 10px 12px; }
+
+/* ---- Weather report markers ---- */
+.weather-report-marker {
+    width: 30px; height: 30px;
+    background: var(--wr-color, #94a3b8);
+    border: 2px solid #fff;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    cursor: pointer;
+}
+.weather-report-marker i { transform: rotate(45deg); color: #fff; font-size: 16px; }
+
+.wr-popup { padding: 10px 12px; font-family: 'Onest', sans-serif; min-width: 170px; }
+.wr-pop-head { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.wr-pop-detail { margin-top: 4px; font-size: 13px; color: #e7eef7; }
+.wr-pop-notes { margin-top: 4px; font-size: 12px; color: #cbd5e1; }
+.wr-pop-time { margin-top: 6px; font-size: 11px; color: var(--vr-muted); }
+
+/* ---- Report form (inside the Dialog) ---- */
+.wr-form { font-family: 'Onest', sans-serif; color: #e7eef7; }
+.wr-intro { margin: 0 0 14px; color: var(--vr-muted); font-size: 14px; }
+.wr-section-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--vr-muted); margin: 14px 0 8px; }
+.wr-optional { text-transform: none; letter-spacing: 0; opacity: 0.7; }
+
+.wr-chip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.wr-chip {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 10px; border-radius: 10px; cursor: pointer;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--vr-border); color: #e7eef7;
+    font-family: inherit; font-size: 13px; text-align: left;
+}
+.wr-chip i { color: var(--wr-color, var(--vr-accent)); font-size: 17px; }
+.wr-chip:hover { background: rgba(255,255,255,0.08); }
+.wr-chip.active { border-color: var(--wr-color, var(--vr-accent)); background: color-mix(in srgb, var(--wr-color, var(--vr-accent)) 18%, transparent); }
+
+.wr-measure-row { margin-top: 12px; }
+.wr-measure-row label { display: block; font-size: 13px; color: var(--vr-muted); margin-bottom: 6px; }
+.wr-measure-row input,
+.wr-notes {
+    width: 100%; box-sizing: border-box;
+    padding: 10px 12px; border-radius: 8px;
+    background: rgba(0,0,0,0.35); border: 1px solid var(--vr-border);
+    color: #e7eef7; font-family: inherit; font-size: 14px;
+}
+.wr-notes { margin-top: 4px; resize: vertical; }
+
+.wr-location {
+    padding: 10px 12px; border-radius: 8px;
+    background: rgba(0,0,0,0.3); border: 1px solid var(--vr-border);
+    font-size: 13px; color: #e7eef7;
+}
+.wr-location.wr-error { color: #f87171; border-color: rgba(248,113,113,0.5); }
+.wr-loc-src { color: var(--vr-muted); }
+.wr-location-actions { display: flex; gap: 8px; margin-top: 8px; }
+.wr-btn {
+    flex: 1; padding: 9px 10px; border-radius: 8px; cursor: pointer;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--vr-border);
+    color: #e7eef7; font-family: inherit; font-size: 13px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.wr-btn:hover { background: rgba(255,255,255,0.1); }
+
+.wr-submit {
+    width: 100%; margin-top: 16px; padding: 12px;
+    border: none; border-radius: 8px; cursor: pointer;
+    background: var(--vr-accent); color: #001022; font-weight: 700; font-size: 15px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.wr-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.wr-msg { margin-top: 10px; font-size: 13px; min-height: 1.1em; color: var(--vr-muted); }
+.wr-msg-ok { color: #4ade80; }
+.wr-msg-warn { color: #facc15; }
+
+.wr-myreports-head { display: flex; align-items: center; justify-content: space-between; margin: 20px 0 8px; font-weight: 700; }
+.wr-clear { background: none; border: none; color: #f87171; cursor: pointer; font-family: inherit; font-size: 12px; }
+.wr-myreports { display: flex; flex-direction: column; gap: 8px; }
+.wr-empty { color: var(--vr-muted); font-size: 13px; padding: 6px 0; }
+.wr-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--vr-border); border-radius: 8px; }
+.wr-item-icon { font-size: 18px; }
+.wr-item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.wr-item-title { font-size: 13px; font-weight: 600; }
+.wr-item-sub { font-size: 11px; color: var(--vr-muted); }
+.wr-item-go, .wr-item-del { background: none; border: none; color: var(--vr-muted); cursor: pointer; font-size: 15px; padding: 4px; }
+.wr-item-go:hover { color: var(--vr-accent); }
+.wr-item-del:hover { color: #f87171; }
+
+.wr-spin { animation: wr-spin 0.9s linear infinite; display: inline-block; }
+@keyframes wr-spin { to { transform: rotate(360deg); } }
+
+/* ---- Live cam fullscreen overlay ---- */
+#cam-fullscreen-overlay {
+    position: fixed; inset: 0; z-index: 100001;
+    background: rgba(0,0,0,0.9);
+    display: flex; flex-direction: column;
+}
+#cam-fullscreen-overlay .cam-fs-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; color: #fff; font-family: 'Onest', sans-serif; font-weight: 600;
+}
+#cam-fullscreen-overlay #cam-fs-close {
+    background: rgba(255,255,255,0.1); border: none; color: #fff; cursor: pointer;
+    width: 34px; height: 34px; border-radius: 8px; font-size: 1.1em;
+}
+#cam-fullscreen-overlay .cam-fs-player { flex: 1; display: flex; }
+#cam-fullscreen-overlay .cam-fs-player iframe { flex: 1; }
+
+/* ---- Active Alerts overlay ---- */
+.vr-alerts { font-family: 'Onest', sans-serif; color: #e7eef7; }
+.vr-alerts-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.vr-alerts-toolbar input[type="search"] {
+    flex: 1; padding: 9px 12px; border-radius: 8px;
+    background: rgba(0,0,0,0.35); border: 1px solid var(--vr-border);
+    color: #e7eef7; font-family: inherit; font-size: 14px;
+}
+.vr-alerts-count { font-size: 12px; color: var(--vr-muted); white-space: nowrap; }
+.vr-alerts-list { display: flex; flex-direction: column; gap: 8px; }
+.vr-alerts-empty { color: var(--vr-muted); text-align: center; padding: 24px 0; }
+
+.vr-alert-row {
+    position: relative;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--vr-border);
+    border-left: 4px solid #888;
+    border-radius: 8px;
+    padding: 10px 40px 10px 12px;
+    cursor: pointer;
+}
+.vr-alert-row:hover { background: rgba(255,255,255,0.07); }
+.vr-alert-event { font-weight: 700; font-size: 14px; }
+.vr-alert-area { font-size: 12px; color: #cbd5e1; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.vr-alert-meta { display: flex; gap: 12px; margin-top: 6px; font-size: 11px; }
+.vr-alert-sev { font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.vr-alert-exp { color: var(--vr-muted); }
+.vr-alert-exp.expired { color: #f87171; }
+.vr-alert-zoom {
+    position: absolute; top: 10px; right: 8px;
+    background: rgba(0,0,0,0.4); color: var(--vr-muted);
+    border: 1px solid var(--vr-border); border-radius: 6px;
+    width: 28px; height: 28px; cursor: pointer; font-size: 14px;
+}
+.vr-alert-zoom:hover { color: var(--vr-accent); border-color: var(--vr-accent); }
+.vr-alert-details { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--vr-border); font-size: 12px; color: #cbd5e1; white-space: pre-wrap; }
+.vr-alert-d-row { margin-bottom: 8px; }
+.vr-alert-d-row b { color: var(--vr-accent); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }

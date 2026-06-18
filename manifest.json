@@ -1,0 +1,16 @@
+{
+  "name": "Vortex Radar",
+  "short_name": "Vortex Radar",
+  "description": "A clean, powerful weather radar toolkit by Twistcaster Live Media LLC.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#27beff",
+  "icons": [
+    { "src": "/icons/icons/64x64.png", "sizes": "64x64", "type": "image/png" },
+    { "src": "/icons/icons/128x128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "/icons/icons/256x256.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "/icons/icons/512x512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icons/1024x1024.png", "sizes": "1024x1024", "type": "image/png" }
+  ]
+}
