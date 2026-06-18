@@ -25,6 +25,7 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const RESETS_FILE = path.join(DATA_DIR, 'reset_requests.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
+const LOGOS_FILE = path.join(DATA_DIR, 'logos.json');
 
 const PORT = process.env.PORT || 3333;
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@vortexradar.app';
@@ -47,9 +48,11 @@ function writeJson(file, value) {
 let users = readJson(USERS_FILE, []);
 let resetRequests = readJson(RESETS_FILE, []);
 let reports = readJson(REPORTS_FILE, []);
+let logos = readJson(LOGOS_FILE, {}); // userId -> { dataUrl, corner, size, opacity }
 const saveUsers = () => writeJson(USERS_FILE, users);
 const saveResets = () => writeJson(RESETS_FILE, resetRequests);
 const saveReports = () => writeJson(REPORTS_FILE, reports);
+const saveLogos = () => writeJson(LOGOS_FILE, logos);
 
 // ─── Sessions (persisted to disk so restarts don't sign everyone out) ─────────
 const sessions = new Map(); // token -> { userId, created }
@@ -169,7 +172,7 @@ function setSessionCookie(res, token) {
 // ─── App ─────────────────────────────────────────────────────────────────────
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json());
+app.use(express.json({ limit: '4mb' })); // room for uploaded brand-logo data URLs
 
 // Parse cookies + attach the current user/session to the request.
 app.use((req, res, next) => {
@@ -358,6 +361,7 @@ app.delete('/admin/users/:id', requireAdmin, (req, res) => {
     users = users.filter((u) => u.id !== user.id);
     resetRequests = resetRequests.filter((r) => r.email !== user.email);
     destroySessionsForUser(user.id);
+    if (logos[user.id]) { delete logos[user.id]; saveLogos(); }
     saveUsers();
     saveResets();
     res.json({ ok: true });
@@ -451,6 +455,38 @@ app.delete('/api/reports/:id', requireAuth, (req, res) => {
 app.delete('/api/reports', requireAuth, (req, res) => {
     reports = reports.filter((r) => r.userId !== req.user.id);
     saveReports();
+    res.json({ ok: true });
+});
+
+// ─── Per-user brand logo overlay ─────────────────────────────────────────────
+const LOGO_CORNERS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+
+app.get('/api/logo', requireAuth, (req, res) => {
+    res.json({ logo: logos[req.user.id] || null });
+});
+
+app.post('/api/logo', requireAuth, (req, res) => {
+    const b = req.body || {};
+    const dataUrl = String(b.dataUrl || '');
+    if (!/^data:image\/(png|jpe?g|webp|gif);base64,/.test(dataUrl)) {
+        return res.status(400).json({ error: 'Please choose a valid image file.' });
+    }
+    if (dataUrl.length > 3500000) {
+        return res.status(413).json({ error: 'That image is too large. Try a smaller logo.' });
+    }
+    logos[req.user.id] = {
+        dataUrl,
+        corner: LOGO_CORNERS.includes(b.corner) ? b.corner : 'top-right',
+        size: Math.min(40, Math.max(5, Number(b.size) || 16)),     // % of viewport width
+        opacity: Math.min(1, Math.max(0.1, Number(b.opacity) || 1)),
+    };
+    saveLogos();
+    res.json({ logo: logos[req.user.id] });
+});
+
+app.delete('/api/logo', requireAuth, (req, res) => {
+    delete logos[req.user.id];
+    saveLogos();
     res.json({ ok: true });
 });
 
