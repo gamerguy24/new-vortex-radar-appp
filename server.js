@@ -490,6 +490,41 @@ app.delete('/api/logo', requireAuth, (req, res) => {
     res.json({ ok: true });
 });
 
+// ─── Level-II proxy (lists + downloads from NOAA S3 server-side) ─────────────
+async function s3LatestL2Url(station) {
+    const BUCKET = 'https://noaa-nexrad-level2.s3.amazonaws.com';
+    const pad = (n) => String(n).padStart(2, '0');
+    const now = new Date();
+    for (let back = 0; back < 2; back++) {
+        const d = new Date(now);
+        d.setUTCDate(d.getUTCDate() - back);
+        const y = d.getUTCFullYear(), m = pad(d.getUTCMonth() + 1), day = pad(d.getUTCDate());
+        const listUrl = `${BUCKET}/?list-type=2&prefix=${y}/${m}/${day}/${station}/`;
+        const r = await fetch(listUrl, { cache: 'no-store' });
+        if (!r.ok) continue;
+        const xml = await r.text();
+        const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((x) => x[1]).filter((k) => !k.includes('MDM'));
+        if (keys.length) return `${BUCKET}/${keys[keys.length - 1]}`;
+    }
+    throw new Error('No recent Level-II data found for ' + station + '.');
+}
+
+app.get('/api/level2/latest', requireAuth, async (req, res) => {
+    const station = String(req.query.station || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    if (!station) return res.status(400).json({ error: 'A station is required.' });
+    try {
+        const url = await s3LatestL2Url(station);
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r.ok) return res.status(502).json({ error: 'Level-II download failed (' + r.status + ').' });
+        const buf = Buffer.from(await r.arrayBuffer());
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Cache-Control', 'no-store');
+        res.send(buf);
+    } catch (err) {
+        res.status(502).json({ error: err.message || 'Level-II fetch failed.' });
+    }
+});
+
 // ─── Spotter Network proxy (avoids browser CORS) ─────────────────────────────
 async function spotterProxy(endpoint, req, res) {
     try {

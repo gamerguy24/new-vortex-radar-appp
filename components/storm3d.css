@@ -1,0 +1,67 @@
+/* ============================================================
+   3D Storm View overlay
+   ============================================================ */
+#storm3d-overlay {
+    position: fixed; inset: 0; z-index: 100002;
+    background: #0a0d12;
+    display: flex; flex-direction: column;
+    font-family: 'Onest', system-ui, sans-serif;
+    color: #e7eef7;
+}
+
+.s3d-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; padding: 10px 16px;
+    background: rgba(11, 18, 32, 0.92);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    flex-wrap: wrap;
+}
+.s3d-title { display: flex; align-items: center; gap: 8px; font-size: 1.05em; font-weight: 700; }
+.s3d-title .ti { color: #27beff; }
+.s3d-station { color: #27beff; font-weight: 800; margin-left: 4px; }
+
+.s3d-controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.s3d-product, .s3d-thresh { display: flex; align-items: center; gap: 8px; font-size: 0.85em; color: #9ca3af; }
+.s3d-product select {
+    background: rgba(0,0,0,0.4); color: #e7eef7;
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
+    padding: 6px 8px; font-family: inherit; font-size: 0.95em; cursor: pointer;
+}
+.s3d-thresh input[type="range"] { width: 150px; accent-color: #27beff; }
+.s3d-thresh b { color: #27beff; min-width: 64px; display: inline-block; }
+.s3d-btn {
+    width: 34px; height: 34px; border-radius: 8px; cursor: pointer;
+    background: rgba(0,0,0,0.4); color: #e7eef7;
+    border: 1px solid rgba(255,255,255,0.12);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 1.05em;
+}
+.s3d-btn:hover { background: rgba(255,255,255,0.08); }
+.s3d-close:hover { background: rgba(248,113,113,0.18); border-color: #f87171; color: #f87171; }
+
+.s3d-canvas-wrap { flex: 1; position: relative; min-height: 0; }
+#s3d-canvas { width: 100%; height: 100%; display: block; }
+
+.s3d-loading {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; background: rgba(10,13,18,0.7); backdrop-filter: blur(2px);
+}
+.s3d-loading-text { color: #9ca3af; font-size: 0.95em; }
+.s3d-spinner {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.15); border-top-color: #27beff;
+    animation: s3d-spin 0.9s linear infinite;
+}
+@keyframes s3d-spin { to { transform: rotate(360deg); } }
+
+.s3d-error {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    color: #f87171; font-size: 0.95em; text-align: center; max-width: 420px; padding: 20px;
+}
+.s3d-error .ti { font-size: 2em; }
+
+.s3d-hint {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.45); font-size: 0.8em; pointer-events: none;
+    background: rgba(11,18,32,0.6); padding: 4px 12px; border-radius: 999px;
+}

@@ -10,6 +10,16 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./components/layers.css">
+    <link rel="stylesheet" href="./components/storm3d.css">
+    <!-- import map so the 3D storm view's ES modules can resolve Three.js -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/examples/jsm/controls/OrbitControls.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js"
+      }
+    }
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
@@ -396,9 +406,14 @@
                         Sponsors
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="atticRadarMenuRow armrBottom" id="armrBrandLogoBtn">
+                    <div class="atticRadarMenuRow armrMiddle" id="armrBrandLogoBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-image"></i>
                         Brand Logo
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="atticRadarMenuRow armrBottom" id="armrStorm3DBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-cube"></i>
+                        3D Storm View
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
 
@@ -1231,5 +1246,7 @@
     <script type="module" src="./components/logo_overlay.js"></script>
     <!-- Reflectivity gate filter -->
     <script type="module" src="./components/gate_filter.js"></script>
+    <!-- 3D storm view launcher -->
+    <script type="module" src="./components/storm3d_launch.js"></script>
 </body>
 </html>
