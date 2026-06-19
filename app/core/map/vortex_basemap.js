@@ -12,16 +12,16 @@
 
 const map = require('./map');
 
-// Light-grey daytime palette.
+// Dark-grey (charcoal/slate) palette — not black, not light.
 const VORTEX_PALETTE = {
-    land:          'rgb(224, 227, 231)',  // light grey (dominant background)
-    water:         'rgb(193, 205, 219)',  // soft blue-grey
-    national_park: 'rgb(206, 222, 204)',  // pale green
-    landuse:       'rgb(216, 220, 225)',  // slightly distinct light grey
-    road:          'rgb(255, 255, 255)',  // white roads pop on grey
-    boundary:      'rgb(150, 158, 171)',  // mid-grey admin / county lines
-    label_text:    'rgb(45, 52, 66)',     // dark slate (readable on grey)
-    label_halo:    'rgb(245, 247, 250)',  // near-white halo for legibility
+    land:          'rgb(62, 66, 72)',     // dark grey (dominant background)
+    water:         'rgb(46, 50, 56)',     // slightly darker grey
+    national_park: 'rgb(58, 70, 60)',     // muted dark grey-green
+    landuse:       'rgb(68, 72, 78)',     // a touch lighter than land
+    road:          'rgb(120, 127, 138)',  // light-grey roads, visible on charcoal
+    boundary:      'rgb(150, 157, 168)',  // light-grey admin / county lines
+    label_text:    'rgb(233, 237, 243)',  // light labels (readable on dark grey)
+    label_halo:    'rgb(38, 41, 46)',     // dark halo for legibility
 };
 
 const BASE_SOURCE = 'composite'; // Mapbox vector basemap source
