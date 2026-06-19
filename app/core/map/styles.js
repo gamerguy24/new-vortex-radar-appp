@@ -40,11 +40,9 @@ function change_map_style(style) {
     }
 
     function set_dark() {
-        const ds = window.atticData.default_styles;
-        map.setPaintProperty('land', 'background-color', ds.land);
-        map.setPaintProperty('national-park', 'fill-color', ds.national_park);
-        map.setPaintProperty('landuse', 'fill-color', ds.landuse);
-        map.setPaintProperty('water', 'fill-color', ds.water);
+        // Use the Vortex Radar deep-navy theme rather than the style's original
+        // (RadarScope-like) gray defaults.
+        require('./vortex_basemap').apply_vortex_basemap();
     }
     function set_light() {
         const white = 'rgb(246, 244, 237)';

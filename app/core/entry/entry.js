@@ -8,6 +8,9 @@ function load() {
     window.atticData = {};
     window.atticData.map_type = 'dark';
 
+    // apply the Vortex Radar basemap theme (distinct deep-navy palette)
+    require('../map/vortex_basemap').apply_vortex_basemap();
+
     // load the weather station menu item
     require('../../weather_station/menu_item');
 
