@@ -219,3 +219,14 @@
 .vr-logo-msg { margin-top: 10px; font-size: 13px; min-height: 1.1em; color: var(--vr-muted); }
 .vr-logo-msg.ok { color: #4ade80; }
 .vr-logo-msg.warn { color: #facc15; }
+
+/* ---- Reflectivity gate filter dialog ---- */
+.vr-gate { font-family: 'Onest', sans-serif; color: #e7eef7; }
+.vr-gate-intro { margin: 0 0 16px; color: var(--vr-muted); font-size: 14px; }
+.vr-gate-toggle { display: flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer; margin-bottom: 18px; }
+.vr-gate-toggle input { width: 18px; height: 18px; accent-color: var(--vr-accent); }
+.vr-gate-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.vr-gate-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--vr-muted); }
+.vr-gate-value { font-weight: 700; color: var(--vr-accent); }
+.vr-gate input[type="range"] { width: 100%; accent-color: var(--vr-accent); }
+.vr-gate input[type="range"]:disabled { opacity: 0.45; }

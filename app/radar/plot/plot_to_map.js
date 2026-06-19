@@ -16,6 +16,8 @@ const load_lightning = require('../../lightning/load_lightning');
 const turf = require('@turf/turf');
 
 function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
+    // The reflectivity gate filter only applies to reflectivity products.
+    const is_reflectivity = /ref/i.test(product);
     var color_scale_data = product_colors[product];
     var colors = [...color_scale_data.colors];
     var values = [...color_scale_data.values];
@@ -129,6 +131,7 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
             this.colorLocation = gl.getAttribLocation(this.program, 'aColor');
             this.textureLocation = gl.getUniformLocation(this.program, 'u_texture');
             this.minmaxLocation = gl.getUniformLocation(this.program, 'minmax');
+            this.gateFilterLocation = gl.getUniformLocation(this.program, 'u_gateFilter');
             this.radarLngLatLocation = gl.getUniformLocation(this.program, 'radar_lat_lng');
 
             // retrieve the framebuffer program's uniforms
@@ -224,6 +227,13 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
             gl.uniformMatrix4fv(this.matrixLocation, false, matrix);
             gl.uniform2fv(this.radarLngLatLocation, [radar_lat_lng.lat, radar_lat_lng.lng]);
             gl.uniform2fv(this.minmaxLocation, [cmin, cmax]);
+            // Reflectivity gate filter (dBZ). -1e6 disables it (pass everything).
+            var gate = -1000000.0;
+            var vgf = window.vortexGateFilter;
+            if (is_reflectivity && vgf && vgf.enabled && typeof vgf.value === 'number') {
+                gate = vgf.value;
+            }
+            gl.uniform1f(this.gateFilterLocation, gate);
             gl.uniform1i(this.textureLocation, 0);
 
             // draw vertices
