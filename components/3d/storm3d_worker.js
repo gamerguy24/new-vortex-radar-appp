@@ -10,7 +10,9 @@
  * (c) David Wallis, Twistcaster Live Media LLC 2026
  */
 
-import { Buffer } from 'https://esm.sh/buffer@6.0.3';
+// Use the SAME Buffer build the parser uses (esm.sh node shim), so the
+// parser's `instanceof Buffer` check passes.
+import { Buffer } from 'https://esm.sh/node/buffer.mjs';
 import { Level2Radar } from '../../parse/level2/src/index.js';
 import { marchingCubes } from './marching_cubes.js';
 

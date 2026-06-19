@@ -6,4 +6,4 @@
  * module worker without a build step.
  */
 
-export { Level2Radar } from 'https://esm.sh/nexrad-level-2-data@1.5.2';
+export { Level2Radar } from 'https://esm.sh/nexrad-level-2-data@2.4.3';
