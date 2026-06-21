@@ -16,8 +16,14 @@ const load_lightning = require('../../lightning/load_lightning');
 const turf = require('@turf/turf');
 
 function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
-    // The reflectivity gate filter only applies to reflectivity products.
-    const is_reflectivity = /ref/i.test(product);
+    // The reflectivity gate filter only applies to reflectivity products. The
+    // `product` here is the radar product CODE (e.g. N0B, N0Q, TZ0, REF), not a
+    // friendly name, so match the actual reflectivity codes.
+    const is_reflectivity =
+        /^N[0-3]B$/.test(product) ||   // super-res base reflectivity
+        /^N[0-3]Q$/.test(product) ||   // digital base reflectivity
+        /^TZ[0-3L]$/.test(product) ||  // TDWR reflectivity
+        product === 'REF';             // Level 2 reflectivity
     var color_scale_data = product_colors[product];
     var colors = [...color_scale_data.colors];
     var values = [...color_scale_data.values];
