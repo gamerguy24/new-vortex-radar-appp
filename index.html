@@ -212,6 +212,10 @@
             <span id="drawMenuItemIcon" class="fa fa-pencil icon-grey menu_item_not_selected"></span>
         </div>
         <span class="vortexIconSpacer noselect"></span>
+        <div id="vortexGraphicsBtn" class="mapFooterMenuItem" title="Vortex Graphics">
+            <span id="vortexGraphicsIcon" class="fa fa-palette icon-grey menu_item_not_selected"></span>
+        </div>
+        <span class="vortexIconSpacer noselect"></span>
         <div id="settingsItemDiv" class="mapFooterMenuItem">
             <span id="settingsItemClass" class="fa fa-sliders icon-grey menu_item_not_selected"></span>
         </div>
@@ -406,9 +410,14 @@
                         Brand Logo
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="atticRadarMenuRow armrBottom" id="armrStorm3DBtn">
+                    <div class="atticRadarMenuRow armrMiddle" id="armrStorm3DBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-cube"></i>
                         3D Storm View
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="atticRadarMenuRow armrBottom" id="armrGraphicsStudioBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-palette"></i>
+                        Graphics Studio
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
 
@@ -1231,6 +1240,8 @@
     <script type="module" src="./components/gate_filter.js"></script>
     <!-- 3D storm view launcher -->
     <script type="module" src="./components/storm3d_launch.js"></script>
+    <!-- Vortex Graphics launcher (Studio / Dashboard / Overlay) -->
+    <script type="module" src="./components/graphics_launch.js"></script>
     <!-- Go-to-my-location button -->
     <script type="module" src="./components/geolocate.js"></script>
 </body>

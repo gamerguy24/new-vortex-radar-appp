@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vortex Graphics — Studio</title>
+  <link rel="stylesheet" href="studio.css" />
+</head>
+<body>
+  <header class="appbar">
+    <div class="appbar-zone appbar-left">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.5"/>
+          <path d="M16 16 L16 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M16 16 L25 22" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="16" cy="16" r="2.6" fill="currentColor"/>
+        </svg>
+        <span class="brand-name">Vortex&nbsp;<b>Graphics</b></span>
+        <span class="brand-badge">Studio</span>
+      </div>
+    </div>
+
+    <div class="appbar-zone appbar-right">
+      <label class="control">
+        <span class="control-label">Canvas</span>
+        <span class="select-wrap">
+          <select id="canvas-size">
+            <option value="1920x1080">1080p · 1920×1080</option>
+            <option value="1280x720">720p · 1280×720</option>
+            <option value="3840x2160">4K · 3840×2160</option>
+          </select>
+        </span>
+      </label>
+      <span class="appbar-divider"></span>
+      <button id="btn-open" class="btn btn-ghost" title="Open a saved project file">Open</button>
+      <button id="btn-save" class="btn btn-ghost" title="Save your project so you can reopen it later">Save</button>
+      <button id="btn-psd" class="btn btn-ghost" title="Export a layered Photoshop (.psd) file">PSD</button>
+      <input id="open-project" type="file" accept=".json,application/json,.vortexproj.json" hidden />
+      <span class="appbar-divider"></span>
+      <button id="btn-reset" class="btn btn-ghost">Reset</button>
+      <button id="btn-export" class="btn btn-primary">
+        <svg viewBox="0 0 16 16" class="btn-icon" aria-hidden="true">
+          <path d="M8 2v8M5 7l3 3 3-3M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Export PNG
+      </button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Template rail -->
+    <nav class="rail">
+      <div class="rail-head">Templates</div>
+      <div class="rail-list" id="template-rail"></div>
+      <div class="rail-foot">
+        <span class="dot-live"></span> Deterministic · official data
+      </div>
+    </nav>
+
+    <!-- Canvas stage -->
+    <section class="stage">
+      <div class="stage-bg" aria-hidden="true"></div>
+
+      <!-- Global tools: freehand color brush + custom logo, apply to every template -->
+      <div class="toolbelt" id="toolbelt">
+        <div class="tb-group" role="group" aria-label="Tool">
+          <button class="tb-btn active" id="tool-fill" title="Click regions to fill them">▦ Fill</button>
+          <button class="tb-btn" id="tool-draw" title="Freehand color brush">🖌 Brush</button>
+          <button class="tb-btn" id="tool-erase" title="Erase brush strokes">⌫ Erase</button>
+        </div>
+        <span class="tb-sep"></span>
+        <label class="tb-field" title="Brush &amp; custom fill color">
+          <span>Color</span>
+          <input type="color" id="tool-color" value="#ff3b3b" />
+        </label>
+        <label class="tb-field tb-size" title="Brush size">
+          <span>Size</span>
+          <input type="range" id="tool-size" min="2" max="80" value="16" />
+          <b id="tool-size-val">16</b>
+        </label>
+        <button class="tb-btn ghosty" id="tool-clear" title="Clear all brush strokes">Clear drawing</button>
+        <span class="tb-sep"></span>
+        <div class="tb-group" aria-label="Logo">
+          <button class="tb-btn" id="logo-add" title="Add your custom logo to every template">＋ Logo</button>
+          <button class="tb-btn ghosty" id="logo-remove" title="Remove logo" hidden>Remove</button>
+          <select id="logo-corner" class="tb-corner" title="Logo position">
+            <option value="tr">Top right</option>
+            <option value="tl">Top left</option>
+            <option value="br">Bottom right</option>
+            <option value="bl">Bottom left</option>
+          </select>
+          <input type="file" id="logo-file" accept="image/*" hidden />
+        </div>
+      </div>
+
+      <div class="stage-inner">
+        <div class="canvas-frame">
+          <canvas id="stage-canvas"></canvas>
+        </div>
+      </div>
+      <div class="stage-hint" id="stage-hint"></div>
+    </section>
+
+    <!-- Properties -->
+    <aside class="props" id="props">
+      <div class="props-head">
+        <h2 id="props-title">Properties</h2>
+        <p class="props-blurb" id="props-blurb"></p>
+      </div>
+      <div class="props-body" id="props-fields"></div>
+    </aside>
+  </main>
+
+  <script src="vendor/d3.v7.min.js"></script>
+  <script src="vendor/topojson-client.min.js"></script>
+  <script type="module" src="studio.js"></script>
+</body>
+</html>
