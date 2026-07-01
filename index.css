@@ -1770,158 +1770,178 @@ td.day.active, span.month.active, span.year.active {
 #vortexAlertPill:hover { filter: brightness(1.08); }
 #vortexAlertPill.vortexAlertActive { box-shadow: 0 0 0 2px rgba(255,255,255,0.55), 0 6px 20px rgba(224,43,43,0.5); }
 
-/* ---- Bottom playback bar (was the full-width footer) ---- */
+/* ============================================================
+   Bottom playback bar — "Vortex console" (distinct redesign)
+   ============================================================ */
 .mapFooter {
-    bottom: 14px !important;
+    bottom: 16px !important;
     left: 50% !important;
     transform: translateX(-50%);
     width: auto !important;
     max-width: 94vw;
     height: auto !important;
-    background: var(--vortex-panel) !important;
-    border: 1px solid var(--vortex-border);
-    border-radius: 16px;
-    padding: 8px 12px;
-    gap: 10px;
+    background: linear-gradient(180deg, rgba(26, 30, 38, 0.96), rgba(13, 15, 20, 0.97)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
+    padding: 7px 8px;
+    gap: 8px;
     color: var(--vortex-text);
-    box-shadow: var(--vortex-shadow);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
 }
 .mapFooter span { font-size: 14px; }
 
-/* left info block: station + product + scan time */
+/* left info module: accent stripe + station + product + scan time */
 #productMapFooter {
     position: static !important;
     bottom: auto !important;
     width: auto !important;
     height: auto !important;
     min-width: 120px;
-    padding: 0 6px !important;
-    background: transparent !important;
+    padding: 4px 12px !important;
+    background: rgba(255, 255, 255, 0.035) !important;
+    border-left: 3px solid var(--vortex-accent);
+    border-radius: 8px;
     text-align: left;
-    line-height: 1.25;
+    line-height: 1.3;
 }
 #productsDropdownTrigger {
     position: static !important;
     left: auto !important;
-    font-size: 14px !important;
+    font-size: 13.5px !important;
     font-weight: 700;
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
     gap: 6px;
+    letter-spacing: 0.2px;
 }
-#footerStation { color: var(--vortex-text); font-weight: 800; }
-#extraProductInfo { font-size: 11px; color: var(--vortex-subtext); }
+#footerStation { color: var(--vortex-text); font-weight: 800; letter-spacing: 0.5px; }
+#productsDropdownTriggerText { color: #5cc0ff; }
+#extraProductInfo { font-size: 10px; color: var(--vortex-subtext); text-transform: uppercase; letter-spacing: 0.5px; }
 #radarDateTime {
     position: static !important;
     right: auto !important;
     text-align: left !important;
-    font-size: 11px !important;
+    font-size: 10.5px !important;
     color: var(--vortex-subtext);
-    margin-top: 1px;
+    margin-top: 2px;
 }
 
-/* Pro badge */
+/* PRO badge — premium amber chip (distinct from the green pill) */
 #vortexProBadge {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    background: linear-gradient(180deg, #2fd47a, #16a85c);
-    color: #06210f;
+    gap: 5px;
+    background: linear-gradient(180deg, #ffd766, #efa62a);
+    color: #3a2500;
     font-weight: 800;
-    font-size: 12px;
-    padding: 5px 11px;
-    border-radius: 11px;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    padding: 6px 11px;
+    border-radius: 8px;
     white-space: nowrap;
     flex: 0 0 auto;
+    box-shadow: 0 2px 9px rgba(239, 166, 42, 0.35);
 }
-#vortexProBadge .fa { font-size: 11px; }
+#vortexProBadge .fa { font-size: 10px; }
 
-/* play / pause */
+/* transport: play/pause — rounded-square gradient key */
 #vortexPlayBtn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background: var(--vortex-accent);
-    color: #06121f;
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    background: linear-gradient(180deg, #3bb4ff, #1c86e0);
+    color: #04121f;
     cursor: pointer;
     flex: 0 0 auto;
+    box-shadow: 0 3px 10px rgba(40, 150, 240, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
-#vortexPlayBtn:hover { filter: brightness(1.1); }
+#vortexPlayBtn:hover { filter: brightness(1.08); }
+#vortexPlayBtn:active { transform: translateY(1px); }
 #vortexPlayBtn .fa { font-size: 15px; }
 
-/* timeline slider */
+/* timeline — accent track + vertical scrubber handle */
 #vortexTimeline {
     -webkit-appearance: none;
     appearance: none;
-    height: 5px;
-    border-radius: 4px;
-    background: #3a4150;
+    height: 6px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, rgba(59, 180, 255, 0.55), rgba(59, 180, 255, 0.14));
     outline: none;
     cursor: pointer;
-    flex: 0 1 220px;
+    flex: 0 1 240px;
     min-width: 120px;
 }
 #vortexTimeline::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 0 0 3px rgba(42, 167, 255, 0.5);
+    width: 8px;
+    height: 20px;
+    border-radius: 4px;
+    background: #eaf6ff;
+    border: 1px solid #3bb4ff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
     cursor: pointer;
 }
 #vortexTimeline::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
-    border: none;
-    border-radius: 50%;
-    background: #fff;
+    width: 8px;
+    height: 20px;
+    border-radius: 4px;
+    background: #eaf6ff;
+    border: 1px solid #3bb4ff;
     cursor: pointer;
 }
 
 /* speed dropdown */
 #vortexSpeed {
-    background: #20262f;
+    background: rgba(255, 255, 255, 0.05);
     color: var(--vortex-text);
-    border: 1px solid var(--vortex-border);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 9px;
     padding: 6px 8px;
     font-size: 12px;
     cursor: pointer;
     outline: none;
 }
+#vortexSpeed:hover { border-color: var(--vortex-accent); }
 
-/* right-side functional icon cluster */
+/* tools cluster — inset segmented group */
 #vortexBarIcons {
     display: flex;
     align-items: center;
-    gap: 2px;
-    padding-left: 10px;
-    margin-left: 2px;
-    border-left: 1px solid var(--vortex-border);
+    gap: 1px;
+    padding: 3px 4px;
+    margin-left: 4px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
 }
-.vortexIconSpacer { width: 2px; display: inline-block; }
+.vortexIconSpacer { display: none; }
 #vortexBarIcons .mapFooterMenuItem { display: flex; }
-#vortexBarIcons .fa { font-size: 18px !important; }
+#vortexBarIcons .fa { font-size: 17px !important; }
 #vortexBarIcons .menu_item_not_selected {
     border: none;
     background: none;
-    padding: 7px;
+    padding: 6px 7px;
+    border-radius: 8px;
     color: var(--vortex-subtext);
+    transition: color 0.12s, background 0.12s;
 }
+#vortexBarIcons .menu_item_not_selected:hover { color: var(--vortex-text); background: rgba(255, 255, 255, 0.06); }
 #vortexBarIcons .menu_item_selected {
     border: none;
-    background: var(--vortex-accent);
-    color: #0b0f14;
-    padding: 7px;
-    border-radius: 9px;
+    background: rgba(59, 180, 255, 0.16);
+    color: #7cceff;
+    padding: 6px 7px;
+    border-radius: 8px;
     min-width: auto;
+    box-shadow: inset 0 -2px 0 var(--vortex-accent);
 }
 
 /* ---- Bottom-left color legend ---- */
