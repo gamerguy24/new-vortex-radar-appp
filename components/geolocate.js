@@ -8,6 +8,20 @@ function mapObj() { return window.vortexMap && window.vortexMap.map; }
 function GL() { return window.mapboxgl || window.maplibregl; }
 
 let _marker = null;
+let _active = false;
+
+function setActive(on) {
+    _active = on;
+    const icon = document.getElementById('vortexLocateBtn')?.querySelector('span');
+    if (!icon) return;
+    icon.classList.toggle('menu_item_selected', on);
+    icon.classList.toggle('menu_item_not_selected', !on);
+}
+
+function turnOff() {
+    if (_marker) { _marker.remove(); _marker = null; }
+    setActive(false);
+}
 
 function toast(msg, kind) {
     const colors = { info: '#27beff', warn: '#facc15', error: '#f87171' };
@@ -57,11 +71,11 @@ function locate() {
                 }
             }
             m.flyTo({ center: [lng, lat], zoom: Math.max(m.getZoom(), 9), duration: 1200 });
-            const icon = document.getElementById('vortexLocateBtn')?.querySelector('span');
-            if (icon) { icon.classList.remove('menu_item_not_selected'); icon.classList.add('menu_item_selected'); }
+            setActive(true);
         },
         (err) => {
             setBusy(false);
+            setActive(false);
             toast(err.code === 1 ? 'Location permission denied.' : 'Could not get your location.', 'warn');
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
@@ -70,7 +84,10 @@ function locate() {
 
 function init() {
     const btn = document.getElementById('vortexLocateBtn');
-    if (btn) btn.addEventListener('click', locate);
+    if (btn) btn.addEventListener('click', () => {
+        // toggle: on -> off (remove marker), off -> locate
+        if (_active) { turnOff(); } else { locate(); }
+    });
 }
 
 if (document.readyState === 'loading') {
