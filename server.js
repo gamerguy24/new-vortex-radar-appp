@@ -554,6 +554,40 @@ app.get('/api/level2/latest', requireAuth, async (req, res) => {
     }
 });
 
+// ─── Generic CORS proxy for weather data hosts (replaces corsproxy.io) ───────
+// The app prepends this to external URLs (lightning, storm tracks, SPC, surface
+// fronts, METARs, hurricanes). Server-side fetch avoids browser CORS. Restricted
+// to trusted weather-data hosts to limit SSRF.
+const PROXY_ALLOWED = ['noaa.gov', 'weather.gov', 'aviationweather.gov', 'saratoga-weather.org', 'placefilenation.com', 'navy.mil'];
+function proxyHostAllowed(host) {
+    host = String(host || '').toLowerCase();
+    return PROXY_ALLOWED.some((h) => host === h || host.endsWith('.' + h));
+}
+app.get('/api/proxy', requireAuth, async (req, res) => {
+    // The app concatenates the target URL unencoded after `url=`, so read it
+    // straight from the raw query rather than via req.query (which stops at &).
+    const raw = req.originalUrl;
+    const idx = raw.indexOf('url=');
+    let target = idx >= 0 ? raw.slice(idx + 4) : '';
+    if (/^https?%3a/i.test(target)) { try { target = decodeURIComponent(target); } catch {} }
+    if (!target) return res.status(400).json({ error: 'A url is required.' });
+    let host;
+    try { host = new URL(target).hostname; } catch { return res.status(400).json({ error: 'Invalid url.' }); }
+    if (!proxyHostAllowed(host)) return res.status(403).json({ error: 'Host not allowed: ' + host });
+    try {
+        const upstream = await fetch(target, { headers: { 'User-Agent': 'Mozilla/5.0 (VortexRadar)', 'Accept': '*/*' } });
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        res.status(upstream.status);
+        res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
+        const lastMod = upstream.headers.get('last-modified');
+        if (lastMod) res.setHeader('Last-Modified', lastMod);
+        res.setHeader('Cache-Control', 'no-store');
+        res.send(buf);
+    } catch (err) {
+        res.status(502).json({ error: 'Proxy fetch failed: ' + (err.message || err) });
+    }
+});
+
 // ─── Spotter Network proxy (avoids browser CORS) ─────────────────────────────
 async function spotterProxy(endpoint, req, res) {
     try {
