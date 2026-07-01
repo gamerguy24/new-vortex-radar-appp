@@ -230,3 +230,19 @@
 .vr-gate-value { font-weight: 700; color: var(--vr-accent); }
 .vr-gate input[type="range"] { width: 100%; accent-color: var(--vr-accent); }
 .vr-gate input[type="range"]:disabled { opacity: 0.45; }
+
+/* ---- "My location" marker dot ---- */
+.vr-locate-dot {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #3bb4ff; border: 2px solid #fff;
+    box-shadow: 0 0 0 3px rgba(59,180,255,0.35), 0 1px 4px rgba(0,0,0,0.5);
+}
+.vr-locate-dot::after {
+    content: ''; position: absolute; inset: -6px; border-radius: 50%;
+    border: 2px solid rgba(59,180,255,0.5);
+    animation: vr-locate-pulse 1.8s ease-out infinite;
+}
+@keyframes vr-locate-pulse {
+    0% { transform: scale(0.6); opacity: 0.9; }
+    100% { transform: scale(1.8); opacity: 0; }
+}
