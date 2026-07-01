@@ -73,7 +73,11 @@ function init() {
     state(); // ensure it exists
 
     const btn = document.getElementById('armrGateFilterBtn');
-    if (btn) btn.addEventListener('click', openGateFilter);
+    if (btn) btn.addEventListener('click', () => {
+        const m = document.getElementById('atticRadarMenu');
+        if (m) m.style.display = 'none';
+        openGateFilter();
+    });
 
     // if a radar is already up, apply immediately
     repaint();

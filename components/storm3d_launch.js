@@ -12,6 +12,8 @@ async function open3D() {
         alert('Open a radar site first (click a station on the map), then launch the 3D view.');
         return;
     }
+    const menu = document.getElementById('atticRadarMenu');
+    if (menu) menu.style.display = 'none';
     try {
         const { default: Storm3D } = await import('./3d/storm3d.js');
         if (_viewer) { try { _viewer.close(); } catch (e) {} }

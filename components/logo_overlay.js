@@ -217,7 +217,11 @@ function loadInitial() {
 
 function init() {
     const btn = document.getElementById('armrBrandLogoBtn');
-    if (btn) btn.addEventListener('click', openLogoDialog);
+    if (btn) btn.addEventListener('click', () => {
+        const m = document.getElementById('atticRadarMenu');
+        if (m) m.style.display = 'none';
+        openLogoDialog();
+    });
     loadInitial();
 }
 

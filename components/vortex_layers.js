@@ -36,11 +36,16 @@ function withMap(fn, label) {
     fn(w);
 }
 
+function closeMenu() {
+    const m = document.getElementById('atticRadarMenu');
+    if (m) m.style.display = 'none';
+}
+
 function init() {
-    // --- dialogs ---
-    onClick('armrLiveCamsBtn', () => openCams());
-    onClick('armrReportWeatherBtn', () => withMap((w) => openWeatherReport(w), 'Report Weather'));
-    onClick('armrSponsorsBtn', () => openSponsors());
+    // --- dialogs (close the menu first so they aren't hidden behind it) ---
+    onClick('armrLiveCamsBtn', () => { closeMenu(); openCams(); });
+    onClick('armrReportWeatherBtn', () => withMap((w) => { closeMenu(); openWeatherReport(w); }, 'Report Weather'));
+    onClick('armrSponsorsBtn', () => { closeMenu(); openSponsors(); });
 
     // --- layer toggles ---
     onToggle('armrCamerasSwitchElem', (on) => withMap((w) => on ? addCamMarkers(w) : removeCamMarkers(), 'Cameras'));
