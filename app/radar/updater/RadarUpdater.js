@@ -18,6 +18,8 @@ class RadarUpdater {
 
         this.nexrad_factory = nexrad_factory;
         this.latest_date = undefined;
+        // Which pane this updater re-plots into (rides on the factory).
+        this.target = (nexrad_factory && nexrad_factory.target) || 'main';
 
         var get_latest_url_func;
         var plot_func;
@@ -31,11 +33,12 @@ class RadarUpdater {
                     const product = this._product_from_abbv(this.nexrad_factory.product_abbv);
                     loaders_nexrad.create_super_res_storm_relative_velocity(this.nexrad_factory.station, product,
                         (combinedFactory) => {
+                            combinedFactory.target = this.target;
                             combinedFactory.plot();
                         });
                 };
             } else {
-                plot_func = loaders_nexrad.level_3_plot_from_url;
+                plot_func = (url) => loaders_nexrad.level_3_plot_from_url(url, null, this.target);
             }
         }
         this.get_latest_url_func = get_latest_url_func;

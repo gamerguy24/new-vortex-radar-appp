@@ -10,12 +10,24 @@ const vertex_source = require('./glsl/vertex.glsl');
 const fragment_source = require('./glsl/fragment.glsl');
 const fragment_framebuffer_source = require('./glsl/fragment_framebuffer.glsl');
 const map = require('../../core/map/map');
+const { get_pane, pane_state } = require('../../core/map/radar_panes');
 const RadarUpdater = require('../updater/RadarUpdater');
 const filter_lightning = require('../../lightning/filter_lightning');
 const load_lightning = require('../../lightning/load_lightning');
 const turf = require('@turf/turf');
 
 function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
+    // Which pane this radar renders into. The target rides on the factory so the
+    // whole plot()/update chain carries it without extra parameters; absent =>
+    // 'main' (the historical single-pane behavior).
+    const target = (nexrad_factory && nexrad_factory.target) || 'main';
+    const is_main = target === 'main';
+    const pane = get_pane(target);
+    const map = pane.getMap();
+    if (!map) return;
+    // Per-pane radar state. For 'main' this IS window.atticData (back-compat).
+    const S = pane_state(target);
+
     // The reflectivity gate filter only applies to reflectivity products. The
     // `product` here is the radar product CODE (e.g. N0B, N0Q, TZ0, REF), not a
     // friendly name, so match the actual reflectivity codes.
@@ -39,14 +51,14 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
 
     values = ut.scaleValues(values, product);
     const cmin = values[0];
-    window.atticData.cmin = cmin;
-    window.atticData.colorscale_cmin = cmin;
+    S.cmin = cmin;
+    S.colorscale_cmin = cmin;
     const cmax = values[values.length - 1];
-    window.atticData.cmax = cmax;
-    window.atticData.colorscale_cmax = cmax;
+    S.cmax = cmax;
+    S.colorscale_cmax = cmax;
     if (color_scale_data.hasOwnProperty('range_fold')) {
         const colorscale_cmax = values[values.length - 2];
-        window.atticData.colorscale_cmax = colorscale_cmax;
+        S.colorscale_cmax = colorscale_cmax;
     }
 
     //var vertexF32 = new Float32Array(verticiesArr);
@@ -68,9 +80,9 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-        window.atticData.fb = gl.createFramebuffer();
+        S.fb = gl.createFramebuffer();
 
-        gl.bindFramebuffer(gl.FRAMEBUFFER, window.atticData.fb);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, S.fb);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0);
     }
     function renderToFramebuffer(gl, matrix) {
@@ -82,7 +94,7 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
         gl.uniform2fv(this.minmaxLocationFramebuffer, [cmin, cmax]);
 
         // render to the framebuffer
-        gl.bindFramebuffer(gl.FRAMEBUFFER, window.atticData.fb);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, S.fb);
 
         // transparent black is no radar data
         gl.clearColor(0, 0, 0, 0);
@@ -94,11 +106,12 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
     }
 
     var layer = {
-        id: 'baseReflectivity',
+        id: pane.layerId,
         type: 'custom',
 
         onAdd: function (map, gl) {
-            create_and_show_colorbar(colors, values);
+            // The colorbar UI is currently a single (main-pane) widget.
+            if (is_main) create_and_show_colorbar(colors, values);
             // create the color scale texture
             imagedata = create_WebGL_texture(colors, values);
             imagetexture = gl.createTexture();
@@ -249,11 +262,14 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
         }
     }
 
-    map_funcs.removeMapLayer('baseReflectivity');
+    map_funcs.removeMapLayer(pane.layerId, map);
     map.addLayer(layer, map_funcs.get_base_layer());
 
-    var isInFileUploadMode = window.atticData.from_file_upload; /* $('#armrModeBtnSwitchElem').is(':checked'); */
-    if (!isInFileUploadMode) {
+    // File-upload mode is a main-pane concept; the dual pane is always live.
+    var isInFileUploadMode = is_main && window.atticData.from_file_upload; /* $('#armrModeBtnSwitchElem').is(':checked'); */
+    // Storm tracks + lightning are wired to the main map only (per-pane support
+    // is a later stage); skip them for the dual pane.
+    if (!isInFileUploadMode && is_main) {
         init_storm_tracks.fetch_data();
         // STstuff.loadAllStormTrackingStuff();
 
@@ -273,7 +289,7 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
         } else {
             _after();
         }
-    } else {
+    } else if (is_main) {
         filter_lightning(true);
     }
 
@@ -282,17 +298,17 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
         const location = nexrad_factory.get_location();
         const range_circle = turf.circle([location[1], location[0]], range, { steps: 100, units: 'kilometers' });
 
-        if (map.getSource('station_range_source')) {
-            map.getSource('station_range_source').setData(range_circle);
+        if (map.getSource(pane.rangeSourceId)) {
+            map.getSource(pane.rangeSourceId).setData(range_circle);
         } else {
-            map.addSource('station_range_source', {
+            map.addSource(pane.rangeSourceId, {
                 type: 'geojson',
                 data: range_circle
             })
             map.addLayer({
-                'id': 'station_range_layer',
+                'id': pane.rangeLayerId,
                 'type': 'line',
-                'source': 'station_range_source',
+                'source': pane.rangeSourceId,
                 'paint': {
                     'line-color': '#999999',
                     'line-width': 0.25
@@ -301,13 +317,15 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
         }
     }
 
-    // make sure the alerts are always on top
-    setLayerOrder();
+    // make sure the alerts are always on top (main-map layer ordering)
+    if (is_main) setLayerOrder();
 
     var isRadarVisChecked = $('#armrRadarVisBtnSwitchElem').is(':checked');
     if (!isRadarVisChecked) {
-        map.setLayoutProperty('baseReflectivity', 'visibility', 'none');
-        map.setLayoutProperty('station_range_layer', 'visibility', 'none');
+        map.setLayoutProperty(pane.layerId, 'visibility', 'none');
+        if (map.getLayer(pane.rangeLayerId)) {
+            map.setLayoutProperty(pane.rangeLayerId, 'visibility', 'none');
+        }
     }
 
     if (isInFileUploadMode) {
@@ -322,17 +340,17 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
         }
     }
 
-    if (window?.atticData?.current_RadarUpdater != undefined) {
-        window.atticData.current_RadarUpdater.disable();
+    if (S.current_RadarUpdater != undefined) {
+        S.current_RadarUpdater.disable();
     }
     if (!isInFileUploadMode) {
         const current_RadarUpdater = new RadarUpdater(nexrad_factory);
-        window.atticData.current_RadarUpdater = current_RadarUpdater;
+        S.current_RadarUpdater = current_RadarUpdater;
         current_RadarUpdater.enable();
     }
 
-    window.atticData.current_nexrad_location = nexrad_factory.get_location();
-    window.atticData.current_elevation_angle = nexrad_factory.elevation_angle;
+    S.current_nexrad_location = nexrad_factory.get_location();
+    S.current_elevation_angle = nexrad_factory.elevation_angle;
 }
 
 module.exports = plot_to_map;

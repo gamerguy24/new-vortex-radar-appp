@@ -80,6 +80,9 @@ function load() {
     // load the colortable menu
     require('../../radar/colormaps/menu');
 
+    // load the split-screen right-pane radar controller
+    require('../../radar/dual/dual_radar');
+
     // document.addEventListener('keyup', event => {
     //     if (event.code === 'Space') {
     //         // const image_url = map.getCanvas().toDataURL();

@@ -65,6 +65,49 @@ body.vortex-split #mapDual {
     box-sizing: border-box;
 }
 
+/* Right-pane radar station/product picker (shown when split is active) */
+#dualRadarControls {
+    position: fixed;
+    top: 72px;
+    right: 12px;
+    z-index: 100040;
+    background: rgba(11, 18, 32, 0.96);
+    border: 1px solid rgba(39, 190, 255, 0.4);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-family: 'Onest', system-ui, sans-serif;
+    color: #e7eef7;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+#dualRadarControls .drc-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #7f93b0;
+    margin-bottom: 6px;
+}
+#dualRadarControls .drc-row { display: flex; gap: 6px; align-items: center; }
+#dualRadarControls .drc-input {
+    background: #0e1626;
+    color: #e7eef7;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    padding: 5px 7px;
+    font-size: 13px;
+}
+#dualRadarControls #drcStation { width: 70px; text-transform: uppercase; }
+#dualRadarControls .drc-btn {
+    background: #27beff;
+    color: #04121e;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+#dualRadarControls .drc-btn:hover { background: #4fcbff; }
+#dualRadarControls .drc-status { margin-top: 6px; font-size: 12px; color: #9aa8bd; min-height: 14px; }
+
 .false-anchor {
     cursor: pointer;
     text-decoration: underline;

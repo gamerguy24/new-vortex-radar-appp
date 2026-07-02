@@ -6,6 +6,17 @@ const Level2Factory = require('../libnexrad/level2/level2_factory');
 const NEXRADLevel3File = require('../libnexrad/level3/level3_parser');
 const Level3Factory = require('../libnexrad/level3/level3_factory');
 
+const { pane_state } = require('../../core/map/radar_panes');
+
+// Disable the radar auto-updater currently running on a given pane before a new
+// plot replaces it. 'main' aliases window.atticData for backward compatibility.
+function _disable_pane_updater(target) {
+    const S = pane_state(target);
+    if (S && S.current_RadarUpdater != undefined) {
+        S.current_RadarUpdater.disable();
+    }
+}
+
 /**
  * Function that fetches a file and returns it as a Buffer.
  * 
@@ -229,15 +240,14 @@ function return_level_3_factory_from_buffer(arraybuffer, callback) {
  * @param {String} product - See documentation for "get_latest_level_3_url" function.
  * @param {Function} callback - A callback function. Passes a single variable, which is an instance of a L3Factory class.
  */
-function quick_level_3_plot(station, product, callback = null) {
+function quick_level_3_plot(station, product, callback = null, target = 'main') {
     if (callback == null) { callback = function() {} }
     return_level_3_factory_from_info(station, product, (L3Factory) => {
-        if (window?.atticData?.current_RadarUpdater != undefined) {
-            window.atticData.current_RadarUpdater.disable();
-        }
+        _disable_pane_updater(target);
 
         console.log('Main file:', L3Factory);
         // L3Factory.display_file_info();
+        L3Factory.target = target;
         L3Factory.plot();
 
         callback(L3Factory);
@@ -250,14 +260,13 @@ function quick_level_3_plot(station, product, callback = null) {
  * @param {String} station - Station ICAO code
  * @param {Function} callback - Optional callback function
  */
-function quick_storm_relative_velocity_plot(station, product, callback = null) {
+function quick_storm_relative_velocity_plot(station, product, callback = null, target = 'main') {
     if (callback == null) { callback = function () { } }
     create_super_res_storm_relative_velocity(station, product, (combinedFactory) => {
-        if (window?.atticData?.current_RadarUpdater !== undefined) {
-            window.atticData.current_RadarUpdater.disable();
-        }
+        _disable_pane_updater(target);
 
         console.log('Main file:', combinedFactory);
+        combinedFactory.target = target;
         combinedFactory.plot();
         callback(combinedFactory);
     });
@@ -270,13 +279,12 @@ function quick_storm_relative_velocity_plot(station, product, callback = null) {
  * @param {String} url - See documentation for "file_to_buffer" function.
  * @param {Function} callback - A callback function. Passes a single variable, which is an instance of a L3Factory class.
  */
-function level_3_plot_from_url(url, callback = null) {
+function level_3_plot_from_url(url, callback = null, target = 'main') {
     if (callback == null) { callback = function() {} }
     return_level_3_factory_from_url(url, (L3Factory) => {
-        if (window?.atticData?.current_RadarUpdater != undefined) {
-            window.atticData.current_RadarUpdater.disable();
-        }
+        _disable_pane_updater(target);
 
+        L3Factory.target = target;
         L3Factory.plot();
         callback(L3Factory);
     })

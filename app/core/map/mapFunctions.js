@@ -1,11 +1,12 @@
 var map = require('./map');
 
-function removeMapLayer(layername) {
-    if (map.getLayer(layername)) {
-        map.removeLayer(layername);
+function removeMapLayer(layername, targetMap = map) {
+    if (!targetMap) return;
+    if (targetMap.getLayer(layername)) {
+        targetMap.removeLayer(layername);
     }
-    if (map.getSource(layername)) {
-        map.removeSource(layername);
+    if (targetMap.getSource(layername)) {
+        targetMap.removeSource(layername);
     }
 }
 function setGeojsonLayer(gj, gjType, identity) {
