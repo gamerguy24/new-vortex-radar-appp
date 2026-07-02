@@ -16,6 +16,8 @@
  *   GET /api/models/:id/list?prefix         -> S3 listing (browse; used by NDFD)
  */
 
+const { renderField } = require('./grib2_render');
+
 const pad2 = (n) => String(n).padStart(2, '0');
 const pad3 = (n) => String(n).padStart(3, '0');
 
@@ -231,6 +233,53 @@ function attachModels(app, requireAuth) {
       res.setHeader('X-Grib-Key', key);
       res.send(buf);
     } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
+  });
+
+  // Decode + colorize a single field to an EPSG:4326 PNG for map overlay.
+  app.get('/api/models/:id/field', guard, async (req, res) => {
+    const m = MODELS[req.params.id];
+    if (!m || m.type !== 'cycle') return res.status(404).json({ error: 'Unknown cycle model' });
+    const { date, cycle } = req.query;
+    const fhr = Number(req.query.fhr || 0);
+    if (!VALID_DATE.test(date || '') || !VALID_CYCLE.test(cycle || '') || !Number.isFinite(fhr)) {
+      return res.status(400).json({ error: 'date=YYYYMMDD & cycle=HH & fhr required' });
+    }
+    // bbox=W,S,E,N (defaults to CONUS)
+    let bbox = [-125, 24, -66.5, 50];
+    if (req.query.bbox) {
+      const p = String(req.query.bbox).split(',').map(Number);
+      if (p.length === 4 && p.every(Number.isFinite) && p[2] > p[0] && p[3] > p[1]) {
+        bbox = [Math.max(-179, p[0]), Math.max(-85, p[1]), Math.min(179, p[2]), Math.min(85, p[3])];
+      }
+    }
+    try {
+      const key = m.file(date, cycle, fhr, req.query.product || m.defaultProduct);
+      const messages = await fetchIdx(m.bucket, key);
+      if (!messages) return res.status(404).json({ error: 'No .idx for that file' });
+      let msg = null;
+      if (req.query.msg != null) msg = messages.find((x) => x.n === Number(req.query.msg));
+      else if (req.query.var) {
+        const v = String(req.query.var).toUpperCase();
+        const lvl = req.query.level ? String(req.query.level).toLowerCase() : null;
+        msg = messages.find((x) => x.variable.toUpperCase() === v && (!lvl || x.level.toLowerCase() === lvl));
+      }
+      if (!msg) return res.status(404).json({ error: 'Field not found; check /index' });
+
+      const range = `bytes=${msg.start}-${msg.end == null ? '' : msg.end}`;
+      const upstream = await fetch(s3KeyUrl(m.bucket, key), { headers: { Range: range } });
+      if (!(upstream.ok || upstream.status === 206)) return res.status(502).json({ error: `S3 ${upstream.status}` });
+      const bytes = new Uint8Array(await upstream.arrayBuffer());
+
+      const { png } = renderField(bytes, msg.variable, bbox);
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Bbox', bbox.join(','));
+      res.setHeader('X-Var', msg.variable);
+      res.setHeader('X-Level', msg.level);
+      res.send(Buffer.from(png));
+    } catch (e) {
+      res.status(502).json({ error: String(e.message || e) });
+    }
   });
 
   app.get('/api/models/:id/list', guard, async (req, res) => {

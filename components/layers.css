@@ -355,9 +355,20 @@
 .vmp-var { font-weight: 700; min-width: 88px; color: #fff; }
 .vmp-meta { flex: 1; color: #9ab; font-size: 12px; }
 .vmp-dl {
-    color: #04121e; background: #27beff; text-decoration: none; font-weight: 700;
-    font-size: 11px; padding: 4px 10px; border-radius: 6px;
+    color: #cfe0f5; background: rgba(255,255,255,0.06); text-decoration: none; font-weight: 700;
+    font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12);
 }
-.vmp-dl:hover { background: #4fcbff; }
+.vmp-dl:hover { background: rgba(255,255,255,0.12); color: #fff; }
+.vmp-plot {
+    color: #04121e; background: #27beff; border: none; cursor: pointer; font-weight: 800;
+    font-size: 11px; padding: 5px 12px; border-radius: 6px;
+}
+.vmp-plot:hover { background: #4fcbff; }
+.vmp-head-actions { display: flex; align-items: center; gap: 12px; }
+.vmp-clear {
+    background: rgba(255,255,255,0.06); color: #cfe0f5; border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 7px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.vmp-clear:hover { background: rgba(255, 90, 90, 0.18); color: #fff; border-color: rgba(255,90,90,0.4); }
 .vmp-hint, .vmp-err { padding: 14px 4px; font-size: 13px; color: #9ab; }
 .vmp-err { color: #ff8a8a; }

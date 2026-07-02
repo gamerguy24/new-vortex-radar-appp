@@ -30,14 +30,43 @@ function validTime(run, fhr) {
 
 function close() { if (overlay) { overlay.remove(); overlay = null; } }
 
+const MODEL_SRC = 'vortex-model-src';
+const MODEL_LAYER = 'vortex-model-layer';
+
+function clearOverlay() {
+  const map = window.vortexMap && window.vortexMap.map;
+  if (!map) return;
+  if (map.getLayer(MODEL_LAYER)) map.removeLayer(MODEL_LAYER);
+  if (map.getSource(MODEL_SRC)) map.removeSource(MODEL_SRC);
+}
+
+// Render a field for the current map view and overlay it (like the MRMS layer).
+function plotField(m, msg) {
+  const map = window.vortexMap && window.vortexMap.map;
+  if (!map) { alert('Map is not ready.'); return; }
+  const b = map.getBounds();
+  const W = Math.max(-179, b.getWest()), E = Math.min(179, b.getEast());
+  const S = Math.max(-85, b.getSouth()), N = Math.min(85, b.getNorth());
+  const bbox = `${W.toFixed(3)},${S.toFixed(3)},${E.toFixed(3)},${N.toFixed(3)}`;
+  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${msg.n}&bbox=${bbox}`;
+  clearOverlay();
+  map.addSource(MODEL_SRC, { type: 'image', url, coordinates: [[W, N], [E, N], [E, S], [W, S]] });
+  map.addLayer({
+    id: MODEL_LAYER, type: 'raster', source: MODEL_SRC,
+    paint: { 'raster-opacity': 0.8, 'raster-fade-duration': 0 },
+  }, map.getLayer('baseReflectivity') ? 'baseReflectivity' : undefined);
+  close();
+}
+
 async function open() {
   if (overlay) { close(); return; }
   overlay = el(`<div id="vortexModelsOverlay"><div id="vortexModelsPanel">
-    <div class="vmp-head"><span>Models &amp; Forecast</span><button id="vmpClose" class="vmp-x" title="Close">✕</button></div>
+    <div class="vmp-head"><span>Models &amp; Forecast</span><span class="vmp-head-actions"><button id="vmpClear" class="vmp-clear" title="Remove the model overlay from the map">Clear map</button><button id="vmpClose" class="vmp-x" title="Close">✕</button></span></div>
     <div class="vmp-body"><div class="vmp-side" id="vmpSide"></div><div class="vmp-main" id="vmpMain"><div class="vmp-hint">Select a model.</div></div></div>
   </div></div>`);
   document.body.appendChild(overlay);
   document.getElementById('vmpClose').onclick = close;
+  document.getElementById('vmpClear').onclick = clearOverlay;
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
 
   try {
@@ -93,7 +122,9 @@ async function loadIndex(m, run, fhr) {
       const row = el(`<div class="vmp-row" data-txt="${esc((mm.variable + ' ' + mm.level + ' ' + mm.forecast).toLowerCase())}">
         <div class="vmp-var">${esc(mm.variable)}</div>
         <div class="vmp-meta">${esc(mm.level)} · ${esc(mm.forecast)}${kb ? ` · ${kb} KB` : ''}</div>
-        <a class="vmp-dl" href="${url}" download="${m.id}_${mm.variable}_f${pad2(fhr)}.grib2">GRIB2</a></div>`);
+        <button class="vmp-plot">Plot</button>
+        <a class="vmp-dl" href="${url}" download="${m.id}_${mm.variable}_f${pad2(fhr)}.grib2" title="Download raw GRIB2">GRIB2</a></div>`);
+      row.querySelector('.vmp-plot').addEventListener('click', () => plotField(m, mm));
       list.appendChild(row);
     }
   } catch (e) { list.innerHTML = `<div class="vmp-err">${esc(e.message)}</div>`; }
