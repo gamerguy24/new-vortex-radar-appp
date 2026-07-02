@@ -300,3 +300,64 @@
     text-align: center;
     min-height: 92px;
 }
+
+/* ---- Models & Forecast browser panel ---- */
+#vortexModelsOverlay {
+    position: fixed; inset: 0; z-index: 100070;
+    background: rgba(4, 8, 16, 0.55);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Onest', system-ui, sans-serif;
+}
+#vortexModelsPanel {
+    width: min(760px, 94vw); height: min(640px, 88vh);
+    display: flex; flex-direction: column;
+    background: rgba(11, 18, 32, 0.98);
+    border: 1px solid rgba(39, 190, 255, 0.35);
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+}
+.vmp-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; font-weight: 700; font-size: 16px; color: #e7eef7;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.vmp-x { background: none; border: none; color: #9ab; font-size: 16px; cursor: pointer; }
+.vmp-x:hover { color: #fff; }
+.vmp-body { flex: 1; display: flex; min-height: 0; }
+.vmp-side {
+    width: 190px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
+    border-right: 1px solid rgba(255, 255, 255, 0.08); overflow-y: auto;
+}
+.vmp-model {
+    text-align: left; padding: 10px 12px; border-radius: 9px; cursor: pointer;
+    background: rgba(255, 255, 255, 0.04); color: #cfe0f5;
+    border: 1px solid rgba(255, 255, 255, 0.08); font-size: 13px; font-weight: 600;
+}
+.vmp-model:hover { background: rgba(39, 190, 255, 0.12); }
+.vmp-model.active { background: rgba(39, 190, 255, 0.2); border-color: rgba(39, 190, 255, 0.55); color: #fff; }
+.vmp-main { flex: 1; padding: 16px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.vmp-title { font-size: 17px; font-weight: 800; color: #fff; }
+.vmp-status { margin: 6px 0 12px; font-size: 13px; color: #9ab; }
+.vmp-status b { color: #27beff; }
+.vmp-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #7f93b0; margin-bottom: 10px; }
+.vmp-field select, .vmp-filter {
+    background: #0e1626; color: #e7eef7; border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 7px; padding: 8px 10px; font-size: 13px; width: 100%;
+}
+.vmp-filter { margin-bottom: 8px; }
+.vmp-list { flex: 1; overflow-y: auto; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.vmp-row {
+    display: flex; align-items: center; gap: 12px; padding: 9px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 13px; color: #e7eef7;
+}
+.vmp-nav { cursor: pointer; color: #cfe0f5; }
+.vmp-nav:hover { background: rgba(39, 190, 255, 0.1); }
+.vmp-var { font-weight: 700; min-width: 88px; color: #fff; }
+.vmp-meta { flex: 1; color: #9ab; font-size: 12px; }
+.vmp-dl {
+    color: #04121e; background: #27beff; text-decoration: none; font-weight: 700;
+    font-size: 11px; padding: 4px 10px; border-radius: 6px;
+}
+.vmp-dl:hover { background: #4fcbff; }
+.vmp-hint, .vmp-err { padding: 14px 4px; font-size: 13px; color: #9ab; }
+.vmp-err { color: #ff8a8a; }
