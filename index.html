@@ -397,6 +397,20 @@
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-metars-layer">
                         </div>
                     </div>
+                    <div class="atticRadarMenuRow armrMiddle" id="armrTVSSignaturesBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-tornado"></i>
+                        TVS Signatures
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-tvs-signatures-layer">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrMiddle" id="armrHailSignaturesBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-icicles"></i>
+                        Hail Signatures
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-hail-signatures-layer">
+                        </div>
+                    </div>
                     <div class="atticRadarMenuRow armrBottom" id="armrReportsBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-tower-observation"></i>
                         User Storm Reports
@@ -1260,5 +1274,7 @@
     <script type="module" src="./components/geolocate.js"></script>
     <!-- METAR stations layer (second, ArcGIS-sourced) -->
     <script type="module" src="./components/metar_stations.js"></script>
+    <!-- NEXRAD storm centers (TVS + hail signatures) -->
+    <script type="module" src="./components/nexrad_signatures.js"></script>
 </body>
 </html>
