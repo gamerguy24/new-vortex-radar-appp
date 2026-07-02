@@ -605,6 +605,9 @@ async function spotterProxy(endpoint, req, res) {
 app.post('/api/spotters/positions', requireAuth, (req, res) => spotterProxy('positions', req, res));
 app.post('/api/spotters/reports', requireAuth, (req, res) => spotterProxy('reports', req, res));
 
+// ─── NOAA model data access layer (GFS/HRRR/NAM/GEFS/NDFD on public S3) ──────
+require('./model_data').attachModels(app, requireAuth);
+
 // ─── Static files ──────────────────────────────────────────────────────────────
 const sendFile = (file) => (req, res) => res.sendFile(path.join(ROOT, file));
 
