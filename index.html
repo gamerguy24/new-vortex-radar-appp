@@ -212,6 +212,10 @@
             <span id="drawMenuItemIcon" class="fa fa-pencil icon-grey menu_item_not_selected"></span>
         </div>
         <span class="vortexIconSpacer noselect"></span>
+        <div id="vortexSplitBtn" class="mapFooterMenuItem" title="Split screen (overlay compare)">
+            <span id="vortexSplitIcon" class="fa fa-table-columns icon-grey menu_item_not_selected"></span>
+        </div>
+        <span class="vortexIconSpacer noselect"></span>
         <div id="vortexGraphicsBtn" class="mapFooterMenuItem" title="Vortex Graphics">
             <span id="vortexGraphicsIcon" class="fa fa-palette icon-grey menu_item_not_selected"></span>
         </div>
@@ -947,6 +951,8 @@
     <!-- <canvas id="mapColorScale"></canvas> -->
 
     <div id="map" class="screenshot"></div>
+    <!-- Second map pane for split-screen overlay compare (hidden until enabled) -->
+    <div id="mapDual"></div>
 
     </div>
 
@@ -1276,5 +1282,7 @@
     <script type="module" src="./components/metar_stations.js"></script>
     <!-- NEXRAD storm centers (TVS + hail signatures) -->
     <script type="module" src="./components/nexrad_signatures.js"></script>
+    <!-- Split-screen overlay compare (second synced map) -->
+    <script type="module" src="./components/split_screen.js"></script>
 </body>
 </html>

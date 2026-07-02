@@ -49,6 +49,22 @@ hr {
     width: 100%;
 }
 
+/* ---- Split-screen overlay compare ---- */
+#mapDual {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 50%;
+    display: none;
+}
+body.vortex-split #map { width: 50%; }
+body.vortex-split #mapDual {
+    display: block;
+    border-left: 2px solid rgba(39, 190, 255, 0.55);
+    box-sizing: border-box;
+}
+
 .false-anchor {
     cursor: pointer;
     text-decoration: underline;

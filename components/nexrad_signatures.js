@@ -27,8 +27,8 @@ function adapter() {
         get layers() { return w.layers; },
         // The currently open radar site drives which storm cells are shown.
         get currentMainStation() { return window.atticData?.currentStation; },
-        get currentSplitStation() { return undefined; },
-        isSplit() { return !!w.dualMap; },
+        get currentSplitStation() { return window.atticData?.currentStation; },
+        isSplit() { return typeof w.isSplit === 'function' ? w.isSplit() : !!w.dualMap; },
     };
 }
 
@@ -50,7 +50,7 @@ async function apply() {
     if (!tvs && !hail) {
         clearInterval(_timer);
         _timer = null;
-        if (_layer) _layer.clearStormCenters('main');
+        if (_layer) { _layer.clearStormCenters('main'); _layer.clearStormCenters('dual'); }
         return;
     }
 
@@ -80,6 +80,11 @@ function init() {
 
     tvsCb?.addEventListener('change', apply);
     hailCb?.addEventListener('change', apply);
+
+    // Re-render on split toggle so the dual pane gains/loses storm centers.
+    window.addEventListener('vortexsplitchange', () => {
+        if (_layer && (tvsCb?.checked || hailCb?.checked)) _layer.displayStormCenters();
+    });
 }
 
 if (document.readyState === 'loading') {

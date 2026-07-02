@@ -46,9 +46,37 @@ export function removeEarthquakes() {
 
 // --- Internal helpers -------------------------------------------------------
 
+// Maps to draw on: the main map, plus the dual pane when split screen is active.
+function _targetMaps() {
+    const w = window.vortexMap || {};
+    const maps = [];
+    if (_currentMap?.map) maps.push(_currentMap.map);
+    const split = typeof w.isSplit === 'function' ? w.isSplit() : false;
+    if (split && w.dualMap) maps.push(w.dualMap);
+    return maps;
+}
+
 function _clearMarkers() {
     _markers.forEach(m => m.remove());
     _markers = [];
+}
+
+// Build a fresh marker DOM element (one per map — elements can't be shared).
+function _makeMarkerEl(mag, color, size) {
+    const el = document.createElement('div');
+    el.className = 'eq-marker';
+    el.style.width  = `${size}px`;
+    el.style.height = `${size}px`;
+    el.style.borderColor = color;
+    el.style.boxShadow = `0 0 6px ${color}88`;
+    if (mag >= 5) el.style.animation = 'eq-pulse 1.8s ease-in-out infinite';
+
+    const label = document.createElement('span');
+    label.className = 'eq-mag-label';
+    label.textContent = mag.toFixed(1);
+    label.style.color = color;
+    el.appendChild(label);
+    return el;
 }
 
 function _closePopup() {
@@ -98,6 +126,8 @@ async function _load(map) {
         _clearMarkers();
         _closePopup();
 
+        const targets = _targetMaps();
+
         for (const feature of data.features) {
             if (!_active) return;
 
@@ -108,30 +138,20 @@ async function _load(map) {
             const color = _magColor(mag);
             const size  = _magSize(mag);
 
-            const el = document.createElement('div');
-            el.className = 'eq-marker';
-            el.style.width  = `${size}px`;
-            el.style.height = `${size}px`;
-            el.style.borderColor = color;
-            el.style.boxShadow = `0 0 6px ${color}88`;
-            if (mag >= 5) el.style.animation = 'eq-pulse 1.8s ease-in-out infinite';
+            // One marker per target map (main, plus dual pane when split).
+            for (const tmap of targets) {
+                const el = _makeMarkerEl(mag, color, size);
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    _showPopup(lon, lat, mag, place, time, depth, tsunami, tmap);
+                });
 
-            const label = document.createElement('span');
-            label.className = 'eq-mag-label';
-            label.textContent = mag.toFixed(1);
-            label.style.color = color;
-            el.appendChild(label);
+                const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+                    .setLngLat([lon, lat])
+                    .addTo(tmap);
 
-            el.addEventListener('click', (e) => {
-                e.stopPropagation();
-                _showPopup(lon, lat, mag, place, time, depth, tsunami, map);
-            });
-
-            const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-                .setLngLat([lon, lat])
-                .addTo(map);
-
-            _markers.push(marker);
+                _markers.push(marker);
+            }
         }
     } catch (err) {
         console.error('[Earthquakes] Failed to load:', err);
@@ -166,3 +186,8 @@ function _showPopup(lon, lat, mag, place, time, depth, tsunami, map) {
     _popupEl = popup.getElement();
     popup.on('close', () => { _popupEl = null; });
 }
+
+// Repaint markers when split screen toggles so the dual pane gains/loses them.
+window.addEventListener('vortexsplitchange', () => {
+    if (_active && _currentMap) _load(_currentMap.map);
+});

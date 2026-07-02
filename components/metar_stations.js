@@ -23,7 +23,7 @@ function adapter() {
         get map() { return w.map; },
         get dualMap() { return w.dualMap; },
         get layers() { return w.layers; },
-        isSplit() { return !!w.dualMap; },
+        isSplit() { return typeof w.isSplit === 'function' ? w.isSplit() : !!w.dualMap; },
     };
 }
 
@@ -57,7 +57,7 @@ function disable() {
     setEnabledFlag(false);
     clearInterval(_timer);
     _timer = null;
-    if (_layer) _layer.clearMetarStations('main');
+    if (_layer) { _layer.clearMetarStations('main'); _layer.clearMetarStations('dual'); }
 }
 
 function init() {
@@ -67,6 +67,9 @@ function init() {
     setEnabledFlag(false);
     cb.checked = false;
     cb.addEventListener('change', () => (cb.checked ? enable() : disable()));
+
+    // When split screen toggles, re-render so the dual pane gains/loses stations.
+    window.addEventListener('vortexsplitchange', () => { if (cb.checked) _layer && _layer.displayMetarStations(); });
 }
 
 if (document.readyState === 'loading') {
