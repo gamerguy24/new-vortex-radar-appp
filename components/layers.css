@@ -246,3 +246,57 @@
     0% { transform: scale(0.6); opacity: 0.9; }
     100% { transform: scale(1.8); opacity: 0; }
 }
+
+/* ---- USGS earthquake markers ---- */
+.eq-marker {
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    border: 2px solid #60d6ff; /* overridden inline per magnitude */
+    background: rgba(11, 18, 32, 0.55);
+    cursor: pointer;
+    box-sizing: border-box;
+}
+.eq-mag-label {
+    font-family: 'Onest', system-ui, sans-serif;
+    font-size: 9px; font-weight: 700; line-height: 1;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    pointer-events: none;
+}
+@keyframes eq-pulse {
+    0%, 100% { box-shadow: 0 0 4px currentColor; transform: scale(1); }
+    50%      { box-shadow: 0 0 12px 3px currentColor; transform: scale(1.12); }
+}
+
+/* ---- Earthquake popup (dark theme, matches cams/spotters) ---- */
+.eq-popup .mapboxgl-popup-content {
+    background: rgba(11, 18, 32, 0.97) !important;
+    color: #e7eef7 !important;
+    border: 1px solid var(--vr-border);
+    border-radius: 10px;
+    font-family: 'Onest', system-ui, sans-serif;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.eq-popup .mapboxgl-popup-tip {
+    border-top-color: rgba(11,18,32,0.97) !important;
+    border-bottom-color: rgba(11,18,32,0.97) !important;
+}
+.eq-popup-content { padding: 4px 6px; min-width: 150px; }
+.eq-popup-mag { font-size: 1.4em; font-weight: 800; line-height: 1.1; }
+.eq-popup-place { margin-top: 4px; font-size: 0.9em; }
+.eq-popup-meta { margin-top: 6px; font-size: 0.8em; color: var(--vr-muted); }
+.eq-popup-tsunami { margin: 8px 0 0; font-size: 0.82em; font-weight: 700; color: #ff6b6b; }
+
+/* ---- METAR station dialog widgets (js/metar.js) ---- */
+.metar-widgets {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+.metar-widget {
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 10px;
+    border-radius: 10px;
+    text-align: center;
+    min-height: 92px;
+}

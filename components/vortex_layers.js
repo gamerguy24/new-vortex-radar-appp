@@ -13,6 +13,7 @@ import openCams, { addCamMarkers, removeCamMarkers } from './cams.js';
 import openWeatherReport, { addWeatherReportMarkers, removeWeatherReportMarkers } from './weather_report.js';
 import { addSpotterMarkers, removeSpotterMarkers } from './spotters.js';
 import { addMRMS, removeMRMS } from './mrms.js';
+import { addEarthquakes, removeEarthquakes } from './earthquakes.js';
 
 function wrapper() { return window.vortexMap || null; }
 
@@ -51,6 +52,7 @@ function init() {
     onToggle('armrCamerasSwitchElem', (on) => withMap((w) => on ? addCamMarkers(w) : removeCamMarkers(), 'Cameras'));
     onToggle('armrSpottersSwitchElem', (on) => withMap((w) => on ? addSpotterMarkers(w) : removeSpotterMarkers(), 'Spotters'));
     onToggle('armrMRMSSwitchElem', (on) => withMap((w) => on ? addMRMS(w) : removeMRMS(), 'MRMS'));
+    onToggle('armrEarthquakesSwitchElem', (on) => withMap((w) => on ? addEarthquakes(w) : removeEarthquakes(), 'Earthquakes'));
     onToggle('toggle-community-reports-layer', (on) => {
         localStorage.setItem('communityReportsEnabled', on ? 'true' : 'false');
         withMap((w) => on ? addWeatherReportMarkers(w) : removeWeatherReportMarkers(), 'User Storm Reports');

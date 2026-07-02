@@ -383,6 +383,20 @@
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrMRMSSwitchElem">
                         </div>
                     </div>
+                    <div class="atticRadarMenuRow armrMiddle" id="armrEarthquakesBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-house-crack"></i>
+                        Earthquakes (M2.5+)
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrEarthquakesSwitchElem">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrMiddle" id="armrMetarStationsBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-cloud-sun"></i>
+                        METAR Stations
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-metars-layer">
+                        </div>
+                    </div>
                     <div class="atticRadarMenuRow armrBottom" id="armrReportsBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-tower-observation"></i>
                         User Storm Reports
@@ -1244,5 +1258,7 @@
     <script type="module" src="./components/graphics_launch.js"></script>
     <!-- Go-to-my-location button -->
     <script type="module" src="./components/geolocate.js"></script>
+    <!-- METAR stations layer (second, ArcGIS-sourced) -->
+    <script type="module" src="./components/metar_stations.js"></script>
 </body>
 </html>
