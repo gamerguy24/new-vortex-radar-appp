@@ -495,7 +495,9 @@ function resetPaintData() {
 // separate backend.
 async function importSpc() {
   const day = state.config.spcDay || '1';
-  const res = await fetch(`/spc/products/outlook/day${day}otlk_cat.nolyr.geojson`);
+  // Route through Vortex Radar's server-side CORS proxy (see server.js /api/proxy;
+  // spc.noaa.gov is on its allowlist) instead of a Dome-only /spc/ endpoint.
+  const res = await fetch(`/api/proxy?url=https://www.spc.noaa.gov/products/outlook/day${day}otlk_cat.nolyr.geojson`);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const gj = await res.json();
   state.config.spcFeatures = gj;
