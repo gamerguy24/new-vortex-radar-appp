@@ -1,7 +1,8 @@
-// Legend / scale layers. Two kinds match the reference graphics:
-//  - categorical chips (e.g. 1.Low 2.Limited ... 5.Extreme; or RAIN/SNOW/...)
-//  - gradient scale with numeric ticks (e.g. ICE ACCUMULATION inches)
-import { roundRect } from './scene.js';
+// Legend / scale layers, broadcast-styled: rounded navy container, crisp color
+// segments, condensed bold caps, soft shadow and a bright rim.
+//  - categorical chips (1..5 threat scale; RAIN/SNOW/…)
+//  - gradient scale with numeric ticks or LIGHT/HEAVY/EXTREME anchors
+import { COLORS, caps, capsWidth, withShadow, panelPath } from './style.js';
 
 // items: [{ label, color, textColor? }]. Rendered as a contiguous chip strip.
 export function categoricalLegendLayer(items, rect, opts = {}) {
@@ -11,29 +12,42 @@ export function categoricalLegendLayer(items, rect, opts = {}) {
       const { x, y, w, h } = rect;
       const n = items.length;
       const cw = w / n;
-      const fs = opts.fontSize || Math.round(h * 0.42);
-      ctx.font = `800 ${fs}px "Segoe UI", Arial, sans-serif`;
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'center';
+      const r = opts.radius == null ? 8 : opts.radius;
+
+      withShadow(ctx, () => { panelPath(ctx, x, y, w, h, r); ctx.fillStyle = COLORS.navyBot; ctx.fill(); }, { blur: 14, y: 4 });
+
+      ctx.save();
+      panelPath(ctx, x, y, w, h, r);
+      ctx.clip();
       for (let i = 0; i < n; i++) {
-        const cx = x + i * cw;
         ctx.fillStyle = items[i].color;
-        ctx.fillRect(cx, y, cw + 0.5, h);
-        ctx.fillStyle = items[i].textColor || pickText(items[i].color);
-        ctx.fillText(items[i].label, cx + cw / 2, y + h / 2 + 1);
+        ctx.fillRect(x + i * cw, y, cw + 0.5, h);
       }
-      if (opts.border) {
-        ctx.lineWidth = opts.border;
-        ctx.strokeStyle = opts.borderColor || '#ffffff';
-        ctx.strokeRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < n; i++) {
+        ctx.beginPath(); ctx.moveTo(x + i * cw, y + 2); ctx.lineTo(x + i * cw, y + h - 2); ctx.stroke();
       }
-      ctx.textAlign = 'left';
+      ctx.restore();
+
+      const fs = opts.fontSize || Math.round(h * 0.44);
+      for (let i = 0; i < n; i++) {
+        caps(ctx, items[i].label, x + i * cw + cw / 2, y + h / 2 + 1, {
+          size: fs, weight: 800, color: items[i].textColor || pickText(items[i].color),
+          align: 'center', scaleX: 0.96, shadow: false,
+        });
+      }
+
+      ctx.strokeStyle = opts.borderColor || 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = opts.border || 1.5;
+      panelPath(ctx, x, y, w, h, r);
+      ctx.stroke();
     },
   };
 }
 
-// stops: [{ value, color }] ascending. Draws a gradient bar with tick labels
-// centered under each band boundary (broadcast inch/amount scale style).
+// stops: [{ value, color }] ascending. Discrete bands with tick labels, or
+// LIGHT/HEAVY/EXTREME anchors when opts.anchors is provided.
 export function gradientScaleLayer(stops, rect, opts = {}) {
   return {
     name: 'legend-gradient',
@@ -41,38 +55,52 @@ export function gradientScaleLayer(stops, rect, opts = {}) {
       const { x, y, w, h } = rect;
       const n = stops.length;
       const cw = w / n;
-      // discrete color bands (broadcast scales are usually stepped)
+      const r = opts.radius == null ? 8 : opts.radius;
+
+      withShadow(ctx, () => { panelPath(ctx, x, y, w, h, r); ctx.fillStyle = COLORS.navyBot; ctx.fill(); }, { blur: 14, y: 4 });
+
+      ctx.save();
+      panelPath(ctx, x, y, w, h, r);
+      ctx.clip();
       for (let i = 0; i < n; i++) {
         ctx.fillStyle = stops[i].color;
         ctx.fillRect(x + i * cw, y, cw + 0.5, h);
       }
-      ctx.strokeStyle = opts.borderColor || 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x, y, w, h);
-      // tick labels at band boundaries
-      const fs = opts.fontSize || Math.round(h * 0.7);
-      ctx.font = `800 ${fs}px "Segoe UI", Arial, sans-serif`;
-      ctx.fillStyle = opts.textColor || '#ffffff';
-      ctx.textBaseline = 'bottom';
-      ctx.textAlign = 'center';
-      for (let i = 0; i < n; i++) {
-        ctx.fillText(String(stops[i].value), x + i * cw + cw / 2, y - 6);
+      ctx.restore();
+
+      ctx.strokeStyle = opts.borderColor || 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 1.5;
+      panelPath(ctx, x, y, w, h, r);
+      ctx.stroke();
+
+      if (opts.anchors && opts.anchors.length) {
+        const a = opts.anchors;
+        const fs = opts.anchorSize || Math.round(h * 0.62);
+        a.forEach((lbl, i) => {
+          const t = a.length === 1 ? 0.5 : i / (a.length - 1);
+          caps(ctx, lbl, x + t * w, y + h + fs * 0.9, {
+            size: fs, weight: 800, color: COLORS.white, scaleX: 0.94,
+            align: i === 0 ? 'left' : i === a.length - 1 ? 'right' : 'center',
+          });
+        });
+      } else {
+        const fs = opts.fontSize || Math.round(h * 0.7);
+        for (let i = 0; i < n; i++) {
+          caps(ctx, String(stops[i].value), x + i * cw + cw / 2, y - fs * 0.5, {
+            size: fs, weight: 800, color: COLORS.white, align: 'center',
+          });
+        }
       }
+
       if (opts.unit) {
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#fff';
-        ctx.font = `800 ${Math.round(fs * 0.9)}px "Segoe UI", Arial, sans-serif`;
-        // unit chip centered above the bar
-        const label = opts.unit.toUpperCase();
-        const lw = ctx.measureText(label).width + 24;
-        roundRect(ctx, x + w / 2 - lw / 2, y - fs - 30, lw, fs + 10, 4);
-        ctx.fillStyle = '#000';
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(label, x + w / 2, y - fs - 30 + (fs + 10) / 2 + 1);
+        const fs = Math.round((opts.fontSize || Math.round(h * 0.7)) * 0.9);
+        const label = String(opts.unit).toUpperCase();
+        const lw = capsWidth(ctx, label, fs, 800, 0.94) + 24;
+        const bx = x + w / 2 - lw / 2;
+        const by = y - h - 18;
+        withShadow(ctx, () => { panelPath(ctx, bx, by, lw, fs + 12, 5); ctx.fillStyle = COLORS.red; ctx.fill(); }, { blur: 8, y: 3 });
+        caps(ctx, label, x + w / 2, by + (fs + 12) / 2 + 1, { size: fs, color: COLORS.white, align: 'center', scaleX: 0.94, shadow: false });
       }
-      ctx.textAlign = 'left';
     },
   };
 }
