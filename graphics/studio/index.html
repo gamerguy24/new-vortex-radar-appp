@@ -81,6 +81,15 @@
         </label>
         <button class="tb-btn ghosty" id="tool-clear" title="Clear all brush strokes">Clear drawing</button>
         <span class="tb-sep"></span>
+        <div class="tb-group" role="group" aria-label="Radar">
+          <button class="tb-btn" id="radar-toggle" title="Overlay live NEXRAD base reflectivity">◈ Radar</button>
+          <label class="tb-field tb-size" title="Radar opacity">
+            <span>Opacity</span>
+            <input type="range" id="radar-opacity" min="10" max="100" value="80" />
+          </label>
+          <button class="tb-btn ghosty" id="radar-refresh" title="Refresh radar for the current view" hidden>↻</button>
+        </div>
+        <span class="tb-sep"></span>
         <div class="tb-group" aria-label="Logo">
           <button class="tb-btn" id="logo-add" title="Add your custom logo to every template">＋ Logo</button>
           <button class="tb-btn ghosty" id="logo-remove" title="Remove logo" hidden>Remove</button>

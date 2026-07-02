@@ -4,6 +4,7 @@
 import { Scene } from './engine/scene.js';
 import { loadGeo } from './engine/geo.js';
 import { freehandLayer, logoLayer, panelOverlayLayer, nameOverlayLayer } from './engine/overlays.js';
+import { fetchRadar, radarLayer } from './engine/radar.js';
 import { TEMPLATES, TEMPLATE_BY_ID } from './templates/index.js';
 
 const $ = (id) => document.getElementById(id);
@@ -22,7 +23,23 @@ const state = {
   brushPx: 16,          // freehand brush size, in canvas (broadcast) pixels
   logo: null,           // { img, src, corner, scale } — drawn on every template
   overlays: [],         // [{ type:'panel'|'name', ... }] — draggable, on every template
+  radar: null,          // { img, bbox, opacity } — live NEXRAD reflectivity overlay
 };
+
+// Template layer names that are "chrome" (labels / headers / legend / branding).
+// Radar is inserted just before the first of these so it sits over the map data
+// but under text.
+const RADAR_CHROME = new Set([
+  'cities', 'point-labels', 'legend-categorical', 'legend-gradient',
+  'title-bar', 'flag-header', 'banner-header', 'threat-box', 'branding',
+]);
+function insertRadarLayer(sc = scene) {
+  if (!(state.radar && state.radar.img)) return;
+  const layer = radarLayer(state.radar);
+  const idx = sc.layers.findIndex((l) => RADAR_CHROME.has(l.name));
+  if (idx < 0) sc.add(layer);
+  else sc.layers.splice(idx, 0, layer);
+}
 
 // Per-template freehand strokes, kept on the config so Reset / template switch
 // clears them. Lazily created.
@@ -53,6 +70,8 @@ function activeScale() {
 function rerender() {
   if (!geo) return;
   state.template.build(scene, geo, state.config, ctrl);
+  // Radar sits over the map data but under labels/chrome and user overlays.
+  insertRadarLayer();
   // User overlays sit on top of every template (build() clears layers first).
   for (const ov of state.overlays) {
     scene.add(ov.type === 'name' ? nameOverlayLayer(ov) : panelOverlayLayer(ov));
@@ -73,6 +92,8 @@ function selectTemplate(id) {
   buildProps();
   rerender();
   updateHint();
+  // The new template may cover a different region; refit radar to its view.
+  if (state.radar) loadRadar();
 }
 
 // Per-template presentation metadata for the rail + properties header.
@@ -668,6 +689,40 @@ $('tool-size').oninput = (e) => {
 };
 $('tool-clear').onclick = () => { state.config._strokes = []; rerender(); };
 
+// Radar: overlay live NEXRAD base reflectivity, warped to the current view.
+function setRadarUI(on) {
+  $('radar-toggle').classList.toggle('active', on);
+  $('radar-refresh').hidden = !on;
+}
+async function loadRadar() {
+  const btn = $('radar-toggle');
+  const label = btn.textContent;
+  btn.textContent = '… Radar';
+  btn.disabled = true;
+  try {
+    const opacity = (Number($('radar-opacity').value) || 80) / 100;
+    state.radar = await fetchRadar(scene, { opacity });
+    setRadarUI(true);
+    rerender();
+  } catch (err) {
+    console.error('[Radar] load failed:', err);
+    state.radar = null;
+    setRadarUI(false);
+    alert('Could not load radar: ' + (err.message || err));
+  } finally {
+    btn.textContent = label;
+    btn.disabled = false;
+  }
+}
+$('radar-toggle').onclick = () => {
+  if (state.radar) { state.radar = null; setRadarUI(false); rerender(); }
+  else loadRadar();
+};
+$('radar-refresh').onclick = () => { if (state.radar) loadRadar(); };
+$('radar-opacity').oninput = (e) => {
+  if (state.radar) { state.radar.opacity = (Number(e.target.value) || 80) / 100; rerender(); }
+};
+
 // Custom logo: upload an image and stamp it on every template.
 $('logo-add').onclick = () => $('logo-file').click();
 $('logo-file').onchange = (e) => {
@@ -798,7 +853,7 @@ async function savePsd() {
     const agPsd = await loadAgPsd();
     const children = [];
     // Bottom-to-top: the base graphic, then overlays, drawings, logo.
-    children.push({ name: 'Graphic', canvas: renderLayerCanvas((s) => state.template.build(s, geo, state.config, ctrl)) });
+    children.push({ name: 'Graphic', canvas: renderLayerCanvas((s) => { state.template.build(s, geo, state.config, ctrl); insertRadarLayer(s); }) });
     if (state.overlays.length) {
       children.push({ name: 'Overlays', canvas: renderLayerCanvas((s) => {
         for (const ov of state.overlays) s.add(ov.type === 'name' ? nameOverlayLayer(ov) : panelOverlayLayer(ov));
