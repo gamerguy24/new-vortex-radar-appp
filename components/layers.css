@@ -373,3 +373,73 @@
 .vmp-op input { flex: 1; }
 .vmp-hint, .vmp-err { padding: 14px 4px; font-size: 13px; color: #9ab; }
 .vmp-err { color: #ff8a8a; }
+
+/* ---- Custom saved locations: markers ---- */
+.vloc-marker { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.vloc-dot {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: #ff5a3c; border: 2px solid #fff;
+    box-shadow: 0 0 0 2px rgba(255,90,60,0.35), 0 1px 4px rgba(0,0,0,0.5);
+}
+.vloc-label {
+    font-family: 'Onest', system-ui, sans-serif; font-weight: 700; font-size: 13px;
+    color: #fff; white-space: nowrap;
+    background: linear-gradient(#14406e, #0c2340);
+    border: 1px solid rgba(150,185,235,0.6); border-radius: 6px;
+    padding: 3px 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+}
+
+/* ---- Custom saved locations: manager panel (left dock) ---- */
+#vlocPanel {
+    position: fixed; left: 12px; top: 64px; bottom: 64px; z-index: 100070;
+    width: min(340px, 92vw); display: flex; flex-direction: column;
+    background: rgba(11, 18, 32, 0.98);
+    border: 1px solid rgba(39, 190, 255, 0.35);
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+    font-family: 'Onest', system-ui, sans-serif;
+}
+.vloc-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px; font-weight: 700; font-size: 15px; color: #e7eef7;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.vloc-head-actions { display: flex; align-items: center; gap: 10px; }
+.vloc-x { background: none; border: none; color: #9ab; font-size: 16px; cursor: pointer; }
+.vloc-x:hover { color: #fff; }
+.vloc-toggle {
+    background: rgba(255,255,255,0.06); color: #cfe0f5; border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 7px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.vloc-toggle.active { background: rgba(39,190,255,0.2); color: #fff; border-color: rgba(39,190,255,0.5); }
+.vloc-list { flex: 1; overflow-y: auto; padding: 6px 10px; }
+.vloc-empty { padding: 16px 6px; color: #9ab; font-size: 13px; }
+.vloc-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.vloc-info { flex: 1; min-width: 0; }
+.vloc-nm { font-weight: 700; color: #fff; font-size: 13.5px; }
+.vloc-ll { color: #9ab; font-size: 11.5px; }
+.vloc-go {
+    color: #04121e; background: #27beff; border: none; cursor: pointer; font-weight: 800;
+    font-size: 11px; padding: 5px 11px; border-radius: 6px;
+}
+.vloc-go:hover { background: #4fcbff; }
+.vloc-del { background: none; border: none; color: #9ab; font-size: 13px; cursor: pointer; padding: 4px 6px; }
+.vloc-del:hover { color: #ff7a7a; }
+.vloc-add { padding: 10px 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; flex-direction: column; gap: 7px; }
+.vloc-in {
+    background: #0e1626; color: #e7eef7; border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 7px; padding: 8px 10px; font-size: 13px; width: 100%;
+}
+.vloc-search-row, .vloc-ll-row { display: flex; gap: 6px; }
+.vloc-sm { flex: 1; min-width: 0; }
+.vloc-btn {
+    background: rgba(255,255,255,0.08); color: #cfe0f5; border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 7px; padding: 8px 12px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.vloc-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.vloc-primary { background: #27beff; color: #04121e; border: none; }
+.vloc-primary:hover { background: #4fcbff; }
+.vloc-status { font-size: 12px; color: #9ab; min-height: 15px; }
