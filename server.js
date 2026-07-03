@@ -31,6 +31,8 @@ const RESETS_FILE = path.join(DATA_DIR, 'reset_requests.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
 const LOGOS_FILE = path.join(DATA_DIR, 'logos.json');
+const PUSH_FILE = path.join(DATA_DIR, 'push_tokens.json');
+const LOCATIONS_FILE = path.join(DATA_DIR, 'locations.json');
 
 const PORT = process.env.PORT || 3333;
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@vortexradar.app';
@@ -54,10 +56,14 @@ let users = readJson(USERS_FILE, []);
 let resetRequests = readJson(RESETS_FILE, []);
 let reports = readJson(REPORTS_FILE, []);
 let logos = readJson(LOGOS_FILE, {}); // userId -> { dataUrl, corner, size, opacity }
+let pushTokens = readJson(PUSH_FILE, {}); // userId -> [{ token, platform, updatedAt }]
+let userLocations = readJson(LOCATIONS_FILE, {}); // userId -> [{ name, lat, lon }]
 const saveUsers = () => writeJson(USERS_FILE, users);
 const saveResets = () => writeJson(RESETS_FILE, resetRequests);
 const saveReports = () => writeJson(REPORTS_FILE, reports);
 const saveLogos = () => writeJson(LOGOS_FILE, logos);
+const savePushTokens = () => writeJson(PUSH_FILE, pushTokens);
+const saveUserLocations = () => writeJson(LOCATIONS_FILE, userLocations);
 
 // ─── Sessions (persisted to disk so restarts don't sign everyone out) ─────────
 const sessions = new Map(); // token -> { userId, created }
@@ -513,6 +519,65 @@ app.delete('/api/logo', requireAuth, (req, res) => {
     res.json({ ok: true });
 });
 
+// ─── Push notification device tokens (weather alerts) ────────────────────────
+// The Capacitor app (VortexRadarMobile) registers its FCM token here so the
+// server can target this device with alert pushes. A token belongs to one
+// account at a time — registering it moves it off any other user.
+app.post('/api/push/register', requireAuth, (req, res) => {
+    const token = String(req.body?.token || '').trim();
+    const platform = String(req.body?.platform || 'android').slice(0, 16);
+    if (!token || token.length > 4096) return res.status(400).json({ error: 'A valid token is required.' });
+
+    // Remove this token from every user first (device re-assignment / re-install).
+    for (const uid of Object.keys(pushTokens)) {
+        pushTokens[uid] = (pushTokens[uid] || []).filter((t) => t.token !== token);
+        if (!pushTokens[uid].length) delete pushTokens[uid];
+    }
+    const list = pushTokens[req.user.id] || (pushTokens[req.user.id] = []);
+    list.push({ token, platform, updatedAt: new Date().toISOString() });
+    // Cap stored tokens per user (a user may have a few devices).
+    if (list.length > 10) list.splice(0, list.length - 10);
+    savePushTokens();
+    res.json({ ok: true });
+});
+
+app.delete('/api/push/register', requireAuth, (req, res) => {
+    const token = String(req.body?.token || '').trim();
+    if (token && pushTokens[req.user.id]) {
+        pushTokens[req.user.id] = pushTokens[req.user.id].filter((t) => t.token !== token);
+        if (!pushTokens[req.user.id].length) delete pushTokens[req.user.id];
+    } else {
+        delete pushTokens[req.user.id];
+    }
+    savePushTokens();
+    res.json({ ok: true });
+});
+
+// Remove a dead FCM token (called by the alert pusher on UNREGISTERED).
+function prunePushToken(userId, token) {
+    if (!pushTokens[userId]) return;
+    pushTokens[userId] = pushTokens[userId].filter((t) => t.token !== token);
+    if (!pushTokens[userId].length) delete pushTokens[userId];
+    savePushTokens();
+}
+
+// ─── User saved locations (mirrored from the client for alert matching) ──────
+app.get('/api/locations', requireAuth, (req, res) => {
+    res.json({ locations: userLocations[req.user.id] || [] });
+});
+
+app.put('/api/locations', requireAuth, (req, res) => {
+    const raw = Array.isArray(req.body?.locations) ? req.body.locations : [];
+    const clean = raw
+        .map((l) => ({ name: String(l && l.name || '').slice(0, 80), lat: Number(l && l.lat), lon: Number(l && l.lon) }))
+        .filter((l) => l.name && Number.isFinite(l.lat) && Number.isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180)
+        .slice(0, 50);
+    if (clean.length) userLocations[req.user.id] = clean;
+    else delete userLocations[req.user.id];
+    saveUserLocations();
+    res.json({ ok: true, count: clean.length });
+});
+
 // ─── Level-II proxy ──────────────────────────────────────────────────────────
 // The archive bucket (noaa-nexrad-level2) denies anonymous listing, so we use
 // the realtime chunks bucket (unidata-nexrad-level2-chunks). A volume is stored
@@ -652,6 +717,7 @@ app.use((req, res, next) => {
     const p = req.path.toLowerCase();
     if (p.startsWith('/server_data') || p.startsWith('/node_modules') ||
         p === '/server.js' || p === '/billing.js' || p === '/model_data.js' ||
+        p === '/push_send.js' || p === '/alert_pusher.js' || p.includes('service-account') ||
         p.startsWith('/.env') || p.startsWith('/package') || p.startsWith('/.git')) {
         return res.status(404).end();
     }
@@ -669,6 +735,13 @@ app.use(express.static(ROOT, { index: false }));
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
 ensureSuperAdmin();
+
+// Weather-alert push pusher — dormant unless FCM is configured (push_send.js).
+require('./alert_pusher').startAlertPusher({
+    getLocations: () => userLocations,
+    getTokens: (userId) => (pushTokens[userId] || []).map((t) => t.token),
+    pruneToken: prunePushToken,
+});
 
 app.listen(PORT, () => {
     console.log(`Vortex Radar server running at http://localhost:${PORT}`);

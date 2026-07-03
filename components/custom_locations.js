@@ -21,7 +21,24 @@ function GL() { return window.mapboxgl || window.maplibregl; }
 function load() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch { return []; }
 }
-function save(list) { try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch (e) {} }
+function save(list) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch (e) {}
+  syncToServer(list);
+}
+
+// Mirror saved locations to the server so weather-alert push can match them to
+// active warnings. Best-effort; localStorage stays the client source of truth.
+let _syncTimer = null;
+function syncToServer(list) {
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => {
+    fetch('/api/locations', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locations: (list || load()).map((l) => ({ name: l.name, lat: l.lat, lon: l.lon })) }),
+    }).catch(() => {});
+  }, 400);
+}
 function isShown() { return localStorage.getItem(SHOW_KEY) !== 'false'; }
 function setShown(on) { localStorage.setItem(SHOW_KEY, on ? 'true' : 'false'); }
 
@@ -230,6 +247,9 @@ function init() {
   };
   if (mainMap()) wire();
   else window.addEventListener('vortexmapready', wire, { once: true });
+
+  // Push any already-saved locations to the server once (for alert matching).
+  if (load().length) syncToServer(load());
 
   // Re-render onto/off the dual pane as split toggles.
   window.addEventListener('vortexsplitchange', renderMarkers);
