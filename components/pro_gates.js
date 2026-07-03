@@ -1,10 +1,11 @@
 /*
  * components/pro_gates.js
- * Client-side Pro gating for the paid features. Adds a "PRO" lock badge to each
- * gated control and intercepts clicks (capture phase) so free users get an
- * upgrade prompt instead of the feature. Server-side enforcement still backs the
- * ones with endpoints (models /api/models, graphics /graphics) — this is the UX
- * layer. Reads paywall state from window.vortexBilling (components/billing_ui.js).
+ * Client-side Pro gating for the paid features. Intercepts clicks (capture
+ * phase) so free users get an upgrade prompt instead of the feature. No "PRO"
+ * badge is shown — the sign is reserved for actual Pro members (the footer
+ * badge, handled by components/billing_ui.js). Server-side enforcement still
+ * backs the ones with endpoints (models /api/models, graphics /graphics).
+ * Reads paywall state from window.vortexBilling (components/billing_ui.js).
  */
 
 const GATED = [
@@ -34,7 +35,7 @@ function upgradeToast(name) {
 }
 
 function intercept(e, name) {
-  if (!gatingActive()) return; // Pro, or no paywall configured → allow through
+  if (!gatingActive()) return; // Pro/admin, or no paywall configured → allow through
   e.preventDefault();
   e.stopImmediatePropagation();
   const menu = document.getElementById('atticRadarMenu');
@@ -42,34 +43,11 @@ function intercept(e, name) {
   upgradeToast(name);
 }
 
-function setBadge(id, on) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const has = el.querySelector(':scope > .pro-lock');
-  if (on && !has) {
-    const b = document.createElement('span');
-    b.className = 'pro-lock';
-    b.textContent = 'PRO';
-    el.appendChild(b);
-    el.classList.add('pro-gated');
-  } else if (!on && has) {
-    has.remove();
-    el.classList.remove('pro-gated');
-  }
-}
-
-function refreshBadges() {
-  const on = gatingActive();
-  for (const g of GATED) setBadge(g.id, on);
-}
-
 function init() {
   for (const g of GATED) {
     const el = document.getElementById(g.id);
     if (el) el.addEventListener('click', (e) => intercept(e, g.name), true); // capture
   }
-  window.addEventListener('vortexbillingstatus', refreshBadges);
-  refreshBadges();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

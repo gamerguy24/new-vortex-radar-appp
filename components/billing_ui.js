@@ -51,15 +51,14 @@ function apply() {
   const bd = badge();
   if (!state) return;
 
+  // The Pro badge reflects real membership everywhere: only actual Pro members
+  // (paid subscribers or admins) ever see it. Never for free users.
+  if (bd) bd.style.display = state.isPro ? 'inline-flex' : 'none';
+
   if (!state.billingConfigured) {
-    // Billing not set up on this server — hide the upgrade row, leave the badge
-    // as-is (it's product branding until real tiers are live).
-    if (rw) rw.style.display = 'none';
+    if (rw) rw.style.display = 'none'; // nothing to sell when billing is off
     return;
   }
-
-  // Pro badge now reflects real entitlement.
-  if (bd) bd.style.display = state.isPro ? 'inline-flex' : 'none';
 
   if (!rw) return;
   if (!state.signedIn) { rw.style.display = 'none'; return; }

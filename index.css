@@ -1890,7 +1890,7 @@ td.day.active, span.month.active, span.year.active {
 
 /* PRO badge — premium amber chip (distinct from the green pill) */
 #vortexProBadge {
-    display: inline-flex;
+    display: none; /* shown by components/billing_ui.js only for actual Pro members */
     align-items: center;
     gap: 5px;
     background: linear-gradient(180deg, #ffd766, #efa62a);
