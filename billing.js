@@ -51,11 +51,22 @@ function createBilling({ store }) {
         };
     }
 
-    // Express middleware: gate a route behind Pro.
+    // Express middleware: gate a JSON API route behind Pro. When billing isn't
+    // configured, nothing is gated (the app runs fully open in dev).
     function requirePro(req, res, next) {
+        if (!isBillingConfigured) return next();
         if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
         if (billingState(req.user).isPro) return next();
         return res.status(402).json({ error: 'Pro subscription required', upgrade: '/api/billing/checkout' });
+    }
+
+    // Same gate for page/asset routes: redirect HTML navigations to an upgrade
+    // prompt instead of returning raw 402 JSON.
+    function requireProPage(req, res, next) {
+        if (!isBillingConfigured) return next();
+        if (req.user && billingState(req.user).isPro) return next();
+        if ((req.headers.accept || '').includes('text/html')) return res.redirect('/?upgrade=required');
+        return res.status(402).json({ error: 'Pro subscription required' });
     }
 
     // ── Webhook (raw body; MUST mount before any express.json) ────────────────
@@ -188,7 +199,7 @@ function createBilling({ store }) {
         return router;
     }
 
-    return { webhookRouter, apiRouter, requirePro, billingState, isBillingConfigured };
+    return { webhookRouter, apiRouter, requirePro, requireProPage, billingState, isBillingConfigured };
 }
 
 module.exports = { createBilling };

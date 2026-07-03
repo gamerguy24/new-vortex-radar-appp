@@ -89,6 +89,37 @@
     .help a:hover { text-decoration: underline; }
     .form { display: none; }
     .form.active { display: block; }
+
+    /* Saved-profile chooser */
+    .chooser { display: none; }
+    .chooser.active { display: block; }
+    .chooser h2 { margin: 0 0 14px; font-size: 1.15em; }
+    .profile-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+    .profile {
+      display: flex; align-items: center; gap: 12px; padding: 11px 12px;
+      background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px;
+    }
+    .profile-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; cursor: pointer; }
+    .profile:hover { border-color: var(--primary); background: rgba(39,190,255,0.08); }
+    .profile-avatar {
+      width: 38px; height: 38px; border-radius: 50%; flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #27beff, #7c3aed); color: #001022;
+      font-weight: 800; font-size: 1.1em;
+    }
+    .profile-info { min-width: 0; }
+    .profile-email { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .profile-sub { font-size: 0.8em; color: var(--muted); }
+    .profile-remove { color: var(--muted); font-size: 1.2em; padding: 4px 8px; cursor: pointer; border-radius: 6px; flex: 0 0 auto; }
+    .profile-remove:hover { color: var(--error); background: rgba(248,113,113,0.12); }
+    .chooser-actions { display: flex; flex-direction: column; gap: 8px; }
+    .link-btn {
+      background: none; border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 11px; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    .link-btn:hover { border-color: var(--primary); }
+    .back-link { display: none; margin-bottom: 14px; }
+    .back-link a { color: var(--primary); cursor: pointer; font-size: 0.9em; }
   </style>
 </head>
 <body>
@@ -96,7 +127,19 @@
     <div class="brand"><img src="/logo.png" alt="Vortex Radar" /></div>
     <div class="card">
     <h1>Vortex Radar</h1>
-    <p class="sub">Sign in to access the radar.</p>
+    <p class="sub" id="card-sub">Sign in to access the radar.</p>
+
+    <div class="chooser" id="chooser">
+      <h2>Choose a profile</h2>
+      <div class="profile-list" id="profile-list"></div>
+      <div class="chooser-actions">
+        <button type="button" class="link-btn" id="use-another">Use another account</button>
+        <button type="button" class="link-btn" id="create-profile">Create new account</button>
+      </div>
+    </div>
+
+    <div id="authForms">
+    <div class="back-link" id="back-link"><a id="back-to-profiles">‹ Back to profiles</a></div>
 
     <div class="tabs" role="tablist">
       <div class="tab active" data-tab="login" role="tab">Sign in</div>
@@ -142,6 +185,7 @@
 
     <div class="help">
       <a href="#" id="forgot-link">Forgot your password?</a>
+    </div>
     </div>
     </div>
   </main>
@@ -198,6 +242,7 @@
         setMsg('login-msg', data?.error || 'Sign in failed.', 'error');
         return;
       }
+      saveProfile(email, data && data.user);
       window.location.href = '/';
     });
 
@@ -214,6 +259,7 @@
         setMsg('register-msg', data?.error || 'Could not create account.', 'error');
         return;
       }
+      saveProfile(email, data && data.user);
       window.location.href = '/';
     });
 
@@ -253,9 +299,85 @@
         setMsg('admin-msg', 'This account does not have admin access.', 'error');
         return;
       }
+      saveProfile(email, data && data.user);
       // Admin confirmed — land directly in the in-app admin panel.
       window.location.href = '/#admin';
     });
+
+    // ── Saved profiles (account chooser) ──────────────────────────────────
+    // Emails of accounts used on this device are remembered locally so signing
+    // back in after logout is one tap → password. No passwords are ever stored.
+    const PKEY = 'vortexProfiles';
+    const loadProfiles = () => { try { return JSON.parse(localStorage.getItem(PKEY) || '[]'); } catch { return []; } };
+    function saveProfile(email, user) {
+      email = (email || '').trim().toLowerCase();
+      if (!email) return;
+      const list = loadProfiles().filter((p) => p.email !== email);
+      list.unshift({ email, isAdmin: !!(user && user.isAdmin), lastUsed: Date.now() });
+      localStorage.setItem(PKEY, JSON.stringify(list.slice(0, 8)));
+    }
+    function removeProfile(email) {
+      localStorage.setItem(PKEY, JSON.stringify(loadProfiles().filter((p) => p.email !== email)));
+    }
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    const chooserEl = document.getElementById('chooser');
+    const authFormsEl = document.getElementById('authForms');
+    const backLinkEl = document.getElementById('back-link');
+    const cardSub = document.getElementById('card-sub');
+
+    function showChooser() {
+      renderProfiles();
+      chooserEl.classList.add('active');
+      authFormsEl.style.display = 'none';
+      cardSub.textContent = 'Choose your profile to sign in.';
+    }
+    function showForms(withBack) {
+      chooserEl.classList.remove('active');
+      authFormsEl.style.display = 'block';
+      cardSub.textContent = 'Sign in to access the radar.';
+      backLinkEl.style.display = (withBack && loadProfiles().length) ? 'block' : 'none';
+    }
+    function renderProfiles() {
+      const list = loadProfiles();
+      const wrap = document.getElementById('profile-list');
+      wrap.innerHTML = '';
+      for (const p of list) {
+        const row = document.createElement('div');
+        row.className = 'profile';
+        row.innerHTML = '<div class="profile-main"><div class="profile-avatar">' + escapeHtml((p.email[0] || '?').toUpperCase())
+          + '</div><div class="profile-info"><div class="profile-email">' + escapeHtml(p.email)
+          + '</div><div class="profile-sub">' + (p.isAdmin ? 'Admin · ' : '') + 'Tap to sign in</div></div></div>'
+          + '<div class="profile-remove" title="Remove from this device">×</div>';
+        row.querySelector('.profile-main').addEventListener('click', () => pickProfile(p.email));
+        row.querySelector('.profile-remove').addEventListener('click', () => {
+          removeProfile(p.email);
+          if (loadProfiles().length) renderProfiles(); else showForms(false);
+        });
+        wrap.appendChild(row);
+      }
+    }
+    function pickProfile(email) {
+      showForms(true);
+      activateTab('login');
+      document.getElementById('login-email').value = email;
+      const pw = document.getElementById('login-password');
+      pw.value = '';
+      pw.focus();
+    }
+
+    document.getElementById('use-another').addEventListener('click', () => {
+      showForms(true); activateTab('login');
+      const em = document.getElementById('login-email'); em.value = ''; em.focus();
+    });
+    document.getElementById('create-profile').addEventListener('click', () => {
+      showForms(true); activateTab('register');
+      document.getElementById('register-email').focus();
+    });
+    document.getElementById('back-to-profiles').addEventListener('click', showChooser);
+
+    // On load: if any profiles are remembered, show the chooser first.
+    if (loadProfiles().length) showChooser(); else showForms(false);
 
     fetch('/auth/support', { headers: { 'Accept': 'application/json' } })
       .then((r) => r.json())

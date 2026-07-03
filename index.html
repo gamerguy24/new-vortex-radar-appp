@@ -1303,5 +1303,22 @@
     <script type="module" src="./components/custom_locations.js"></script>
     <!-- Upgrade to Pro / billing UI -->
     <script type="module" src="./components/billing_ui.js"></script>
+    <!-- Pro feature gates (lock badges + upgrade prompts) -->
+    <script type="module" src="./components/pro_gates.js"></script>
+    <!-- Remember the signed-in account locally for the login profile chooser -->
+    <script>
+      fetch('/auth/me', { headers: { Accept: 'application/json' } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d && d.user && d.user.email) {
+            try {
+              const K = 'vortexProfiles';
+              const list = JSON.parse(localStorage.getItem(K) || '[]').filter((p) => p.email !== d.user.email);
+              list.unshift({ email: d.user.email, isAdmin: !!d.user.isAdmin, lastUsed: Date.now() });
+              localStorage.setItem(K, JSON.stringify(list.slice(0, 8)));
+            } catch (e) {}
+          }
+        }).catch(() => {});
+    </script>
 </body>
 </html>

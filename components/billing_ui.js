@@ -27,11 +27,22 @@ function toast(msg, kind) {
   setTimeout(() => el.remove(), 4000);
 }
 
+// Shared client billing state for the Pro gates (components/pro_gates.js).
+// gatingActive() is true only when a paywall is live AND the user isn't Pro.
+window.vortexBilling = {
+  status: null,
+  gatingActive() { const s = this.status; return !!(s && s.billingConfigured && !s.isPro); },
+  startCheckout: () => go('checkout'),
+  openPortal: () => go('portal'),
+};
+
 async function loadStatus() {
   try {
     const r = await fetch('/api/billing/status');
     state = await r.json();
+    window.vortexBilling.status = state;
     apply();
+    window.dispatchEvent(new CustomEvent('vortexbillingstatus', { detail: state }));
   } catch (e) { /* leave UI untouched on failure */ }
 }
 
@@ -51,12 +62,10 @@ function apply() {
   if (bd) bd.style.display = state.isPro ? 'inline-flex' : 'none';
 
   if (!rw) return;
-  if (!state.signedIn || state.isAdmin) {
-    rw.style.display = 'none'; // not signed in, or Pro-by-admin (nothing to buy)
-    return;
-  }
+  if (!state.signedIn) { rw.style.display = 'none'; return; }
+  // Show for everyone signed in (incl. admins, so it's visible/testable).
   rw.style.display = '';
-  const subscriber = state.tier === 'pro' || state.hasStripeCustomer;
+  const subscriber = state.hasStripeCustomer || (state.tier === 'pro' && !state.isAdmin);
   if (label()) label().textContent = subscriber ? 'Manage Subscription' : 'Upgrade to Pro';
   rw.dataset.action = subscriber ? 'portal' : 'checkout';
 }

@@ -629,6 +629,9 @@ app.post('/api/spotters/positions', requireAuth, (req, res) => spotterProxy('pos
 app.post('/api/spotters/reports', requireAuth, (req, res) => spotterProxy('reports', req, res));
 
 // ─── NOAA model data access layer (GFS/HRRR/NAM/GEFS/NDFD on public S3) ──────
+// Pro-gated: models & forecasts require a Pro subscription (no-op if billing
+// isn't configured).
+app.use('/api/models', requireAuth, billing.requirePro);
 require('./model_data').attachModels(app, requireAuth);
 
 // ─── Static files ──────────────────────────────────────────────────────────────
@@ -644,15 +647,20 @@ app.use('/icons', express.static(path.join(ROOT, 'icons')));
 // Everything past this point requires a valid (unlocked) session.
 app.use(requireAuth);
 
-// Never serve secrets, even to authenticated users.
+// Never serve secrets or server code, even to authenticated users.
 app.use((req, res, next) => {
     const p = req.path.toLowerCase();
     if (p.startsWith('/server_data') || p.startsWith('/node_modules') ||
-        p === '/server.js' || p.startsWith('/package') || p.startsWith('/.git')) {
+        p === '/server.js' || p === '/billing.js' || p === '/model_data.js' ||
+        p.startsWith('/.env') || p.startsWith('/package') || p.startsWith('/.git')) {
         return res.status(404).end();
     }
     next();
 });
+
+// Pro-gate the Vortex Graphics studio (redirects free users to an upgrade
+// prompt; no-op if billing isn't configured).
+app.use('/graphics', billing.requireProPage);
 
 app.get('/', sendFile('index.html'));
 app.use(express.static(ROOT, { index: false }));
