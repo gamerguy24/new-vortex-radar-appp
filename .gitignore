@@ -3,6 +3,11 @@ node_modules
 AtticRadar*/
 server_data/
 
+# Secrets — never commit. Real Stripe/DB values live in .env (untracked).
+.env
+.env.*
+!.env.example
+
 # Large sample NEXRAD files (not used at runtime; app fetches live data).
 # Anchored so bundled app/**/data/ modules are still tracked.
 /data/

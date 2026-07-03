@@ -11,10 +11,15 @@
  * Run with `npm start`. Configure via env: PORT, SUPPORT_EMAIL, SESSION_TTL_DAYS.
  */
 
+// Load .env (Stripe/DB secrets) if present. Safe no-op when the file/module
+// is absent, so the app still boots without billing configured.
+try { require('dotenv').config(); } catch (e) {}
+
 const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { createBilling } = require('./billing');
 
 const ROOT = __dirname;
 // Where users/sessions/reports are stored. Override with DATA_DIR to point at a
@@ -106,6 +111,15 @@ const findByEmail = (e) => users.find((u) => u.email === normEmail(e));
 const findById = (id) => users.find((u) => u.id === id);
 const adminCount = () => users.filter((u) => u.isAdmin).length;
 
+// ─── Billing (Stripe) — wired to the JSON user store ─────────────────────────
+const billing = createBilling({
+    store: {
+        getById: (id) => findById(id),
+        getByStripeCustomer: (cid) => users.find((u) => u.stripeCustomerId === cid),
+        update: (user, fields) => { Object.assign(user, fields); saveUsers(); },
+    },
+});
+
 function publicUser(u) {
     return {
         id: u.id,
@@ -172,6 +186,11 @@ function setSessionCookie(res, token) {
 // ─── App ─────────────────────────────────────────────────────────────────────
 const app = express();
 app.disable('x-powered-by');
+
+// Stripe webhook needs the RAW request body for signature verification, so it
+// MUST be mounted before express.json parses it.
+app.use('/api/billing', billing.webhookRouter());
+
 app.use(express.json({ limit: '4mb' })); // room for uploaded brand-logo data URLs
 
 // Parse cookies + attach the current user/session to the request.
@@ -192,6 +211,10 @@ app.use((req, res, next) => {
     req.sessionToken = token;
     next();
 });
+
+// Billing JSON API (status/checkout/portal) — after the middleware above so
+// req.user is populated. /status is public; checkout/portal require sign-in.
+app.use('/api/billing', billing.apiRouter());
 
 function requireAuth(req, res, next) {
     if (req.user && !req.user.isLocked) return next();
