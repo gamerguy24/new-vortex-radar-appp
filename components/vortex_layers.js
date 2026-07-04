@@ -14,6 +14,7 @@ import openWeatherReport, { addWeatherReportMarkers, removeWeatherReportMarkers 
 import { addSpotterMarkers, removeSpotterMarkers } from './spotters.js';
 import { addMRMS, removeMRMS } from './mrms.js';
 import { addEarthquakes, removeEarthquakes } from './earthquakes.js';
+import { addMPING, removeMPING } from './mping.js';
 
 function wrapper() { return window.vortexMap || null; }
 
@@ -53,6 +54,7 @@ function init() {
     onToggle('armrSpottersSwitchElem', (on) => withMap((w) => on ? addSpotterMarkers(w) : removeSpotterMarkers(), 'Spotters'));
     onToggle('armrMRMSSwitchElem', (on) => withMap((w) => on ? addMRMS(w) : removeMRMS(), 'MRMS'));
     onToggle('armrEarthquakesSwitchElem', (on) => withMap((w) => on ? addEarthquakes(w) : removeEarthquakes(), 'Earthquakes'));
+    onToggle('armrMPINGSwitchElem', (on) => withMap((w) => on ? addMPING(w) : removeMPING(), 'mPING'));
     onToggle('toggle-community-reports-layer', (on) => {
         localStorage.setItem('communityReportsEnabled', on ? 'true' : 'false');
         withMap((w) => on ? addWeatherReportMarkers(w) : removeWeatherReportMarkers(), 'User Storm Reports');

@@ -374,6 +374,27 @@
 .vmp-hint, .vmp-err { padding: 14px 4px; font-size: 13px; color: #9ab; }
 .vmp-err { color: #ff8a8a; }
 
+/* ---- mPING crowd reports ---- */
+.mping-marker {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.9);
+    box-shadow: 0 0 4px rgba(0,0,0,0.5); cursor: pointer;
+    box-sizing: border-box;
+}
+.mping-popup .mapboxgl-popup-content {
+    background: rgba(11, 18, 32, 0.97) !important; color: #e7eef7 !important;
+    border: 1px solid var(--vr-border); border-radius: 10px;
+    font-family: 'Onest', system-ui, sans-serif; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.mping-popup .mapboxgl-popup-tip {
+    border-top-color: rgba(11,18,32,0.97) !important;
+    border-bottom-color: rgba(11,18,32,0.97) !important;
+}
+.mping-pop { padding: 4px 6px; min-width: 130px; }
+.mping-pop-cat { font-size: 0.78em; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+.mping-pop-type { font-weight: 700; margin-top: 2px; }
+.mping-pop-time { margin-top: 5px; font-size: 0.8em; color: var(--vr-muted); }
+
 /* ---- Custom saved locations: markers ---- */
 .vloc-marker { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .vloc-dot {
