@@ -657,7 +657,7 @@ function updateHint() {
 // ---- Toolbar ---------------------------------------------------------------
 $('btn-export').onclick = () => {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  scene.exportPNG(`${state.templateId}_${stamp}.png`);
+  scene.exportPNG(`${state.templateId}_${stamp}.png`, downloadBlob);
 };
 $('btn-reset').onclick = () => selectTemplate(state.templateId);
 $('canvas-size').onchange = (e) => {
@@ -745,7 +745,31 @@ $('logo-remove').onclick = () => { state.logo = null; $('logo-remove').hidden = 
 $('logo-corner').onchange = (e) => { if (state.logo) { state.logo.corner = e.target.value; rerender(); } };
 
 // ---- Save / Open project + PSD export --------------------------------------
-function downloadBlob(blob, filename) {
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+// Inside the Capacitor app a WebView can't trigger an <a download>, so write the
+// file to storage and open the share sheet instead. Plain browsers use <a>.
+async function downloadBlob(blob, filename) {
+  const C = window.Capacitor;
+  if (C && typeof C.isNativePlatform === 'function' && C.isNativePlatform()
+      && C.Plugins && C.Plugins.Filesystem && C.Plugins.Share) {
+    try {
+      const { Filesystem, Share } = C.Plugins;
+      const data = await blobToBase64(blob);
+      const res = await Filesystem.writeFile({ path: filename, data, directory: 'CACHE' });
+      await Share.share({ title: filename, url: res.uri });
+      return;
+    } catch (e) {
+      console.warn('[studio] native save failed, falling back:', e);
+    }
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename; a.click();

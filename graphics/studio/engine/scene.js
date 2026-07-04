@@ -64,8 +64,10 @@ export class Scene {
     return null;
   }
 
-  async exportPNG(filename = 'graphic.png') {
+  async exportPNG(filename = 'graphic.png', saver = null) {
     const blob = await new Promise((res) => this.canvas.toBlob(res, 'image/png'));
+    // In the native app, studio.js passes its Capacitor-aware saver.
+    if (typeof saver === 'function') { await saver(blob, filename); return; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
