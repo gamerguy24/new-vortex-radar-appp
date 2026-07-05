@@ -38,6 +38,7 @@ let lastPos = null;           // { lat, lng }
 let place = { town: '', county: '', state: '', label: '' };
 let myMarker = null;
 let ytBroadcastId = null;      // set when we auto-create a YouTube broadcast
+let obsWasUsed = false;        // true once a live session connected to OBS
 const otherMarkers = new Map(); // userId -> mapbox Marker
 
 // ─── small helpers ────────────────────────────────────────────────────────────
@@ -234,10 +235,12 @@ async function goLive() {
 
         // 3) Connect + start OBS. If we have a YouTube ingest, point OBS at it first.
         if (wantObs) {
+            obsWasUsed = true;
             obs = new OBSClient();
             obs.onStatus((s) => setObsStatus(s));
             obs.on('StreamStateChanged', (d) => { if (d && d.outputActive === false && live) toast('OBS stopped streaming.', 'warn'); });
-            await obs.connect(cfg.obs.host, cfg.obs.port, ($('vrsh-obs-pass') && $('vrsh-obs-pass').value) || undefined);
+            const obsPass = ($('vrsh-obs-pass') && $('vrsh-obs-pass').value) || (cfg.obs && cfg.obs.password) || undefined;
+            await obs.connect(cfg.obs.host, cfg.obs.port, obsPass);
             if (manualIngest) {
                 await obs.setStreamService(manualIngest.server, manualIngest.key);
                 toast('OBS pointed at your RTMP destination.', 'ok');
@@ -290,14 +293,32 @@ async function stopLive(silent) {
         try { await api('POST', '/youtube/end', { broadcastId: ytBroadcastId }); } catch {}
         ytBroadcastId = null;
     }
-    if (obs) {
+    // Actually stop OBS — reconnecting to it if this session's live connection
+    // was already gone (e.g. after a refresh), so "End stream" reliably works.
+    try { await stopObsStream(); } catch (e) {}
+    if (!silent) toast('Stream stopped.', 'info');
+    setBusy(false);
+}
+
+// Tell OBS to stop streaming. Uses the live connection if we still have it,
+// otherwise briefly reconnects with the saved OBS settings just to stop it.
+async function stopObsStream() {
+    if (obs && obs.connected) {
         try { if (await obs.isStreaming()) await obs.stopStream(); } catch {}
         try { obs.disconnect(); } catch {}
         obs = null;
         setObsStatus('disconnected');
+        return;
     }
-    if (!silent) toast('Stream stopped.', 'info');
-    setBusy(false);
+    const host = cfg && cfg.obs && cfg.obs.host;
+    if (!obsWasUsed || !host) return; // OBS wasn't part of this stream
+    const pass = ($('vrsh-obs-pass') && $('vrsh-obs-pass').value) || (cfg.obs && cfg.obs.password) || undefined;
+    const tmp = new OBSClient();
+    try {
+        await tmp.connect(host, cfg.obs.port, pass);
+        if (await tmp.isStreaming()) await tmp.stopStream();
+    } catch (e) { /* OBS unreachable — nothing we can stop */ }
+    finally { try { tmp.disconnect(); } catch {} obs = null; setObsStatus('disconnected'); }
 }
 
 function reportAnnounce(results) {
@@ -471,6 +492,7 @@ function syncForm() {
     set('vrsh-obs-host', cfg.obs.host || 'localhost');
     set('vrsh-obs-port', cfg.obs.port || 4455);
     set('vrsh-obs-overlay', cfg.obs.overlaySource || '');
+    set('vrsh-obs-pass', cfg.obs.password || '');
     set('vrsh-rtmp-url', (cfg.rtmp && cfg.rtmp.url) || '');
     set('vrsh-rtmp-key', (cfg.rtmp && cfg.rtmp.key) || '');
     chk('vrsh-rtmp-enable', cfg.rtmp && cfg.rtmp.enabled);

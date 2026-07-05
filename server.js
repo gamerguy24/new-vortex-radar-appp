@@ -600,6 +600,10 @@ function publicStreamConfig(c) {
             host: (c.obs && c.obs.host) || 'localhost',
             port: (c.obs && c.obs.port) || 4455,
             overlaySource: (c.obs && c.obs.overlaySource) || '',
+            // Returned to the client (not just hasPassword) because the browser
+            // is what authenticates to OBS over obs-websocket on the user's LAN —
+            // the server can't reach OBS. It's the user's own local password.
+            password: (c.obs && c.obs.password) || '',
             hasPassword: !!(c.obs && c.obs.password),
         },
         discordConfigured: !!c.discordWebhook,
