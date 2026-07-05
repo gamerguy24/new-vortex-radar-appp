@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { createBilling } = require('./billing');
+const { createYouTube } = require('./youtube_live');
 
 const ROOT = __dirname;
 // Where users/sessions/reports are stored. Override with DATA_DIR to point at a
@@ -33,6 +34,7 @@ const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
 const LOGOS_FILE = path.join(DATA_DIR, 'logos.json');
 const PUSH_FILE = path.join(DATA_DIR, 'push_tokens.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const STREAM_FILE = path.join(DATA_DIR, 'stream_configs.json');
 
 const PORT = process.env.PORT || 3333;
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@vortexradar.app';
@@ -58,12 +60,26 @@ let reports = readJson(REPORTS_FILE, []);
 let logos = readJson(LOGOS_FILE, {}); // userId -> { dataUrl, corner, size, opacity }
 let pushTokens = readJson(PUSH_FILE, {}); // userId -> [{ token, platform, updatedAt }]
 let userSettings = readJson(SETTINGS_FILE, {}); // userId -> { switches: { id: bool } }
+let streamConfigs = readJson(STREAM_FILE, {}); // userId -> { discordWebhook, obs, titleTemplate, ... }
 const saveUsers = () => writeJson(USERS_FILE, users);
 const saveResets = () => writeJson(RESETS_FILE, resetRequests);
 const saveReports = () => writeJson(REPORTS_FILE, reports);
 const saveLogos = () => writeJson(LOGOS_FILE, logos);
 const savePushTokens = () => writeJson(PUSH_FILE, pushTokens);
 const saveUserSettings = () => writeJson(SETTINGS_FILE, userSettings);
+const saveStreamConfigs = () => writeJson(STREAM_FILE, streamConfigs);
+
+// Currently-live chasers, kept in memory only (ephemeral by nature). Keyed by
+// userId -> { lat, lng, place, title, url, startedAt, updatedAt }. Powers the
+// live location markers other users see on their map.
+const liveSessions = new Map();
+const LIVE_STALE_MS = 3 * 60 * 1000; // drop a session we haven't heard from in 3 min
+function pruneLiveSessions() {
+    const now = Date.now();
+    for (const [uid, s] of liveSessions) {
+        if (now - (s.updatedAt || 0) > LIVE_STALE_MS) liveSessions.delete(uid);
+    }
+}
 
 // ─── Sessions (persisted to disk so restarts don't sign everyone out) ─────────
 const sessions = new Map(); // token -> { userId, created }
@@ -123,6 +139,14 @@ const billing = createBilling({
         getById: (id) => findById(id),
         getByStripeCustomer: (cid) => users.find((u) => u.stripeCustomerId === cid),
         update: (user, fields) => { Object.assign(user, fields); saveUsers(); },
+    },
+});
+
+// ─── YouTube Live — wired to the per-user stream-config store ─────────────────
+const youtube = createYouTube({
+    store: {
+        getConfig: (uid) => streamConfigs[uid] || {},
+        setConfig: (uid, cfg) => { streamConfigs[uid] = cfg; saveStreamConfigs(); },
     },
 });
 
@@ -392,6 +416,8 @@ app.delete('/admin/users/:id', requireAdmin, (req, res) => {
     destroySessionsForUser(user.id);
     if (logos[user.id]) { delete logos[user.id]; saveLogos(); }
     if (userSettings[user.id]) { delete userSettings[user.id]; saveUserSettings(); }
+    if (streamConfigs[user.id]) { delete streamConfigs[user.id]; saveStreamConfigs(); }
+    liveSessions.delete(user.id);
     saveUsers();
     saveResets();
     res.json({ ok: true });
@@ -553,6 +579,170 @@ app.post('/api/settings', requireAuth, (req, res) => {
     saveUserSettings();
     res.json({ settings: userSettings[req.user.id] });
 });
+
+// ─── Chase Stream Hub ────────────────────────────────────────────────────────
+// Per-user streaming config (OBS connection, auto-post destinations, title
+// template) plus the live-session registry that lets chasers see each other's
+// live location markers on the map. Video itself is handled by the chaser's OBS
+// (controlled from the browser over obs-websocket); the server stores settings,
+// fans out go-live announcements, and tracks who is currently live.
+const clampStr = (v, n) => String(v == null ? '' : v).slice(0, n);
+const clampNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+
+// What we hand back to the client. The Discord webhook is a shared secret, so we
+// never echo it in full — just whether one is set — while OBS host/port (needed
+// to reconnect) are returned. The OBS password is likewise kept write-only.
+function publicStreamConfig(c) {
+    c = c || {};
+    return {
+        titleTemplate: c.titleTemplate || '🔴 LIVE — chasing near {place} — {time}',
+        obs: {
+            host: (c.obs && c.obs.host) || 'localhost',
+            port: (c.obs && c.obs.port) || 4455,
+            overlaySource: (c.obs && c.obs.overlaySource) || '',
+            hasPassword: !!(c.obs && c.obs.password),
+        },
+        discordConfigured: !!c.discordWebhook,
+        ytPrivacy: c.ytPrivacy || 'unlisted',
+        youtubeConfigured: !!(c.youtube && c.youtube.refreshToken),
+        facebookConfigured: !!(c.facebook && c.facebook.pageToken),
+        autoPost: {
+            discord: !!(c.autoPost && c.autoPost.discord),
+            youtube: !!(c.autoPost && c.autoPost.youtube),
+            facebook: !!(c.autoPost && c.autoPost.facebook),
+        },
+    };
+}
+
+app.get('/api/stream/config', requireAuth, (req, res) => {
+    res.json({ config: publicStreamConfig(streamConfigs[req.user.id]) });
+});
+
+// Save config. Secret fields (discordWebhook, obs.password) are only overwritten
+// when the client actually sends a new value, so re-saving other settings
+// doesn't wipe them.
+app.post('/api/stream/config', requireAuth, (req, res) => {
+    const b = req.body || {};
+    const cur = streamConfigs[req.user.id] || {};
+    const next = {
+        ...cur,
+        titleTemplate: b.titleTemplate != null ? clampStr(b.titleTemplate, 200) : cur.titleTemplate,
+        ytPrivacy: ['public', 'unlisted', 'private'].includes(b.ytPrivacy) ? b.ytPrivacy : (cur.ytPrivacy || 'unlisted'),
+        obs: {
+            host: clampStr((b.obs && b.obs.host) || (cur.obs && cur.obs.host) || 'localhost', 120),
+            port: clampNum(b.obs && b.obs.port) || (cur.obs && cur.obs.port) || 4455,
+            overlaySource: clampStr((b.obs && b.obs.overlaySource) != null ? b.obs.overlaySource : (cur.obs && cur.obs.overlaySource) || '', 120),
+            password: (b.obs && typeof b.obs.password === 'string' && b.obs.password.length)
+                ? clampStr(b.obs.password, 200)
+                : (cur.obs && cur.obs.password) || '',
+        },
+        autoPost: {
+            discord: !!(b.autoPost && b.autoPost.discord),
+            youtube: !!(b.autoPost && b.autoPost.youtube),
+            facebook: !!(b.autoPost && b.autoPost.facebook),
+        },
+    };
+    if (typeof b.discordWebhook === 'string' && b.discordWebhook.length) {
+        // Only accept genuine Discord webhook URLs.
+        if (!/^https:\/\/(canary\.|ptb\.)?discord(app)?\.com\/api\/webhooks\//.test(b.discordWebhook)) {
+            return res.status(400).json({ error: 'That does not look like a Discord webhook URL.' });
+        }
+        next.discordWebhook = clampStr(b.discordWebhook, 300);
+    } else if (b.discordWebhook === null) {
+        delete next.discordWebhook; // explicit clear
+    }
+    streamConfigs[req.user.id] = next;
+    saveStreamConfigs();
+    res.json({ config: publicStreamConfig(next) });
+});
+
+// Announce "I'm live" to the configured destinations. Discord is fully wired
+// (webhook). YouTube/Facebook are acknowledged but require the account OAuth
+// tokens to be connected first (see /api/stream/connect/* — not yet issuing
+// tokens); until then they report as skipped so the UI can prompt to connect.
+app.post('/api/stream/announce', requireAuth, async (req, res) => {
+    const cfg = streamConfigs[req.user.id] || {};
+    const b = req.body || {};
+    const title = clampStr(b.title, 300) || 'LIVE now';
+    const url = clampStr(b.url, 500);
+    const place = clampStr(b.place, 200);
+    const results = {};
+
+    if (cfg.autoPost && cfg.autoPost.discord && cfg.discordWebhook) {
+        try {
+            const embed = {
+                title,
+                description: place ? `📍 ${place}` : undefined,
+                url: /^https?:\/\//.test(url) ? url : undefined,
+                color: 0xff3b30,
+                timestamp: new Date().toISOString(),
+                footer: { text: 'Vortex Radar — Chase Stream Hub' },
+            };
+            const r = await fetch(cfg.discordWebhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: place ? `🔴 **LIVE** near ${place}` : '🔴 **LIVE now**', embeds: [embed] }),
+            });
+            results.discord = r.ok ? 'posted' : ('error ' + r.status);
+        } catch (e) { results.discord = 'error'; }
+    } else if (cfg.autoPost && cfg.autoPost.discord) {
+        results.discord = 'no-webhook';
+    }
+
+    // YouTube's broadcast is created via /api/stream/youtube/golive (which the
+    // Hub calls directly to get the ingest key for OBS); here we just report
+    // whether it's connected. Facebook remains a placeholder until Phase 2.
+    if (cfg.autoPost && cfg.autoPost.youtube) results.youtube = (cfg.youtube && cfg.youtube.refreshToken) ? 'ok' : 'not-connected';
+    if (cfg.autoPost && cfg.autoPost.facebook) results.facebook = cfg.facebook ? 'unsupported' : 'not-connected';
+
+    res.json({ results });
+});
+
+// Mark this user live (or update their moving position). Body: { lat, lng,
+// place, title, url }. Stored in memory so other chasers can render the marker.
+app.post('/api/stream/live', requireAuth, (req, res) => {
+    const b = req.body || {};
+    const lat = clampNum(b.lat), lng = clampNum(b.lng);
+    liveSessions.set(req.user.id, {
+        lat, lng,
+        place: clampStr(b.place, 200),
+        title: clampStr(b.title, 300),
+        url: clampStr(b.url, 500),
+        email: req.user.email,
+        startedAt: (liveSessions.get(req.user.id) || {}).startedAt || Date.now(),
+        updatedAt: Date.now(),
+    });
+    res.json({ ok: true });
+});
+
+app.post('/api/stream/offline', requireAuth, (req, res) => {
+    liveSessions.delete(req.user.id);
+    res.json({ ok: true });
+});
+
+// Everyone currently live (for map markers). Excludes the caller — the client
+// draws its own marker locally. Coarsely public to signed-in users.
+app.get('/api/stream/live', requireAuth, (req, res) => {
+    pruneLiveSessions();
+    const list = [];
+    for (const [uid, s] of liveSessions) {
+        if (uid === req.user.id) continue;
+        if (s.lat == null || s.lng == null) continue;
+        list.push({
+            id: uid,
+            lat: s.lat, lng: s.lng,
+            place: s.place || '',
+            title: s.title || '',
+            url: s.url || '',
+            name: (s.email || '').split('@')[0],
+            startedAt: s.startedAt,
+        });
+    }
+    res.json({ live: list });
+});
+
+// YouTube Live routes (OAuth connect/callback/disconnect, go-live, end).
+youtube.attach(app, requireAuth);
 
 // ─── Push notification device tokens (weather alerts) ────────────────────────
 // The Capacitor app (VortexRadarMobile) registers its FCM token here so the
