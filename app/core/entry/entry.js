@@ -83,6 +83,10 @@ function load() {
     // load the split-screen right-pane radar controller
     require('../../radar/dual/dual_radar');
 
+    // restore each user's saved settings toggles and keep them saved to their
+    // account (loaded last, once every toggle's handler is bound above)
+    require('../menu/settings_persistence').init();
+
     // document.addEventListener('keyup', event => {
     //     if (event.code === 'Space') {
     //         // const image_url = map.getCanvas().toDataURL();

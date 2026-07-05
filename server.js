@@ -32,6 +32,7 @@ const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
 const LOGOS_FILE = path.join(DATA_DIR, 'logos.json');
 const PUSH_FILE = path.join(DATA_DIR, 'push_tokens.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
 const PORT = process.env.PORT || 3333;
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@vortexradar.app';
@@ -56,11 +57,13 @@ let resetRequests = readJson(RESETS_FILE, []);
 let reports = readJson(REPORTS_FILE, []);
 let logos = readJson(LOGOS_FILE, {}); // userId -> { dataUrl, corner, size, opacity }
 let pushTokens = readJson(PUSH_FILE, {}); // userId -> [{ token, platform, updatedAt }]
+let userSettings = readJson(SETTINGS_FILE, {}); // userId -> { switches: { id: bool } }
 const saveUsers = () => writeJson(USERS_FILE, users);
 const saveResets = () => writeJson(RESETS_FILE, resetRequests);
 const saveReports = () => writeJson(REPORTS_FILE, reports);
 const saveLogos = () => writeJson(LOGOS_FILE, logos);
 const savePushTokens = () => writeJson(PUSH_FILE, pushTokens);
+const saveUserSettings = () => writeJson(SETTINGS_FILE, userSettings);
 
 // ─── Sessions (persisted to disk so restarts don't sign everyone out) ─────────
 const sessions = new Map(); // token -> { userId, created }
@@ -388,6 +391,7 @@ app.delete('/admin/users/:id', requireAdmin, (req, res) => {
     resetRequests = resetRequests.filter((r) => r.email !== user.email);
     destroySessionsForUser(user.id);
     if (logos[user.id]) { delete logos[user.id]; saveLogos(); }
+    if (userSettings[user.id]) { delete userSettings[user.id]; saveUserSettings(); }
     saveUsers();
     saveResets();
     res.json({ ok: true });
@@ -514,6 +518,40 @@ app.delete('/api/logo', requireAuth, (req, res) => {
     delete logos[req.user.id];
     saveLogos();
     res.json({ ok: true });
+});
+
+// ─── Per-user app settings (menu toggles) ────────────────────────────────────
+// The Settings menu's toggle switches are saved here per account so a user's
+// configuration survives closing the app, refreshes and app updates, and
+// follows them across devices. The client sends a snapshot of every toggle;
+// we store a sanitized copy (switch id -> boolean) with sane caps.
+const MAX_SETTING_SWITCHES = 300;
+
+function sanitizeSettings(body) {
+    const src = (body && typeof body.switches === 'object' && body.switches) || {};
+    const switches = {};
+    let count = 0;
+    for (const key of Object.keys(src)) {
+        if (count >= MAX_SETTING_SWITCHES) break;
+        // Only accept the app's toggle ids, and coerce values to booleans.
+        if (typeof key === 'string' && key.length <= 80 && /^armr[A-Za-z0-9_-]*SwitchElem$/.test(key)) {
+            switches[key] = !!src[key];
+            count++;
+        }
+    }
+    return { switches };
+}
+
+app.get('/api/settings', requireAuth, (req, res) => {
+    res.json({ settings: userSettings[req.user.id] || null });
+});
+
+// POST (not PUT) so the client can flush a final save on close via
+// navigator.sendBeacon, which can only issue POST requests.
+app.post('/api/settings', requireAuth, (req, res) => {
+    userSettings[req.user.id] = sanitizeSettings(req.body);
+    saveUserSettings();
+    res.json({ settings: userSettings[req.user.id] });
 });
 
 // ─── Push notification device tokens (weather alerts) ────────────────────────
