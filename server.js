@@ -604,6 +604,16 @@ function publicStreamConfig(c) {
         },
         discordConfigured: !!c.discordWebhook,
         ytPrivacy: c.ytPrivacy || 'unlisted',
+        // Manual RTMP destination (e.g. YouTube's persistent ingest URL + key).
+        // Unlike the Discord webhook, the key is returned to the client because
+        // the browser is what pushes it into OBS over obs-websocket (OBS is on
+        // the user's LAN, unreachable from the server). It's the user's own key,
+        // readable only by their authenticated session.
+        rtmp: {
+            enabled: !!(c.rtmp && c.rtmp.enabled),
+            url: (c.rtmp && c.rtmp.url) || '',
+            key: (c.rtmp && c.rtmp.key) || '',
+        },
         youtubeConfigured: !!(c.youtube && c.youtube.refreshToken),
         facebookConfigured: !!(c.facebook && c.facebook.pageToken),
         autoPost: {
@@ -628,6 +638,15 @@ app.post('/api/stream/config', requireAuth, (req, res) => {
         ...cur,
         titleTemplate: b.titleTemplate != null ? clampStr(b.titleTemplate, 200) : cur.titleTemplate,
         ytPrivacy: ['public', 'unlisted', 'private'].includes(b.ytPrivacy) ? b.ytPrivacy : (cur.ytPrivacy || 'unlisted'),
+        rtmp: {
+            enabled: !!(b.rtmp && b.rtmp.enabled),
+            url: clampStr((b.rtmp && b.rtmp.url) != null ? b.rtmp.url : (cur.rtmp && cur.rtmp.url) || '', 300),
+            // Keep the saved key unless a new non-empty one is sent (so re-saving
+            // other settings doesn't wipe it). Send key:"" via a dedicated clear.
+            key: (b.rtmp && typeof b.rtmp.key === 'string' && b.rtmp.key.length)
+                ? clampStr(b.rtmp.key, 300)
+                : (b.rtmp && b.rtmp.clearKey ? '' : (cur.rtmp && cur.rtmp.key) || ''),
+        },
         obs: {
             host: clampStr((b.obs && b.obs.host) || (cur.obs && cur.obs.host) || 'localhost', 120),
             port: clampNum(b.obs && b.obs.port) || (cur.obs && cur.obs.port) || 4455,

@@ -198,6 +198,15 @@ async function goLive() {
     setBusy(true);
     const wantObs = !!($('vrsh-obs-enable') && $('vrsh-obs-enable').checked);
     const wantYouTube = !!(cfg && cfg.autoPost && cfg.autoPost.youtube && cfg.youtubeConfigured);
+
+    // Manual RTMP destination (e.g. a persistent YouTube key). Read live from
+    // the form if the panel is open, else from saved config. When present it
+    // takes priority over the OAuth auto-broadcast.
+    const rtmpEnabled = ($('vrsh-rtmp-enable') ? $('vrsh-rtmp-enable').checked : (cfg && cfg.rtmp && cfg.rtmp.enabled));
+    const rtmpUrl = (($('vrsh-rtmp-url') && $('vrsh-rtmp-url').value.trim()) || (cfg && cfg.rtmp && cfg.rtmp.url) || '');
+    const rtmpKey = (($('vrsh-rtmp-key') && $('vrsh-rtmp-key').value.trim()) || (cfg && cfg.rtmp && cfg.rtmp.key) || '');
+    const manualIngest = (rtmpEnabled && rtmpUrl && rtmpKey) ? { server: rtmpUrl, key: rtmpKey } : null;
+    const useYouTube = wantYouTube && !manualIngest;
     try {
         // 1) Get an initial GPS fix first so the broadcast title, marker and
         //    announcement all carry the current location.
@@ -207,10 +216,10 @@ async function goLive() {
                 { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 });
         });
 
-        // 2) If YouTube is connected, create the broadcast now and grab the RTMP
-        //    ingest URL + key + watch link.
+        // 2) If YouTube is connected (and no manual key overrides it), create the
+        //    broadcast now and grab the RTMP ingest URL + key + watch link.
         let yt = null;
-        if (wantYouTube) {
+        if (useYouTube) {
             try {
                 const privacy = (cfg && cfg.ytPrivacy) || ($('vrsh-yt-privacy') && $('vrsh-yt-privacy').value) || 'unlisted';
                 yt = await api('POST', '/youtube/golive', { title: buildTitle(), privacy });
@@ -229,10 +238,15 @@ async function goLive() {
             obs.onStatus((s) => setObsStatus(s));
             obs.on('StreamStateChanged', (d) => { if (d && d.outputActive === false && live) toast('OBS stopped streaming.', 'warn'); });
             await obs.connect(cfg.obs.host, cfg.obs.port, ($('vrsh-obs-pass') && $('vrsh-obs-pass').value) || undefined);
-            if (yt && yt.ingestionAddress && yt.streamName) {
+            if (manualIngest) {
+                await obs.setStreamService(manualIngest.server, manualIngest.key);
+                toast('OBS pointed at your RTMP destination.', 'ok');
+            } else if (yt && yt.ingestionAddress && yt.streamName) {
                 await obs.setStreamService(yt.ingestionAddress, yt.streamName);
             }
             if (!(await obs.isStreaming())) await obs.startStream();
+        } else if (manualIngest) {
+            toast('Turn on "Control OBS" so Vortex can push your RTMP key into OBS.', 'warn');
         } else if (yt) {
             toast('Broadcast created — point your encoder at the YouTube stream key (OBS control is off).', 'warn');
         }
@@ -415,6 +429,14 @@ function panelHTML() {
       </div>
       <div class="vrsh-hint">In OBS: Tools ▸ WebSocket Server Settings ▸ enable. Add a Text source and put its name above to show the live title on your stream.</div>
 
+      <div class="vrsh-section">Stream key (RTMP)</div>
+      <label class="vrsh-check"><input id="vrsh-rtmp-enable" type="checkbox" /> Push my own RTMP URL + key into OBS when I go live</label>
+      <div class="vrsh-grid">
+        <div class="vrsh-field"><label>RTMP URL</label><input id="vrsh-rtmp-url" type="text" placeholder="rtmp://a.rtmp.youtube.com/live2" /></div>
+        <div class="vrsh-field"><label>Stream key</label><input id="vrsh-rtmp-key" type="password" placeholder="paste your stream key" /></div>
+      </div>
+      <div class="vrsh-hint">Vortex sets these in OBS for you at Go Live — no need to paste them into OBS yourself. Requires <b>Control OBS</b> above to be on. Takes priority over the YouTube auto-broadcast below. Tip: reset this key in YouTube Studio if it has ever been shared.</div>
+
       <div class="vrsh-section">Auto-post</div>
       <label class="vrsh-check"><input id="vrsh-ap-discord" type="checkbox" /> Discord <span id="vrsh-discord-state" class="vrsh-status">—</span></label>
       <div class="vrsh-field"><label>Discord webhook URL</label><input id="vrsh-discord" type="url" placeholder="https://discord.com/api/webhooks/… (leave blank to keep saved)" /></div>
@@ -449,6 +471,9 @@ function syncForm() {
     set('vrsh-obs-host', cfg.obs.host || 'localhost');
     set('vrsh-obs-port', cfg.obs.port || 4455);
     set('vrsh-obs-overlay', cfg.obs.overlaySource || '');
+    set('vrsh-rtmp-url', (cfg.rtmp && cfg.rtmp.url) || '');
+    set('vrsh-rtmp-key', (cfg.rtmp && cfg.rtmp.key) || '');
+    chk('vrsh-rtmp-enable', cfg.rtmp && cfg.rtmp.enabled);
     $('vrsh-obs-pass').placeholder = cfg.obs.hasPassword ? '•••••• (saved — blank keeps it)' : '(none)';
     $('vrsh-discord').placeholder = cfg.discordConfigured ? 'saved — blank keeps it' : 'https://discord.com/api/webhooks/…';
     chk('vrsh-ap-discord', cfg.autoPost.discord);
@@ -470,6 +495,11 @@ async function saveConfig() {
     const body = {
         titleTemplate: $('vrsh-title').value,
         ytPrivacy: $('vrsh-yt-privacy') ? $('vrsh-yt-privacy').value : 'unlisted',
+        rtmp: {
+            enabled: $('vrsh-rtmp-enable') ? $('vrsh-rtmp-enable').checked : false,
+            url: $('vrsh-rtmp-url') ? $('vrsh-rtmp-url').value.trim() : '',
+            key: $('vrsh-rtmp-key') ? $('vrsh-rtmp-key').value.trim() : '',
+        },
         obs: {
             host: $('vrsh-obs-host').value.trim() || 'localhost',
             port: parseInt($('vrsh-obs-port').value, 10) || 4455,
