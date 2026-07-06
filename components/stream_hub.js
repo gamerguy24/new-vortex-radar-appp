@@ -39,6 +39,11 @@ let place = { town: '', county: '', state: '', label: '' };
 let myMarker = null;
 let ytBroadcastId = null;      // set when we auto-create a YouTube broadcast
 let obsWasUsed = false;        // true once a live session connected to OBS
+let isAdmin = false;           // operator (can control other chasers)
+let agentSSE = null;           // chaser agent: SSE link that receives commands
+let agentObs = null;           // chaser agent: persistent OBS connection
+let agentStatusTimer = null;
+let agentsPollTimer = null;     // operator: polls the connected-chasers list
 const otherMarkers = new Map(); // userId -> mapbox Marker
 
 // ─── small helpers ────────────────────────────────────────────────────────────
@@ -378,20 +383,42 @@ function launchButton() {
 
 function openPanel() {
     let p = $('vrsh-panel');
-    if (p) { p.style.display = 'flex'; syncForm(); updateLocationUI(); return; }
+    if (p) { p.style.display = 'flex'; syncForm(); updateLocationUI(); startOperatorView(); return; }
     p = document.createElement('div');
     p.id = 'vrsh-panel';
     p.innerHTML = panelHTML();
     document.body.appendChild(p);
 
-    $('vrsh-close').onclick = () => { p.style.display = 'none'; };
+    const closePanel = () => { p.style.display = 'none'; clearInterval(agentsPollTimer); };
+    $('vrsh-close').onclick = closePanel;
     $('vrsh-golive').onclick = () => { live ? stopLive() : goLive(); };
     $('vrsh-save').onclick = saveConfig;
     $('vrsh-yt-connect').onclick = connectYouTube;
     $('vrsh-yt-disconnect').onclick = disconnectYouTube;
-    p.addEventListener('click', (e) => { if (e.target === p) p.style.display = 'none'; });
+    $('vrsh-agents-refresh').onclick = refreshAgents;
+    $('vrsh-remote-enable').onchange = async () => {
+        const on = $('vrsh-remote-enable').checked;
+        cfg.remoteControl = on;
+        try { await api('POST', '/config', { remoteControl: on }); } catch {}
+        if (on) startAgent(); else stopAgent();
+        toast(on ? 'Remote control enabled — keep this tab open.' : 'Remote control disabled.', 'info');
+    };
+    p.addEventListener('click', (e) => { if (e.target === p) closePanel(); });
     syncForm();
     updateLocationUI();
+    startOperatorView();
+}
+
+// Show + poll the operator dashboard while the panel is open (admins only).
+function startOperatorView() {
+    if (!isAdmin || !$('vrsh-operator')) return;
+    $('vrsh-operator').style.display = '';
+    refreshAgents();
+    clearInterval(agentsPollTimer);
+    agentsPollTimer = setInterval(() => {
+        const p = $('vrsh-panel');
+        if (p && p.style.display !== 'none') refreshAgents(); else clearInterval(agentsPollTimer);
+    }, 6000);
 }
 
 function connectYouTube() {
@@ -477,6 +504,16 @@ function panelHTML() {
       </div>
       <label class="vrsh-check"><input id="vrsh-ap-facebook" type="checkbox" /> Facebook Live <span class="vrsh-status vrsh-soon">connect account (coming soon)</span></label>
 
+      <div class="vrsh-section">Remote control</div>
+      <label class="vrsh-check"><input id="vrsh-remote-enable" type="checkbox" /> Allow my team (operators) to start/stop my OBS remotely</label>
+      <div class="vrsh-hint">Keep this tab open on your streaming PC with OBS running and <b>Control OBS</b> configured above. Operators can then run your stream from their dashboard — over the internet, no router setup.</div>
+
+      <div id="vrsh-operator" style="display:none">
+        <div class="vrsh-section">Operator — team OBS control</div>
+        <div id="vrsh-agents"><div class="vrsh-hint">Loading…</div></div>
+        <div class="vrsh-actions" style="margin-top:8px"><button id="vrsh-agents-refresh" class="vrsh-mini">Refresh</button></div>
+      </div>
+
       <div class="vrsh-actions">
         <button id="vrsh-save" class="vrsh-save">Save settings</button>
       </div>
@@ -498,6 +535,7 @@ function syncForm() {
     chk('vrsh-rtmp-enable', cfg.rtmp && cfg.rtmp.enabled);
     $('vrsh-obs-pass').placeholder = cfg.obs.hasPassword ? '•••••• (saved — blank keeps it)' : '(none)';
     $('vrsh-discord').placeholder = cfg.discordConfigured ? 'saved — blank keeps it' : 'https://discord.com/api/webhooks/…';
+    chk('vrsh-remote-enable', cfg.remoteControl);
     chk('vrsh-ap-discord', cfg.autoPost.discord);
     chk('vrsh-ap-youtube', cfg.autoPost.youtube);
     chk('vrsh-ap-facebook', cfg.autoPost.facebook);
@@ -517,6 +555,7 @@ async function saveConfig() {
     const body = {
         titleTemplate: $('vrsh-title').value,
         ytPrivacy: $('vrsh-yt-privacy') ? $('vrsh-yt-privacy').value : 'unlisted',
+        remoteControl: $('vrsh-remote-enable') ? $('vrsh-remote-enable').checked : false,
         rtmp: {
             enabled: $('vrsh-rtmp-enable') ? $('vrsh-rtmp-enable').checked : false,
             url: $('vrsh-rtmp-url') ? $('vrsh-rtmp-url').value.trim() : '',
@@ -545,11 +584,111 @@ async function saveConfig() {
     } catch (e) { toast('Save failed: ' + e.message, 'error'); }
 }
 
+// ─── Chaser agent: lets operators control THIS PC's OBS over the internet ─────
+// When "allow remote control" is on, this browser holds an SSE link to the
+// server and a persistent connection to the local OBS, and runs the commands
+// operators send. The browser dials out, so no port-forwarding is needed.
+async function ensureAgentObs() {
+    if (agentObs && agentObs.connected) return agentObs;
+    agentObs = new OBSClient();
+    agentObs.onStatus((s) => { if (s === 'disconnected') reportAgentStatus(); });
+    const pass = (cfg && cfg.obs && cfg.obs.password) || undefined;
+    await agentObs.connect(cfg.obs.host, cfg.obs.port, pass);
+    return agentObs;
+}
+async function runAgentCommand(cmd) {
+    try {
+        await ensureAgentObs();
+        if (cmd.action === 'start') {
+            if (cfg.rtmp && cfg.rtmp.enabled && cfg.rtmp.url && cfg.rtmp.key) {
+                await agentObs.setStreamService(cfg.rtmp.url, cfg.rtmp.key);
+            }
+            if (!(await agentObs.isStreaming())) await agentObs.startStream();
+            showBadge(true);
+        } else if (cmd.action === 'stop') {
+            if (await agentObs.isStreaming()) await agentObs.stopStream();
+            showBadge(false);
+        } else if (cmd.action === 'title' && cfg.obs && cfg.obs.overlaySource) {
+            await agentObs.setOverlayText(cfg.obs.overlaySource, (cmd.args && cmd.args.text) || buildTitle());
+        } else if (cmd.action === 'scene' && cmd.args && cmd.args.scene) {
+            await agentObs.request('SetCurrentProgramScene', { sceneName: cmd.args.scene });
+        }
+        toast(`Team control: ${cmd.action}${cmd.by ? ' (by ' + cmd.by + ')' : ''}`, 'info');
+        reportAgentStatus();
+    } catch (e) { toast('Remote command failed: ' + e.message, 'warn'); reportAgentStatus(); }
+}
+async function reportAgentStatus() {
+    let obsConnected = false, streaming = false;
+    try { obsConnected = !!(agentObs && agentObs.connected); if (obsConnected) streaming = await agentObs.isStreaming(); } catch {}
+    try { await api('POST', '/agent/status', { obsConnected, streaming, place: place.label, title: buildTitle() }); } catch {}
+}
+async function startAgent() {
+    if (agentSSE) return;
+    try { await ensureAgentObs(); } catch (e) { toast('Remote control on, but OBS not reachable yet — check "Control OBS" settings.', 'warn'); }
+    agentSSE = new EventSource(API + '/agent'); // same-origin: sends the session cookie
+    agentSSE.addEventListener('command', (e) => { try { runAgentCommand(JSON.parse(e.data)); } catch (err) {} });
+    agentSSE.addEventListener('hello', () => reportAgentStatus());
+    agentSSE.onerror = () => {}; // EventSource auto-reconnects
+    clearInterval(agentStatusTimer);
+    agentStatusTimer = setInterval(reportAgentStatus, 10000);
+}
+function stopAgent() {
+    if (agentSSE) { try { agentSSE.close(); } catch {} agentSSE = null; }
+    clearInterval(agentStatusTimer); agentStatusTimer = null;
+    if (agentObs && !live) { try { agentObs.disconnect(); } catch {} agentObs = null; }
+}
+
+// ─── Operator dashboard: control connected chasers' OBS (admins only) ─────────
+function cssId(id) { return String(id).replace(/[^a-zA-Z0-9_-]/g, ''); }
+function agentRowHTML(a) {
+    const st = a.status || {};
+    const dot = st.streaming ? '#ff3b30' : (st.obsConnected ? '#34d399' : '#94a3b8');
+    const label = st.streaming ? 'LIVE' : (st.obsConnected ? 'OBS ready' : 'OBS offline');
+    return `<div class="vrsh-agent">
+      <div class="vrsh-agent-info">
+        <div class="vrsh-agent-name"><span class="vrsh-dot" style="background:${dot}"></span>${a.name || 'chaser'}</div>
+        <div class="vrsh-agent-sub">${label}${st.place ? ' · ' + st.place : ''}</div>
+      </div>
+      <div class="vrsh-agent-btns">
+        <button id="vrsh-ag-start-${cssId(a.id)}" class="vrsh-mini">Go Live</button>
+        <button id="vrsh-ag-stop-${cssId(a.id)}" class="vrsh-mini vrsh-mini-danger">Stop</button>
+      </div>
+    </div>`;
+}
+async function refreshAgents() {
+    const box = $('vrsh-agents'); if (!box) return;
+    let list = [];
+    try { list = (await api('GET', '/agents')).agents || []; }
+    catch (e) { box.innerHTML = `<div class="vrsh-hint">Could not load chasers: ${e.message}</div>`; return; }
+    if (!list.length) { box.innerHTML = `<div class="vrsh-hint">No chasers connected. Each chaser enables “Allow remote control” in their own Hub.</div>`; return; }
+    box.innerHTML = list.map(agentRowHTML).join('');
+    list.forEach((a) => {
+        const s = $(`vrsh-ag-start-${cssId(a.id)}`); if (s) s.onclick = () => sendAgentCmd(a.id, 'start');
+        const t = $(`vrsh-ag-stop-${cssId(a.id)}`); if (t) t.onclick = () => sendAgentCmd(a.id, 'stop');
+    });
+}
+async function sendAgentCmd(targetUserId, action) {
+    try {
+        await api('POST', '/agent/command', { targetUserId, action });
+        toast(`Sent “${action}” to chaser.`, 'ok');
+        setTimeout(refreshAgents, 1500);
+    } catch (e) { toast('Command failed: ' + e.message, 'error'); }
+}
+
 // ─── boot ──────────────────────────────────────────────────────────────────────
 async function init() {
     injectStyles();
     launchButton();
     try { cfg = (await api('GET', '/config')).config; } catch { cfg = null; }
+
+    // Am I an operator (admin)? Controls whether the operator dashboard shows.
+    try {
+        const r = await fetch('/auth/me', { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+        if (r.ok) { const d = await r.json(); isAdmin = !!(d.user && d.user.isAdmin); }
+    } catch {}
+
+    // If this PC opted into remote control, come up as an agent automatically.
+    if (cfg && cfg.remoteControl) startAgent();
     // show other live chasers even when we're not streaming
     const startPolling = () => {
         refreshOtherChasers();
@@ -630,6 +769,11 @@ function injectStyles() {
     .vrsh-mini:hover{background:#16223c}
     .vrsh-mini-danger{color:#f7a4a4;border-color:#4a2630}
     .vrsh-mini:disabled{opacity:.5;cursor:default}
+    .vrsh-agent{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#0f1830;border:1px solid #1e2a44;border-radius:10px;padding:9px 12px;margin:6px 0}
+    .vrsh-agent-name{font-weight:700;font-size:14px;display:flex;align-items:center;gap:7px}
+    .vrsh-agent-sub{font-size:11.5px;color:#94a3b8;margin-top:2px}
+    .vrsh-agent-btns{display:flex;gap:6px}
+    .vrsh-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
     .vrsh-actions{display:flex;justify-content:flex-end;margin-top:16px}
     .vrsh-save{background:#27beff;color:#04121f;border:none;border-radius:10px;font-weight:800;padding:10px 20px;cursor:pointer;font-size:14px}
     .vrsh-save:hover{background:#59cfff}`;

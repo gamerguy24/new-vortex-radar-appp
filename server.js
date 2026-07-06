@@ -418,6 +418,7 @@ app.delete('/admin/users/:id', requireAdmin, (req, res) => {
     if (userSettings[user.id]) { delete userSettings[user.id]; saveUserSettings(); }
     if (streamConfigs[user.id]) { delete streamConfigs[user.id]; saveStreamConfigs(); }
     liveSessions.delete(user.id);
+    { const a = agents.get(user.id); if (a) { try { a.res.end(); } catch {} agents.delete(user.id); } }
     saveUsers();
     saveResets();
     res.json({ ok: true });
@@ -608,6 +609,7 @@ function publicStreamConfig(c) {
         },
         discordConfigured: !!c.discordWebhook,
         ytPrivacy: c.ytPrivacy || 'unlisted',
+        remoteControl: !!c.remoteControl,
         // Manual RTMP destination (e.g. YouTube's persistent ingest URL + key).
         // Unlike the Discord webhook, the key is returned to the client because
         // the browser is what pushes it into OBS over obs-websocket (OBS is on
@@ -642,6 +644,7 @@ app.post('/api/stream/config', requireAuth, (req, res) => {
         ...cur,
         titleTemplate: b.titleTemplate != null ? clampStr(b.titleTemplate, 200) : cur.titleTemplate,
         ytPrivacy: ['public', 'unlisted', 'private'].includes(b.ytPrivacy) ? b.ytPrivacy : (cur.ytPrivacy || 'unlisted'),
+        remoteControl: b.remoteControl != null ? !!b.remoteControl : !!cur.remoteControl,
         rtmp: {
             enabled: !!(b.rtmp && b.rtmp.enabled),
             url: clampStr((b.rtmp && b.rtmp.url) != null ? b.rtmp.url : (cur.rtmp && cur.rtmp.url) || '', 300),
@@ -762,6 +765,75 @@ app.get('/api/stream/live', requireAuth, (req, res) => {
         });
     }
     res.json({ live: list });
+});
+
+// ─── Remote OBS control relay (operator dashboard → chaser agent) ────────────
+// Chasers who opt in keep Vortex open on their streaming PC; their browser holds
+// an SSE "agent" connection here and a local connection to their own OBS.
+// Operators (admins) list connected agents and send commands, which we relay
+// over SSE to the target agent, whose browser runs them against its local OBS.
+// The agent dials OUT to us, so no chaser needs to port-forward their router.
+const agents = new Map(); // userId -> { res, status, email, connectedAt, lastSeen }
+
+function sseSend(res, event, data) {
+    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (e) {}
+}
+
+// Chaser agent connects here (Server-Sent Events). Being connected = opted in.
+app.get('/api/stream/agent', requireAuth, (req, res) => {
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no', // don't let a proxy buffer the stream
+    });
+    res.write('retry: 5000\n\n');
+    const uid = req.user.id;
+    const prev = agents.get(uid);
+    if (prev && prev.res && prev.res !== res) { try { prev.res.end(); } catch {} }
+    const agent = { res, status: { obsConnected: false, streaming: false }, email: req.user.email, connectedAt: Date.now(), lastSeen: Date.now() };
+    agents.set(uid, agent);
+    sseSend(res, 'hello', { ok: true });
+    const hb = setInterval(() => { try { res.write(': hb\n\n'); } catch {} }, 25000);
+    req.on('close', () => { clearInterval(hb); if (agents.get(uid) === agent) agents.delete(uid); });
+});
+
+// Agent reports its OBS/stream state so operators see live status.
+app.post('/api/stream/agent/status', requireAuth, (req, res) => {
+    const a = agents.get(req.user.id);
+    if (a) {
+        const b = req.body || {};
+        a.status = {
+            obsConnected: !!b.obsConnected,
+            streaming: !!b.streaming,
+            scene: clampStr(b.scene, 80),
+            place: clampStr(b.place, 200),
+            title: clampStr(b.title, 300),
+        };
+        a.lastSeen = Date.now();
+    }
+    res.json({ ok: true });
+});
+
+// Operator: list connected chaser agents + their status.
+app.get('/api/stream/agents', requireAdmin, (req, res) => {
+    const list = [];
+    for (const [uid, a] of agents) {
+        list.push({ id: uid, name: (a.email || '').split('@')[0], email: a.email, status: a.status, connectedAt: a.connectedAt, lastSeen: a.lastSeen });
+    }
+    list.sort((x, y) => x.name.localeCompare(y.name));
+    res.json({ agents: list });
+});
+
+// Operator: send a command to a chaser agent, relayed over its SSE stream.
+const AGENT_ACTIONS = ['start', 'stop', 'scene', 'title'];
+app.post('/api/stream/agent/command', requireAdmin, (req, res) => {
+    const b = req.body || {};
+    const target = agents.get(String(b.targetUserId || ''));
+    if (!target) return res.status(404).json({ error: 'That chaser is not connected.' });
+    if (!AGENT_ACTIONS.includes(b.action)) return res.status(400).json({ error: 'Unknown action.' });
+    sseSend(target.res, 'command', { action: b.action, args: b.args || {}, by: req.user.email, id: crypto.randomUUID() });
+    res.json({ ok: true });
 });
 
 // YouTube Live routes (OAuth connect/callback/disconnect, go-live, end).
