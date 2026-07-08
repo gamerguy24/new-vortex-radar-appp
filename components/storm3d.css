@@ -65,3 +65,24 @@
     color: rgba(255,255,255,0.45); font-size: 0.8em; pointer-events: none;
     background: rgba(11,18,32,0.6); padding: 4px 12px; border-radius: 999px;
 }
+
+/* ---- bottom toolbar (selection tools) ---- */
+.s3d-toolbar {
+    position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px;
+    background: rgba(11,18,32,0.82); backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+    padding: 5px 8px;
+}
+.s3d-tool {
+    width: 40px; height: 40px; border-radius: 10px; cursor: pointer;
+    background: transparent; color: #9ca3af;
+    border: 1px solid transparent;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 1.2em; transition: background 0.15s, color 0.15s;
+}
+.s3d-tool:hover { background: rgba(255,255,255,0.08); color: #e7eef7; }
+.s3d-tool.active {
+    background: rgba(39,190,255,0.18); color: #27beff;
+    border-color: rgba(39,190,255,0.4);
+}

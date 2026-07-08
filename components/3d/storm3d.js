@@ -37,6 +37,13 @@ export default class Storm3D {
     this._remarchTimer = null;
     this.isoMesh = null;
     this.meta = null;
+    this._activeTool = null;   // 'box' | 'xsect' | null (point-placement mode)
+    this._toolPoints = [];
+    this._boxHelper = null;
+    this._xsectGroup = null;
+    this._pointMarkers = [];
+    this._preview = null;
+    this._clickStart = null;
     this._build();
   }
 
@@ -69,6 +76,10 @@ export default class Storm3D {
         <div class="s3d-spinner"></div>
         <div class="s3d-loading-text">Building 3D volume...</div>
       </div>
+      <div class="s3d-toolbar">
+        <button class="s3d-tool" id="s3d-box-tool" title="Box Selector"><i class="ti ti-marquee-2"></i></button>
+        <button class="s3d-tool" id="s3d-xsect-tool" title="Cross Section"><i class="ti ti-cut"></i></button>
+      </div>
       <div class="s3d-hint">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan</div>`;
     document.body.appendChild(root);
     this.root = root;
@@ -84,7 +95,14 @@ export default class Storm3D {
     this.productSelect = root.querySelector('#s3d-product');
     this.productSelect.addEventListener('change', (e) => this._onProduct(e.target.value));
     this._applyProductUI(this.product);
-    this._escHandler = (e) => { if (e.key === 'Escape') this.close(); };
+    root.querySelector('#s3d-box-tool').addEventListener('click', () => this._toggleTool('box'));
+    root.querySelector('#s3d-xsect-tool').addEventListener('click', () => this._toggleTool('xsect'));
+    this.canvas.addEventListener('pointerdown', (e) => { this._clickStart = { x: e.clientX, y: e.clientY }; });
+    this.canvas.addEventListener('click', (e) => this._onCanvasClick(e));
+    this.canvas.addEventListener('pointermove', (e) => this._onCanvasMove(e));
+    this._escHandler = (e) => {
+      if (e.key === 'Escape') { if (this._activeTool) { this._cancelTool(); } else { this.close(); } }
+    };
     document.addEventListener('keydown', this._escHandler);
 
     this._initThree();
@@ -115,6 +133,16 @@ export default class Storm3D {
     const key = new THREE.DirectionalLight(0xffffff, 0.6);
     key.position.set(-1, 2, 1);
     this.scene.add(key);
+
+    // Invisible ground plane for tool raycasting (click-to-place)
+    this._pickPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(2000, 2000),
+      new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
+    );
+    this._pickPlane.rotation.x = -Math.PI / 2;
+    this.scene.add(this._pickPlane);
+    this._raycaster = new THREE.Raycaster();
+    this.renderer.localClippingEnabled = true;
 
     this._onResize = () => this._resize();
     window.addEventListener('resize', this._onResize);
@@ -164,6 +192,9 @@ export default class Storm3D {
       this.loadingEl.style.display = 'none';
     } else if (msg.type === 'isosurface') {
       this._buildIsosurface(msg.positions);
+      this.loadingEl.style.display = 'none';
+    } else if (msg.type === 'crossSection') {
+      this._renderXsect(msg);
       this.loadingEl.style.display = 'none';
     }
   }
@@ -365,7 +396,237 @@ export default class Storm3D {
     }, 220);
   }
 
+  // ── Tool system: box selector + cross-section ───────────────────────────────
+
+  _toggleTool(tool) {
+    // Clicking the active tool's button cancels placement mode
+    if (this._activeTool === tool) { this._cancelTool(); return; }
+    if (this._activeTool) this._cancelTool();
+    // If this tool already has a result, toggle it off
+    if (tool === 'box' && this._boxHelper) { this._clearBox(); return; }
+    if (tool === 'xsect' && this._xsectGroup) { this._clearXsect(); return; }
+    // Clear any other tool's results, then enter placement mode
+    this._clearBox(); this._clearXsect();
+    this._activeTool = tool;
+    this._toolPoints = [];
+    this._updateToolUI();
+    const hint = this.root.querySelector('.s3d-hint');
+    hint.textContent = tool === 'box'
+      ? 'Click two corners on the ground to define the box'
+      : 'Click two points on the ground to define the cross section';
+  }
+
+  _cancelTool() {
+    this._activeTool = null;
+    this._toolPoints = [];
+    this._removePreview();
+    this._removePointMarkers();
+    this._updateToolUI();
+    this.root.querySelector('.s3d-hint').textContent = 'Drag to orbit \u00b7 scroll to zoom \u00b7 right-drag to pan';
+  }
+
+  _updateToolUI() {
+    this.root.querySelector('#s3d-box-tool')?.classList.toggle('active', this._activeTool === 'box' || !!this._boxHelper);
+    this.root.querySelector('#s3d-xsect-tool')?.classList.toggle('active', this._activeTool === 'xsect' || !!this._xsectGroup);
+  }
+
+  _groundHit(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this._raycaster.setFromCamera(mouse, this.camera);
+    const hits = this._raycaster.intersectObject(this._pickPlane);
+    return hits.length ? hits[0].point : null;
+  }
+
+  _onCanvasClick(e) {
+    if (!this._activeTool) return;
+    // Ignore drags (orbit gestures)
+    if (this._clickStart) {
+      const dx = e.clientX - this._clickStart.x, dy = e.clientY - this._clickStart.y;
+      if (dx * dx + dy * dy > 36) return;
+    }
+    const pt = this._groundHit(e);
+    if (!pt) return;
+    this._toolPoints.push(pt.clone());
+    this._addPointMarker(pt, this._toolPoints.length);
+    if (this._toolPoints.length === 2) {
+      this._removePreview();
+      if (this._activeTool === 'box') this._applyBox();
+      else if (this._activeTool === 'xsect') this._applyXsect();
+    }
+  }
+
+  _onCanvasMove(e) {
+    if (!this._activeTool || this._toolPoints.length !== 1) return;
+    const pt = this._groundHit(e);
+    if (!pt) return;
+    this._updatePreview(pt);
+  }
+
+  // --- point markers (numbered sprites at click locations) ---
+
+  _addPointMarker(pt, num) {
+    const spr = this._label(String(num), pt.x, 3, pt.z, 0.8);
+    this.scene.add(spr);
+    this._pointMarkers.push(spr);
+  }
+  _removePointMarkers() {
+    this._pointMarkers.forEach((m) => { this.scene.remove(m); m.material?.map?.dispose(); m.material?.dispose(); });
+    this._pointMarkers = [];
+  }
+
+  // --- live preview line/rectangle while placing the second point ---
+
+  _updatePreview(pt) {
+    this._removePreview();
+    const p1 = this._toolPoints[0];
+    const mat = new THREE.LineBasicMaterial({ color: this._activeTool === 'box' ? 0xffffff : 0x27beff, transparent: true, opacity: 0.6 });
+    let geo;
+    if (this._activeTool === 'box') {
+      geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(p1.x, 0.5, p1.z), new THREE.Vector3(pt.x, 0.5, p1.z),
+        new THREE.Vector3(pt.x, 0.5, pt.z), new THREE.Vector3(p1.x, 0.5, pt.z),
+        new THREE.Vector3(p1.x, 0.5, p1.z),
+      ]);
+    } else {
+      geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(p1.x, 0.5, p1.z), new THREE.Vector3(pt.x, 0.5, pt.z),
+      ]);
+    }
+    this._preview = new THREE.Line(geo, mat);
+    this.scene.add(this._preview);
+  }
+  _removePreview() {
+    if (this._preview) {
+      this.scene.remove(this._preview);
+      this._preview.geometry?.dispose(); this._preview.material?.dispose();
+      this._preview = null;
+    }
+  }
+
+  // ── Box Selector ───────────────────────────────────────────────────────────
+
+  _applyBox() {
+    const [p1, p2] = this._toolPoints;
+    const minX = Math.min(p1.x, p2.x), maxX = Math.max(p1.x, p2.x);
+    const minZ = Math.min(p1.z, p2.z), maxZ = Math.max(p1.z, p2.z);
+    const top = this.meta ? this._toSceneZ(this.meta.zTopM) : 200;
+
+    // Wireframe box
+    const geo = new THREE.BoxGeometry(maxX - minX, top, maxZ - minZ);
+    const edges = new THREE.EdgesGeometry(geo);
+    const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 });
+    const box = new THREE.LineSegments(edges, mat);
+    box.position.set((minX + maxX) / 2, top / 2, (minZ + maxZ) / 2);
+    this.scene.add(box);
+    this._boxHelper = box;
+
+    // Clip everything outside the box (plane normals point inward)
+    const planes = [
+      new THREE.Plane(new THREE.Vector3( 1, 0, 0), -minX),
+      new THREE.Plane(new THREE.Vector3(-1, 0, 0),  maxX),
+      new THREE.Plane(new THREE.Vector3( 0, 0, 1), -minZ),
+      new THREE.Plane(new THREE.Vector3( 0, 0,-1),  maxZ),
+    ];
+    if (this.isoMesh) this.isoMesh.material.clippingPlanes = planes;
+    if (this.groundMesh) this.groundMesh.material.clippingPlanes = planes;
+
+    this._activeTool = null;
+    this._updateToolUI();
+    this.root.querySelector('.s3d-hint').textContent = 'Box applied \u00b7 click box tool to clear';
+  }
+
+  _clearBox() {
+    if (this._boxHelper) {
+      this.scene.remove(this._boxHelper);
+      this._boxHelper.geometry?.dispose(); this._boxHelper.material?.dispose();
+      this._boxHelper = null;
+    }
+    if (this.isoMesh) this.isoMesh.material.clippingPlanes = [];
+    if (this.groundMesh) this.groundMesh.material.clippingPlanes = [];
+    this._removePointMarkers();
+    this._updateToolUI();
+    this.root.querySelector('.s3d-hint').textContent = 'Drag to orbit \u00b7 scroll to zoom \u00b7 right-drag to pan';
+  }
+
+  // ── Cross Section ──────────────────────────────────────────────────────────
+
+  _applyXsect() {
+    const [p1, p2] = this._toolPoints;
+    // Convert scene coords back to world metres for the worker
+    const w1 = { east: p1.x / SCENE_SCALE, north: -p1.z / SCENE_SCALE };
+    const w2 = { east: p2.x / SCENE_SCALE, north: -p2.z / SCENE_SCALE };
+    this._showSpinner('Building cross section...');
+    this.worker.postMessage({ type: 'crossSection', p1: w1, p2: w2 });
+    this._activeTool = null;
+    this._updateToolUI();
+  }
+
+  _renderXsect(msg) {
+    this._removeXsect();
+    const { rgba, width, height, p1, p2 } = msg;
+
+    const group = new THREE.Group();
+
+    // Textured vertical plane built from explicit corners (no rotation math)
+    const sp1 = new THREE.Vector3(this._toScene(p1.east), 0, -this._toScene(p1.north));
+    const sp2 = new THREE.Vector3(this._toScene(p2.east), 0, -this._toScene(p2.north));
+    const top = this._toSceneZ(this.meta?.zTopM || 22000);
+
+    const tex = new THREE.DataTexture(new Uint8Array(rgba), width, height, THREE.RGBAFormat);
+    tex.needsUpdate = true;
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+
+    const positions = new Float32Array([
+      sp1.x, 0,   sp1.z,    sp2.x, 0,   sp2.z,    sp2.x, top, sp2.z,
+      sp1.x, 0,   sp1.z,    sp2.x, top, sp2.z,    sp1.x, top, sp1.z,
+    ]);
+    const uvs = new Float32Array([ 0,0, 1,0, 1,1, 0,0, 1,1, 0,1 ]);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthWrite: false });
+    group.add(new THREE.Mesh(geo, mat));
+
+    // Height labels along the right endpoint
+    const dir = sp2.clone().sub(sp1).normalize();
+    const offset = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(6); // perpendicular
+    for (let kft = 0; kft <= 70; kft += 4) {
+      const y = this._toSceneZ(kft * KFT_TO_M);
+      if (y > top + 1) break;
+      group.add(this._label(`${kft}kft`, sp2.x + offset.x, y, sp2.z + offset.z, 0.45));
+    }
+
+    // Endpoint labels
+    group.add(this._label('1', sp1.x, -4, sp1.z, 0.8));
+    group.add(this._label('2', sp2.x, -4, sp2.z, 0.8));
+
+    this._xsectGroup = group;
+    this.scene.add(group);
+    this._removePointMarkers();
+    this.root.querySelector('.s3d-hint').textContent = 'Cross section applied \u00b7 click tool to clear';
+  }
+
+  _clearXsect() {
+    if (this._xsectGroup) {
+      this._xsectGroup.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+      });
+      this.scene.remove(this._xsectGroup);
+      this._xsectGroup = null;
+    }
+    this._removePointMarkers();
+    this._updateToolUI();
+    this.root.querySelector('.s3d-hint').textContent = 'Drag to orbit \u00b7 scroll to zoom \u00b7 right-drag to pan';
+  }
+
   close() {
+    this._cancelTool(); this._clearBox(); this._clearXsect();
     if (this._raf) cancelAnimationFrame(this._raf);
     clearTimeout(this._remarchTimer);
     document.removeEventListener('keydown', this._escHandler);

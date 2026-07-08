@@ -40,6 +40,7 @@ const PRODUCTS = {
 let _radar = null;
 let _grid = null;
 let _meta = null;
+let _currentProduct = 'REF';
 
 self.onmessage = (e) => {
   const msg = e.data;
@@ -53,6 +54,9 @@ self.onmessage = (e) => {
       const { positions } = marchingCubes(_grid, NX, NY, NZ, msg.threshold);
       const scaled = gridToWorld(positions);
       self.postMessage({ type: 'isosurface', positions: scaled, threshold: msg.threshold }, [scaled.buffer]);
+    } else if (msg.type === 'crossSection' && _grid) {
+      const result = buildCrossSection(msg.p1, msg.p2);
+      self.postMessage(result, [result.rgba.buffer]);
     }
   } catch (err) {
     self.postMessage({ type: 'error', message: err?.message || String(err) });
@@ -60,6 +64,7 @@ self.onmessage = (e) => {
 };
 
 function buildForProduct(productKey, threshold) {
+  _currentProduct = productKey;
   const cfg = PRODUCTS[productKey] || PRODUCTS.REF;
   const elevations = _radar.listElevations();
   if (!elevations || elevations.length === 0) throw new Error('Volume has no elevation cuts.');
@@ -254,4 +259,41 @@ function swColor(kt) {
     [0, 0.15, 0.30, 0.55], [5, 0.20, 0.70, 0.45], [10, 1.00, 1.00, 0.30],
     [15, 1.00, 0.55, 0.10], [25, 0.90, 0.10, 0.30],
   ], kt);
+}
+
+// ── Cross-section slice through the voxel grid ─────────────────────────────
+// Samples the 3D grid along a horizontal line (p1→p2) at every height level,
+// colours each sample with the active product's ramp, and returns RGBA pixels
+// ready for use as a DataTexture.
+function buildCrossSection(p1, p2) {
+  const cfg = PRODUCTS[_currentProduct] || PRODUCTS.REF;
+  const nSamples = 200;
+  const width = nSamples, height = NZ;
+  const rgba = new Uint8Array(width * height * 4);
+
+  for (let s = 0; s < nSamples; s++) {
+    const t = s / (nSamples - 1);
+    const east  = p1.east  + t * (p2.east  - p1.east);
+    const north = p1.north + t * (p2.north - p1.north);
+    const ix = ((east  + HALF_EXTENT_M) / DX) | 0;
+    const iy = ((north + HALF_EXTENT_M) / DY) | 0;
+    if (ix < 0 || ix >= NX || iy < 0 || iy >= NY) continue;
+
+    for (let iz = 0; iz < NZ; iz++) {
+      const val = _grid[ix + NX * (iy + NY * iz)];
+      // DataTexture row 0 = bottom of image, which maps to ground in the UVs
+      const pi = (s + iz * width) * 4;
+      if (val <= NODATA + 1) {
+        rgba[pi + 3] = 0;
+      } else {
+        const [r, g, b] = cfg.color(val);
+        rgba[pi]     = Math.round(r * 255);
+        rgba[pi + 1] = Math.round(g * 255);
+        rgba[pi + 2] = Math.round(b * 255);
+        rgba[pi + 3] = 230;
+      }
+    }
+  }
+
+  return { type: 'crossSection', rgba, width, height, p1, p2 };
 }
