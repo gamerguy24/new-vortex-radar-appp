@@ -11,8 +11,8 @@
  *     as you drive.
  *   - Auto-builds the stream title from a template + your current location.
  *   - Drops a live "you" marker on the map and shows other live chasers' markers.
- *   - Auto-posts a go-live announcement to Discord (YouTube/Facebook are wired
- *     for once their accounts are connected — see notes in the panel).
+ *   - Auto-posts a go-live announcement to Discord (Facebook is wired for once
+ *     the account is connected — see notes in the panel).
  *
  * Video is produced by OBS; this module is the control panel + overlay + auto-
  * post. Settings persist per-account on the server (/api/stream/config).
@@ -37,7 +37,6 @@ let lastGeocodeAt = 0;
 let lastPos = null;           // { lat, lng }
 let place = { town: '', county: '', state: '', label: '' };
 let myMarker = null;
-let ytBroadcastId = null;      // set when we auto-create a YouTube broadcast
 let obsWasUsed = false;        // true once a live session connected to OBS
 let isAdmin = false;           // operator (can control other chasers)
 let agentSSE = null;           // chaser agent: SSE link that receives commands
@@ -203,42 +202,24 @@ async function pushOverlay() {
 async function goLive() {
     setBusy(true);
     const wantObs = !!($('vrsh-obs-enable') && $('vrsh-obs-enable').checked);
-    const wantYouTube = !!(cfg && cfg.autoPost && cfg.autoPost.youtube && cfg.youtubeConfigured);
 
-    // Manual RTMP destination (e.g. a persistent YouTube key). Read live from
-    // the form if the panel is open, else from saved config. When present it
-    // takes priority over the OAuth auto-broadcast.
+    // Manual RTMP destination. Read live from the form if the panel is open,
+    // else from saved config. When present, Vortex pushes it into OBS.
     const rtmpEnabled = ($('vrsh-rtmp-enable') ? $('vrsh-rtmp-enable').checked : (cfg && cfg.rtmp && cfg.rtmp.enabled));
     const rtmpUrl = (($('vrsh-rtmp-url') && $('vrsh-rtmp-url').value.trim()) || (cfg && cfg.rtmp && cfg.rtmp.url) || '');
     const rtmpKey = (($('vrsh-rtmp-key') && $('vrsh-rtmp-key').value.trim()) || (cfg && cfg.rtmp && cfg.rtmp.key) || '');
     const manualIngest = (rtmpEnabled && rtmpUrl && rtmpKey) ? { server: rtmpUrl, key: rtmpKey } : null;
-    const useYouTube = wantYouTube && !manualIngest;
     try {
-        // 1) Get an initial GPS fix first so the broadcast title, marker and
-        //    announcement all carry the current location.
+        // 1) Get an initial GPS fix first so the title, marker and announcement
+        //    all carry the current location.
         await new Promise((resolve) => {
             if (!navigator.geolocation) return resolve();
             navigator.geolocation.getCurrentPosition(async (p) => { await onPosition(p); resolve(); }, () => resolve(),
                 { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 });
         });
 
-        // 2) If YouTube is connected (and no manual key overrides it), create the
-        //    broadcast now and grab the RTMP ingest URL + key + watch link.
-        let yt = null;
-        if (useYouTube) {
-            try {
-                const privacy = (cfg && cfg.ytPrivacy) || ($('vrsh-yt-privacy') && $('vrsh-yt-privacy').value) || 'unlisted';
-                yt = await api('POST', '/youtube/golive', { title: buildTitle(), privacy });
-                ytBroadcastId = yt.broadcastId;
-                if ($('vrsh-stream-url')) $('vrsh-stream-url').value = yt.watchUrl; // announce this link
-                toast('YouTube broadcast created.', 'ok');
-            } catch (e) {
-                toast('YouTube: ' + e.message, 'error');
-                // Non-fatal: fall through so OBS/Discord can still go if the user wants.
-            }
-        }
-
-        // 3) Connect + start OBS. If we have a YouTube ingest, point OBS at it first.
+        // 2) Connect + start OBS. If we have a manual RTMP ingest, point OBS at
+        //    it first.
         if (wantObs) {
             obsWasUsed = true;
             obs = new OBSClient();
@@ -249,14 +230,10 @@ async function goLive() {
             if (manualIngest) {
                 await obs.setStreamService(manualIngest.server, manualIngest.key);
                 toast('OBS pointed at your RTMP destination.', 'ok');
-            } else if (yt && yt.ingestionAddress && yt.streamName) {
-                await obs.setStreamService(yt.ingestionAddress, yt.streamName);
             }
             if (!(await obs.isStreaming())) await obs.startStream();
         } else if (manualIngest) {
             toast('Turn on "Control OBS" so Vortex can push your RTMP key into OBS.', 'warn');
-        } else if (yt) {
-            toast('Broadcast created — point your encoder at the YouTube stream key (OBS control is off).', 'warn');
         }
 
         live = true;
@@ -266,13 +243,13 @@ async function goLive() {
         await pushOverlay();
         await pingLive();
 
-        // 4) Announce to auto-post destinations (Discord gets the watch link).
+        // 3) Announce to auto-post destinations (Discord gets the stream link).
         try {
             const r = await api('POST', '/announce', { title: buildTitle(), url: currentStreamUrl(), place: place.label });
             reportAnnounce(r.results || {});
         } catch (e) { toast('Announce failed: ' + e.message, 'warn'); }
 
-        // 5) Keep pushing our position.
+        // 4) Keep pushing our position.
         clearInterval(livePingTimer);
         livePingTimer = setInterval(pingLive, LIVE_PING_MS);
 
@@ -294,10 +271,6 @@ async function stopLive(silent) {
     showBadge(false);
     setLiveUI(false);
     try { await api('POST', '/offline'); } catch {}
-    if (ytBroadcastId) {
-        try { await api('POST', '/youtube/end', { broadcastId: ytBroadcastId }); } catch {}
-        ytBroadcastId = null;
-    }
     // Actually stop OBS — reconnecting to it if this session's live connection
     // was already gone (e.g. after a refresh), so "End stream" reliably works.
     try { await stopObsStream(); } catch (e) {}
@@ -331,7 +304,6 @@ function reportAnnounce(results) {
         discord: { posted: 'Posted to Discord ✓', 'no-webhook': 'Discord on, but no webhook saved', error: 'Discord post failed' },
     };
     if (results.discord) toast((map.discord[results.discord]) || ('Discord: ' + results.discord), results.discord === 'posted' ? 'ok' : 'warn');
-    if (results.youtube === 'not-connected') toast('YouTube not connected yet — connect it in the Hub.', 'warn');
     if (results.facebook === 'not-connected') toast('Facebook not connected yet — connect it in the Hub.', 'warn');
 }
 
@@ -393,8 +365,6 @@ function openPanel() {
     $('vrsh-close').onclick = closePanel;
     $('vrsh-golive').onclick = () => { live ? stopLive() : goLive(); };
     $('vrsh-save').onclick = saveConfig;
-    $('vrsh-yt-connect').onclick = connectYouTube;
-    $('vrsh-yt-disconnect').onclick = disconnectYouTube;
     $('vrsh-agents-refresh').onclick = refreshAgents;
     $('vrsh-remote-enable').onchange = async () => {
         const on = $('vrsh-remote-enable').checked;
@@ -421,22 +391,6 @@ function startOperatorView() {
     }, 6000);
 }
 
-function connectYouTube() {
-    // Google blocks OAuth inside plain WebViews, so open it in a real browser /
-    // Custom Tab (native_adapt turns window.open into a Custom Tab on mobile).
-    // When you come back, the panel refreshes its connection state on focus.
-    toast('Opening Google sign-in… finish there, then return to the app.', 'info');
-    window.open('/api/stream/connect/youtube', '_blank', 'noopener');
-}
-async function disconnectYouTube() {
-    try {
-        await api('POST', '/youtube/disconnect');
-        cfg = (await api('GET', '/config')).config;
-        syncForm();
-        toast('YouTube disconnected.', 'info');
-    } catch (e) { toast('Could not disconnect: ' + e.message, 'error'); }
-}
-
 function panelHTML() {
     return `
     <div class="vrsh-card">
@@ -455,7 +409,7 @@ function panelHTML() {
 
       <div class="vrsh-field">
         <label>Stream link (shown in the announcement)</label>
-        <input id="vrsh-stream-url" type="url" placeholder="https://youtube.com/live/… or your channel URL" />
+        <input id="vrsh-stream-url" type="url" placeholder="https://… link to your live stream" />
       </div>
 
       <div class="vrsh-field">
@@ -480,28 +434,14 @@ function panelHTML() {
       <div class="vrsh-section">Stream key (RTMP)</div>
       <label class="vrsh-check"><input id="vrsh-rtmp-enable" type="checkbox" /> Push my own RTMP URL + key into OBS when I go live</label>
       <div class="vrsh-grid">
-        <div class="vrsh-field"><label>RTMP URL</label><input id="vrsh-rtmp-url" type="text" placeholder="rtmp://a.rtmp.youtube.com/live2" /></div>
+        <div class="vrsh-field"><label>RTMP URL</label><input id="vrsh-rtmp-url" type="text" placeholder="rtmp://your-server/app" /></div>
         <div class="vrsh-field"><label>Stream key</label><input id="vrsh-rtmp-key" type="password" placeholder="paste your stream key" /></div>
       </div>
-      <div class="vrsh-hint">Vortex sets these in OBS for you at Go Live — no need to paste them into OBS yourself. Requires <b>Control OBS</b> above to be on. Takes priority over the YouTube auto-broadcast below. Tip: reset this key in YouTube Studio if it has ever been shared.</div>
+      <div class="vrsh-hint">Vortex sets these in OBS for you at Go Live — no need to paste them into OBS yourself. Requires <b>Control OBS</b> above to be on. Tip: reset this key with your streaming provider if it has ever been shared.</div>
 
       <div class="vrsh-section">Auto-post</div>
       <label class="vrsh-check"><input id="vrsh-ap-discord" type="checkbox" /> Discord <span id="vrsh-discord-state" class="vrsh-status">—</span></label>
       <div class="vrsh-field"><label>Discord webhook URL</label><input id="vrsh-discord" type="url" placeholder="https://discord.com/api/webhooks/… (leave blank to keep saved)" /></div>
-      <div class="vrsh-yt-row">
-        <label class="vrsh-check"><input id="vrsh-ap-youtube" type="checkbox" /> YouTube Live <span id="vrsh-yt-state" class="vrsh-status">—</span></label>
-        <button id="vrsh-yt-connect" class="vrsh-mini">Connect</button>
-        <button id="vrsh-yt-disconnect" class="vrsh-mini vrsh-mini-danger" style="display:none">Disconnect</button>
-      </div>
-      <div class="vrsh-hint">Connect creates the broadcast for you and points OBS at YouTube's stream key automatically when you go live. Your channel must be verified &amp; live-enabled.</div>
-      <div class="vrsh-field" style="max-width:240px">
-        <label>YouTube privacy</label>
-        <select id="vrsh-yt-privacy">
-          <option value="unlisted">Unlisted (link only)</option>
-          <option value="public">Public</option>
-          <option value="private">Private</option>
-        </select>
-      </div>
       <label class="vrsh-check"><input id="vrsh-ap-facebook" type="checkbox" /> Facebook Live <span class="vrsh-status vrsh-soon">connect account (coming soon)</span></label>
 
       <div class="vrsh-section">Remote control</div>
@@ -525,7 +465,6 @@ function syncForm() {
     const set = (id, v) => { const el = $(id); if (el != null) el.value = v; };
     const chk = (id, v) => { const el = $(id); if (el != null) el.checked = !!v; };
     set('vrsh-title', cfg.titleTemplate || '');
-    set('vrsh-yt-privacy', cfg.ytPrivacy || 'unlisted');
     set('vrsh-obs-host', cfg.obs.host || 'localhost');
     set('vrsh-obs-port', cfg.obs.port || 4455);
     set('vrsh-obs-overlay', cfg.obs.overlaySource || '');
@@ -537,16 +476,8 @@ function syncForm() {
     $('vrsh-discord').placeholder = cfg.discordConfigured ? 'saved — blank keeps it' : 'https://discord.com/api/webhooks/…';
     chk('vrsh-remote-enable', cfg.remoteControl);
     chk('vrsh-ap-discord', cfg.autoPost.discord);
-    chk('vrsh-ap-youtube', cfg.autoPost.youtube);
     chk('vrsh-ap-facebook', cfg.autoPost.facebook);
     const ds = $('vrsh-discord-state'); if (ds) { ds.textContent = cfg.discordConfigured ? 'webhook saved' : 'no webhook yet'; ds.style.color = cfg.discordConfigured ? '#34d399' : '#94a3b8'; }
-    // YouTube connection state
-    const ys = $('vrsh-yt-state');
-    if (ys) { ys.textContent = cfg.youtubeConfigured ? 'channel connected ✓' : 'not connected'; ys.style.color = cfg.youtubeConfigured ? '#34d399' : '#94a3b8'; }
-    if ($('vrsh-yt-connect')) $('vrsh-yt-connect').style.display = cfg.youtubeConfigured ? 'none' : '';
-    if ($('vrsh-yt-disconnect')) $('vrsh-yt-disconnect').style.display = cfg.youtubeConfigured ? '' : 'none';
-    const ytChk = $('vrsh-ap-youtube');
-    if (ytChk) { ytChk.disabled = !cfg.youtubeConfigured; if (!cfg.youtubeConfigured) ytChk.checked = false; }
     // live title preview reacts to typing
     $('vrsh-title').oninput = () => { cfg.titleTemplate = $('vrsh-title').value; updateLocationUI(); };
 }
@@ -554,7 +485,6 @@ function syncForm() {
 async function saveConfig() {
     const body = {
         titleTemplate: $('vrsh-title').value,
-        ytPrivacy: $('vrsh-yt-privacy') ? $('vrsh-yt-privacy').value : 'unlisted',
         remoteControl: $('vrsh-remote-enable') ? $('vrsh-remote-enable').checked : false,
         rtmp: {
             enabled: $('vrsh-rtmp-enable') ? $('vrsh-rtmp-enable').checked : false,
@@ -568,7 +498,6 @@ async function saveConfig() {
         },
         autoPost: {
             discord: $('vrsh-ap-discord').checked,
-            youtube: $('vrsh-ap-youtube').checked,
             facebook: $('vrsh-ap-facebook').checked,
         },
     };
@@ -700,8 +629,8 @@ async function init() {
     else if (m && m.on) m.on('load', startPolling);
     else setTimeout(startPolling, 4000);
 
-    // When the user returns from the Google OAuth tab/Custom Tab, refresh the
-    // connection state if the Hub panel is open.
+    // Refresh config state when the user returns to the app, if the Hub panel
+    // is open (e.g. after editing settings on another device).
     window.addEventListener('focus', async () => {
         const panel = $('vrsh-panel');
         if (!panel || panel.style.display === 'none') return;
@@ -763,8 +692,6 @@ function injectStyles() {
     .vrsh-preview span{color:#7fdcff}
     .vrsh-status{font-size:11px;font-weight:600}
     .vrsh-soon{color:#facc15}
-    .vrsh-yt-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0}
-    .vrsh-yt-row .vrsh-check{margin:0;flex:1;min-width:180px}
     .vrsh-mini{border:1px solid #26324c;background:#0f1830;color:#7fdcff;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
     .vrsh-mini:hover{background:#16223c}
     .vrsh-mini-danger{color:#f7a4a4;border-color:#4a2630}

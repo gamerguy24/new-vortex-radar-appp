@@ -20,7 +20,6 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { createBilling } = require('./billing');
-const { createYouTube } = require('./youtube_live');
 
 const ROOT = __dirname;
 // Where users/sessions/reports are stored. Override with DATA_DIR to point at a
@@ -139,14 +138,6 @@ const billing = createBilling({
         getById: (id) => findById(id),
         getByStripeCustomer: (cid) => users.find((u) => u.stripeCustomerId === cid),
         update: (user, fields) => { Object.assign(user, fields); saveUsers(); },
-    },
-});
-
-// ─── YouTube Live — wired to the per-user stream-config store ─────────────────
-const youtube = createYouTube({
-    store: {
-        getConfig: (uid) => streamConfigs[uid] || {},
-        setConfig: (uid, cfg) => { streamConfigs[uid] = cfg; saveStreamConfigs(); },
     },
 });
 
@@ -608,9 +599,8 @@ function publicStreamConfig(c) {
             hasPassword: !!(c.obs && c.obs.password),
         },
         discordConfigured: !!c.discordWebhook,
-        ytPrivacy: c.ytPrivacy || 'unlisted',
         remoteControl: !!c.remoteControl,
-        // Manual RTMP destination (e.g. YouTube's persistent ingest URL + key).
+        // Manual RTMP destination (e.g. a persistent ingest URL + key).
         // Unlike the Discord webhook, the key is returned to the client because
         // the browser is what pushes it into OBS over obs-websocket (OBS is on
         // the user's LAN, unreachable from the server). It's the user's own key,
@@ -620,11 +610,9 @@ function publicStreamConfig(c) {
             url: (c.rtmp && c.rtmp.url) || '',
             key: (c.rtmp && c.rtmp.key) || '',
         },
-        youtubeConfigured: !!(c.youtube && c.youtube.refreshToken),
         facebookConfigured: !!(c.facebook && c.facebook.pageToken),
         autoPost: {
             discord: !!(c.autoPost && c.autoPost.discord),
-            youtube: !!(c.autoPost && c.autoPost.youtube),
             facebook: !!(c.autoPost && c.autoPost.facebook),
         },
     };
@@ -643,7 +631,6 @@ app.post('/api/stream/config', requireAuth, (req, res) => {
     const next = {
         ...cur,
         titleTemplate: b.titleTemplate != null ? clampStr(b.titleTemplate, 200) : cur.titleTemplate,
-        ytPrivacy: ['public', 'unlisted', 'private'].includes(b.ytPrivacy) ? b.ytPrivacy : (cur.ytPrivacy || 'unlisted'),
         remoteControl: b.remoteControl != null ? !!b.remoteControl : !!cur.remoteControl,
         rtmp: {
             enabled: !!(b.rtmp && b.rtmp.enabled),
@@ -664,7 +651,6 @@ app.post('/api/stream/config', requireAuth, (req, res) => {
         },
         autoPost: {
             discord: !!(b.autoPost && b.autoPost.discord),
-            youtube: !!(b.autoPost && b.autoPost.youtube),
             facebook: !!(b.autoPost && b.autoPost.facebook),
         },
     };
@@ -683,9 +669,8 @@ app.post('/api/stream/config', requireAuth, (req, res) => {
 });
 
 // Announce "I'm live" to the configured destinations. Discord is fully wired
-// (webhook). YouTube/Facebook are acknowledged but require the account OAuth
-// tokens to be connected first (see /api/stream/connect/* — not yet issuing
-// tokens); until then they report as skipped so the UI can prompt to connect.
+// (webhook). Facebook is acknowledged but requires the account OAuth token to
+// be connected first; until then it reports as skipped so the UI can prompt.
 app.post('/api/stream/announce', requireAuth, async (req, res) => {
     const cfg = streamConfigs[req.user.id] || {};
     const b = req.body || {};
@@ -715,10 +700,7 @@ app.post('/api/stream/announce', requireAuth, async (req, res) => {
         results.discord = 'no-webhook';
     }
 
-    // YouTube's broadcast is created via /api/stream/youtube/golive (which the
-    // Hub calls directly to get the ingest key for OBS); here we just report
-    // whether it's connected. Facebook remains a placeholder until Phase 2.
-    if (cfg.autoPost && cfg.autoPost.youtube) results.youtube = (cfg.youtube && cfg.youtube.refreshToken) ? 'ok' : 'not-connected';
+    // Facebook remains a placeholder until Phase 2.
     if (cfg.autoPost && cfg.autoPost.facebook) results.facebook = cfg.facebook ? 'unsupported' : 'not-connected';
 
     res.json({ results });
@@ -835,9 +817,6 @@ app.post('/api/stream/agent/command', requireAdmin, (req, res) => {
     sseSend(target.res, 'command', { action: b.action, args: b.args || {}, by: req.user.email, id: crypto.randomUUID() });
     res.json({ ok: true });
 });
-
-// YouTube Live routes (OAuth connect/callback/disconnect, go-live, end).
-youtube.attach(app, requireAuth);
 
 // ─── Push notification device tokens (weather alerts) ────────────────────────
 // The Capacitor app (VortexRadarMobile) registers its FCM token here so the
