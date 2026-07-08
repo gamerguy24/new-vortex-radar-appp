@@ -415,6 +415,30 @@
 .buoy-pop-title { font-weight: 800; font-size: 0.92em; color: #ffd34d; margin-bottom: 4px; }
 .buoy-pop-line { font-size: 0.82em; line-height: 1.45; color: #d7e2f0; white-space: nowrap; }
 
+/* ---- NDBC BuoyCAMs ---- */
+.bcam-marker {
+    width: 14px; height: 14px; border-radius: 3px;
+    background: #38bdf8; border: 1.5px solid rgba(255,255,255,0.9);
+    box-shadow: 0 0 5px rgba(0,0,0,0.55); cursor: pointer;
+    box-sizing: border-box;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Ccircle cx='5' cy='4' r='2' fill='%23fff'/%3E%3Cpath d='M2 7h6L5 5z' fill='%23fff'/%3E%3C/svg%3E");
+    background-size: 10px 10px; background-position: center; background-repeat: no-repeat;
+}
+.bcam-popup .mapboxgl-popup-content {
+    background: rgba(11, 18, 32, 0.97) !important; color: #e7eef7 !important;
+    border: 1px solid var(--vr-border); border-radius: 10px;
+    font-family: 'Onest', system-ui, sans-serif; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.bcam-popup .mapboxgl-popup-tip {
+    border-top-color: rgba(11,18,32,0.97) !important;
+    border-bottom-color: rgba(11,18,32,0.97) !important;
+}
+.bcam-pop { padding: 4px 6px; min-width: 200px; }
+.bcam-pop-title { font-weight: 800; font-size: 0.92em; color: #38bdf8; margin-bottom: 6px; }
+.bcam-pop-img { width: 100%; max-width: 320px; border-radius: 6px; margin-bottom: 4px; }
+.bcam-pop-time { font-size: 0.78em; color: var(--vr-muted); }
+.bcam-pop-noimg { font-size: 0.82em; color: #9ab; padding: 8px 0; }
+
 /* ---- NHC hurricane tracks ---- */
 .hurr-marker {
     width: 12px; height: 12px; border-radius: 50%;

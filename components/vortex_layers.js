@@ -17,6 +17,7 @@ import { addEarthquakes, removeEarthquakes } from './earthquakes.js';
 import { addMPING, removeMPING } from './mping.js';
 import { addBuoys, removeBuoys } from './buoys.js';
 import { addHurricaneTracks, removeHurricaneTracks } from './hurricane_tracks.js';
+import { addBuoyCams, removeBuoyCams } from './buoycams.js';
 
 function wrapper() { return window.vortexMap || null; }
 
@@ -60,6 +61,7 @@ function init() {
     onToggle('armrBuoysSwitchElem', (on) => withMap((w) => on ? addBuoys(w) : removeBuoys(), 'Buoys'));
     onToggle('armrTracksAtlSwitchElem', (on) => withMap((w) => on ? addHurricaneTracks('atlantic', w) : removeHurricaneTracks('atlantic'), 'Atlantic Tracks'));
     onToggle('armrTracksEpacSwitchElem', (on) => withMap((w) => on ? addHurricaneTracks('epac', w) : removeHurricaneTracks('epac'), 'E Pacific Tracks'));
+    onToggle('armrBuoyCamsSwitchElem', (on) => withMap((w) => on ? addBuoyCams(w) : removeBuoyCams(), 'BuoyCAMs'));
     onToggle('toggle-community-reports-layer', (on) => {
         localStorage.setItem('communityReportsEnabled', on ? 'true' : 'false');
         withMap((w) => on ? addWeatherReportMarkers(w) : removeWeatherReportMarkers(), 'User Storm Reports');
