@@ -5,6 +5,13 @@ const map = require('../../../../core/map/map');
 const setLayerOrder = require('../../../../core/map/setLayerOrder');
 const ut = require('../../../../core/utils');
 const AtticPopup = require('../../../../core/popup/AtticPopup');
+const render_storm_impact = require('./render_storm_impact');
+const storm_alerts = require('./storm_alerts');
+
+const KTS_TO_MPH = 1.15078;
+// STI stores movement azimuth as the direction the storm came FROM; flip 180° to
+// get the heading it's moving toward (matches the popup's motion display).
+function flipDeg(num) { return num >= 180 ? num - 180 : num + 180; }
 
 function findTerminalCoordinates(startLat, startLng, distanceNM, bearingDEG) {
     var metersInNauticalMiles = 1852;
@@ -46,6 +53,25 @@ function generatePerpendicularLine(basePoint, destPoint, cellData, forecastIndex
 
 function plot_storm_tracks(L3Factory) {
     const allTracks = L3Factory.formatted_tabular.storms;
+
+    // Build a cell's projected-path + motion for the impact/alert calculators:
+    // current position + each non-null forecast position (→ lng/lat), with the
+    // minute offset of each, plus the storm's speed and a display motion string.
+    function buildCellTrack(id, curCell) {
+        const path = [getCoords(curCell.current, L3Factory.station)];
+        const times = [0];
+        const fc = curCell.forecast || [];
+        for (var i = 0; i < fc.length; i++) {
+            const f = fc[i];
+            if (f && f !== 'new' && f.nm != null) { path.push(getCoords(f, L3Factory.station)); times.push((i + 1) * 15); }
+        }
+        let speedMph = 0, motionText = '';
+        if (curCell.movement && curCell.movement !== 'new') {
+            speedMph = curCell.movement.kts * KTS_TO_MPH;
+            motionText = `${ut.degToCompass(flipDeg(curCell.movement.deg))} at ${ut.knotsToMph(curCell.movement.kts, 0)} mph`;
+        }
+        return { id, path, times, speedMph, motionText, cell: curCell };
+    }
 
     function individualCell(id) {
         var points = [];
@@ -174,11 +200,15 @@ function plot_storm_tracks(L3Factory) {
 <div>Height of Max Refl: <b>${cellProperties?.graph_data?.hgt} kft</b>`
             }
 
-            // new mapboxgl.Popup({ className: 'alertPopup', maxWidth: '1000' })
-            //     .setLngLat(JSON.parse(properties.coords))
-            //     .setHTML(popupHTML)
-            //     .addTo(map);
-            new AtticPopup(JSON.parse(properties.coords), popupHTML).add_to_map();
+            // Placeholder the "My Location Impact" section fills in async.
+            popupHTML += `<div id="stormImpactSection"></div>`;
+
+            const popup = new AtticPopup(JSON.parse(properties.coords), popupHTML);
+            popup.add_to_map();
+            try {
+                const track = buildCellTrack(cellID, cellProperties);
+                render_storm_impact('stormImpactSection', track, () => { try { popup.update_popup_pos(); } catch (e) {} });
+            } catch (e) {}
         // }
     }
     map.on('click', 'stormTrackInitialPoint', cellClick);
@@ -186,6 +216,12 @@ function plot_storm_tracks(L3Factory) {
     map.on('mouseleave', 'stormTrackInitialPoint', () => { map.getCanvas().style.cursor = ''; });
 
     setLayerOrder();
+
+    // Re-evaluate every tracked cell against the user's location and fire any
+    // impact alerts (only does anything if a GPS fix is already known).
+    try {
+        storm_alerts.evaluate(stormIDs.map((sid) => buildCellTrack(sid, allTracks[sid])));
+    } catch (e) {}
 
     var isSTVisChecked = $('#armrSTVisBtnSwitchElem').is(':checked');
     if (!isSTVisChecked) {
