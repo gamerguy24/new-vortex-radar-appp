@@ -395,6 +395,54 @@
 .mping-pop-type { font-weight: 700; margin-top: 2px; }
 .mping-pop-time { margin-top: 5px; font-size: 0.8em; color: var(--vr-muted); }
 
+/* ---- NDBC buoys ---- */
+.buoy-marker {
+    width: 11px; height: 11px; border-radius: 3px;
+    background: #ffd34d; border: 1.5px solid rgba(20,30,50,0.9);
+    box-shadow: 0 0 4px rgba(0,0,0,0.55); cursor: pointer;
+    box-sizing: border-box; transform: rotate(45deg);
+}
+.buoy-popup .mapboxgl-popup-content {
+    background: rgba(11, 18, 32, 0.97) !important; color: #e7eef7 !important;
+    border: 1px solid var(--vr-border); border-radius: 10px;
+    font-family: 'Onest', system-ui, sans-serif; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.buoy-popup .mapboxgl-popup-tip {
+    border-top-color: rgba(11,18,32,0.97) !important;
+    border-bottom-color: rgba(11,18,32,0.97) !important;
+}
+.buoy-pop { padding: 4px 6px; min-width: 160px; }
+.buoy-pop-title { font-weight: 800; font-size: 0.92em; color: #ffd34d; margin-bottom: 4px; }
+.buoy-pop-line { font-size: 0.82em; line-height: 1.45; color: #d7e2f0; white-space: nowrap; }
+
+/* ---- NHC hurricane tracks ---- */
+.hurr-marker {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.92);
+    box-shadow: 0 0 4px rgba(0,0,0,0.55); cursor: pointer;
+    box-sizing: border-box;
+}
+.hurr-marker-latest {
+    width: 16px; height: 16px; border-width: 2px;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.25), 0 0 6px rgba(0,0,0,0.6);
+}
+.hurr-popup .mapboxgl-popup-content {
+    background: rgba(11, 18, 32, 0.97) !important; color: #e7eef7 !important;
+    border: 1px solid var(--vr-border); border-radius: 10px;
+    font-family: 'Onest', system-ui, sans-serif; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.hurr-popup .mapboxgl-popup-tip {
+    border-top-color: rgba(11,18,32,0.97) !important;
+    border-bottom-color: rgba(11,18,32,0.97) !important;
+}
+.hurr-pop { padding: 4px 6px; min-width: 180px; }
+.hurr-pop-badge {
+    display: inline-block; font-size: 0.72em; font-weight: 800; color: #0b1220;
+    padding: 1px 7px; border-radius: 999px; margin-bottom: 5px; letter-spacing: 0.03em;
+}
+.hurr-pop-head { font-weight: 700; font-size: 0.9em; margin-bottom: 4px; }
+.hurr-pop-line { font-size: 0.82em; line-height: 1.45; color: #c9d5e6; }
+
 /* ---- Custom saved locations: markers ---- */
 .vloc-marker { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .vloc-dot {

@@ -15,6 +15,8 @@ import { addSpotterMarkers, removeSpotterMarkers } from './spotters.js';
 import { addMRMS, removeMRMS } from './mrms.js';
 import { addEarthquakes, removeEarthquakes } from './earthquakes.js';
 import { addMPING, removeMPING } from './mping.js';
+import { addBuoys, removeBuoys } from './buoys.js';
+import { addHurricaneTracks, removeHurricaneTracks } from './hurricane_tracks.js';
 
 function wrapper() { return window.vortexMap || null; }
 
@@ -55,6 +57,9 @@ function init() {
     onToggle('armrMRMSSwitchElem', (on) => withMap((w) => on ? addMRMS(w) : removeMRMS(), 'MRMS'));
     onToggle('armrEarthquakesSwitchElem', (on) => withMap((w) => on ? addEarthquakes(w) : removeEarthquakes(), 'Earthquakes'));
     onToggle('armrMPINGSwitchElem', (on) => withMap((w) => on ? addMPING(w) : removeMPING(), 'mPING'));
+    onToggle('armrBuoysSwitchElem', (on) => withMap((w) => on ? addBuoys(w) : removeBuoys(), 'Buoys'));
+    onToggle('armrTracksAtlSwitchElem', (on) => withMap((w) => on ? addHurricaneTracks('atlantic', w) : removeHurricaneTracks('atlantic'), 'Atlantic Tracks'));
+    onToggle('armrTracksEpacSwitchElem', (on) => withMap((w) => on ? addHurricaneTracks('epac', w) : removeHurricaneTracks('epac'), 'E Pacific Tracks'));
     onToggle('toggle-community-reports-layer', (on) => {
         localStorage.setItem('communityReportsEnabled', on ? 'true' : 'false');
         withMap((w) => on ? addWeatherReportMarkers(w) : removeWeatherReportMarkers(), 'User Storm Reports');
