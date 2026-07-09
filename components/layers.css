@@ -428,16 +428,33 @@
     background: rgba(11, 18, 32, 0.97) !important; color: #e7eef7 !important;
     border: 1px solid var(--vr-border); border-radius: 10px;
     font-family: 'Onest', system-ui, sans-serif; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    padding: 0 !important;
 }
 .bcam-popup .mapboxgl-popup-tip {
     border-top-color: rgba(11,18,32,0.97) !important;
     border-bottom-color: rgba(11,18,32,0.97) !important;
 }
-.bcam-pop { padding: 4px 6px; min-width: 200px; }
-.bcam-pop-title { font-weight: 800; font-size: 0.92em; color: #38bdf8; margin-bottom: 6px; }
-.bcam-pop-img { width: 100%; max-width: 320px; border-radius: 6px; margin-bottom: 4px; }
-.bcam-pop-time { font-size: 0.78em; color: var(--vr-muted); }
+.bcam-pop { padding: 10px 12px; min-width: 280px; }
+.bcam-pop-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.bcam-pop-id { font-weight: 800; font-size: 0.95em; color: #38bdf8; }
+.bcam-pop-name { font-weight: 700; font-size: 0.88em; color: #e7eef7; }
+.bcam-pop-loc { font-size: 0.8em; color: var(--vr-muted); margin-bottom: 8px; }
+.bcam-pop-img { width: 100%; border-radius: 6px; margin-bottom: 4px; display: block; }
+.bcam-pop-time { font-size: 0.76em; color: var(--vr-muted); margin-bottom: 2px; }
 .bcam-pop-noimg { font-size: 0.82em; color: #9ab; padding: 8px 0; }
+.bcam-pop-divider { height: 1px; background: rgba(255,255,255,0.08); margin: 8px 0; }
+.bcam-pop-obs-title { font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--vr-muted); font-weight: 700; margin-bottom: 6px; }
+.bcam-obs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.bcam-obs-item {
+    background: rgba(255,255,255,0.04); border-radius: 6px;
+    padding: 6px 6px 5px; text-align: center;
+    border: 1px solid rgba(255,255,255,0.06);
+}
+.bcam-obs-label { font-size: 0.65em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--vr-muted); margin-bottom: 2px; }
+.bcam-obs-val { font-size: 0.92em; font-weight: 800; color: #e7eef7; line-height: 1.2; }
+.bcam-obs-sub { font-size: 0.72em; color: var(--vr-muted); margin-top: 1px; }
+.bcam-obs-loading { font-size: 0.8em; color: var(--vr-muted); padding: 6px 0; }
+.bcam-obs-none { font-size: 0.8em; color: #9ab; padding: 4px 0; }
 
 /* ---- NHC hurricane tracks ---- */
 .hurr-marker {
