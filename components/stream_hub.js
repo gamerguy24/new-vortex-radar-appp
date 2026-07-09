@@ -607,7 +607,6 @@ async function sendAgentCmd(targetUserId, action) {
 // ─── boot ──────────────────────────────────────────────────────────────────────
 async function init() {
     injectStyles();
-    launchButton();
     try { cfg = (await api('GET', '/config')).config; } catch { cfg = null; }
 
     // Am I an operator (admin)? Controls whether the operator dashboard shows.
