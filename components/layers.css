@@ -467,6 +467,34 @@
 .hurr-pop-head { font-weight: 700; font-size: 0.9em; margin-bottom: 4px; }
 .hurr-pop-line { font-size: 0.82em; line-height: 1.45; color: #c9d5e6; }
 
+/* ---- Fire weather ---- */
+.fwx-danger-marker {
+    width: 9px; height: 9px; border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.8);
+    box-shadow: 0 0 4px rgba(0,0,0,0.5); cursor: pointer;
+    box-sizing: border-box;
+}
+.fwx-fire-marker {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #ff5722;
+    border: 1.5px solid rgba(255,255,255,0.85);
+    box-shadow: 0 0 5px rgba(255,87,34,0.5); cursor: pointer;
+    box-sizing: border-box;
+}
+.fwx-popup .mapboxgl-popup-content {
+    background: rgba(11, 18, 32, 0.97) !important; color: #e7eef7 !important;
+    border: 1px solid var(--vr-border); border-radius: 10px;
+    font-family: 'Onest', system-ui, sans-serif; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.fwx-popup .mapboxgl-popup-tip {
+    border-top-color: rgba(11,18,32,0.97) !important;
+    border-bottom-color: rgba(11,18,32,0.97) !important;
+}
+.fwx-pop { padding: 4px 6px; min-width: 140px; }
+.fwx-pop-title { font-weight: 800; font-size: 0.92em; margin-bottom: 4px; }
+.fwx-pop-fire { color: #ff5722; }
+.fwx-pop-line { font-size: 0.82em; line-height: 1.45; color: #d7e2f0; }
+
 /* ---- Custom saved locations: markers ---- */
 .vloc-marker { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .vloc-dot {
