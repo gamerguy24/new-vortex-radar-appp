@@ -439,7 +439,7 @@
 .bcam-pop-id { font-weight: 800; font-size: 0.95em; color: #38bdf8; }
 .bcam-pop-name { font-weight: 700; font-size: 0.88em; color: #e7eef7; }
 .bcam-pop-loc { font-size: 0.8em; color: var(--vr-muted); margin-bottom: 8px; }
-.bcam-pop-img { width: 100%; border-radius: 6px; margin-bottom: 4px; display: block; }
+.bcam-pop-img { width: 100%; height: 220px; object-fit: cover; border-radius: 6px; margin-bottom: 4px; display: block; }
 .bcam-pop-time { font-size: 0.76em; color: var(--vr-muted); margin-bottom: 2px; }
 .bcam-pop-noimg { font-size: 0.82em; color: #9ab; padding: 8px 0; }
 .bcam-pop-divider { height: 1px; background: rgba(255,255,255,0.08); margin: 8px 0; }
