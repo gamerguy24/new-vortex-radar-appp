@@ -149,7 +149,7 @@ function render(cams) {
           + `<div class="bcam-pop-obs-title">Latest Observations</div>`
           + `<div id="${obsId}"><div class="bcam-obs-loading">Loading…</div></div>`
           + `</div>`;
-        new gl.Popup({ closeButton: true, closeOnClick: true, className: 'bcam-popup', maxWidth: '520px' })
+        new gl.Popup({ closeButton: true, closeOnClick: true, className: 'bcam-popup', maxWidth: '780px' })
           .setLngLat([cam.lon, cam.lat])
           .setHTML(html)
           .addTo(map);
