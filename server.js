@@ -34,6 +34,7 @@ const LOGOS_FILE = path.join(DATA_DIR, 'logos.json');
 const PUSH_FILE = path.join(DATA_DIR, 'push_tokens.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const STREAM_FILE = path.join(DATA_DIR, 'stream_configs.json');
+const TICKETS_FILE = path.join(DATA_DIR, 'tickets.json');
 
 const PORT = process.env.PORT || 3333;
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@vortexradar.app';
@@ -60,6 +61,7 @@ let logos = readJson(LOGOS_FILE, {}); // userId -> { dataUrl, corner, size, opac
 let pushTokens = readJson(PUSH_FILE, {}); // userId -> [{ token, platform, updatedAt }]
 let userSettings = readJson(SETTINGS_FILE, {}); // userId -> { switches: { id: bool } }
 let streamConfigs = readJson(STREAM_FILE, {}); // userId -> { discordWebhook, obs, titleTemplate, ... }
+let tickets = readJson(TICKETS_FILE, []); // [{ id, userId, email, subject, category, status, messages: [...], ... }]
 const saveUsers = () => writeJson(USERS_FILE, users);
 const saveResets = () => writeJson(RESETS_FILE, resetRequests);
 const saveReports = () => writeJson(REPORTS_FILE, reports);
@@ -67,6 +69,7 @@ const saveLogos = () => writeJson(LOGOS_FILE, logos);
 const savePushTokens = () => writeJson(PUSH_FILE, pushTokens);
 const saveUserSettings = () => writeJson(SETTINGS_FILE, userSettings);
 const saveStreamConfigs = () => writeJson(STREAM_FILE, streamConfigs);
+const saveTickets = () => writeJson(TICKETS_FILE, tickets);
 
 // Currently-live chasers, kept in memory only (ephemeral by nature). Keyed by
 // userId -> { lat, lng, place, title, url, startedAt, updatedAt }. Powers the
@@ -570,6 +573,185 @@ app.post('/api/settings', requireAuth, (req, res) => {
     userSettings[req.user.id] = sanitizeSettings(req.body);
     saveUserSettings();
     res.json({ settings: userSettings[req.user.id] });
+});
+
+// ─── Support tickets ─────────────────────────────────────────────────────────
+// An in-app help desk. Any signed-in user can open a ticket and hold a threaded
+// conversation with the admins; admins triage every ticket, reply, and change
+// status. Stored as JSON like the rest of the app — no email is sent (there is
+// no SMTP wired), so replies live in-app and surface via an unread badge.
+const TICKET_CATEGORIES = ['Bug', 'Billing', 'Feature request', 'Account', 'Other'];
+const TICKET_STATUSES = ['open', 'answered', 'closed'];
+const findTicket = (id) => tickets.find((t) => t.id === id);
+
+// Whether the ticket has a message the given viewer hasn't seen yet. A user has
+// unread when the newest message came from an admin (and vice-versa), based on
+// the per-role lastRead timestamp we stamp when the thread is opened.
+function ticketUnreadFor(t, isAdminViewer) {
+    const last = t.messages[t.messages.length - 1];
+    if (!last) return false;
+    if (isAdminViewer) {
+        return !last.isAdmin && new Date(t.updatedAt) > new Date(t.lastReadByAdmin || 0);
+    }
+    return last.isAdmin && new Date(t.updatedAt) > new Date(t.lastReadByUser || 0);
+}
+
+function ticketSummary(t, viewer) {
+    const isAdminViewer = !!viewer.isAdmin;
+    return {
+        id: t.id,
+        subject: t.subject,
+        category: t.category,
+        status: t.status,
+        email: t.email,
+        mine: t.userId === viewer.id,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+        messageCount: t.messages.length,
+        unread: ticketUnreadFor(t, isAdminViewer),
+    };
+}
+
+function ticketFull(t, viewer) {
+    return {
+        ...ticketSummary(t, viewer),
+        messages: t.messages.map((m) => ({
+            id: m.id,
+            body: m.body,
+            isAdmin: m.isAdmin,
+            author: (m.authorEmail || '').split('@')[0],
+            time: m.time,
+            mine: m.authorId === viewer.id,
+        })),
+    };
+}
+
+// List the caller's own tickets (newest activity first).
+app.get('/api/support/tickets', requireAuth, (req, res) => {
+    const list = tickets
+        .filter((t) => t.userId === req.user.id)
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    res.json({ tickets: list.map((t) => ticketSummary(t, req.user)) });
+});
+
+// Open a new ticket. The subject + first message are required.
+app.post('/api/support/tickets', requireAuth, (req, res) => {
+    const b = req.body || {};
+    const subject = clampStr(b.subject, 140).trim();
+    const body = clampStr(b.body, 5000).trim();
+    const category = TICKET_CATEGORIES.includes(b.category) ? b.category : 'Other';
+    if (!subject) return res.status(400).json({ error: 'A subject is required.' });
+    if (!body) return res.status(400).json({ error: 'Please describe your issue.' });
+
+    const now = new Date().toISOString();
+    const ticket = {
+        id: crypto.randomUUID(),
+        userId: req.user.id,
+        email: req.user.email,
+        subject,
+        category,
+        status: 'open',
+        createdAt: now,
+        updatedAt: now,
+        lastReadByUser: now,   // author has seen their own opening message
+        lastReadByAdmin: null,
+        messages: [{
+            id: crypto.randomUUID(),
+            authorId: req.user.id,
+            authorEmail: req.user.email,
+            isAdmin: false,
+            body,
+            time: now,
+        }],
+    };
+    tickets.push(ticket);
+    saveTickets();
+    res.json({ ticket: ticketFull(ticket, req.user) });
+});
+
+// A single ticket with its full thread. Viewing marks it read for this role.
+app.get('/api/support/tickets/:id', requireAuth, (req, res) => {
+    const t = findTicket(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Ticket not found.' });
+    if (t.userId !== req.user.id && !req.user.isAdmin) {
+        return res.status(403).json({ error: 'You can only view your own tickets.' });
+    }
+    if (req.user.isAdmin) t.lastReadByAdmin = new Date().toISOString();
+    if (t.userId === req.user.id) t.lastReadByUser = new Date().toISOString();
+    saveTickets();
+    res.json({ ticket: ticketFull(t, req.user) });
+});
+
+// Add a reply to a thread. An admin reply moves the ticket to 'answered'; a
+// user reply (re)opens it. Replying to a closed ticket reopens it.
+app.post('/api/support/tickets/:id/reply', requireAuth, (req, res) => {
+    const t = findTicket(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Ticket not found.' });
+    const isOwner = t.userId === req.user.id;
+    if (!isOwner && !req.user.isAdmin) {
+        return res.status(403).json({ error: 'You cannot reply to this ticket.' });
+    }
+    const body = clampStr((req.body || {}).body, 5000).trim();
+    if (!body) return res.status(400).json({ error: 'Reply cannot be empty.' });
+
+    // An admin who is not the owner replies as staff; the owner replies as a user
+    // even if they happen to be an admin themselves.
+    const asAdmin = req.user.isAdmin && !isOwner;
+    const now = new Date().toISOString();
+    t.messages.push({
+        id: crypto.randomUUID(),
+        authorId: req.user.id,
+        authorEmail: req.user.email,
+        isAdmin: asAdmin,
+        body,
+        time: now,
+    });
+    t.updatedAt = now;
+    // A staff reply marks it answered; a user reply (re)opens it — even from closed.
+    t.status = asAdmin ? 'answered' : 'open';
+    if (asAdmin) t.lastReadByAdmin = now; else t.lastReadByUser = now;
+    saveTickets();
+    res.json({ ticket: ticketFull(t, req.user) });
+});
+
+// Close (or reopen) a ticket. Owner or admin.
+app.post('/api/support/tickets/:id/status', requireAuth, (req, res) => {
+    const t = findTicket(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Ticket not found.' });
+    if (t.userId !== req.user.id && !req.user.isAdmin) {
+        return res.status(403).json({ error: 'You cannot change this ticket.' });
+    }
+    const status = String((req.body || {}).status || '');
+    if (!TICKET_STATUSES.includes(status)) return res.status(400).json({ error: 'Unknown status.' });
+    t.status = status;
+    t.updatedAt = new Date().toISOString();
+    saveTickets();
+    res.json({ ticket: ticketFull(t, req.user) });
+});
+
+// Small badge count for the current viewer (tickets needing their attention).
+app.get('/api/support/unread', requireAuth, (req, res) => {
+    const isAdminViewer = !!req.user.isAdmin;
+    let count = 0;
+    for (const t of tickets) {
+        if (isAdminViewer) {
+            if (t.status !== 'closed' && ticketUnreadFor(t, true)) count++;
+        } else if (t.userId === req.user.id && ticketUnreadFor(t, false)) {
+            count++;
+        }
+    }
+    res.json({ count });
+});
+
+// Admin: every ticket, newest activity first, optionally filtered.
+app.get('/api/support/admin/tickets', requireAdmin, (req, res) => {
+    const status = String(req.query.status || '');
+    const search = normEmail(req.query.search);
+    let list = [...tickets];
+    if (TICKET_STATUSES.includes(status)) list = list.filter((t) => t.status === status);
+    if (search) list = list.filter((t) => (t.email || '').includes(search) || (t.subject || '').toLowerCase().includes(search));
+    list.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    res.json({ tickets: list.map((t) => ticketSummary(t, req.user)) });
 });
 
 // ─── Chase Stream Hub ────────────────────────────────────────────────────────

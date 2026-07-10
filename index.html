@@ -527,9 +527,14 @@
                     <br>
 
                     <div class="armrHeader">INFO</div>
-                    <div class="atticRadarMenuRow" id="armrAboutBtn">
+                    <div class="atticRadarMenuRow armrTop" id="armrAboutBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-circle-info"></i>
                         Our Team
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="atticRadarMenuRow armrBottom" id="armrSupportBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-life-ring"></i>
+                        Support
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
 
@@ -1340,6 +1345,8 @@
 
     <!-- Vortex Radar account / admin glue (ES module, not bundled) -->
     <script type="module" src="./components/vortex_account.js"></script>
+    <!-- In-app support tickets (ES module, not bundled) -->
+    <script type="module" src="./components/support.js"></script>
     <!-- Native (Capacitor) compatibility shims — no-op in a browser -->
     <script type="module" src="./components/native_adapt.js"></script>
     <!-- Vortex Radar feature layers (cams, sponsors, reports, spotters, MRMS) -->
