@@ -74,6 +74,9 @@ function load() {
     // load the draw menu item
     require('../../draw/menu_item');
 
+    // load the manual storm track tool
+    require('../../tools/manual_storm_track/menu_item');
+
     // load the attribution map div
     require('../attribution/attribution');
 
