@@ -3,14 +3,14 @@
  * Population-aware place database for the Manual Storm Track tool's "Impact
  * Times" panel. Each record is [name, lat, lon, population].
  *
- * This is a curated list of ~180 well-known US communities with approximate
- * populations — enough to give a meaningful "communities in the path" readout
- * and a realistic total-population figure for metro-scale swaths. It is
- * intentionally easy to extend:
+ * Source priority:
+ *   1. window.atticData.mstCities, if an app supplies its own array.
+ *   2. ./mst_cities_data.js — ~17k US populated places (pop >= 1000) generated
+ *      from GeoNames (CC-BY 4.0). This is the normal path.
+ *   3. The small CURATED list below, only as a fallback if (2) is missing.
  *
- *   - Drop a bigger array on window.atticData.mstCities (same [name,lat,lon,pop]
- *     shape, e.g. loaded from a Census/GeoNames CSV) and it is used instead of
- *     this curated list — the tool picks it up automatically.
+ * Regenerate mst_cities_data.js from GeoNames cities1000.txt: keep rows where
+ * country code == 'US' and feature class == 'P', emit [asciiname, lat, lon, pop].
  */
 
 // [name, lat, lon, population]
@@ -105,6 +105,16 @@ const CURATED = [
     ['Anderson', 34.50, -82.65, 27973], ['Aiken', 33.56, -81.72, 30658],
 ];
 
+// Full dataset: ~17k US populated places (pop >= 1000) from GeoNames. Falls back
+// to the small curated list only if that generated file is missing.
+function baseList() {
+    try {
+        const full = require('./mst_cities_data');
+        if (Array.isArray(full) && full.length) return full;
+    } catch (e) { /* generated file absent — use curated */ }
+    return CURATED;
+}
+
 let _cache = null;
 
 // Returns [{ name, lat, lon, population }]. A caller can override the whole set
@@ -112,7 +122,7 @@ let _cache = null;
 function getCities() {
     if (_cache) return _cache;
     const override = (typeof window !== 'undefined' && window.atticData && window.atticData.mstCities);
-    const source = Array.isArray(override) ? override : CURATED;
+    const source = Array.isArray(override) ? override : baseList();
     _cache = source
         .filter((c) => Array.isArray(c) && c.length >= 3)
         .map((c) => ({ name: c[0], lat: +c[1], lon: +c[2], population: +(c[3] || 0) }));
