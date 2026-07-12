@@ -176,10 +176,14 @@
     </form>
 
     <form class="form" id="forgot-form" autocomplete="on">
-      <p class="sub" style="margin: -6px 0 14px;">Enter the email on your account. An admin will issue you a temporary password and contact you at <a id="support-link" href="#" style="color: var(--primary);">support</a>.</p>
+      <p class="sub" style="margin: -6px 0 14px;">Enter the email on your account and we'll open a support ticket for you. An admin will reset your password and reply in the ticket — you'll see the conversation in-app once you're back in. You can also email <a id="support-link" href="#" style="color: var(--primary);">support</a> directly.</p>
       <label for="forgot-email">Email</label>
       <input id="forgot-email" name="email" type="email" required autocomplete="email" />
-      <button class="primary" type="submit">Request password reset</button>
+      <label for="forgot-message">Add a note for support (optional)</label>
+      <textarea id="forgot-message" name="message" rows="3" maxlength="2000"
+        placeholder="Anything that helps us verify it's you or understand the issue."
+        style="width:100%; padding:11px 12px; border-radius:8px; background:rgba(0,0,0,0.35); border:1px solid var(--border); color:var(--text); font-size:1em; font-family:inherit; resize:vertical;"></textarea>
+      <button class="primary" type="submit">Open support ticket</button>
       <div class="msg" id="forgot-msg" role="alert"></div>
     </form>
 
@@ -269,13 +273,14 @@
       btn.disabled = true;
       setMsg('forgot-msg', '');
       const email = document.getElementById('forgot-email').value;
-      const { ok } = await postJson('/auth/forgot', { email });
+      const message = document.getElementById('forgot-message').value;
+      const { ok } = await postJson('/auth/forgot', { email, message });
       btn.disabled = false;
       if (!ok) {
         setMsg('forgot-msg', 'Could not submit request. Try again later.', 'error');
         return;
       }
-      setMsg('forgot-msg', 'Request received. If an account exists for that email, an admin will issue a temporary password and contact you.', 'success');
+      setMsg('forgot-msg', 'Support ticket opened. If an account exists for that email, an admin will reset your password and reply — you\'ll see the ticket in-app once you sign back in.', 'success');
       forms.forgot.querySelector('button').disabled = true;
     });
 

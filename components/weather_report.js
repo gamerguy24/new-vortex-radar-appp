@@ -28,6 +28,29 @@ const HAZARDS = [
 
 const hazardById = (id) => HAZARDS.find((h) => h.id === id) || HAZARDS[HAZARDS.length - 1];
 
+// GPS accuracy handling. A single getCurrentPosition() reading is often a coarse
+// Wi-Fi/IP-based fix (tens of miles off on a laptop), which is exactly how a
+// report ends up far from where the spotter actually is. So we watch the
+// position, keep the *most accurate* fix, and tell the user how tight it is.
+const GPS_GOOD_M   = 50;    // <= this: a real GPS fix, settle immediately
+const GPS_OK_M     = 300;   // <= this: good enough to place a report
+const GPS_COARSE_M = 3000;  // <= this: approximate (warn); above: rough (strong warn)
+const GPS_MAX_WAIT_MS = 15000; // keep refining up to this long, then take best
+
+// meters -> friendly "±X m" / "±X mi"
+function fmtAccuracy(m) {
+    if (m == null || !isFinite(m)) return '';
+    if (m < 1000) return `±${Math.round(m)} m`;
+    const mi = m / 1609.34;
+    return `±${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
+}
+
+function gpsErrorText(err) {
+    if (err && err.code === 1) return 'Location access denied — enable location for this site, or drag the map and tap "Use map center".';
+    if (err && err.code === 3) return 'GPS timed out — drag the map to your spot and tap "Use map center".';
+    return 'Could not get your location — drag the map and tap "Use map center".';
+}
+
 let _reports = [];
 let _pollTimer = null;
 let _lastSig = '';
@@ -110,6 +133,7 @@ function renderMarkers() {
 
         const detail = report.measure ? `<div class="wr-pop-detail">${escapeHtml(report.measure)} ${escapeHtml(report.measureUnit || '')}</div>` : '';
         const notes = report.notes ? `<div class="wr-pop-notes">${escapeHtml(report.notes)}</div>` : '';
+        const acc = (report.accuracy != null) ? ` · GPS ${fmtAccuracy(report.accuracy)}` : '';
         const popupHtml = `
             <div class="wr-popup">
                 <div class="wr-pop-head" style="color:${hz.color};">
@@ -117,7 +141,7 @@ function renderMarkers() {
                 </div>
                 ${detail}
                 ${notes}
-                <div class="wr-pop-time">${formatTime(report.time)}</div>
+                <div class="wr-pop-time">${formatTime(report.time)}${acc}</div>
             </div>`;
 
         const popup = new maplibregl.Popup({ offset: 18, closeButton: true })
@@ -158,7 +182,15 @@ export function removeWeatherReportMarkers() {
 export default function openWeatherReport(mapInstance) {
     _mlMap = mapInstance?.map || mapInstance;
 
-    const state = { type: null, lat: null, lng: null, submitting: false };
+    const state = { type: null, lat: null, lng: null, accuracy: null, submitting: false };
+
+    // Live GPS watcher handles for this dialog (cleared on settle / close).
+    let gpsWatchId = null, gpsTimer = null, gpsBest = null;
+    function stopWatch() {
+        if (gpsWatchId != null && navigator.geolocation) { navigator.geolocation.clearWatch(gpsWatchId); }
+        gpsWatchId = null;
+        if (gpsTimer) { clearTimeout(gpsTimer); gpsTimer = null; }
+    }
 
     const chips = HAZARDS.map((h) => `
         <button type="button" class="wr-chip" data-hazard="${h.id}" style="--wr-color:${h.color};">
@@ -201,6 +233,9 @@ export default function openWeatherReport(mapInstance) {
         </div>`;
 
     const dialog = new Dialog('Report Weather', 'flag-3', content, {}, true);
+    // Make sure the GPS watcher is released when the dialog goes away.
+    const _origClose = dialog.close.bind(dialog);
+    dialog.close = () => { stopWatch(); _origClose(); };
 
     const $ = (id) => document.getElementById(id);
     const chipGrid   = $('wr-chip-grid');
@@ -217,42 +252,93 @@ export default function openWeatherReport(mapInstance) {
         submitBtn.disabled = state.submitting || !(state.type && state.lat != null && state.lng != null);
     }
 
-    function setLocation(lat, lng, label) {
+    // label: e.g. 'GPS' or 'map center'. accuracy: meters (null when unknown, e.g.
+    // map center). refining: still waiting on a tighter GPS fix.
+    function setLocation(lat, lng, label, accuracy = null, refining = false) {
         state.lat = lat;
         state.lng = lng;
+        state.accuracy = (accuracy != null && isFinite(accuracy)) ? accuracy : null;
         locationEl.classList.remove('wr-error');
-        locationEl.innerHTML = `<i class="ti ti-map-pin-filled"></i> ${lat.toFixed(4)}, ${lng.toFixed(4)} <span class="wr-loc-src">· ${label}</span>`;
+        const accTxt = state.accuracy != null ? ` (${fmtAccuracy(state.accuracy)})` : '';
+        const icon = refining ? 'ti-loader-2 wr-spin' : 'ti-map-pin-filled';
+        const src = refining ? `· refining ${label}…` : `· ${label}`;
+        locationEl.innerHTML = `<i class="ti ${icon}"></i> ${lat.toFixed(4)}, ${lng.toFixed(4)}${accTxt} <span class="wr-loc-src">${src}</span>`;
         refreshSubmitState();
     }
 
     function locationError(text) {
-        state.lat = state.lng = null;
+        state.lat = state.lng = state.accuracy = null;
         locationEl.classList.add('wr-error');
         locationEl.innerHTML = `<i class="ti ti-alert-circle"></i> ${escapeHtml(text)}`;
         refreshSubmitState();
     }
 
+    function fallbackToCenter(reason) {
+        if (_mlMap) {
+            const c = _mlMap.getCenter();
+            setLocation(c.lat, c.lng, 'map center', null, false);
+            msgEl.textContent = reason + ' Using map center — drag the map to your exact spot and tap "Use map center".';
+            msgEl.className = 'wr-msg wr-msg-warn';
+        } else {
+            locationError(reason);
+        }
+    }
+
+    // Once we settle on the best GPS fix, decide how much to trust it.
+    function applyGpsFix(fix) {
+        setLocation(fix.lat, fix.lng, 'GPS', fix.accuracy, false);
+        if (fix.accuracy != null && fix.accuracy > GPS_COARSE_M) {
+            msgEl.textContent = `Your device only returned a rough location (${fmtAccuracy(fix.accuracy)}) — common on laptops/desktops without GPS. Please drag the map to your exact spot and tap "Use map center" before submitting.`;
+            msgEl.className = 'wr-msg wr-msg-warn';
+        } else if (fix.accuracy != null && fix.accuracy > GPS_OK_M) {
+            msgEl.textContent = `Approximate location (${fmtAccuracy(fix.accuracy)}). If the pin looks off, drag the map and tap "Use map center".`;
+            msgEl.className = 'wr-msg wr-msg-warn';
+        } else {
+            msgEl.textContent = '';
+            msgEl.className = 'wr-msg';
+        }
+    }
+
     function useGPS() {
         if (!navigator.geolocation) {
-            locationError('Geolocation not supported - use map center instead.');
+            fallbackToCenter('Geolocation isn\'t supported on this device.');
             return;
         }
+        stopWatch();
+        gpsBest = null;
+        let settled = false;
         locationEl.classList.remove('wr-error');
-        locationEl.innerHTML = '<i class="ti ti-loader-2 wr-spin"></i> Acquiring your location...';
-        navigator.geolocation.getCurrentPosition(
-            (pos) => setLocation(pos.coords.latitude, pos.coords.longitude, 'GPS'),
-            ()    => {
-                if (_mlMap) {
-                    const c = _mlMap.getCenter();
-                    setLocation(c.lat, c.lng, 'map center');
-                    msgEl.textContent = 'Location access denied - using map center. Drag the map and tap "Use map center" to adjust.';
-                    msgEl.className = 'wr-msg wr-msg-warn';
-                } else {
-                    locationError('Could not get your location.');
+        locationEl.innerHTML = '<i class="ti ti-loader-2 wr-spin"></i> Acquiring GPS…';
+
+        const settle = () => {
+            if (settled) return;
+            settled = true;
+            stopWatch();
+            if (gpsBest) applyGpsFix(gpsBest);
+            else fallbackToCenter('Could not get a GPS fix.');
+        };
+
+        gpsWatchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                const acc = pos.coords.accuracy; // meters (95% confidence radius)
+                if (!gpsBest || acc < gpsBest.accuracy) {
+                    gpsBest = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: acc };
                 }
+                // Live preview so the user watches the fix tighten from ±miles to ±m.
+                if (!settled) setLocation(gpsBest.lat, gpsBest.lng, 'GPS', gpsBest.accuracy, true);
+                // A tight fix is as good as it gets — stop early.
+                if (gpsBest.accuracy <= GPS_GOOD_M) settle();
             },
-            { enableHighAccuracy: true, timeout: 10000 }
+            (err) => {
+                // Keep any fix we already have; otherwise fall back to map center.
+                if (gpsBest) settle();
+                else if (!settled) { settled = true; stopWatch(); fallbackToCenter(gpsErrorText(err)); }
+            },
+            { enableHighAccuracy: true, maximumAge: 0, timeout: GPS_MAX_WAIT_MS }
         );
+
+        // Stop refining after the max wait and take the best fix so far.
+        gpsTimer = setTimeout(settle, GPS_MAX_WAIT_MS);
     }
 
     chipGrid.addEventListener('click', (e) => {
@@ -278,9 +364,12 @@ export default function openWeatherReport(mapInstance) {
 
     $('wr-gps').addEventListener('click', useGPS);
     $('wr-center').addEventListener('click', () => {
+        stopWatch(); // user chose the map center explicitly; stop overriding it
         if (!_mlMap) { locationError('Map not ready.'); return; }
         const c = _mlMap.getCenter();
-        setLocation(c.lat, c.lng, 'map center');
+        setLocation(c.lat, c.lng, 'map center', null, false);
+        msgEl.textContent = '';
+        msgEl.className = 'wr-msg';
     });
 
     submitBtn.addEventListener('click', async () => {
@@ -290,6 +379,7 @@ export default function openWeatherReport(mapInstance) {
             type: state.type,
             lat: state.lat,
             lng: state.lng,
+            accuracy: state.accuracy,
             notes: notesEl.value.trim(),
         };
         if (hz.measure && measureInp.value !== '') {
@@ -363,7 +453,7 @@ export default function openWeatherReport(mapInstance) {
                     <span class="wr-item-icon" style="color:${hz.color};"><i class="ti ti-${hz.icon}"></i></span>
                     <span class="wr-item-body">
                         <span class="wr-item-title">${escapeHtml(hz.label)}${meas}</span>
-                        <span class="wr-item-sub">${formatTime(r.time)} · ${Number(r.lat).toFixed(3)}, ${Number(r.lng).toFixed(3)}</span>
+                        <span class="wr-item-sub">${formatTime(r.time)} · ${Number(r.lat).toFixed(3)}, ${Number(r.lng).toFixed(3)}${r.accuracy != null ? ' · ' + fmtAccuracy(r.accuracy) : ''}</span>
                     </span>
                     <button type="button" class="wr-item-go" data-go="${r.id}" title="Show on map"><i class="ti ti-map-pin"></i></button>
                     <button type="button" class="wr-item-del" data-del="${r.id}" title="Delete report"><i class="ti ti-trash"></i></button>

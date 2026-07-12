@@ -307,11 +307,18 @@ app.get('/auth/me', (req, res) => {
 app.post('/auth/forgot', (req, res) => {
     const email = normEmail(req.body.email);
     const user = findByEmail(email);
-    // Only record a request if the account exists, but always respond ok so we
-    // don't leak which emails are registered.
-    if (user && !resetRequests.some((r) => r.email === email)) {
-        resetRequests.push({ id: crypto.randomUUID(), email, requestedAt: new Date().toISOString() });
-        saveResets();
+    // Only act if the account exists, but always respond ok so we don't leak
+    // which emails are registered.
+    if (user) {
+        // Keep the lightweight reset-request record so the admin panel's one-click
+        // "issue a temporary password" fulfill flow still works.
+        if (!resetRequests.some((r) => r.email === email)) {
+            resetRequests.push({ id: crypto.randomUUID(), email, requestedAt: new Date().toISOString() });
+            saveResets();
+        }
+        // And open a support ticket so it lands in the help desk and the user has
+        // a conversation thread waiting once they regain access.
+        try { openPasswordResetTicket(user, req.body.message); } catch (e) { /* non-fatal */ }
     }
     res.json({ ok: true });
 });
@@ -457,6 +464,7 @@ function publicReport(r, userId) {
         type: r.type,
         lat: r.lat,
         lng: r.lng,
+        accuracy: r.accuracy != null ? r.accuracy : null,
         notes: r.notes || '',
         measure: r.measure || null,
         measureUnit: r.measureUnit || '',
@@ -474,6 +482,7 @@ app.post('/api/reports', requireAuth, (req, res) => {
     const b = req.body || {};
     const lat = Number(b.lat);
     const lng = Number(b.lng);
+    const accuracy = Number(b.accuracy);
     if (!b.type || typeof b.type !== 'string') return res.status(400).json({ error: 'A hazard type is required.' });
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(400).json({ error: 'A valid location is required.' });
 
@@ -482,6 +491,7 @@ app.post('/api/reports', requireAuth, (req, res) => {
         userId: req.user.id,
         type: b.type.slice(0, 40),
         lat, lng,
+        accuracy: Number.isFinite(accuracy) && accuracy >= 0 ? Math.round(accuracy) : null,
         notes: String(b.notes || '').slice(0, 500),
         measure: b.measure != null ? String(b.measure).slice(0, 20) : null,
         measureUnit: String(b.measureUnit || '').slice(0, 10),
@@ -602,6 +612,7 @@ function ticketSummary(t, viewer) {
         id: t.id,
         subject: t.subject,
         category: t.category,
+        kind: t.kind || null,
         status: t.status,
         email: t.email,
         mine: t.userId === viewer.id,
@@ -624,6 +635,49 @@ function ticketFull(t, viewer) {
             mine: m.authorId === viewer.id,
         })),
     };
+}
+
+// Open (or append to) the help-desk ticket that backs a password-reset request.
+// A locked-out user can't sign in to use the normal ticket form, so /auth/forgot
+// calls this on their behalf once it has resolved the account by email. The
+// ticket is owned by that account, so the user sees the whole thread as soon as
+// they're back in, and admins triage it alongside every other ticket.
+function openPasswordResetTicket(user, note) {
+    const now = new Date().toISOString();
+    const cleanNote = clampStr(note, 2000).trim();
+
+    // Reuse an existing, still-open password-reset ticket so repeat requests
+    // don't spawn duplicates — just append the new note (if any).
+    let t = tickets.find((x) => x.userId === user.id && x.kind === 'password-reset' && x.status !== 'closed');
+    if (t) {
+        if (cleanNote) {
+            t.messages.push({ id: crypto.randomUUID(), authorId: user.id, authorEmail: user.email, isAdmin: false, body: cleanNote, time: now });
+        }
+        t.updatedAt = now;
+        t.status = 'open';
+        t.lastReadByUser = now;
+        saveTickets();
+        return t;
+    }
+
+    const body = cleanNote || 'I forgot my password and need help getting back into my account.';
+    t = {
+        id: crypto.randomUUID(),
+        userId: user.id,
+        email: user.email,
+        subject: 'Password reset request',
+        category: 'Account',
+        kind: 'password-reset',
+        status: 'open',
+        createdAt: now,
+        updatedAt: now,
+        lastReadByUser: now,
+        lastReadByAdmin: null,
+        messages: [{ id: crypto.randomUUID(), authorId: user.id, authorEmail: user.email, isAdmin: false, body, time: now }],
+    };
+    tickets.push(t);
+    saveTickets();
+    return t;
 }
 
 // List the caller's own tickets (newest activity first).
