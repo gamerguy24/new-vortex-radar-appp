@@ -7,17 +7,6 @@ const CAMERAS = [
     { name: 'Austell, GA - Live Train Cam', url: 'https://www.youtube.com/embed/CQLQ4MqXdtE?autoplay=1', lng: -84.6388, lat: 33.8126 },
     { name: 'Gatlinburg, TN - SkyPark', url: 'https://www.youtube.com/embed/teGLziUvDkI?autoplay=1', lng: -83.5124, lat: 35.7143 },
     { name: 'Lawton, OK', url: 'https://www.youtube.com/embed/n7uM73bpS3E?autoplay=1', lng: -98.3903, lat: 34.6087 },
-    { name: 'Dahlonega, GA', url: 'https://hazcams.com/station/dahlonega-ga-us-001?share=adf0a82fa9', lng: -83.9852, lat: 34.5326 },
-    { name: 'Gadsden, AL - Noccalula Road', url: 'https://hazcams.com/station/gadsden-al-us-001?share=3f4c2159f4', lng: -86.0166, lat: 34.0143 },
-    { name: 'Montgomery, AL', url: 'https://hazcams.com/station/montgomery-al-us-001?share=00a26e44b6', lng: -86.2999, lat: 32.3617 },
-    { name: 'Panama City, FL', url: 'https://hazcams.com/station/panama-city-fl-us-001?share=7b0c548b0d', lng: -85.6602, lat: 30.1588 },
-    { name: 'Gulf Shores, AL', url: 'https://hazcams.com/station/gulf-shores-al-us-001?share=f9bf48cb5c', lng: -87.7006, lat: 30.2460 },
-    { name: 'Orange Beach, AL', url: 'https://hazcams.com/station/orange-beach-al-us-001?share=72b08f28ef', lng: -87.5772, lat: 30.2974 },
-    { name: 'Anniston, AL', url: 'https://hazcams.com/station/anniston-al-us-001?share=da9e475d5b', lng: -85.8316, lat: 33.6598 },
-    { name: 'Mt. Cheaha, AL', url: 'https://hazcams.com/station/cheaha-al-us-001?share=bf1506db82', lng: -85.8094, lat: 33.4854 },
-    { name: 'Fairhope, AL', url: 'https://hazcams.com/station/fairhope-al-us-001?share=670041545c', lng: -87.9031, lat: 30.5227 },
-    { name: 'Dauphin Island, AL - South', url: 'https://hazcams.com/station/dauphin-island-al-us-002?share=acca311bda', lng: -88.1001, lat: 30.2474 },
-    { name: 'Tuscaloosa, AL - Bryant-Denny Stadium', url: 'https://hazcams.com/station/tuscaloosa-al-us-001?share=21bed0a5ec', lng: -87.5500, lat: 33.2098 },
 ];
 // -----------------------------------------------------------------------------
 
