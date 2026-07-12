@@ -46,9 +46,40 @@ function fmtAccuracy(m) {
 }
 
 function gpsErrorText(err) {
-    if (err && err.code === 1) return 'Location access denied — enable location for this site, or drag the map and tap "Use map center".';
-    if (err && err.code === 3) return 'GPS timed out — drag the map to your spot and tap "Use map center".';
-    return 'Could not get your location — drag the map and tap "Use map center".';
+    if (err && err.code === 1) return 'Location access denied — enable location for this site, or pin your exact spot on the map.';
+    if (err && err.code === 3) return 'GPS timed out — pin your exact spot on the map.';
+    return 'Could not get your location — pin your exact spot on the map.';
+}
+
+// Styles for the location tip, primary button, draggable pin and confirm bar.
+let _wrExtraStyles = false;
+function injectExtraStyles() {
+    if (_wrExtraStyles) return;
+    _wrExtraStyles = true;
+    const s = document.createElement('style');
+    s.textContent = `
+    .wr-loc-tip { font-size: 12px; color: var(--text-muted, #9ca3af); margin: 8px 0 0; line-height: 1.45; }
+    .wr-loc-tip b { color: #e7eef7; }
+    .wr-btn-primary { background: #ff2121 !important; border-color: #ff2121 !important; color: #fff !important; }
+    .wr-btn-primary:hover { background: #e01818 !important; }
+    .wr-drag-pin { color: #ff2121; font-size: 40px; line-height: 1; cursor: grab;
+        filter: drop-shadow(0 3px 6px rgba(0,0,0,0.6)); -webkit-user-select: none; user-select: none; }
+    .wr-drag-pin:active { cursor: grabbing; }
+    .wr-pin-bar {
+        position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+        z-index: 100001; width: min(560px, 94vw);
+        background: rgba(11, 18, 32, 0.98); border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 14px; box-shadow: 0 16px 48px rgba(0,0,0,0.55);
+        color: #e7eef7; font-family: 'Onest', system-ui, sans-serif;
+        padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        flex-wrap: wrap;
+    }
+    .wr-pin-bar-text { font-size: 13px; display: flex; align-items: center; gap: 6px; flex: 1; min-width: 200px; }
+    .wr-pin-bar-text .ti { color: #ff2121; }
+    .wr-pin-coords { color: var(--text-muted, #9ca3af); font-variant-numeric: tabular-nums; margin-left: 6px; }
+    .wr-pin-bar-btns { display: flex; gap: 8px; flex-shrink: 0; }
+    .wr-pin-bar .wr-btn { white-space: nowrap; }`;
+    document.head.appendChild(s);
 }
 
 let _reports = [];
@@ -213,9 +244,11 @@ export default function openWeatherReport(mapInstance) {
             <div class="wr-section-label">Location</div>
             <div class="wr-location" id="wr-location">Acquiring your location...</div>
             <div class="wr-location-actions">
+                <button type="button" class="wr-btn wr-btn-primary" id="wr-pin"><i class="ti ti-pin"></i> Pin exact spot on map</button>
                 <button type="button" class="wr-btn" id="wr-gps"><i class="ti ti-current-location"></i> Use my GPS</button>
                 <button type="button" class="wr-btn" id="wr-center"><i class="ti ti-map-pin"></i> Use map center</button>
             </div>
+            <p class="wr-loc-tip">On a hotspot or laptop, GPS can be miles off. Tap <b>Pin exact spot</b> to drop a marker and drag it to exactly where you are.</p>
 
             <div class="wr-section-label">Notes <span class="wr-optional">(optional)</span></div>
             <textarea id="wr-notes" class="wr-notes" rows="3" maxlength="500" placeholder="Anything else worth noting - direction of movement, damage, conditions..."></textarea>
@@ -232,10 +265,11 @@ export default function openWeatherReport(mapInstance) {
             <div class="wr-myreports" id="wr-myreports"></div>
         </div>`;
 
+    injectExtraStyles();
     const dialog = new Dialog('Report Weather', 'flag-3', content, {}, true);
-    // Make sure the GPS watcher is released when the dialog goes away.
+    // Release the GPS watcher and any active pin-placement when the dialog goes away.
     const _origClose = dialog.close.bind(dialog);
-    dialog.close = () => { stopWatch(); _origClose(); };
+    dialog.close = () => { stopWatch(); if (_pinCleanup) _pinCleanup(); _origClose(); };
 
     const $ = (id) => document.getElementById(id);
     const chipGrid   = $('wr-chip-grid');
@@ -371,6 +405,75 @@ export default function openWeatherReport(mapInstance) {
         msgEl.textContent = '';
         msgEl.className = 'wr-msg';
     });
+    $('wr-pin').addEventListener('click', startPinPlacement);
+
+    // ── Pin-on-map placement ──────────────────────────────────────────────────
+    // The only location method that doesn't depend on GPS quality: temporarily
+    // step out of the dialog, drop a draggable marker on the real map, and let the
+    // spotter drag it (or tap the map) to their exact spot. Hotspot-proof.
+    let _pinActive = false;
+    let _pinCleanup = null;
+    function startPinPlacement() {
+        if (_pinActive) return;
+        if (!_mlMap || typeof maplibregl === 'undefined') { locationError('Map not ready.'); return; }
+        _pinActive = true;
+        stopWatch();
+        injectExtraStyles();
+
+        const start = (state.lat != null && state.lng != null)
+            ? { lng: state.lng, lat: state.lat }
+            : _mlMap.getCenter();
+        let picked = { lat: start.lat, lng: start.lng };
+
+        // Hide the dialog so the map underneath is interactive.
+        dialog.overlay.style.display = 'none';
+        _mlMap.easeTo({ center: [start.lng, start.lat], zoom: Math.max(_mlMap.getZoom(), 11), duration: 350 });
+
+        const pinEl = document.createElement('div');
+        pinEl.className = 'wr-drag-pin';
+        pinEl.innerHTML = '<i class="ti ti-map-pin-filled"></i>';
+        const marker = new maplibregl.Marker({ element: pinEl, draggable: true, anchor: 'bottom' })
+            .setLngLat([start.lng, start.lat])
+            .addTo(_mlMap);
+
+        const bar = document.createElement('div');
+        bar.className = 'wr-pin-bar';
+        bar.innerHTML = `
+            <div class="wr-pin-bar-text"><i class="ti ti-pin"></i> Drag the pin (or tap the map) to your exact location
+                <span class="wr-pin-coords" id="wr-pin-coords"></span></div>
+            <div class="wr-pin-bar-btns">
+                <button type="button" class="wr-btn" id="wr-pin-cancel">Cancel</button>
+                <button type="button" class="wr-btn wr-btn-primary" id="wr-pin-confirm"><i class="ti ti-check"></i> Confirm location</button>
+            </div>`;
+        document.body.appendChild(bar);
+
+        const coordsEl = bar.querySelector('#wr-pin-coords');
+        const updateCoords = () => { coordsEl.textContent = `${picked.lat.toFixed(4)}, ${picked.lng.toFixed(4)}`; };
+        updateCoords();
+
+        marker.on('drag', () => { const p = marker.getLngLat(); picked = { lat: p.lat, lng: p.lng }; updateCoords(); });
+        const onMapClick = (e) => { marker.setLngLat(e.lngLat); picked = { lat: e.lngLat.lat, lng: e.lngLat.lng }; updateCoords(); };
+        _mlMap.on('click', onMapClick);
+
+        function finish(restoreDialog = true) {
+            _mlMap.off('click', onMapClick);
+            try { marker.remove(); } catch { /* ignore */ }
+            bar.remove();
+            if (restoreDialog) dialog.overlay.style.display = '';
+            _pinActive = false;
+            _pinCleanup = null;
+        }
+        // Exposed so closing the dialog mid-placement tears the map UI down too.
+        _pinCleanup = () => finish(false);
+
+        bar.querySelector('#wr-pin-confirm').addEventListener('click', () => {
+            setLocation(picked.lat, picked.lng, 'pinned on map', null, false);
+            msgEl.textContent = '';
+            msgEl.className = 'wr-msg';
+            finish();
+        });
+        bar.querySelector('#wr-pin-cancel').addEventListener('click', () => finish());
+    }
 
     submitBtn.addEventListener('click', async () => {
         if (submitBtn.disabled) return;
