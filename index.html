@@ -1327,14 +1327,49 @@
                 $('#alertMenuItemIcon').trigger('click');
             }
         });
+        // Flash the alert pill for 30s whenever a brand-new alert appears.
+        let _seenAlertIds = null;   // null until the first read (so we don't flash the initial batch)
+        let _alertFlashTimer = null;
+        function flashAlertPill() {
+            const pill = document.getElementById('vortexAlertPill');
+            if (!pill) return;
+            pill.classList.add('vortexAlertFlash');
+            if (_alertFlashTimer) clearTimeout(_alertFlashTimer);
+            _alertFlashTimer = setTimeout(() => pill.classList.remove('vortexAlertFlash'), 30000);
+        }
+        function currentAlertIds() {
+            const d = window.atticData && window.atticData.alerts_data;
+            const feats = d && d.features ? d.features : [];
+            const ids = new Set();
+            for (const f of feats) {
+                // NWS alerts carry a stable id on the feature (and properties.id);
+                // using a Set also collapses the border/outline duplicate features.
+                const id = (f && (f.id || (f.properties && (f.properties.id || f.properties.identifier))));
+                if (id) ids.add(id);
+            }
+            return ids;
+        }
+
         function syncAlerts() {
             const active = $('#alertMenuItemIcon').hasClass('menu_item_selected');
             $('#vortexAlertPill').toggleClass('vortexAlertActive', active);
 
-            let n = null;
             const d = window.atticData && window.atticData.alerts_data;
-            if (d) { n = (d.features ? d.features.length : (d.length || null)); }
-            $('#vortexAlertCount').text(n != null ? ' ' + n : '');
+            // Wait until alerts have actually loaded before tracking, so the first
+            // batch that appears on load doesn't count as "new" and flash.
+            if (d) {
+                const ids = currentAlertIds();
+                if (_seenAlertIds === null) {
+                    _seenAlertIds = ids; // seed on first real read; don't flash existing alerts
+                } else {
+                    let hasNew = false;
+                    for (const id of ids) { if (!_seenAlertIds.has(id)) { hasNew = true; break; } }
+                    if (hasNew) flashAlertPill();
+                    _seenAlertIds = ids;
+                }
+                const n = ids.size || (d.features ? d.features.length : (d.length || null));
+                $('#vortexAlertCount').text(n != null ? ' ' + n : '');
+            }
         }
         observe('#alertMenuItemIcon', syncAlerts);
         setInterval(syncAlerts, 4000);

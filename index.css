@@ -1829,6 +1829,27 @@ td.day.active, span.month.active, span.year.active {
 #vortexAlertPill:hover { filter: brightness(1.08); }
 #vortexAlertPill.vortexAlertActive { box-shadow: 0 0 0 2px rgba(255,255,255,0.55), 0 6px 20px rgba(224,43,43,0.5); }
 
+/* Flash the alert pill when a brand-new alert arrives (added for 30s by
+   syncAlerts, then removed). */
+@keyframes vortexAlertFlashAnim {
+    0%, 100% {
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.85), 0 0 22px 6px rgba(255,210,60,0.95);
+        background: linear-gradient(180deg, #ffd23c, #ff8a00);
+        transform: scale(1.06);
+    }
+    50% {
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.35), 0 6px 20px rgba(224,43,43,0.45);
+        background: linear-gradient(180deg, #ff5252, #e02b2b);
+        transform: scale(1);
+    }
+}
+#vortexAlertPill.vortexAlertFlash {
+    animation: vortexAlertFlashAnim 0.7s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    #vortexAlertPill.vortexAlertFlash { animation-duration: 1.4s; }
+}
+
 /* ============================================================
    Bottom playback bar — "Vortex console" (distinct redesign)
    ============================================================ */
