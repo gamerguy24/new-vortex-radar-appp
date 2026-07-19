@@ -187,6 +187,16 @@
       <div class="msg" id="forgot-msg" role="alert"></div>
     </form>
 
+    <form class="form" id="change-form" autocomplete="on">
+      <p class="sub" style="margin: -6px 0 14px;">Your password was reset. Choose a new password to finish signing in.</p>
+      <label for="change-password">New password (10+ characters)</label>
+      <input id="change-password" type="password" required minlength="10" autocomplete="new-password" />
+      <label for="change-password2">Confirm new password</label>
+      <input id="change-password2" type="password" required minlength="10" autocomplete="new-password" />
+      <button class="primary" type="submit">Set new password &amp; continue</button>
+      <div class="msg" id="change-msg" role="alert"></div>
+    </form>
+
     <div class="help">
       <a href="#" id="forgot-link">Forgot your password?</a>
     </div>
@@ -200,11 +210,33 @@
       login: document.getElementById('login-form'),
       register: document.getElementById('register-form'),
       admin: document.getElementById('admin-form'),
-      forgot: document.getElementById('forgot-form')
+      forgot: document.getElementById('forgot-form'),
+      change: document.getElementById('change-form')
     };
     function activateTab(name) {
       tabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
       Object.entries(forms).forEach(([k, f]) => f.classList.toggle('active', k === name));
+    }
+
+    // When a user signs in with an admin-issued temporary password, force them to
+    // set their own new password before entering the app. Holds the temp password
+    // (needed as "currentPassword" for /auth/change-password) between the two steps.
+    let _pendingChange = null;
+    function showChangePassword(email, tempPassword, redirectTo) {
+      _pendingChange = { email, currentPassword: tempPassword, redirectTo: redirectTo || '/' };
+      document.querySelector('.tabs').style.display = 'none';
+      document.querySelector('.help').style.display = 'none';
+      backLinkEl.style.display = 'none';
+      cardSub.textContent = 'Set a new password to finish signing in.';
+      Object.entries(forms).forEach(([k, f]) => f.classList.toggle('active', k === 'change'));
+      document.getElementById('change-password').focus();
+    }
+    // Shared post-sign-in step: divert to the change-password screen if required,
+    // otherwise go where the caller wanted.
+    function afterAuth(email, password, user, redirectTo) {
+      saveProfile(email, user);
+      if (user && user.mustChangePassword) { showChangePassword(email, password, redirectTo); return; }
+      window.location.href = redirectTo || '/';
     }
     tabs.forEach((tab) => {
       tab.addEventListener('click', () => activateTab(tab.dataset.tab));
@@ -246,8 +278,7 @@
         setMsg('login-msg', data?.error || 'Sign in failed.', 'error');
         return;
       }
-      saveProfile(email, data && data.user);
-      window.location.href = '/';
+      afterAuth(email, password, data && data.user, '/');
     });
 
     forms.register.addEventListener('submit', async (e) => {
@@ -304,9 +335,28 @@
         setMsg('admin-msg', 'This account does not have admin access.', 'error');
         return;
       }
-      saveProfile(email, data && data.user);
-      // Admin confirmed — land directly in the in-app admin panel.
-      window.location.href = '/#admin';
+      // Admin confirmed — land directly in the in-app admin panel (after a
+      // forced password change first, if their password was reset).
+      afterAuth(email, password, data && data.user, '/#admin');
+    });
+
+    forms.change.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!_pendingChange) { window.location.href = '/'; return; }
+      const p1 = document.getElementById('change-password').value;
+      const p2 = document.getElementById('change-password2').value;
+      if (p1.length < 10) { setMsg('change-msg', 'Password must be at least 10 characters.', 'error'); return; }
+      if (p1 !== p2) { setMsg('change-msg', 'Passwords do not match.', 'error'); return; }
+      const btn = forms.change.querySelector('button');
+      btn.disabled = true;
+      setMsg('change-msg', '');
+      const { ok, data } = await postJson('/auth/change-password', { currentPassword: _pendingChange.currentPassword, newPassword: p1 });
+      btn.disabled = false;
+      if (!ok) {
+        setMsg('change-msg', data?.error || 'Could not set your new password.', 'error');
+        return;
+      }
+      window.location.href = _pendingChange.redirectTo || '/';
     });
 
     // ── Saved profiles (account chooser) ──────────────────────────────────

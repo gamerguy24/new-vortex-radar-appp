@@ -425,6 +425,25 @@ app.delete('/admin/users/:id', requireAdmin, (req, res) => {
     res.json({ ok: true });
 });
 
+// Directly reset any user's password from the admin panel (no pending request
+// needed). Sets a temporary password the user must change on next sign-in, and
+// signs out their active sessions so the old password stops working everywhere.
+app.post('/admin/users/:id/reset-password', requireAdmin, (req, res) => {
+    const user = findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    const newPassword = String(req.body.newPassword || '');
+    if (newPassword.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+    user.passwordHash = hashPassword(newPassword);
+    user.mustChangePassword = true;
+    user.isLocked = false;
+    destroySessionsForUser(user.id);
+    // Clear any pending reset request for this user now that it's handled.
+    resetRequests = resetRequests.filter((r) => r.email !== user.email);
+    saveUsers();
+    saveResets();
+    res.json({ ok: true });
+});
+
 app.get('/admin/reset-requests', requireAdmin, (req, res) => {
     const list = [...resetRequests].sort((a, b) => new Date(a.requestedAt) - new Date(b.requestedAt));
     res.json({ requests: list });

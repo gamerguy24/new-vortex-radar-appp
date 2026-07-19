@@ -270,6 +270,7 @@ export function initAdminPanel(root) {
             const actions = u.isSuperAdmin
                 ? '<span style="color: rgba(255,255,255,0.4); font-size: 0.85em;">Protected</span>'
                 : `
+                    <button data-action="reset-password" data-id="${u.id}" data-email="${escapeHtml(u.email)}">Reset password</button>
                     <button data-action="${u.isAdmin ? 'revoke-admin' : 'make-admin'}" data-id="${u.id}" data-email="${escapeHtml(u.email)}">${u.isAdmin ? 'Revoke admin' : 'Make admin'}</button>
                     <button data-action="${u.isLocked ? 'unlock' : 'lock'}" data-id="${u.id}" data-email="${escapeHtml(u.email)}">${u.isLocked ? 'Unlock' : 'Lock'}</button>
                     <button data-action="delete" data-id="${u.id}" data-email="${escapeHtml(u.email)}" class="danger">Delete</button>
@@ -326,7 +327,21 @@ export function initAdminPanel(root) {
         if (!btn) return;
         const { action, id, email } = btn.dataset;
 
-        if (action === 'make-admin' || action === 'revoke-admin') {
+        if (action === 'reset-password') {
+            openModal({
+                title: `Reset password for ${email}`,
+                desc: 'Set a temporary password (10+ chars). The user must change it on next sign-in, and any active sessions are signed out. Share it with them privately — it is not shown again.',
+                fields: `<label>Temporary password</label><input id="ap-reset-pw" type="text" autocomplete="off" minlength="10" />`,
+                onSubmit: async () => {
+                    const pw = root.querySelector('#ap-reset-pw').value;
+                    if (pw.length < 10) throw new Error('Password must be at least 10 characters.');
+                    await api('POST', `/admin/users/${id}/reset-password`, { newPassword: pw });
+                    flash(`Password reset for ${email}`, 'success');
+                    loadUsers();
+                    loadPending();
+                }
+            });
+        } else if (action === 'make-admin' || action === 'revoke-admin') {
             const makeAdmin = action === 'make-admin';
             if (!confirm(`${makeAdmin ? 'Grant admin to' : 'Revoke admin from'} ${email}?`)) return;
             try {
