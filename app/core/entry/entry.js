@@ -64,6 +64,9 @@ function load() {
     // load the hurricane hunters (live recon aircraft + HDOB track) layer toggle
     require('../../hurricanes/recon/hunters_menu_item');
 
+    // load the GOES-19 Clean IR satellite layer toggle
+    require('../../satellite/menu_item');
+
     // load the SPC module
     require('../../spc/menu_item');
 
