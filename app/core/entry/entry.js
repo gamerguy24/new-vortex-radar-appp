@@ -58,6 +58,12 @@ function load() {
     // load the hurricanes module
     require('../../hurricanes/menu_item');
 
+    // load the spaghetti-models (a-deck guidance) layer toggle
+    require('../../hurricanes/nhc/spaghetti_menu_item');
+
+    // load the hurricane hunters (live recon aircraft + HDOB track) layer toggle
+    require('../../hurricanes/recon/hunters_menu_item');
+
     // load the SPC module
     require('../../spc/menu_item');
 

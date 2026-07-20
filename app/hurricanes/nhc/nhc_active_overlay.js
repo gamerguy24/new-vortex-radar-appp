@@ -21,8 +21,28 @@ const ut = require('../../core/utils');
 const map = require('../../core/map/map');
 const turf = require('@turf/turf');
 const kmz_to_geojson = require('../kmz_to_geojson');
+const icons = require('../../core/map/icons/icons');
 
 const NHC_KMZ_URL = 'https://www.nhc.noaa.gov/gis/kml/nhc.kmz';
+
+// Saffir-Simpson-ish category icon for the current-position marker, from the
+// advisory's max sustained wind (mph).
+const HURRICANE_ICONS = [
+    [icons.icons.hurricane_TD, 'hurricane_TD'], [icons.icons.hurricane_TS, 'hurricane_TS'],
+    [icons.icons.hurricane_C1, 'hurricane_C1'], [icons.icons.hurricane_C2, 'hurricane_C2'],
+    [icons.icons.hurricane_C3, 'hurricane_C3'], [icons.icons.hurricane_C4, 'hurricane_C4'],
+    [icons.icons.hurricane_C5, 'hurricane_C5'], [icons.icons.hurricane_OTHER, 'hurricane_OTHER'],
+];
+function iconForMph(mph) {
+    if (!isFinite(mph)) return 'hurricane_OTHER';
+    if (mph < 39) return 'hurricane_TD';
+    if (mph < 74) return 'hurricane_TS';
+    if (mph < 96) return 'hurricane_C1';
+    if (mph < 111) return 'hurricane_C2';
+    if (mph < 130) return 'hurricane_C3';
+    if (mph < 157) return 'hurricane_C4';
+    return 'hurricane_C5';
+}
 
 // ── proxy fetch helpers ──────────────────────────────────────────────────────
 function fetchBlob(url) {
@@ -155,27 +175,35 @@ function render(pastFeatures, windFeatures, centerFeatures) {
         }
     }
 
-    // Storm-center marker + label (drawn last, sits on top).
+    // Storm-center marker — the "actual storm": a Saffir-Simpson category icon at
+    // the official NHC center, with the storm's name labeled beneath it.
     if (centerFeatures.length) {
         if (addOrSet(IDS.ctrSrc, centerFeatures)) {
-            const byType = ['match', ['get', 'tcType'],
-                'HU', '#e11d48', 'MH', '#b91c1c', 'TS', '#f59e0b', 'STS', '#f59e0b', 'SS', '#f59e0b',
-                'TD', '#eab308', 'SD', '#eab308', /* other */ '#38bdf8'];
-            map.addLayer({
-                id: IDS.ctrDot, type: 'circle', source: IDS.ctrSrc,
-                paint: { 'circle-radius': 7, 'circle-color': byType, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 },
+            icons.add_icon_svg(HURRICANE_ICONS, () => {
+                if (!map.getSource(IDS.ctrSrc)) return; // toggled off before icons finished loading
+                if (!map.getLayer(IDS.ctrDot)) {
+                    map.addLayer({
+                        id: IDS.ctrDot, type: 'symbol', source: IDS.ctrSrc,
+                        layout: {
+                            'icon-image': ['coalesce', ['get', 'icon_abbv'], 'hurricane_OTHER'],
+                            'icon-size': 0.18, 'icon-allow-overlap': true,
+                        },
+                    });
+                }
+                if (!map.getLayer(IDS.ctrLabel)) {
+                    map.addLayer({
+                        id: IDS.ctrLabel, type: 'symbol', source: IDS.ctrSrc,
+                        layout: {
+                            'text-field': ['upcase', ['coalesce', ['get', 'tcName'], ['get', 'name']]],
+                            'text-size': 13, 'text-offset': [0, 1.7], 'text-anchor': 'top',
+                            'text-allow-overlap': true,
+                        },
+                        paint: { 'text-color': '#ffffff', 'text-halo-color': '#0b1220', 'text-halo-width': 1.8 },
+                    });
+                }
+                registerLayer(IDS.ctrDot); registerLayer(IDS.ctrLabel);
+                bindCenterPopup();
             });
-            map.addLayer({
-                id: IDS.ctrLabel, type: 'symbol', source: IDS.ctrSrc,
-                layout: {
-                    'text-field': ['coalesce', ['get', 'tcName'], ['get', 'name']],
-                    'text-size': 13, 'text-offset': [0, 1.2], 'text-anchor': 'top',
-                    'text-allow-overlap': false,
-                },
-                paint: { 'text-color': '#ffffff', 'text-halo-color': '#0b1220', 'text-halo-width': 1.6 },
-            });
-            registerLayer(IDS.ctrDot); registerLayer(IDS.ctrLabel);
-            bindCenterPopup();
         }
     }
 }
@@ -224,7 +252,9 @@ function nhc_active_overlay() {
             const past = [], wind = [], centers = [];
             for (const s of storms) {
                 if (isFinite(s.centerLat) && isFinite(s.centerLon)) {
-                    centers.push(turf.point([s.centerLon, s.centerLat], Object.assign({ _kind: 'center', name: s.name }, s.meta)));
+                    const mph = parseInt(s.meta.maxSustainedWind, 10);
+                    const props = Object.assign({ _kind: 'center', name: s.name, icon_abbv: iconForMph(mph) }, s.meta);
+                    centers.push(turf.point([s.centerLon, s.centerLat], props));
                 }
             }
 
