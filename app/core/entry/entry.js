@@ -76,6 +76,9 @@ function load() {
     // load the about menu
     require('../about/about_screen');
 
+    // load the "What's New" changelog screen
+    require('../changelog/changelog');
+
     // // detect if AtticRadar is being loaded in an iframe
     // require('../misc/detect_iframe');
     // require('../misc/message');
