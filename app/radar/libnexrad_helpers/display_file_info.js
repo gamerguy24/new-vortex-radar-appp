@@ -70,7 +70,7 @@ function display_file_info() {
     // display the VCP
     var radar_vcp = ut.vcpObj[this.vcp];
     if (radar_vcp == undefined) { radar_vcp = 'Unknown'; }
-    $('#radarVCP').html(`VCP: ${this.vcp} (${radar_vcp})`);
+    $('#radarVCP').html(`VCP ${this.vcp} · ${radar_vcp}`);
 
     // display the elevation angle
     $('#extraProductInfo').show().html(`Elevation: ${this.elevation_angle.toFixed(1)}°`);
