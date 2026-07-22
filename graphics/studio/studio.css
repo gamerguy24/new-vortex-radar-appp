@@ -265,6 +265,16 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 4px; }
   border-radius: var(--radius-sm); backdrop-filter: blur(8px); box-shadow: var(--shadow-1);
 }
 .toolbelt .tb-group { display: inline-flex; gap: 4px; }
+/* drag handle — grab here to move the whole toolbar out of the way */
+.tb-drag {
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: grab; color: var(--text-3); font-size: 15px; line-height: 1;
+  padding: 4px 3px; margin: -2px 2px -2px -4px; letter-spacing: 1px;
+  user-select: none; touch-action: none;
+}
+.tb-drag:hover { color: var(--text); }
+.toolbelt.dragging { cursor: grabbing; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+.toolbelt.dragging .tb-drag { cursor: grabbing; }
 .tb-btn {
   display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px;
   font-weight: 600; line-height: 1; color: var(--text-2); background: var(--surface-3);

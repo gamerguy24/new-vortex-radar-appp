@@ -64,6 +64,7 @@
 
       <!-- Global tools: freehand color brush + custom logo, apply to every template -->
       <div class="toolbelt" id="toolbelt">
+        <span class="tb-drag" id="tb-drag" title="Drag to move · double-click to reset" aria-label="Drag to move toolbar">⠿</span>
         <div class="tb-group" role="group" aria-label="Tool">
           <button class="tb-btn active" id="tool-fill" title="Click regions to fill them">▦ Fill</button>
           <button class="tb-btn" id="tool-draw" title="Freehand color brush">🖌 Brush</button>
@@ -126,5 +127,6 @@
   <script src="vendor/d3.v7.min.js"></script>
   <script src="vendor/topojson-client.min.js"></script>
   <script type="module" src="studio.js"></script>
+  <script src="toolbelt_drag.js"></script>
 </body>
 </html>
