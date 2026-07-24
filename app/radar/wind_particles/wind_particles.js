@@ -3,29 +3,35 @@
  * Animated "wind particles" that flow along the radar velocity field, so you can
  * read a storm's motion at a glance instead of interpreting raw velocity colors.
  *
- * The flow is built straight from the radar volume's VELOCITY moment
- * (window.atticData.nexrad_factory), NOT from whatever product is drawn — so it
- * works on every product (reflectivity, velocity, CC, …). A single Doppler radar
- * measures RADIAL velocity (toward/away from the radar), so particles stream
- * along the beam: outbound gates carry them away from the radar, inbound gates
- * pull them toward it. It follows the selected tilt and re-samples as the volume
- * updates / playback advances.
+ * The flow is built from the VELOCITY moment, independent of the product drawn,
+ * so it works on every product. Three sources, in order:
+ *   1. Level 2 volume  -> read 'VEL' at the selected tilt from the same factory
+ *      (works even while showing reflectivity — L2 carries every moment).
+ *   2. A displayed Level 3 velocity product -> use it directly.
+ *   3. Any other Level 3 product (e.g. reflectivity) -> fetch the L3 super-res
+ *      base velocity ('p99v0') for the station in the background and use that.
  *
- * Rendered as a transparent full-map canvas overlay (screen space). Controlled by
- * the "Wind Particles" layer toggle.
+ * A single Doppler radar measures RADIAL velocity, so particles stream along the
+ * beam (outbound away from the radar, inbound toward it). Rendered as a
+ * transparent full-map canvas overlay. Controlled by the "Wind Particles" toggle.
  */
 
 const map = require('../../core/map/map');
+const loaders = require('../libnexrad/loaders_nexrad');
+
+// Level 3 product codes that ARE velocity.
+const VELOCITY_L3_CODES = [99, 154, 182];
 
 // Tunables (visual — safe to adjust).
-const STEP = 12;               // field grid resolution, CSS px
+const STEP = 12;
 const PARTICLE_COUNT = 2600;
-const SPEED_SCALE = 0.10;      // m/s -> screen px per frame
-const MAX_AGE = 90;            // frames before a particle respawns
-const FADE_OUT = 0.06;         // trail fade per frame (0..1)
-const MAX_ABS_MS = 80;         // ignore |value| above this (range-folded / junk)
-const FIELD_REFRESH_MS = 1000; // re-sample the velocity field (rides playback / updates)
-const AZ_BUCKETS = 360;        // azimuth lookup resolution
+const SPEED_SCALE = 0.10;
+const MAX_AGE = 90;
+const FADE_OUT = 0.06;
+const MAX_ABS_MS = 120;
+const FIELD_REFRESH_MS = 1000;
+const VEL_FETCH_TTL_MS = 120000; // re-fetch background L3 velocity at most this often
+const AZ_BUCKETS = 360;
 
 let _canvas = null, _ctx = null, _parent = null;
 let _raf = null, _fieldTimer = null;
@@ -33,6 +39,9 @@ let _field = null;
 let _particles = [];
 let _enabled = false;
 let _moving = false;
+
+// Background-fetched L3 velocity factory (for non-velocity L3 products).
+let _velFactory = null, _velStation = null, _velFetchAt = 0, _velFetching = false;
 
 function ensureCanvas() {
     _parent = map.getCanvasContainer();
@@ -57,33 +66,73 @@ function seedParticles() {
 }
 function respawn(p) { p.x = Math.random() * _canvas.width; p.y = Math.random() * _canvas.height; p.age = 0; }
 
-// Pull the velocity moment from the current radar volume and turn it into a
-// screen-space grid of radial motion vectors. Works for any displayed product
-// because it reads VEL from the factory, not the rendered framebuffer.
+// ── velocity source resolution ────────────────────────────────────────────────
+// Returns { az, rg, data, loc } (azimuths deg, ranges km, data[radial][gate] m/s,
+// radar [lat,lng,alt]) or null.
+function currentVelInfo() {
+    const A = window.atticData || {};
+    const cur = A.nexrad_factory;
+    if (!cur) return null;
+    try {
+        if (cur.nexrad_level === 2) {
+            const elev = A.nexrad_factory_elevation_number;
+            const data = cur.get_data('VEL', elev);
+            if (data && data.length) {
+                return { az: cur.get_azimuth_angles(elev), rg: cur.get_ranges('VEL', elev), data, loc: cur.get_location() };
+            }
+        } else if (cur.nexrad_level === 3 && VELOCITY_L3_CODES.includes(cur.product_code)) {
+            const data = cur.get_data();
+            if (data && data.length) {
+                return { az: cur.get_azimuth_angles(), rg: cur.get_ranges(), data, loc: cur.get_location(cur.station) };
+            }
+        }
+    } catch (e) { /* fall through to background velocity */ }
+
+    if (_velFactory) {
+        try {
+            const data = _velFactory.get_data();
+            if (data && data.length) {
+                return { az: _velFactory.get_azimuth_angles(), rg: _velFactory.get_ranges(), data, loc: _velFactory.get_location(_velStation) };
+            }
+        } catch (e) { /* ignore */ }
+    }
+    return null;
+}
+
+// If we're on a non-velocity Level 3 product, pull the L3 base velocity in the
+// background so particles still work over reflectivity etc.
+function maybeFetchVelocity() {
+    const A = window.atticData || {};
+    const cur = A.nexrad_factory;
+    if (!cur || cur.nexrad_level !== 3) return;
+    if (VELOCITY_L3_CODES.includes(cur.product_code)) return; // already velocity
+    const station = cur.station;
+    if (!station || _velFetching) return;
+    if (_velFactory && _velStation === station && Date.now() - _velFetchAt < VEL_FETCH_TTL_MS) return;
+    _velFetching = true;
+    try {
+        loaders.return_level_3_factory_from_info(station, 'p99v0', (factory) => {
+            _velFetching = false;
+            if (factory) { _velFactory = factory; _velStation = station; _velFetchAt = Date.now(); rebuildField(); }
+        });
+    } catch (e) { _velFetching = false; }
+}
+
+// ── field build (screen-space radial vectors from the velocity moment) ────────
 function rebuildField() {
     if (!_enabled || _moving || !_canvas) return;
-    const A = window.atticData || {};
-    const factory = A.nexrad_factory;
-    if (!factory || factory.nexrad_level !== 2) { _field = null; return; } // Level 2 carries every moment
+    maybeFetchVelocity();
+    const info = currentVelInfo();
+    if (!info) { _field = null; return; }
+    const { az: azimuths, rg: ranges, data, loc } = info;
+    if (!azimuths || !ranges || !data || ranges.length < 2) { _field = null; return; }
 
-    let azimuths, ranges, data, loc;
-    try {
-        const elev = A.nexrad_factory_elevation_number;
-        azimuths = factory.get_azimuth_angles(elev);
-        ranges = factory.get_ranges('VEL', elev);
-        data = factory.get_data('VEL', elev);
-        loc = factory.get_location();
-    } catch (e) { _field = null; return; }
-    if (!azimuths || !ranges || !data || !data.length || ranges.length < 2) { _field = null; return; }
-
-    // azimuth(deg) -> radial index
     const azIdx = new Int16Array(AZ_BUCKETS).fill(-1);
     for (let i = 0; i < azimuths.length; i++) {
         const a = azimuths[i];
         if (a == null || !isFinite(a)) continue;
         azIdx[Math.round(((a % 360) + 360) % 360 / 360 * AZ_BUCKETS) % AZ_BUCKETS] = i;
     }
-    // fill any empty azimuth buckets from the nearest neighbour around the ring
     for (let pass = 0; pass < 2; pass++) {
         for (let b = 0; b < AZ_BUCKETS; b++) {
             if (azIdx[b] === -1) {
@@ -98,8 +147,10 @@ function rebuildField() {
     const gateSize = ranges[1] - ranges[0];
     const nGates = ranges.length;
     const maxRange = ranges[nGates - 1];
+    if (!isFinite(gateSize) || gateSize <= 0) { _field = null; return; }
 
     const rLat = loc[0], rLng = loc[1];
+    if (!rLat && !rLng) { _field = null; return; }
     const rs = map.project({ lng: rLng, lat: rLat });
     const cosLat = Math.cos(rLat * Math.PI / 180);
 
@@ -112,12 +163,11 @@ function rebuildField() {
             const gi = gy * gw + gx;
             const sx = gx * STEP, sy = gy * STEP;
             const ll = map.unproject([sx, sy]);
-            // range + azimuth from the radar (equirectangular km — fine at radar scale)
             const ky = (ll.lat - rLat) * 111.32;
             const kx = (ll.lng - rLng) * 111.32 * cosLat;
             const range_km = Math.hypot(kx, ky);
             if (range_km < 2 || range_km > maxRange) { has[gi] = 0; continue; }
-            let az = Math.atan2(kx, ky) * 180 / Math.PI; // 0 = north, clockwise
+            let az = Math.atan2(kx, ky) * 180 / Math.PI;
             az = ((az % 360) + 360) % 360;
             const ri = azIdx[Math.round(az / 360 * AZ_BUCKETS) % AZ_BUCKETS];
             const gate = Math.round((range_km - firstRange) / gateSize);
@@ -184,11 +234,8 @@ function enable() {
     if (_raf) cancelAnimationFrame(_raf);
     _raf = requestAnimationFrame(frame);
 
-    const A = window.atticData || {};
-    if (!A.nexrad_factory) {
-        toast('Wind particles need a radar volume loaded — pick a station/product first.');
-    } else if (A.nexrad_factory.nexrad_level !== 2) {
-        toast('Wind particles use Level 2 velocity data (the default super-res radar).');
+    if (!(window.atticData || {}).nexrad_factory) {
+        toast('Wind particles need a radar loaded — pick a station/product first.');
     }
 }
 
