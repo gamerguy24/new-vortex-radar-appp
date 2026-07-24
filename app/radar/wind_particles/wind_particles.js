@@ -25,13 +25,20 @@ const VELOCITY_L3_CODES = [99, 154, 182];
 // Tunables (visual — safe to adjust).
 const STEP = 12;
 const PARTICLE_COUNT = 2600;
-const SPEED_SCALE = 0.10;
 const MAX_AGE = 90;
 const FADE_OUT = 0.06;
 const MAX_ABS_MS = 120;
 const FIELD_REFRESH_MS = 1000;
 const VEL_FETCH_TTL_MS = 120000; // re-fetch background L3 velocity at most this often
 const AZ_BUCKETS = 360;
+// Swirl model: radial velocity is used as a streamfunction, so particles flow
+// ALONG its contours (perpendicular to its gradient) → a divergence-free,
+// swirling field that circulates around velocity couplets (rotation). A little
+// of the raw radial flow is blended back in so inbound/outbound still reads.
+const ROT_SCALE = 0.16;   // strength of the swirl (contour-following) component
+const RAD_SCALE = 0.03;   // strength of the raw radial (in/out) component
+const MAX_STEP_PX = 3.5;  // clamp particle speed (px/frame)
+const SMOOTH_PASSES = 1;  // box-blur the field for smooth streamlines
 
 let _canvas = null, _ctx = null, _parent = null;
 let _raf = null, _fieldTimer = null;
@@ -203,8 +210,50 @@ function rebuildField() {
             dirx[gi] = ex / L; diry[gi] = ey / L; spd[gi] = v; has[gi] = 1;
         }
     }
-    _field = { gw, gh, spd, dirx, diry, has };
-    let n = 0; for (let i = 0; i < has.length; i++) if (has[i]) n++;
+
+    // Smooth the radial-velocity field so the streamlines are clean.
+    let sm = spd;
+    for (let pass = 0; pass < SMOOTH_PASSES; pass++) {
+        const out = new Float32Array(gw * gh);
+        for (let gy = 0; gy < gh; gy++) {
+            for (let gx = 0; gx < gw; gx++) {
+                const gi = gy * gw + gx;
+                if (!has[gi]) { out[gi] = sm[gi]; continue; }
+                let acc = 0, cnt = 0;
+                for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+                    const nx = gx + dx, ny = gy + dy;
+                    if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
+                    const ni = ny * gw + nx;
+                    if (has[ni]) { acc += sm[ni]; cnt++; }
+                }
+                out[gi] = cnt ? acc / cnt : sm[gi];
+            }
+        }
+        sm = out;
+    }
+
+    // Build the swirling vector field: flow along contours of the (smoothed)
+    // radial velocity (perp of its gradient) + a little raw radial flow.
+    const vx = new Float32Array(gw * gh), vy = new Float32Array(gw * gh), hv = new Uint8Array(gw * gh);
+    let n = 0;
+    for (let gy = 0; gy < gh; gy++) {
+        for (let gx = 0; gx < gw; gx++) {
+            const gi = gy * gw + gx;
+            if (!has[gi]) continue;
+            // central differences of the streamfunction (skip if neighbour missing)
+            const li = gx > 0 ? gi - 1 : gi, ri = gx < gw - 1 ? gi + 1 : gi;
+            const ui = gy > 0 ? gi - gw : gi, di = gy < gh - 1 ? gi + gw : gi;
+            const dvdx = ((has[ri] ? sm[ri] : sm[gi]) - (has[li] ? sm[li] : sm[gi])) * 0.5;
+            const dvdy = ((has[di] ? sm[di] : sm[gi]) - (has[ui] ? sm[ui] : sm[gi])) * 0.5;
+            // perpendicular of the gradient → divergence-free swirl
+            let fx = dvdy * ROT_SCALE + dirx[gi] * spd[gi] * RAD_SCALE;
+            let fy = -dvdx * ROT_SCALE + diry[gi] * spd[gi] * RAD_SCALE;
+            const m = Math.hypot(fx, fy);
+            if (m > MAX_STEP_PX) { fx *= MAX_STEP_PX / m; fy *= MAX_STEP_PX / m; }
+            vx[gi] = fx; vy[gi] = fy; hv[gi] = 1; n++;
+        }
+    }
+    _field = { gw, gh, vx, vy, has: hv };
     _diag.cells = n; _diag.total = gw * gh;
     updateHud();
 }
@@ -230,9 +279,8 @@ function frame() {
             if (p.age > MAX_AGE || gx < 0 || gy < 0 || gx >= f.gw || gy >= f.gh) { respawn(p); continue; }
             const gi = gy * f.gw + gx;
             if (!f.has[gi]) { respawn(p); continue; }
-            const v = f.spd[gi];
-            const nx = p.x + f.dirx[gi] * v * SPEED_SCALE;
-            const ny = p.y + f.diry[gi] * v * SPEED_SCALE;
+            const nx = p.x + f.vx[gi];
+            const ny = p.y + f.vy[gi];
             _ctx.moveTo(p.x, p.y); _ctx.lineTo(nx, ny);
             p.x = nx; p.y = ny;
             if (p.x < 0 || p.y < 0 || p.x > w || p.y > h) respawn(p);
