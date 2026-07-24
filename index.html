@@ -1217,15 +1217,22 @@
 
         function load_all_libraries(library_configs, callback) {
             function _pre(cb) {
-                fetch('./tools/size.txt')
+                // Always fetch fresh so the cache-bust version below is current.
+                fetch('./tools/size.txt?_=' + Date.now())
                 .then(response => response.json())
                 .then(json => {
                     cb(json);
                 })
             }
             _pre((filesizes) => {
-                library_configs[library_configs.length - 2][2] = filesizes['index.css'];
-                library_configs[library_configs.length - 1][2] = filesizes['bundle.js'];
+                const cssCfg = library_configs[library_configs.length - 2];
+                const jsCfg = library_configs[library_configs.length - 1];
+                cssCfg[2] = filesizes['index.css'];
+                jsCfg[2] = filesizes['bundle.js'];
+                // Cache-bust the local build by content size, so every rebuild
+                // forces a reload instead of serving a stale bundle from cache.
+                cssCfg[1] += (cssCfg[1].includes('?') ? '&' : '?') + 'v=' + filesizes['index.css'];
+                jsCfg[1] += (jsCfg[1].includes('?') ? '&' : '?') + 'v=' + filesizes['bundle.js'];
 
                 _add_libraries(library_configs, callback);
             })
