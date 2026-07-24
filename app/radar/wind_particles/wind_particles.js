@@ -59,7 +59,9 @@ function updateHud() {
 }
 
 function ensureCanvas() {
-    _parent = map.getCanvasContainer();
+    // Anchor to the map container (#map), which has real dimensions — the inner
+    // canvas-container can report clientHeight 0 in this app.
+    _parent = map.getContainer();
     if (_canvas) return;
     _canvas = document.createElement('canvas');
     _canvas.className = 'wind-particles-canvas';
@@ -68,9 +70,19 @@ function ensureCanvas() {
     _ctx = _canvas.getContext('2d');
     sizeCanvas();
 }
+function mapSize() {
+    let w = _parent ? _parent.clientWidth : 0;
+    let h = _parent ? _parent.clientHeight : 0;
+    if (!w || !h) {
+        const mc = map.getCanvas();
+        w = w || mc.clientWidth || mc.width || window.innerWidth;
+        h = h || mc.clientHeight || mc.height || window.innerHeight;
+    }
+    return { w, h };
+}
 function sizeCanvas() {
-    if (!_canvas || !_parent) return;
-    const w = _parent.clientWidth, h = _parent.clientHeight;
+    if (!_canvas) return;
+    const { w, h } = mapSize();
     if (_canvas.width !== w || _canvas.height !== h) { _canvas.width = w; _canvas.height = h; }
 }
 function seedParticles() {
