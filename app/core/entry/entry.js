@@ -67,6 +67,9 @@ function load() {
     // load the GOES-19 Clean IR satellite layer toggle
     require('../../satellite/menu_item');
 
+    // load the wind-particles (radar velocity flow) layer toggle
+    require('../../radar/wind_particles/menu_item');
+
     // load the SPC module
     require('../../spc/menu_item');
 
