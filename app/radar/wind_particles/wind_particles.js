@@ -43,6 +43,14 @@ let _moving = false;
 // Background-fetched L3 velocity factory (for non-velocity L3 products).
 let _velFactory = null, _velStation = null, _velFetchAt = 0, _velFetching = false;
 
+// Diagnostic readout (temporary — helps pin down why nothing renders).
+const _diag = { level: '-', code: '-', station: '-', src: 'none', bg: 'idle', cells: 0, total: 0 };
+let _hud = null;
+function updateHud() {
+    if (!_hud) return;
+    _hud.textContent = `WP lvl:${_diag.level} code:${_diag.code} stn:${_diag.station} | src:${_diag.src} bg:${_diag.bg} | cells:${_diag.cells}/${_diag.total} | ${_canvas ? _canvas.width + 'x' + _canvas.height : 'no-canvas'}`;
+}
+
 function ensureCanvas() {
     _parent = map.getCanvasContainer();
     if (_canvas) return;
@@ -72,30 +80,44 @@ function respawn(p) { p.x = Math.random() * _canvas.width; p.y = Math.random() *
 function currentVelInfo() {
     const A = window.atticData || {};
     const cur = A.nexrad_factory;
-    if (!cur) return null;
-    try {
-        if (cur.nexrad_level === 2) {
-            const elev = A.nexrad_factory_elevation_number;
-            const data = cur.get_data('VEL', elev);
-            if (data && data.length) {
-                return { az: cur.get_azimuth_angles(elev), rg: cur.get_ranges('VEL', elev), data, loc: cur.get_location() };
-            }
-        } else if (cur.nexrad_level === 3 && VELOCITY_L3_CODES.includes(cur.product_code)) {
+    _diag.level = cur ? cur.nexrad_level : '-';
+    _diag.code = cur ? cur.product_code : '-';
+    _diag.station = cur ? (cur.station || '?') : '-';
+    if (!cur) { _diag.src = 'no-factory'; return null; }
+
+    // Level 2: the same volume carries VEL. In split cuts VEL lives in a different
+    // sweep index than the displayed reflectivity, so search for it.
+    if (cur.nexrad_level === 2) {
+        const wanted = A.nexrad_factory_elevation_number;
+        const tryElev = (e) => { try { const d = cur.get_data('VEL', e); if (d && d.length) return { e, d }; } catch (_) {} return null; };
+        let r = tryElev(wanted);
+        for (let e = 1; e <= 30 && !r; e++) { if (e !== wanted) r = tryElev(e); }
+        if (r) {
+            try {
+                _diag.src = 'L2(e' + r.e + ')';
+                return { az: cur.get_azimuth_angles(r.e), rg: cur.get_ranges('VEL', r.e), data: r.d, loc: cur.get_location() };
+            } catch (e) { /* fall through */ }
+        }
+    } else if (cur.nexrad_level === 3 && VELOCITY_L3_CODES.includes(cur.product_code)) {
+        try {
             const data = cur.get_data();
             if (data && data.length) {
+                _diag.src = 'L3-shown';
                 return { az: cur.get_azimuth_angles(), rg: cur.get_ranges(), data, loc: cur.get_location(cur.station) };
             }
-        }
-    } catch (e) { /* fall through to background velocity */ }
+        } catch (e) { /* fall through */ }
+    }
 
     if (_velFactory) {
         try {
             const data = _velFactory.get_data();
             if (data && data.length) {
+                _diag.src = 'L3-bg';
                 return { az: _velFactory.get_azimuth_angles(), rg: _velFactory.get_ranges(), data, loc: _velFactory.get_location(_velStation) };
             }
         } catch (e) { /* ignore */ }
     }
+    _diag.src = 'none';
     return null;
 }
 
@@ -110,12 +132,14 @@ function maybeFetchVelocity() {
     if (!station || _velFetching) return;
     if (_velFactory && _velStation === station && Date.now() - _velFetchAt < VEL_FETCH_TTL_MS) return;
     _velFetching = true;
+    _diag.bg = 'fetching';
     try {
         loaders.return_level_3_factory_from_info(station, 'p99v0', (factory) => {
             _velFetching = false;
-            if (factory) { _velFactory = factory; _velStation = station; _velFetchAt = Date.now(); rebuildField(); }
+            if (factory) { _velFactory = factory; _velStation = station; _velFetchAt = Date.now(); _diag.bg = 'ok'; rebuildField(); }
+            else { _diag.bg = 'fail'; }
         });
-    } catch (e) { _velFetching = false; }
+    } catch (e) { _velFetching = false; _diag.bg = 'err'; }
 }
 
 // ── field build (screen-space radial vectors from the velocity moment) ────────
@@ -123,9 +147,9 @@ function rebuildField() {
     if (!_enabled || _moving || !_canvas) return;
     maybeFetchVelocity();
     const info = currentVelInfo();
-    if (!info) { _field = null; return; }
+    if (!info) { _field = null; _diag.cells = 0; updateHud(); return; }
     const { az: azimuths, rg: ranges, data, loc } = info;
-    if (!azimuths || !ranges || !data || ranges.length < 2) { _field = null; return; }
+    if (!azimuths || !ranges || !data || ranges.length < 2) { _field = null; _diag.src += '(bad-arrays)'; _diag.cells = 0; updateHud(); return; }
 
     const azIdx = new Int16Array(AZ_BUCKETS).fill(-1);
     for (let i = 0; i < azimuths.length; i++) {
@@ -180,6 +204,9 @@ function rebuildField() {
         }
     }
     _field = { gw, gh, spd, dirx, diry, has };
+    let n = 0; for (let i = 0; i < has.length; i++) if (has[i]) n++;
+    _diag.cells = n; _diag.total = gw * gh;
+    updateHud();
 }
 
 function frame() {
@@ -225,6 +252,13 @@ function enable() {
     ensureCanvas();
     sizeCanvas();
     seedParticles();
+    if (!_hud) {
+        _hud = document.createElement('div');
+        _hud.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:100080;background:rgba(11,18,32,.92);' +
+            "color:#7fd7ff;font:11px/1.4 monospace;padding:5px 8px;border:1px solid #27324a;border-radius:6px;pointer-events:none;max-width:96vw;";
+        document.body.appendChild(_hud);
+    }
+    updateHud();
     map.on('movestart', onMoveStart);
     map.on('moveend', onMoveEnd);
     map.on('resize', onResize);
@@ -249,6 +283,7 @@ function disable() {
     _field = null;
     if (_canvas && _canvas.parentNode) _canvas.parentNode.removeChild(_canvas);
     _canvas = _ctx = null;
+    if (_hud && _hud.parentNode) { _hud.parentNode.removeChild(_hud); _hud = null; }
 }
 
 let _toastEl = null;
