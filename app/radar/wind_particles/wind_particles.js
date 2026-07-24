@@ -312,13 +312,6 @@ function enable() {
     ensureCanvas();
     sizeCanvas();
     seedParticles();
-    if (!_hud) {
-        _hud = document.createElement('div');
-        _hud.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:100080;background:rgba(11,18,32,.92);' +
-            "color:#7fd7ff;font:11px/1.4 monospace;padding:5px 8px;border:1px solid #27324a;border-radius:6px;pointer-events:none;max-width:96vw;";
-        document.body.appendChild(_hud);
-    }
-    updateHud();
     map.on('movestart', onMoveStart);
     map.on('moveend', onMoveEnd);
     map.on('resize', onResize);
