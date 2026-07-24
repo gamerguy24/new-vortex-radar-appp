@@ -3,32 +3,29 @@
  * Animated "wind particles" that flow along the radar velocity field, so you can
  * read a storm's motion at a glance instead of interpreting raw velocity colors.
  *
- * A single Doppler radar measures RADIAL velocity (motion toward or away from the
- * radar), so particles stream along the beam: outbound gates carry them away from
- * the radar, inbound gates pull them toward it. The speed at each point comes from
- * the same value framebuffer the inspector reads (window.atticData.fb), decoded
- * with cmin/cmax, so the particles follow whatever elevation/tilt is displayed and
- * re-sample as playback advances.
+ * The flow is built straight from the radar volume's VELOCITY moment
+ * (window.atticData.nexrad_factory), NOT from whatever product is drawn — so it
+ * works on every product (reflectivity, velocity, CC, …). A single Doppler radar
+ * measures RADIAL velocity (toward/away from the radar), so particles stream
+ * along the beam: outbound gates carry them away from the radar, inbound gates
+ * pull them toward it. It follows the selected tilt and re-samples as the volume
+ * updates / playback advances.
  *
- * Rendered as a transparent full-map canvas overlay (screen space), gated to
- * velocity products. Controlled by the "Wind Particles" layer toggle.
+ * Rendered as a transparent full-map canvas overlay (screen space). Controlled by
+ * the "Wind Particles" layer toggle.
  */
 
 const map = require('../../core/map/map');
 
-// Product codes that carry velocity (m/s). 154 = super-res vel, 99 = digital base
-// vel, 182 = TDWR vel, 'VEL' = Level 2 velocity.
-const VELOCITY_CODES = [154, 99, 182, 'VEL'];
-const isVelocityProduct = (code) => VELOCITY_CODES.includes(code);
-
 // Tunables (visual — safe to adjust).
-const STEP = 10;          // field grid resolution, CSS px
-const PARTICLE_COUNT = 3000;
-const SPEED_SCALE = 0.09; // m/s -> screen px per frame
-const MAX_AGE = 90;       // frames before a particle respawns
-const FADE_OUT = 0.055;   // trail fade per frame (0..1)
-const MAX_ABS_MS = 80;    // ignore |value| above this (range-folded / junk)
-const FIELD_REFRESH_MS = 700; // re-sample the velocity field (rides playback)
+const STEP = 12;               // field grid resolution, CSS px
+const PARTICLE_COUNT = 2600;
+const SPEED_SCALE = 0.10;      // m/s -> screen px per frame
+const MAX_AGE = 90;            // frames before a particle respawns
+const FADE_OUT = 0.06;         // trail fade per frame (0..1)
+const MAX_ABS_MS = 80;         // ignore |value| above this (range-folded / junk)
+const FIELD_REFRESH_MS = 1000; // re-sample the velocity field (rides playback / updates)
+const AZ_BUCKETS = 360;        // azimuth lookup resolution
 
 let _canvas = null, _ctx = null, _parent = null;
 let _raf = null, _fieldTimer = null;
@@ -36,11 +33,6 @@ let _field = null;
 let _particles = [];
 let _enabled = false;
 let _moving = false;
-
-function getGL() {
-    const c = map.getCanvas();
-    return c.getContext('webgl') || c.getContext('webgl2');
-}
 
 function ensureCanvas() {
     _parent = map.getCanvasContainer();
@@ -52,74 +44,89 @@ function ensureCanvas() {
     _ctx = _canvas.getContext('2d');
     sizeCanvas();
 }
-
 function sizeCanvas() {
     if (!_canvas || !_parent) return;
     const w = _parent.clientWidth, h = _parent.clientHeight;
-    if (_canvas.width !== w || _canvas.height !== h) {
-        _canvas.width = w; _canvas.height = h;
-    }
+    if (_canvas.width !== w || _canvas.height !== h) { _canvas.width = w; _canvas.height = h; }
 }
-
 function seedParticles() {
     _particles = new Array(PARTICLE_COUNT);
-    const w = _canvas.width, h = _canvas.height;
     for (let i = 0; i < PARTICLE_COUNT; i++) {
-        _particles[i] = { x: Math.random() * w, y: Math.random() * h, age: Math.random() * MAX_AGE };
+        _particles[i] = { x: Math.random() * _canvas.width, y: Math.random() * _canvas.height, age: Math.random() * MAX_AGE };
     }
 }
-function respawn(p) {
-    p.x = Math.random() * _canvas.width;
-    p.y = Math.random() * _canvas.height;
-    p.age = 0;
-}
+function respawn(p) { p.x = Math.random() * _canvas.width; p.y = Math.random() * _canvas.height; p.age = 0; }
 
-// Read the velocity value framebuffer and build a screen-space grid of radial
-// motion vectors (direction from the radar, signed magnitude in m/s).
+// Pull the velocity moment from the current radar volume and turn it into a
+// screen-space grid of radial motion vectors. Works for any displayed product
+// because it reads VEL from the factory, not the rendered framebuffer.
 function rebuildField() {
-    if (!_enabled || _moving) return;
+    if (!_enabled || _moving || !_canvas) return;
     const A = window.atticData || {};
-    if (!isVelocityProduct(A.product_code) || A.fb == null || A.cmin == null || !A.current_nexrad_location) {
-        _field = null; return;
-    }
-    const gl = getGL();
-    if (!gl) { _field = null; return; }
+    const factory = A.nexrad_factory;
+    if (!factory || factory.nexrad_level !== 2) { _field = null; return; } // Level 2 carries every moment
 
-    const dbw = gl.drawingBufferWidth, dbh = gl.drawingBufferHeight;
-    let buf;
+    let azimuths, ranges, data, loc;
     try {
-        buf = new Uint8Array(dbw * dbh * 4);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, A.fb);
-        gl.readPixels(0, 0, dbw, dbh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        const elev = A.nexrad_factory_elevation_number;
+        azimuths = factory.get_azimuth_angles(elev);
+        ranges = factory.get_ranges('VEL', elev);
+        data = factory.get_data('VEL', elev);
+        loc = factory.get_location();
     } catch (e) { _field = null; return; }
+    if (!azimuths || !ranges || !data || !data.length || ranges.length < 2) { _field = null; return; }
 
-    const cmin = A.cmin, cmax = A.cmax;
+    // azimuth(deg) -> radial index
+    const azIdx = new Int16Array(AZ_BUCKETS).fill(-1);
+    for (let i = 0; i < azimuths.length; i++) {
+        const a = azimuths[i];
+        if (a == null || !isFinite(a)) continue;
+        azIdx[Math.round(((a % 360) + 360) % 360 / 360 * AZ_BUCKETS) % AZ_BUCKETS] = i;
+    }
+    // fill any empty azimuth buckets from the nearest neighbour around the ring
+    for (let pass = 0; pass < 2; pass++) {
+        for (let b = 0; b < AZ_BUCKETS; b++) {
+            if (azIdx[b] === -1) {
+                const prev = azIdx[(b - 1 + AZ_BUCKETS) % AZ_BUCKETS];
+                const next = azIdx[(b + 1) % AZ_BUCKETS];
+                azIdx[b] = prev !== -1 ? prev : next;
+            }
+        }
+    }
+
+    const firstRange = ranges[0];
+    const gateSize = ranges[1] - ranges[0];
+    const nGates = ranges.length;
+    const maxRange = ranges[nGates - 1];
+
+    const rLat = loc[0], rLng = loc[1];
+    const rs = map.project({ lng: rLng, lat: rLat });
+    const cosLat = Math.cos(rLat * Math.PI / 180);
+
     const cssW = _canvas.width, cssH = _canvas.height;
     const gw = Math.ceil(cssW / STEP), gh = Math.ceil(cssH / STEP);
-    const spd = new Float32Array(gw * gh);
-    const dirx = new Float32Array(gw * gh);
-    const diry = new Float32Array(gw * gh);
-    const has = new Uint8Array(gw * gh);
-
-    const loc = A.current_nexrad_location; // [lat, lng, elev]
-    const rs = map.project({ lng: loc[1], lat: loc[0] }); // radar position in CSS px
+    const spd = new Float32Array(gw * gh), dirx = new Float32Array(gw * gh), diry = new Float32Array(gw * gh), has = new Uint8Array(gw * gh);
 
     for (let gy = 0; gy < gh; gy++) {
         for (let gx = 0; gx < gw; gx++) {
-            const sx = gx * STEP, sy = gy * STEP;
-            const bx = Math.min(dbw - 1, Math.max(0, Math.round(dbw / cssW * sx)));
-            const by = Math.min(dbh - 1, Math.max(0, Math.round(dbh / cssH * (cssH - sy)))); // flip Y
-            const idx = (by * dbw + bx) * 4;
             const gi = gy * gw + gx;
-            if (buf[idx + 3] !== 255) { has[gi] = 0; continue; } // no data
-            const scaled = buf[idx] / 255 + buf[idx + 1] / 65025 + buf[idx + 2] / 16581375;
-            const value = scaled * (cmax - cmin) + cmin; // m/s, signed (+ = outbound)
-            if (!isFinite(value) || Math.abs(value) > MAX_ABS_MS) { has[gi] = 0; continue; }
-            let ddx = sx - rs.x, ddy = sy - rs.y;
-            const len = Math.hypot(ddx, ddy) || 1;
-            dirx[gi] = ddx / len; diry[gi] = ddy / len;
-            spd[gi] = value; has[gi] = 1;
+            const sx = gx * STEP, sy = gy * STEP;
+            const ll = map.unproject([sx, sy]);
+            // range + azimuth from the radar (equirectangular km — fine at radar scale)
+            const ky = (ll.lat - rLat) * 111.32;
+            const kx = (ll.lng - rLng) * 111.32 * cosLat;
+            const range_km = Math.hypot(kx, ky);
+            if (range_km < 2 || range_km > maxRange) { has[gi] = 0; continue; }
+            let az = Math.atan2(kx, ky) * 180 / Math.PI; // 0 = north, clockwise
+            az = ((az % 360) + 360) % 360;
+            const ri = azIdx[Math.round(az / 360 * AZ_BUCKETS) % AZ_BUCKETS];
+            const gate = Math.round((range_km - firstRange) / gateSize);
+            if (ri < 0 || gate < 0 || gate >= nGates || !data[ri]) { has[gi] = 0; continue; }
+            const v = data[ri][gate];
+            if (v == null || !isFinite(v) || Math.abs(v) > MAX_ABS_MS) { has[gi] = 0; continue; }
+            let ex = sx - rs.x, ey = sy - rs.y;
+            const L = Math.hypot(ex, ey) || 1;
+            dirx[gi] = ex / L; diry[gi] = ey / L; spd[gi] = v; has[gi] = 1;
         }
     }
     _field = { gw, gh, spd, dirx, diry, has };
@@ -129,7 +136,6 @@ function frame() {
     if (!_enabled) return;
     const w = _canvas.width, h = _canvas.height;
 
-    // Fade existing trails without tinting the map (erase alpha only).
     _ctx.globalCompositeOperation = 'destination-out';
     _ctx.fillStyle = `rgba(0,0,0,${FADE_OUT})`;
     _ctx.fillRect(0, 0, w, h);
@@ -159,7 +165,6 @@ function frame() {
     _raf = requestAnimationFrame(frame);
 }
 
-// ── map interaction: pause + clear while the view moves, rebuild after ────────
 function onMoveStart() { _moving = true; if (_ctx) _ctx.clearRect(0, 0, _canvas.width, _canvas.height); }
 function onMoveEnd() { _moving = false; sizeCanvas(); rebuildField(); }
 function onResize() { sizeCanvas(); rebuildField(); }
@@ -179,9 +184,11 @@ function enable() {
     if (_raf) cancelAnimationFrame(_raf);
     _raf = requestAnimationFrame(frame);
 
-    // Nudge the user if they aren't on a velocity product yet.
-    if (!isVelocityProduct((window.atticData || {}).product_code)) {
-        toast('Wind particles follow a velocity product — switch to Base Velocity to see them flow.');
+    const A = window.atticData || {};
+    if (!A.nexrad_factory) {
+        toast('Wind particles need a radar volume loaded — pick a station/product first.');
+    } else if (A.nexrad_factory.nexrad_level !== 2) {
+        toast('Wind particles use Level 2 velocity data (the default super-res radar).');
     }
 }
 
