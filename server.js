@@ -1264,6 +1264,10 @@ app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
 ensureSuperAdmin();
 
-app.listen(PORT, () => {
-    console.log(`Vortex Radar server running at http://localhost:${PORT}`);
+// Bind to 0.0.0.0 (all interfaces) so hosts like Render can route external
+// traffic to the service — binding to localhost only would refuse those
+// connections (ERR_CONNECTION_RESET).
+const HOST = process.env.HOST || '0.0.0.0';
+app.listen(PORT, HOST, () => {
+    console.log(`Vortex Radar server running on ${HOST}:${PORT}`);
 });
