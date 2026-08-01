@@ -325,7 +325,8 @@ function injectLayoutStyles() {
         linear-gradient(90deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,0) 34%),
         linear-gradient(0deg, rgba(0,0,0,.5) 0%, rgba(0,0,0,0) 26%);}
     .wg-banner{position:absolute;top:0;left:0;right:0;height:12.5%;min-height:66px;
-        background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 78%, #000));
+        background-color:var(--accent);
+        background-image:linear-gradient(180deg, rgba(255,255,255,.10), rgba(0,0,0,.42));
         display:flex;align-items:center;justify-content:space-between;padding:0 3%;
         box-shadow:0 6px 22px rgba(0,0,0,.5);border-bottom:3px solid rgba(255,255,255,.85);}
     .wg-banner-inner{min-width:0;flex:1;}
