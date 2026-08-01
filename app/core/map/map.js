@@ -1,7 +1,7 @@
-mapboxgl.accessToken = 'pk.eyJ1Ijoiam9obnNtaXRoMTkyODI3MyIsImEiOiJjbW9zMTYyYWwwMWZsMnNvamIyZTg3aGptIn0.8jX8fi1LPzUeG7E467UI6A';
+mapboxgl.accessToken = 'pk.eyJ1IjoiZGF2aWR3YWxsaXMwMCIsImEiOiJjbHlpNHJvZ2QwYzduMmpvZmdjejlkYjAxIn0.JNNcliJC4EFmok7iT5I6MQ';
 const map = new mapboxgl.Map({
     container: 'map',
-    style: 'mapbox://styles/johnsmith1928273/cmos18ept003q01qm0cz5andp',
+    style: 'mapbox://styles/mapbox/dark-v11',
     zoom: 3, // 2
     center: [-98.5606744, 36.8281576], // [111.83024360762363, 27.174263144019363]
     maxZoom: 20,

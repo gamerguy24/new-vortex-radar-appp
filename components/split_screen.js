@@ -13,7 +13,7 @@
  */
 
 // Same base style the primary map uses (see app/core/map/map.js).
-const STYLE_URL = 'mapbox://styles/johnsmith1928273/cmos18ept003q01qm0cz5andp';
+const STYLE_URL = 'mapbox://styles/mapbox/dark-v11';
 
 let dualMap = null;
 let splitActive = false;
