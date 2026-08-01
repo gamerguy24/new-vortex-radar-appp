@@ -273,7 +273,7 @@ function buildLayout(info, mapImg, locatorImg, pop, homes, size) {
     const state = info.stateName ? `IN ${info.stateName.toUpperCase()}` : '';
 
     root.innerHTML = `
-        <img class="wg-map" src="${mapImg}" alt="" />
+        <div class="wg-map" style="background-image:url('${mapImg}')"></div>
         <div class="wg-vignette"></div>
 
         <div class="wg-banner" style="--accent:${accent};">
@@ -319,7 +319,7 @@ function injectLayoutStyles() {
     s.id = 'wg-layout-styles';
     s.textContent = `
     .wg-root{position:relative;overflow:hidden;background:#05070c;font-family:'Onest',system-ui,-apple-system,'Segoe UI',sans-serif;color:#fff;}
-    .wg-map{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+    .wg-map{position:absolute;inset:0;width:100%;height:100%;background-size:cover;background-position:center;background-repeat:no-repeat;}
     .wg-vignette{position:absolute;inset:0;background:
         linear-gradient(180deg, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 18%),
         linear-gradient(90deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,0) 34%),
@@ -331,7 +331,7 @@ function injectLayoutStyles() {
         box-shadow:0 6px 22px rgba(0,0,0,.5);border-bottom:3px solid rgba(255,255,255,.85);}
     .wg-banner-inner{min-width:0;flex:1;}
     .wg-banner-title{font-weight:900;letter-spacing:.5px;line-height:1;white-space:nowrap;overflow:hidden;text-shadow:0 3px 10px rgba(0,0,0,.45);}
-    .wg-banner-sub{font-weight:800;opacity:.95;letter-spacing:2px;margin-top:6px;font-size:min(2.4vw,26px);}
+    .wg-banner-sub{font-weight:800;opacity:.95;letter-spacing:2px;margin-top:6px;font-size:24px;}
     .wg-brand{display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:16px;}
     .wg-logo{height:46px;width:auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));}
     .wg-brand-name{font-weight:900;letter-spacing:1.5px;font-size:18px;opacity:.95;}
@@ -386,6 +386,8 @@ async function generate(size) {
     const title = layout.querySelector('#wg-title');
     title.style.fontSize = Math.round(size.h * 0.072) + 'px';
     fitText(title, Math.round(size.h * 0.072));
+    const sub = layout.querySelector('.wg-banner-sub');
+    if (sub) sub.style.fontSize = Math.round(size.h * 0.026) + 'px';
 
     // Wait a tick so the <img> map/locator decode before rasterizing.
     await new Promise((r) => setTimeout(r, 60));
