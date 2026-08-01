@@ -10,6 +10,8 @@ const CAMERAS = [
     { name: 'Nashville, TN - Lower Broadway', url: 'https://www.youtube.com/embed/h5Grd2w7HQM?autoplay=1', lng: -86.7767, lat: 36.1596 },
     { name: 'Sunny Isles Beach, FL', url: 'https://www.youtube.com/embed/bi7B4EmyHHs?autoplay=1', lng: -80.1223, lat: 25.9407 },
     { name: 'Council Bluffs, IA', url: 'https://www.youtube.com/embed/qsrevo5Vdkw?autoplay=1', lng: -95.8608, lat: 41.2619 },
+    { name: 'Fort Madison, IA - Train Cam', url: 'https://www.youtube.com/embed/L6eG4ahJc_Q?autoplay=1', lng: -91.3151, lat: 40.6295 },
+    { name: 'Birmingham, AL - Railcam', url: 'https://www.youtube.com/embed/KUM6HBnv_fw?autoplay=1', lng: -86.8104, lat: 33.5186 },
 ];
 // -----------------------------------------------------------------------------
 
