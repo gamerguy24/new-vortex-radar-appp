@@ -9,6 +9,13 @@ const display_attic_dialog = require('../menu/attic_dialog');
 
 const CHANGELOG = [
     {
+        date: 'July 29, 2026',
+        items: [
+            { title: 'Wind Particles', desc: 'A new velocity-flow overlay — animated particles stream along the radar velocity field and swirl around storm rotation, so you can read a storm’s motion at a glance. Works over any product and follows the tilt you’re viewing.' },
+            { title: 'Filtered Active Alerts list', desc: 'The Active Alerts list now respects your alert filters — warning types you’ve turned off no longer show up in the list either, so you only scroll through the alerts you actually want to see.' },
+        ],
+    },
+    {
         date: 'July 20, 2026',
         items: [
             { title: 'GOES-19 Clean IR satellite', desc: 'New satellite layer — GOES-19 (GOES-East) Clean Longwave Infrared. Clear skies stay transparent so the map still shows through, while cloud tops brighten with how cold (and tall) they are. Updates every 5 minutes.' },

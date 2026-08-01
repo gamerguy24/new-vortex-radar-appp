@@ -57,7 +57,13 @@ function bboxOf(geometry) {
 
 function getFeatures() {
     const data = window.atticData && window.atticData.alerts_data;
-    const feats = (data && Array.isArray(data.features)) ? data.features : [];
+    let feats = (data && Array.isArray(data.features)) ? data.features : [];
+    // Respect the same warnings/watches/statements filter the map uses, so the
+    // list only shows the alerts the user has chosen to see (no scrolling past
+    // types they've filtered out).
+    if (typeof window.vortexAlertFilter === 'function') {
+        feats = feats.filter((f) => { try { return window.vortexAlertFilter(f); } catch { return true; } });
+    }
     // newest / most severe first
     return [...feats].sort((a, b) => {
         const sa = SEVERITY_ORDER[a.properties?.severity] ?? 5;

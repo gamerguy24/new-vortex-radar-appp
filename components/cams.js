@@ -7,6 +7,9 @@ const CAMERAS = [
     { name: 'Austell, GA - Live Train Cam', url: 'https://www.youtube.com/embed/CQLQ4MqXdtE?autoplay=1', lng: -84.6388, lat: 33.8126 },
     { name: 'Gatlinburg, TN - SkyPark', url: 'https://www.youtube.com/embed/teGLziUvDkI?autoplay=1', lng: -83.5124, lat: 35.7143 },
     { name: 'Lawton, OK', url: 'https://www.youtube.com/embed/n7uM73bpS3E?autoplay=1', lng: -98.3903, lat: 34.6087 },
+    { name: 'Nashville, TN - Lower Broadway', url: 'https://www.youtube.com/embed/h5Grd2w7HQM?autoplay=1', lng: -86.7767, lat: 36.1596 },
+    { name: 'Sunny Isles Beach, FL', url: 'https://www.youtube.com/embed/bi7B4EmyHHs?autoplay=1', lng: -80.1223, lat: 25.9407 },
+    { name: 'Council Bluffs, IA', url: 'https://www.youtube.com/embed/qsrevo5Vdkw?autoplay=1', lng: -95.8608, lat: 41.2619 },
 ];
 // -----------------------------------------------------------------------------
 

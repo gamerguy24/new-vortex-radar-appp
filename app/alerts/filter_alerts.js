@@ -18,36 +18,38 @@ const statements_whitelist = [
     'Special Weather Statement'
 ];
 
-function filter_alerts(alerts_data) {
+// Whether a single alert feature passes the current warnings/watches/statements
+// filter (the same toggles that control the map). Shared so both the map and the
+// Active Alerts list stay in sync.
+function passes_filter(feature) {
+    if (!feature || !feature.properties) return false;
+    const name = feature.properties.event;
+    const has_geometry = feature.geometry != null;
     const show_warnings = $('#armrWarningsBtnSwitchElem').is(':checked');
-    window.atticData.show_warnings = show_warnings;
     const show_watches = $('#armrWatchesBtnSwitchElem').is(':checked');
-    window.atticData.show_watches = show_watches;
     const show_statements = $('#armrStatementsBtnSwitchElem').is(':checked');
-    window.atticData.show_statements = show_statements;
 
-    alerts_data.features = alerts_data.features.filter((feature) => {
-        const current_alert_name = feature.properties.event;
-        const has_geometry = feature.geometry != null;
+    if (show_warnings && warnings_whitelist.includes(name)) return true;
+    // Watches intentionally left disabled (matches the map's existing behavior).
+    // if (show_watches && watches_whitelist.includes(name)) return true;
+    if (show_statements && statements_whitelist.includes(name) && has_geometry) return true;
+    return false;
+}
 
-        if (show_warnings) {
-            if (warnings_whitelist.includes(current_alert_name)) {
-                return true;
-            }
-        }
-        // if (show_watches) {
-        //     if (watches_whitelist.includes(current_alert_name)) {
-        //         return true;
-        //     }
-        // }
-        if (show_statements) {
-            if (statements_whitelist.includes(current_alert_name) && has_geometry) {
-                return true;
-            }
-        }
-    });
+function filter_alerts(alerts_data) {
+    window.atticData.show_warnings = $('#armrWarningsBtnSwitchElem').is(':checked');
+    window.atticData.show_watches = $('#armrWatchesBtnSwitchElem').is(':checked');
+    window.atticData.show_statements = $('#armrStatementsBtnSwitchElem').is(':checked');
 
+    alerts_data.features = alerts_data.features.filter(passes_filter);
     return alerts_data;
 }
 
+// Expose the predicate so the (ES-module) Active Alerts list can apply the exact
+// same filter without duplicating the whitelists.
+if (typeof window !== 'undefined') {
+    window.vortexAlertFilter = passes_filter;
+}
+
 module.exports = filter_alerts;
+module.exports.passes_filter = passes_filter;
