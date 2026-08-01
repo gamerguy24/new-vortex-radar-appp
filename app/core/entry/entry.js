@@ -70,6 +70,9 @@ function load() {
     // load the wind-particles (radar velocity flow) layer toggle
     require('../../radar/wind_particles/menu_item');
 
+    // load the Warning Graphic generator (footer button)
+    require('../../graphics/warning_graphic/menu_item');
+
     // load the SPC module
     require('../../spc/menu_item');
 
