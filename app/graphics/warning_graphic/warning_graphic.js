@@ -156,6 +156,42 @@ function stateAt(lnglat) {
     return null;
 }
 
+// All full state names referenced in an areaDesc ("Davidson, TN; Elkhart, IN").
+function statesFromArea(areaDesc) {
+    const set = new Set();
+    const re = /,\s*([A-Z]{2})\b/g;
+    let m;
+    while ((m = re.exec(areaDesc || '')) !== null) { if (STATE_ABBR[m[1]]) set.add(STATE_ABBR[m[1]]); }
+    return [...set];
+}
+
+// A selectable list of the active warnings currently loaded.
+function listWarnings() {
+    const data = window.atticData && window.atticData.alerts_data;
+    const feats = ((data && data.features) || []).filter((f) => f && f.geometry && isWarningish(f.properties && f.properties.event));
+    const rank = (e) => (/tornado/i.test(e) ? 0 : /severe|extreme/i.test(e) ? 1 : /flood/i.test(e) ? 2 : 3);
+    return feats
+        .map((f) => {
+            const p = f.properties || {};
+            const area = (p.areaDesc || '').split(';')[0].trim();
+            const states = statesFromArea(p.areaDesc);
+            const stTag = states.length ? ` [${states.map((s) => abbrOf(s)).join('/')}]` : '';
+            return { feature: f, label: `${p.event}${stTag} — ${area}${(p.areaDesc || '').includes(';') ? '…' : ''}` };
+        })
+        .sort((a, b) => rank(a.feature.properties.event) - rank(b.feature.properties.event));
+}
+const abbrOf = (name) => Object.keys(STATE_ABBR).find((k) => STATE_ABBR[k] === name) || name;
+
+// Default banner event + state line for a given warning (state can be multiple).
+function bannerDefaults(feature) {
+    const p = feature.properties || {};
+    let stateText = statesFromArea(p.areaDesc).join(' & ');
+    if (!stateText) {
+        try { const s = stateAt(turf.getCoord(turf.centroid(turf.feature(feature.geometry)))); if (s) stateText = s; } catch (e) { /* ignore */ }
+    }
+    return { event: (p.event || 'Weather Warning').toUpperCase(), state: stateText };
+}
+
 // ── population estimate (cities inside the polygon) ───────────────────────────
 function estimatePopulation(feature) {
     let pop = 0;
@@ -200,7 +236,8 @@ function captureMap(feature) {
 }
 
 // ── US locator (bottom-left) — highlight the state + drop a marker ────────────
-function renderLocator(stateName, centroid, w, h) {
+function renderLocator(states, centroid, w, h) {
+    const hl = new Set(states || []);
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
     const ctx = cv.getContext('2d');
@@ -223,7 +260,7 @@ function renderLocator(stateName, centroid, w, h) {
         ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke();
     };
     for (const f of US_STATES.features) {
-        const hit = stateName && f.properties.name === stateName;
+        const hit = hl.has(f.properties.name);
         drawState(f, hit ? 'rgba(220,30,45,0.9)' : 'rgba(120,130,145,0.35)', 'rgba(200,210,225,0.5)');
     }
     if (centroid) {
@@ -359,20 +396,31 @@ function injectLayoutStyles() {
 }
 
 // ── generate ──────────────────────────────────────────────────────────────────
-async function generate(size) {
+async function generate(size, opts) {
+    opts = opts || {};
     const html2canvas = window.html2canvas;
     if (typeof html2canvas !== 'function') throw new Error('Renderer (html2canvas) not available.');
 
-    const feature = pickAlert();
+    const feature = opts.feature || pickAlert();
     if (!feature) throw new Error('No active warning polygon is on the map. Turn on Alerts and zoom to a warning first.');
 
     const centroid = (() => { try { return turf.getCoord(turf.centroid(turf.feature(feature.geometry))); } catch (e) { return null; } })();
     const info = parseAlert(feature, centroid);
+
+    // Banner overrides (dropdown-selected event + editable state line). eventColor
+    // and safety still key off the text, so custom wording still adapts.
+    if (opts.eventText != null && opts.eventText.trim()) info.event = opts.eventText.trim();
+    if (opts.stateText != null) info.stateName = opts.stateText.trim();
+
     const pop = estimatePopulation(feature);
     const homes = pop ? Math.round(pop / 2.53) : null; // ~US avg household size
 
     const mapImg = captureMap(feature);
-    const locatorImg = renderLocator(info.stateName, centroid, 420, 300);
+    // Highlight every state the warning covers (from its areaDesc), falling back
+    // to the centroid's state.
+    let highlightStates = statesFromArea(feature.properties && feature.properties.areaDesc);
+    if (!highlightStates.length) { const s = stateAt(centroid); if (s) highlightStates = [s]; }
+    const locatorImg = renderLocator(highlightStates, centroid, 420, 300);
 
     injectLayoutStyles();
     const layout = buildLayout(info, mapImg, locatorImg, pop, homes, size);
@@ -421,6 +469,12 @@ function injectUiStyles() {
     .wg-modal-head h2{margin:0;font-size:1.15em;display:flex;align-items:center;gap:9px;}
     .wg-x{cursor:pointer;opacity:.7;font-size:20px;line-height:1;}.wg-x:hover{opacity:1;}
     .wg-modal-body{padding:16px 18px;}
+    .wg-label{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8aa0bd;margin:4px 0 6px;}
+    .wg-select,.wg-input{width:100%;box-sizing:border-box;padding:9px 11px;border-radius:9px;
+        background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);color:#e7eef7;font-family:inherit;font-size:14px;margin-bottom:12px;}
+    .wg-select:focus,.wg-input:focus{outline:none;border-color:#27beff;}
+    .wg-edit{display:flex;gap:12px;}
+    .wg-edit-col{flex:1;min-width:0;}
     .wg-sizes{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
     .wg-size{padding:8px 14px;border-radius:9px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.3);
         color:#cdd9f0;cursor:pointer;font-weight:600;font-size:13px;font-family:inherit;}
@@ -454,6 +508,19 @@ function openWarningGraphic() {
                 <span class="wg-x" id="wg-close">&times;</span>
             </div>
             <div class="wg-modal-body">
+                <label class="wg-label">Warning</label>
+                <select class="wg-select" id="wg-warning"></select>
+                <div class="wg-edit">
+                    <div class="wg-edit-col">
+                        <label class="wg-label">Banner text</label>
+                        <input class="wg-input" id="wg-ev" type="text" autocomplete="off" />
+                    </div>
+                    <div class="wg-edit-col">
+                        <label class="wg-label">State line (after &ldquo;IN&rdquo;)</label>
+                        <input class="wg-input" id="wg-st" type="text" autocomplete="off" placeholder="e.g. Georgia" />
+                    </div>
+                </div>
+                <label class="wg-label">Size</label>
                 <div class="wg-sizes" id="wg-sizes"></div>
                 <div class="wg-actions">
                     <button class="wg-btn primary" id="wg-generate">Generate Warning Graphic</button>
@@ -477,6 +544,23 @@ function openWarningGraphic() {
         sizesEl.appendChild(b);
     });
 
+    // Warning dropdown + editable banner fields.
+    const warnings = listWarnings();
+    const auto = pickAlert();
+    const selEl = bg.querySelector('#wg-warning');
+    const evEl = bg.querySelector('#wg-ev');
+    const stEl = bg.querySelector('#wg-st');
+    let selIdx = Math.max(0, warnings.findIndex((w) => w.feature === auto));
+    const applyDefaults = (i) => { const w = warnings[i]; if (!w) return; const d = bannerDefaults(w.feature); evEl.value = d.event; stEl.value = d.state; };
+    if (!warnings.length) {
+        selEl.innerHTML = '<option>No active warnings loaded — turn on Alerts</option>';
+        selEl.disabled = true;
+    } else {
+        selEl.innerHTML = warnings.map((w, i) => `<option value="${i}"${i === selIdx ? ' selected' : ''}>${esc(w.label)}</option>`).join('');
+        applyDefaults(selIdx);
+    }
+    selEl.addEventListener('change', () => { selIdx = parseInt(selEl.value, 10) || 0; applyDefaults(selIdx); });
+
     const preview = bg.querySelector('#wg-preview');
     const saveBtn = bg.querySelector('#wg-save');
     const copyBtn = bg.querySelector('#wg-copy');
@@ -490,7 +574,12 @@ function openWarningGraphic() {
         preview.innerHTML = '<div class="wg-spinner"></div>';
         saveBtn.disabled = copyBtn.disabled = genBtn.disabled = true;
         try {
-            _lastCanvas = await generate(size);
+            const w = warnings[selIdx];
+            _lastCanvas = await generate(size, {
+                feature: w ? w.feature : null,
+                eventText: evEl.value,
+                stateText: stEl.value,
+            });
             const img = new Image();
             img.src = _lastCanvas.toDataURL('image/png');
             preview.innerHTML = '';
