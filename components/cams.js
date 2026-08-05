@@ -201,10 +201,11 @@ function _openFullscreen(cam) {
     `;
     document.body.appendChild(overlay);
 
-    document.getElementById('cam-fs-close').addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) overlay.remove();
-    });
+    function closeFs() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+    const onKey = (e) => { if (e.key === 'Escape') closeFs(); };
+    document.getElementById('cam-fs-close').addEventListener('click', closeFs);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeFs(); });
+    document.addEventListener('keydown', onKey);
 }
 
 /** Extract YouTube video ID from various URL formats. Returns null if not YouTube. */
@@ -249,13 +250,18 @@ export default function openCams(highlightName = null) {
                 const thumbUrl = `https://img.youtube.com/vi/${encodeURIComponent(ytId)}/hqdefault.jpg`;
                 return `
                     <div style="background: rgba(255,255,255,0.05); border: 1px solid ${borderColor}; border-radius: 10px; overflow: hidden; margin-bottom: 12px;">
-                        <div style="padding: 8px 12px; font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
-                            ${cam.name}
-                            <a href="https://www.youtube.com/watch?v=${encodeURIComponent(ytId)}" target="_blank" rel="noopener noreferrer"
-                                style="font-size: 12px; color: #ff4444; text-decoration: none; white-space: nowrap; margin-left: 8px;"
-                                onclick="event.stopPropagation();">
-                                <i class="ti ti-brand-youtube" style="vertical-align: middle;"></i> Open in YouTube
-                            </a>
+                        <div style="padding: 8px 12px; font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cam.name}</span>
+                            <span style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                                <button data-fs="${idx}" title="Fullscreen this cam" style="background: none; border: none; color: #cfe0f5; cursor: pointer; font-size: 15px; padding: 0; display: inline-flex; align-items: center;">
+                                    <i class="ti ti-maximize"></i>
+                                </button>
+                                <a href="https://www.youtube.com/watch?v=${encodeURIComponent(ytId)}" target="_blank" rel="noopener noreferrer"
+                                    style="font-size: 12px; color: #ff4444; text-decoration: none; white-space: nowrap;"
+                                    onclick="event.stopPropagation();">
+                                    <i class="ti ti-brand-youtube" style="vertical-align: middle;"></i> YouTube
+                                </a>
+                            </span>
                         </div>
                         <div id="cam-container-${idx}" style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; cursor: pointer;" data-yt-id="${ytId}">
                             <img src="${thumbUrl}" alt="${cam.name}"
@@ -271,7 +277,12 @@ export default function openCams(highlightName = null) {
             } else {
                 return `
                     <div style="background: rgba(255,255,255,0.05); border: 1px solid ${borderColor}; border-radius: 10px; overflow: hidden; margin-bottom: 12px;">
-                        <div style="padding: 8px 12px; font-weight: 600; font-size: 14px;">${cam.name}</div>
+                        <div style="padding: 8px 12px; font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cam.name}</span>
+                            <button data-fs="${idx}" title="Fullscreen this cam" style="background: none; border: none; color: #cfe0f5; cursor: pointer; font-size: 15px; padding: 0; display: inline-flex; align-items: center; flex-shrink: 0;">
+                                <i class="ti ti-maximize"></i>
+                            </button>
+                        </div>
                         <div id="cam-container-${idx}" style="position: relative; width: 100%; padding-bottom: 56.25%; background: #111; cursor: pointer;" data-cam-url="${cam.url}">
                             <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #aaa;">
                                 <div style="width: 60px; height: 60px; background: rgba(255,33,33,0.9); border-radius: 50%;
@@ -293,6 +304,15 @@ export default function openCams(highlightName = null) {
     `;
 
     new Dialog('Live Cams', 'video', camsContent, {}, true);
+
+    // Per-cam fullscreen buttons — each opens that single cam fullscreen.
+    document.querySelectorAll('#cams-list [data-fs]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const cam = CAMERAS[+btn.dataset.fs];
+            if (cam) _openFullscreen(cam);
+        });
+    });
 
     CAMERAS.forEach((cam, idx) => {
         const container = document.getElementById(`cam-container-${idx}`);
