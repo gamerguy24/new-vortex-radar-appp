@@ -36,6 +36,9 @@ function load() {
     // load the atticRadarMenu helper file
     require('../menu/atticRadarMenu');
 
+    // make the menu's section headers collapsible (keeps the menu short)
+    require('../menu/menu_accordion');
+
     // load the productSelectionMenu helper file
     require('../menu/productSelectionMenu');
 

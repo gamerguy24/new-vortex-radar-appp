@@ -974,16 +974,16 @@ https://tobiasahlin.com/spinkit/
     /* height: 85vh;
     max-height: 85vh; */
 
-    background-color: rgb(28, 28, 28);
+    background-color: rgb(12, 17, 26);
 
-    border-top-left-radius: 10px;
-    border-top-right-radius: 10px;
-    border-left: 1px solid black;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
     border-top: 1px solid black;
     border-right: 1px solid black;
 }
 #atticRadarMenuBody {
-    color: #aeaeae;
+    color: #cdd9e6;
     padding: 15px;
 }
 .atticRadarMenuRow {
@@ -991,24 +991,23 @@ https://tobiasahlin.com/spinkit/
     justify-content: flex-start;
     align-items: center;
 
-    background-color: rgb(50, 50, 50);
-    color: white;
-    border-radius: 10px;
-    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.045);
+    color: #e7eef7;
+    border-radius: 12px;
+    padding: 11px 12px;
+    font-size: 14.5px;
+    transition: background-color 0.12s ease;
 }
 .atticRadarMenuRowDisabled {
-    /* background-color: #272727;
-    color: #595959; */
-    opacity: 0.5;
+    opacity: 0.45;
     pointer-events: none;
 }
 .atticRadarMenuRow:hover {
-    background-color: rgb(44, 44, 44);
+    background-color: rgba(39, 190, 255, 0.12);
     cursor: pointer;
 }
 .atticRadarMenuRow:active {
-    /* border: 1px solid rgba(97, 178, 203, 0.542); */
-    background-color: rgb(40, 40, 40);
+    background-color: rgba(39, 190, 255, 0.20);
 }
 .armrSlideDown {
     border-top-left-radius: 0px;
@@ -1020,17 +1019,17 @@ https://tobiasahlin.com/spinkit/
 .armrTop {
     border-bottom-left-radius: 0px;
     border-bottom-right-radius: 0px;
-    border-bottom: 0.25px solid rgb(70, 70, 70);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .armrMiddle {
     border-radius: 0px;
-    border-top: 0.25px solid rgb(70, 70, 70);
-    border-bottom: 0.25px solid rgb(70, 70, 70);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .armrBottom {
     border-top-left-radius: 0px;
     border-top-right-radius: 0px;
-    border-top: 0.25px solid rgb(70, 70, 70);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 .armrWide {
     border-radius: 0px;
@@ -1052,7 +1051,7 @@ https://tobiasahlin.com/spinkit/
     color: rgb(187, 64, 53);
 }
 .armrIcon-Blue {
-    color: rgb(70, 143, 235);
+    color: #27beff;
 }
 .armrIcon-Green {
     color: rgb(79, 183, 94);
@@ -1099,12 +1098,43 @@ https://tobiasahlin.com/spinkit/
 }
 
 .armrHeader {
-    margin-left: calc(10px + 5px); /* atticRadarMenuRow padding + armrIcon margin-left */
-    margin-bottom: 3px;
-    font-size: 15px;
+    margin-left: 4px;
+    margin-bottom: 8px;
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: #7f93b0;
 }
 .armrHeaderWide {
     margin-left: 0px;
+}
+
+/* ── Collapsible section headers (accordion) ─────────────────────────────── */
+.armr-acc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 8px 8px 8px 4px;
+    margin-bottom: 6px;
+    border-radius: 9px;
+    user-select: none;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+.armr-acc-header:hover {
+    color: #cfe0f5;
+    background-color: rgba(255, 255, 255, 0.04);
+}
+.armr-acc-chev {
+    font-size: 12px;
+    opacity: 0.65;
+    transition: transform 0.16s ease;
+    transform: rotate(0deg);
+}
+.armr-acc-header:not(.armr-collapsed) .armr-acc-chev {
+    transform: rotate(90deg);
 }
 
 .armTextInput {
