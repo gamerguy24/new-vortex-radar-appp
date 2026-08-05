@@ -19,6 +19,8 @@ function load() {
 
     // initialize the alerts
     require('../../alerts/menu_item');
+    // alert type filter picker (settings)
+    require('../../alerts/alert_filter_ui');
     // load alertd on entry
     $('#alertMenuItemIcon').click();
     // expose the alert event -> color helper so the ES-module alerts overlay

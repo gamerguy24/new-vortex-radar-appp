@@ -1,39 +1,36 @@
-const warnings_whitelist = [
-    'Tornado Warning',
-    'Severe Thunderstorm Warning',
-    'Flash Flood Warning',
-    'Special Marine Warning',
-    'Snow Squall Warning',
-    'Extreme Wind Warning',
-    // 'Hurricane Warning',
-    // 'Tropical Storm Warning'
-];
-const watches_whitelist = [
-    'Tornado Watch',
-    'Severe Thunderstorm Watch',
-    // 'Hurricane Watch',
-    // 'Tropical Storm Watch'
-];
-const statements_whitelist = [
-    'Special Weather Statement'
-];
+/*
+ * filter_alerts.js
+ * Decides which alerts are shown. Two layers of control:
+ *   1. The category master toggles in the menu (Warnings / Watches / Statements)
+ *      — quick on/off for a whole category.
+ *   2. Per-alert-type preferences from the Alert Filters picker (alert_prefs) —
+ *      fine control over exactly which types appear.
+ * The shared passes_filter predicate is used by both the map plot and the Active
+ * Alerts list, so they always match.
+ */
+const prefs = require('./alert_prefs');
 
-// Whether a single alert feature passes the current warnings/watches/statements
-// filter (the same toggles that control the map). Shared so both the map and the
-// Active Alerts list stay in sync.
+const masterOn = (category) => {
+    if (category === 'warning') return $('#armrWarningsBtnSwitchElem').is(':checked');
+    if (category === 'watch') return $('#armrWatchesBtnSwitchElem').is(':checked');
+    if (category === 'statement') return $('#armrStatementsBtnSwitchElem').is(':checked');
+    return true;
+};
+
+// Whether a single alert feature passes the current filter.
 function passes_filter(feature) {
     if (!feature || !feature.properties) return false;
     const name = feature.properties.event;
-    const has_geometry = feature.geometry != null;
-    const show_warnings = $('#armrWarningsBtnSwitchElem').is(':checked');
-    const show_watches = $('#armrWatchesBtnSwitchElem').is(':checked');
-    const show_statements = $('#armrStatementsBtnSwitchElem').is(':checked');
+    const info = prefs.TYPE_INDEX[name];
+    const category = info ? info.category : prefs.categoryFromName(name);
 
-    if (show_warnings && warnings_whitelist.includes(name)) return true;
-    // Watches intentionally left disabled (matches the map's existing behavior).
-    // if (show_watches && watches_whitelist.includes(name)) return true;
-    if (show_statements && statements_whitelist.includes(name) && has_geometry) return true;
-    return false;
+    // Category master toggle off → hide the whole category.
+    if (!masterOn(category)) return false;
+    // Per-type preference (defaults reproduce the old behavior).
+    if (!prefs.isEnabled(name)) return false;
+    // Statements/advisories must have a polygon to render on the map.
+    if (category === 'statement' && feature.geometry == null) return false;
+    return true;
 }
 
 function filter_alerts(alerts_data) {
@@ -45,8 +42,8 @@ function filter_alerts(alerts_data) {
     return alerts_data;
 }
 
-// Expose the predicate so the (ES-module) Active Alerts list can apply the exact
-// same filter without duplicating the whitelists.
+// Expose the predicate so the (ES-module) Active Alerts list applies the exact
+// same filter without duplicating logic.
 if (typeof window !== 'undefined') {
     window.vortexAlertFilter = passes_filter;
 }
