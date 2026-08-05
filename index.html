@@ -352,12 +352,19 @@
 
                     <br>
 
-                    <div class="armrHeader">LAYERS</div>
+                    <div class="armrHeader">IMAGERY & RADAR</div>
                     <div class="atticRadarMenuRow armrTop" id="armrGoesIRBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-satellite"></i>
                         GOES-19 Clean IR
                         <div class="form-check form-switch">
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrGoesIRBtnSwitchElem">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrMiddle" id="armrMRMSBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-layer-group"></i>
+                        MRMS Reflectivity
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrMRMSSwitchElem">
                         </div>
                     </div>
                     <div class="atticRadarMenuRow armrMiddle" id="armrWindParticlesBtn">
@@ -367,12 +374,60 @@
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrWindParticlesBtnSwitchElem">
                         </div>
                     </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrSPCOutlooksBtn">
+                    <div class="atticRadarMenuRow armrMiddle" id="armrTVSSignaturesBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-tornado"></i>
+                        TVS Signatures
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-tvs-signatures-layer">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrBottom" id="armrHailSignaturesBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-icicles"></i>
+                        Hail Signatures
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-hail-signatures-layer">
+                        </div>
+                    </div>
+                    <br>
+
+                    <div class="armrHeader">SEVERE & FIRE</div>
+                    <div class="atticRadarMenuRow armrTop" id="armrSPCOutlooksBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-cloud-bolt"></i>
                         SPC Outlooks
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrHurricanesBtn">
+                    <div class="atticRadarMenuRow armrMiddle" id="armrDay1FireWxBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
+                        Day 1 Fire Wx
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrDay1FireWxSwitchElem">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrMiddle" id="armrDay2FireWxBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
+                        Day 2 Fire Wx
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrDay2FireWxSwitchElem">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrMiddle" id="armrFireDangerBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
+                        Fire Danger Monitor
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrFireDangerSwitchElem">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrBottom" id="armrWildfiresBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
+                        Wildfires
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrWildfiresSwitchElem">
+                        </div>
+                    </div>
+                    <br>
+
+                    <div class="armrHeader">TROPICAL</div>
+                    <div class="atticRadarMenuRow armrTop" id="armrHurricanesBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
                         NHC Hurricanes
                         <div class="form-check form-switch">
@@ -393,76 +448,6 @@
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrHurricaneHuntersBtnSwitchElem">
                         </div>
                     </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrTideStationsBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-ship"></i>
-                        Tide Stations
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrTideStationsBtnSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrSurfaceFrontsBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-wind"></i>
-                        Surface Fronts
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSurfaceFrontsBtnSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrWeatherRadioBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-radio"></i>
-                        NOAA Weather Radio
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrWeatherRadioBtnSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrCamerasBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-video"></i>
-                        Live Cameras
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrCamerasSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrSpottersBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-user-group"></i>
-                        Spotter Network
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSpottersSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrMRMSBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-layer-group"></i>
-                        MRMS Reflectivity
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrMRMSSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrEarthquakesBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-house-crack"></i>
-                        Earthquakes (M2.5+)
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrEarthquakesSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrMPINGBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-cloud-showers-heavy"></i>
-                        mPING Reports
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrMPINGSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrBuoysBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-water"></i>
-                        Buoys
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrBuoysSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrBuoyCamsBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-camera"></i>
-                        BuoyCAMs
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrBuoyCamsSwitchElem">
-                        </div>
-                    </div>
                     <div class="atticRadarMenuRow armrMiddle" id="armrTracksAtlBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
                         Atlantic Tracks
@@ -470,39 +455,21 @@
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrTracksAtlSwitchElem">
                         </div>
                     </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrTracksEpacBtn">
+                    <div class="atticRadarMenuRow armrBottom" id="armrTracksEpacBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
                         Eastern Pacific Tracks
                         <div class="form-check form-switch">
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrTracksEpacSwitchElem">
                         </div>
                     </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrFireDangerBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
-                        Fire Danger Monitor
+                    <br>
+
+                    <div class="armrHeader">SURFACE & MARINE</div>
+                    <div class="atticRadarMenuRow armrTop" id="armrSurfaceFrontsBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-wind"></i>
+                        Surface Fronts
                         <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrFireDangerSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrDay1FireWxBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
-                        Day 1 Fire Wx
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrDay1FireWxSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrDay2FireWxBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
-                        Day 2 Fire Wx
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrDay2FireWxSwitchElem">
-                        </div>
-                    </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrWildfiresBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
-                        Wildfires
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrWildfiresSwitchElem">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSurfaceFrontsBtnSwitchElem">
                         </div>
                     </div>
                     <div class="atticRadarMenuRow armrMiddle" id="armrMetarStationsBtn">
@@ -512,25 +479,57 @@
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-metars-layer">
                         </div>
                     </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrTVSSignaturesBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-tornado"></i>
-                        TVS Signatures
+                    <div class="atticRadarMenuRow armrMiddle" id="armrTideStationsBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-ship"></i>
+                        Tide Stations
                         <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-tvs-signatures-layer">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrTideStationsBtnSwitchElem">
                         </div>
                     </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrHailSignaturesBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-icicles"></i>
-                        Hail Signatures
+                    <div class="atticRadarMenuRow armrBottom" id="armrBuoysBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-water"></i>
+                        Buoys
                         <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-hail-signatures-layer">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrBuoysSwitchElem">
                         </div>
                     </div>
-                    <div class="atticRadarMenuRow armrBottom" id="armrReportsBtn">
+                    <br>
+
+                    <div class="armrHeader">REPORTS & SPOTTERS</div>
+                    <div class="atticRadarMenuRow armrTop" id="armrSpottersBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-user-group"></i>
+                        Spotter Network
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSpottersSwitchElem">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrMiddle" id="armrReportsBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-tower-observation"></i>
                         User Storm Reports
                         <div class="form-check form-switch">
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-community-reports-layer">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrMiddle" id="armrMPINGBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-cloud-showers-heavy"></i>
+                        mPING Reports
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrMPINGSwitchElem">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrBottom" id="armrReportWeatherBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-flag"></i>
+                        Report Weather
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <br>
+
+                    <div class="armrHeader">CAMERAS</div>
+                    <div class="atticRadarMenuRow armrTop" id="armrCamerasBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-video"></i>
+                        Live Cameras
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrCamerasSwitchElem">
                         </div>
                     </div>
                     <div class="atticRadarMenuRow armrMiddle" id="armrLiveCamsBtn">
@@ -538,14 +537,41 @@
                         Live Cams
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrReportWeatherBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-flag"></i>
-                        Report Weather
+                    <div class="atticRadarMenuRow armrBottom" id="armrBuoyCamsBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-camera"></i>
+                        BuoyCAMs
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrBuoyCamsSwitchElem">
+                        </div>
+                    </div>
+                    <br>
+
+                    <div class="armrHeader">MORE</div>
+                    <div class="atticRadarMenuRow armrTop" id="armrEarthquakesBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-house-crack"></i>
+                        Earthquakes (M2.5+)
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrEarthquakesSwitchElem">
+                        </div>
+                    </div>
+                    <div class="atticRadarMenuRow armrBottom" id="armrWeatherRadioBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-radio"></i>
+                        NOAA Weather Radio
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrWeatherRadioBtnSwitchElem">
+                        </div>
+                    </div>
+                    <br>
+
+                    <div class="armrHeader">TOOLS</div>
+                    <div class="atticRadarMenuRow armrTop" id="armrStorm3DBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-cube"></i>
+                        3D Storm View
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrSponsorsBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-star"></i>
-                        Sponsors
+                    <div class="atticRadarMenuRow armrMiddle" id="armrGraphicsStudioBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-palette"></i>
+                        Graphics Studio
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
                     <div class="atticRadarMenuRow armrMiddle" id="armrBrandLogoBtn">
@@ -553,17 +579,11 @@
                         Brand Logo
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="atticRadarMenuRow armrMiddle" id="armrStorm3DBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-cube"></i>
-                        3D Storm View
+                    <div class="atticRadarMenuRow armrBottom" id="armrSponsorsBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-star"></i>
+                        Sponsors
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="atticRadarMenuRow armrBottom" id="armrGraphicsStudioBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-palette"></i>
-                        Graphics Studio
-                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
-                    </div>
-
                     <br>
 
                     <div class="armrHeader">INFO</div>
