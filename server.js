@@ -152,6 +152,8 @@ function publicUser(u) {
         isSuperAdmin: !!u.isSuperAdmin,
         isLocked: !!u.isLocked,
         mustChangePassword: !!u.mustChangePassword,
+        tier: u.tier || 'free',
+        tierLevel: billing.billingState(u).tierLevel,
         createdAt: u.createdAt,
         lastLoginAt: u.lastLoginAt || null,
     };
@@ -383,6 +385,23 @@ app.post('/admin/users/:id/admin', requireAdmin, (req, res) => {
         return res.status(400).json({ error: 'Cannot revoke the last remaining admin.' });
     }
     user.isAdmin = makeAdmin;
+    saveUsers();
+    res.json({ user: publicUser(user) });
+});
+
+// Assign a subscription tier to a user (free | tier1 | tier2 | tier3).
+// Lets admins grant access to the cumulative feature tiers without going
+// through Stripe. "pro" is accepted as a legacy alias for tier3.
+app.post('/admin/users/:id/tier', requireAdmin, (req, res) => {
+    const user = findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    let tier = String(req.body.tier || 'free').toLowerCase();
+    if (tier === 'pro') tier = 'tier3';
+    const ALLOWED = ['free', 'tier1', 'tier2', 'tier3'];
+    if (!ALLOWED.includes(tier)) {
+        return res.status(400).json({ error: 'Invalid tier.' });
+    }
+    user.tier = tier;
     saveUsers();
     res.json({ user: publicUser(user) });
 });

@@ -27,14 +27,90 @@ function toast(msg, kind) {
   setTimeout(() => el.remove(), 4000);
 }
 
+// Feature summaries shown on the plan picker (cumulative — each tier includes
+// the ones below it). Mirrors the gating in components/pro_gates.js.
+const TIER_INFO = {
+  tier1: { name: 'Tier One', features: ['Live Lightning'] },
+  tier2: { name: 'Tier Two', features: ['Everything in Tier One', 'Manual Storm Track', 'Split Screen'] },
+  tier3: { name: 'Tier Three', features: ['Everything in Tier Two', 'Warning Graphic', 'Models & Forecast', 'My Locations', 'Vortex Graphics'] },
+};
+
 // Shared client billing state for the Pro gates (components/pro_gates.js).
 // gatingActive() is true only when a paywall is live AND the user isn't Pro.
 window.vortexBilling = {
   status: null,
   gatingActive() { const s = this.status; return !!(s && s.billingConfigured && !s.isPro); },
-  startCheckout: () => go('checkout'),
+  // Opens the plan picker. Pass a tier id (e.g. 'tier2') to highlight it.
+  startCheckout: (preferred) => openTierPicker(preferred),
   openPortal: () => go('portal'),
 };
+
+function money(amount, currency, interval) {
+  if (amount == null) return '';
+  let v;
+  try { v = (amount / 100).toLocaleString(undefined, { style: 'currency', currency: (currency || 'usd').toUpperCase() }); }
+  catch (e) { v = '$' + (amount / 100).toFixed(2); }
+  return interval ? `${v}/${interval}` : v;
+}
+
+function ensurePickerStyles() {
+  if (document.getElementById('vtpStyles')) return;
+  const s = document.createElement('style');
+  s.id = 'vtpStyles';
+  s.textContent = `
+    #vortexTierPicker{position:fixed;inset:0;background:rgba(3,7,14,0.72);backdrop-filter:blur(4px);z-index:100070;display:flex;align-items:center;justify-content:center;padding:20px;}
+    .vtp-panel{background:#0b1220;border:1px solid rgba(255,255,255,0.12);border-radius:16px;max-width:760px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,0.6);font-family:'Onest',system-ui,sans-serif;color:#e8edf3;}
+    .vtp-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.08);font-weight:700;font-size:16px;}
+    .vtp-x{background:none;border:none;color:#9fb0c3;font-size:26px;line-height:1;cursor:pointer;padding:0 4px;}
+    .vtp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;padding:18px;}
+    .vtp-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;display:flex;flex-direction:column;}
+    .vtp-card-hl{border-color:#27beff;box-shadow:0 0 0 1px #27beff inset;}
+    .vtp-name{font-weight:800;font-size:15px;}
+    .vtp-price{color:#27beff;font-weight:700;margin:6px 0 10px;min-height:20px;}
+    .vtp-feats{list-style:none;margin:0 0 14px;padding:0;flex:1;font-size:13px;color:#c3cedb;}
+    .vtp-feats li{padding:3px 0 3px 18px;position:relative;}
+    .vtp-feats li:before{content:'\\2713';position:absolute;left:0;color:#34d399;}
+    .vtp-choose{margin-top:auto;background:#27beff;color:#04121c;border:none;border-radius:9px;padding:9px;font-weight:700;cursor:pointer;font-family:inherit;}
+    .vtp-choose:hover{filter:brightness(1.08);}`;
+  document.head.appendChild(s);
+}
+
+function openTierPicker(preferred) {
+  // No catalog (billing off, or a single legacy price) → go straight to Stripe.
+  if (!state || !state.billingConfigured) { go('checkout'); return; }
+  const tiers = (state.tiers && state.tiers.length) ? state.tiers : null;
+  if (!tiers || tiers.length <= 1) { go('checkout', tiers && tiers[0] ? { tier: tiers[0].tier } : undefined); return; }
+
+  ensurePickerStyles();
+  const old = document.getElementById('vortexTierPicker');
+  if (old) old.remove();
+
+  const cards = tiers.map((t) => {
+    const info = TIER_INFO[t.tier] || { name: t.tier, features: [] };
+    const price = money(t.amount, t.currency, t.interval);
+    const feats = info.features.map((f) => `<li>${f}</li>`).join('');
+    const hl = preferred === t.tier ? ' vtp-card-hl' : '';
+    return `<div class="vtp-card${hl}">
+        <div class="vtp-name">${info.name}</div>
+        <div class="vtp-price">${price}</div>
+        <ul class="vtp-feats">${feats}</ul>
+        <button class="vtp-choose" data-tier="${t.tier}">Choose ${info.name}</button>
+      </div>`;
+  }).join('');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'vortexTierPicker';
+  overlay.innerHTML = `<div class="vtp-panel">
+      <div class="vtp-head"><span>Choose your plan</span><button class="vtp-x" aria-label="Close">&times;</button></div>
+      <div class="vtp-cards">${cards}</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay || e.target.classList.contains('vtp-x')) { overlay.remove(); return; }
+    const btn = e.target.closest('.vtp-choose');
+    if (btn) { overlay.remove(); go('checkout', { tier: btn.dataset.tier }); }
+  });
+}
 
 async function loadStatus() {
   try {
@@ -69,9 +145,11 @@ function apply() {
   rw.dataset.action = subscriber ? 'portal' : 'checkout';
 }
 
-async function go(action) {
+async function go(action, body) {
   try {
-    const r = await fetch('/api/billing/' + action, { method: 'POST' });
+    const opts = { method: 'POST' };
+    if (body) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+    const r = await fetch('/api/billing/' + action, opts);
     const d = await r.json().catch(() => ({}));
     if (d.url) { window.location.href = d.url; return; }
     toast(d.error || 'Could not open billing.', 'warn');
@@ -84,7 +162,9 @@ function init() {
     rw.addEventListener('click', () => {
       const menu = $('atticRadarMenu');
       if (menu) menu.style.display = 'none';
-      go(rw.dataset.action || 'checkout');
+      const action = rw.dataset.action || 'checkout';
+      if (action === 'checkout') openTierPicker();  // free user -> pick a plan
+      else go(action);                              // subscriber -> portal
     });
   }
 

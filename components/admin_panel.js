@@ -63,6 +63,13 @@ export const adminPanelStyles = `
 .admin-panel-badge.super { background: rgba(124,58,237,0.28); color: #c4b5fd; }
 .admin-panel-badge.locked { background: rgba(248,113,113,0.2); color: #f87171; }
 .admin-panel-badge.must-change { background: rgba(250,204,21,0.18); color: #facc15; }
+.admin-panel-badge.tier { background: rgba(52,211,153,0.18); color: #34d399; }
+.admin-panel-tier {
+    background: rgba(255,255,255,0.06); color: #e8edf3;
+    border: 1px solid rgba(255,255,255,0.14); border-radius: 6px;
+    padding: 3px 6px; font-size: 0.85em; margin-right: 4px; cursor: pointer;
+}
+.admin-panel-tier option { background: #12151c; color: #e8edf3; }
 .admin-panel-empty { text-align: center; padding: 30px; color: rgba(255,255,255,0.5); }
 
 .admin-panel-pending {
@@ -267,9 +274,16 @@ export function initAdminPanel(root) {
             else if (u.isAdmin) badges.push('<span class="admin-panel-badge admin">admin</span>');
             if (u.isLocked) badges.push('<span class="admin-panel-badge locked">locked</span>');
             if (u.mustChangePassword) badges.push('<span class="admin-panel-badge must-change">must reset</span>');
+            const TIER_LABELS = { free: 'Free', tier1: 'Tier One', tier2: 'Tier Two', tier3: 'Tier Three' };
+            const curTier = (u.tier === 'pro' ? 'tier3' : (u.tier || 'free'));
+            if (curTier !== 'free') badges.push(`<span class="admin-panel-badge tier">${TIER_LABELS[curTier] || curTier}</span>`);
+            const tierSelect = `<select class="admin-panel-tier" data-id="${u.id}" data-email="${escapeHtml(u.email)}" title="Subscription tier">
+                    ${['free', 'tier1', 'tier2', 'tier3'].map((t) => `<option value="${t}"${t === curTier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
+                </select>`;
             const actions = u.isSuperAdmin
                 ? '<span style="color: rgba(255,255,255,0.4); font-size: 0.85em;">Protected</span>'
                 : `
+                    ${tierSelect}
                     <button data-action="reset-password" data-id="${u.id}" data-email="${escapeHtml(u.email)}">Reset password</button>
                     <button data-action="${u.isAdmin ? 'revoke-admin' : 'make-admin'}" data-id="${u.id}" data-email="${escapeHtml(u.email)}">${u.isAdmin ? 'Revoke admin' : 'Make admin'}</button>
                     <button data-action="${u.isLocked ? 'unlock' : 'lock'}" data-id="${u.id}" data-email="${escapeHtml(u.email)}">${u.isLocked ? 'Unlock' : 'Lock'}</button>
@@ -318,6 +332,22 @@ export function initAdminPanel(root) {
             closeModal();
         } catch (err) {
             flash(err.message, 'error');
+        }
+    });
+
+    // Change a user's subscription tier from the row dropdown.
+    $('#admin-panel-rows').addEventListener('change', async (e) => {
+        const sel = e.target.closest('select.admin-panel-tier');
+        if (!sel) return;
+        const { id, email } = sel.dataset;
+        const tier = sel.value;
+        try {
+            await api('POST', `/admin/users/${id}/tier`, { tier });
+            flash(`${email} set to ${sel.options[sel.selectedIndex].text}.`, 'success');
+            loadUsers();
+        } catch (err) {
+            flash(err.message, 'error');
+            loadUsers(); // revert the dropdown to the stored value
         }
     });
 
