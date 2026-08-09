@@ -100,6 +100,9 @@ function load() {
     // load the manual storm track tool
     require('../../tools/manual_storm_track/menu_item');
 
+    // load the click-a-point forecast sounding tool
+    require('../../soundings/menu_item');
+
     // load the attribution map div
     require('../attribution/attribution');
 
