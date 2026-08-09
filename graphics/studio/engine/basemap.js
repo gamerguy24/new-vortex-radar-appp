@@ -7,10 +7,10 @@
 import { canvasPath } from './projection.js';
 
 const STYLES = {
-  relief: { ocean: '#0a3a66', land: '#8d9094', border: '#ffffff', borderW: 1.4, county: 'rgba(40,40,40,0.35)', countyW: 0.5 },
-  satellite: { ocean: '#0b1c2c', land: '#5b6b52', border: '#cfe0cf', borderW: 1.2, county: 'rgba(255,255,255,0.18)', countyW: 0.6 },
-  flat: { ocean: '#cfe4f5', land: '#e9ede2', border: '#9aa6b2', borderW: 1.2, county: 'rgba(120,130,140,0.35)', countyW: 0.5 },
-  dark: { ocean: '#060b14', land: '#1d2738', border: '#33415c', borderW: 1.2, county: 'rgba(120,140,170,0.2)', countyW: 0.5 },
+  relief: { ocean: '#0a3a66', land: '#8d9094', border: '#ffffff', borderW: 1.6, county: 'rgba(20,28,40,0.6)', countyW: 0.9 },
+  satellite: { ocean: '#0b1c2c', land: '#5b6b52', border: '#eef6ee', borderW: 1.5, county: 'rgba(255,255,255,0.6)', countyW: 0.9, countyHalo: 'rgba(0,0,0,0.4)', countyHaloW: 2.2 },
+  flat: { ocean: '#cfe4f5', land: '#e9ede2', border: '#6b7683', borderW: 1.5, county: 'rgba(70,84,100,0.65)', countyW: 0.9 },
+  dark: { ocean: '#060b14', land: '#1d2738', border: '#5a6d90', borderW: 1.5, county: 'rgba(150,175,210,0.6)', countyW: 0.9, countyHalo: 'rgba(0,0,0,0.35)', countyHaloW: 2.2 },
   // Real MapTiler satellite imagery (composited by engine/satellite.js). The
   // land fill is transparent so the photo shows through — this layer only paints
   // the ocean fallback + crisp white borders/counties on top of the imagery.
