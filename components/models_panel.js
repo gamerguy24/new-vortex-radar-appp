@@ -50,22 +50,29 @@ function injectPhase2Styles() {
   const s = document.createElement('style');
   s.id = 'vmp-p2-styles';
   s.textContent = `
-    .vmp-presets{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px;}
-    .vmp-preset{padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);
-      color:#dbe6f5;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;}
-    .vmp-preset:hover{background:rgba(255,255,255,.12);}
-    .vmp-preset.active{background:#27beff;color:#04121c;border-color:transparent;}
-    .vmp-scrub{display:flex;align-items:center;gap:6px;margin:4px 0 8px;}
-    .vmp-scrub button{width:30px;height:28px;border-radius:7px;border:1px solid rgba(255,255,255,.16);
-      background:rgba(255,255,255,.06);color:#e7eef7;cursor:pointer;font-size:13px;}
-    .vmp-scrub button:hover{background:rgba(255,255,255,.14);}
-    .vmp-scrub .vmp-fhrlabel{font-size:12px;color:#9fb2c9;min-width:150px;}
-    #vortexModelLegend{position:absolute;right:16px;bottom:96px;z-index:60;background:rgba(9,14,24,.9);
-      border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:9px 11px;color:#e7eef7;
-      font-family:'Onest',system-ui,sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.5);min-width:190px;}
-    #vortexModelLegend .vml-title{font-size:12px;font-weight:800;margin-bottom:6px;}
-    #vortexModelLegend .vml-bar{height:12px;border-radius:6px;border:1px solid rgba(255,255,255,.18);}
-    #vortexModelLegend .vml-scale{display:flex;justify-content:space-between;font-size:10px;opacity:.75;margin-top:3px;}`;
+    .vmp-sub{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#7f93b0;margin:2px 0 7px;}
+    .vmp-presets{display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 13px;}
+    .vmp-preset{padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);
+      color:#cddaea;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .12s;}
+    .vmp-preset:hover{background:rgba(39,190,255,.12);color:#eaf3ff;border-color:rgba(39,190,255,.3);}
+    .vmp-preset.active{background:linear-gradient(180deg,#33c2ff,#1f92d6);color:#04121e;border-color:transparent;box-shadow:0 3px 12px rgba(39,190,255,.3);}
+    .vmp-scrub{display:flex;align-items:center;gap:6px;margin:2px 0 13px;padding:7px;border-radius:12px;
+      background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);}
+    .vmp-scrub button{width:34px;height:32px;border-radius:9px;border:1px solid rgba(255,255,255,.1);
+      background:rgba(255,255,255,.05);color:#e7eef7;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .12s;}
+    .vmp-scrub button:hover{background:rgba(39,190,255,.15);border-color:rgba(39,190,255,.3);}
+    .vmp-scrub select{flex:0 1 auto;min-width:0;background:rgba(255,255,255,.05);color:#e7eef7;
+      border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:7px 9px;font-size:12.5px;font-family:inherit;}
+    .vmp-scrub select:focus{outline:none;border-color:#27beff;}
+    .vmp-scrub .vmp-fhrlabel{font-size:11px;color:#8ea4bd;flex:1;text-align:right;font-weight:600;white-space:nowrap;}
+    #vortexModelLegend{position:absolute;right:16px;bottom:96px;z-index:60;
+      background:linear-gradient(180deg,rgba(17,25,42,.95),rgba(9,14,26,.95));
+      border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:12px 14px;color:#eef4fb;
+      font-family:'Onest',system-ui,sans-serif;box-shadow:0 16px 38px rgba(0,0,0,.55);min-width:206px;
+      -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);}
+    #vortexModelLegend .vml-title{font-size:12px;font-weight:800;margin-bottom:8px;letter-spacing:.2px;}
+    #vortexModelLegend .vml-bar{height:13px;border-radius:7px;border:1px solid rgba(255,255,255,.18);box-shadow:inset 0 1px 2px rgba(0,0,0,.35);}
+    #vortexModelLegend .vml-scale{display:flex;justify-content:space-between;font-size:10px;opacity:.72;margin-top:5px;font-weight:600;}`;
   document.head.appendChild(s);
 }
 
@@ -225,7 +232,9 @@ async function selectModel(m) {
         <button id="vmpPlay" title="Animate forecast hours">▶︎</button>
         <span class="vmp-fhrlabel" id="vmpFhrLabel"></span>
       </div>
+      <div class="vmp-sub">Quick fields</div>
       <div id="vmpPresets" class="vmp-presets"></div>
+      <div class="vmp-sub">All variables</div>
       <input id="vmpFilter" class="vmp-filter" placeholder="Filter variables (TMP, REFC, APCP…)" />`;
     document.getElementById('vmpFhr').onchange = (e) => { stopPlay(); setHour(state.hours.indexOf(Number(e.target.value))); };
     document.getElementById('vmpPrev').onclick = () => { stopPlay(); setHour(state.hourIdx - 1); };
