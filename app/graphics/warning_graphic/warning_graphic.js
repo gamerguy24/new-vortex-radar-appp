@@ -35,6 +35,19 @@ const STATE_ABBR = {
     DC: 'District of Columbia', PR: 'Puerto Rico',
 };
 
+// 2-digit state FIPS -> USPS abbreviation (for decoding county FIPS ids).
+const STATE_FIPS_ABBR = {
+    '01': 'AL', '02': 'AK', '04': 'AZ', '05': 'AR', '06': 'CA', '08': 'CO',
+    '09': 'CT', '10': 'DE', '11': 'DC', '12': 'FL', '13': 'GA', '15': 'HI',
+    '16': 'ID', '17': 'IL', '18': 'IN', '19': 'IA', '20': 'KS', '21': 'KY',
+    '22': 'LA', '23': 'ME', '24': 'MD', '25': 'MA', '26': 'MI', '27': 'MN',
+    '28': 'MS', '29': 'MO', '30': 'MT', '31': 'NE', '32': 'NV', '33': 'NH',
+    '34': 'NJ', '35': 'NM', '36': 'NY', '37': 'NC', '38': 'ND', '39': 'OH',
+    '40': 'OK', '41': 'OR', '42': 'PA', '44': 'RI', '45': 'SC', '46': 'SD',
+    '47': 'TN', '48': 'TX', '49': 'UT', '50': 'VT', '51': 'VA', '53': 'WA',
+    '54': 'WV', '55': 'WI', '56': 'WY', '72': 'PR',
+};
+
 // Banner accent color per event (broadcast palette; defaults to warning red).
 function eventColor(event) {
     const e = (event || '').toLowerCase();
@@ -273,6 +286,178 @@ function renderLocator(states, centroid, w, h) {
     return cv.toDataURL('image/png');
 }
 
+// ── county geometry (bundled us-atlas TopoJSON, decoded once) ─────────────────
+let _countyGeo = null;
+async function loadCountyGeo() {
+    if (_countyGeo) return _countyGeo;
+    try {
+        const topojson = require('topojson-client');
+        const res = await fetch('/graphics/studio/geo/counties-10m.json');
+        if (!res.ok) throw new Error('http ' + res.status);
+        const topo = await res.json();
+        const counties = topojson.feature(topo, topo.objects.counties).features;
+        const byAbbr = {};
+        for (const f of counties) {
+            const fips = String(f.id).padStart(5, '0');
+            const abbr = STATE_FIPS_ABBR[fips.slice(0, 2)];
+            if (!abbr) continue;
+            f.fips = fips; f.stateAbbr = abbr;
+            (byAbbr[abbr] = byAbbr[abbr] || []).push(f);
+        }
+        _countyGeo = { byAbbr };
+    } catch (e) {
+        console.warn('[warning_graphic] county geometry unavailable, using CONUS locator:', e.message);
+        _countyGeo = { byAbbr: null };
+    }
+    return _countyGeo;
+}
+
+// Counties (from the affected states) that the warning polygon actually touches.
+function affectedCounties(feature, abbrs, geo) {
+    if (!geo || !geo.byAbbr || !feature || !feature.geometry) return [];
+    let poly;
+    try { poly = turf.feature(feature.geometry); } catch (e) { return []; }
+    const out = [];
+    for (const abbr of abbrs) {
+        for (const c of (geo.byAbbr[abbr] || [])) {
+            try { if (turf.booleanIntersects(poly, c)) out.push(c); } catch (e) { /* skip */ }
+        }
+    }
+    return out;
+}
+
+// Build an equirectangular projection that fits a [minX,minY,maxX,maxY] bbox
+// into w×h, corrected for latitude compression so shapes aren't stretched.
+function fitProjection(bbox, w, h, padFrac) {
+    let [minX, minY, maxX, maxY] = bbox;
+    const padX = (maxX - minX) * (padFrac || 0.07);
+    const padY = (maxY - minY) * (padFrac || 0.07);
+    minX -= padX; maxX += padX; minY -= padY; maxY += padY;
+    const midLat = ((minY + maxY) / 2) * Math.PI / 180;
+    const k = Math.cos(midLat) || 1;              // longitude visual scale
+    const geoW = (maxX - minX) * k, geoH = (maxY - minY);
+    const s = Math.min(w / geoW, h / geoH);
+    const offX = (w - geoW * s) / 2, offY = (h - geoH * s) / 2;
+    return (lng, lat) => [offX + (lng - minX) * k * s, offY + (maxY - lat) * s];
+}
+
+// Trace a GeoJSON Polygon/MultiPolygon onto a 2D context using `project`.
+function tracePath(ctx, geom, project) {
+    const polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates];
+    ctx.beginPath();
+    for (const poly of polys) for (const ring of poly) {
+        ring.forEach((pt, i) => { const [x, y] = project(pt[0], pt[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+        ctx.closePath();
+    }
+}
+
+// White text with a dark halo so labels stay legible over any fill.
+function haloText(ctx, text, x, y, px) {
+    ctx.font = `700 ${px}px 'Onest', system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, px * 0.28);
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeText(text, x, y);
+    ctx.fillStyle = '#fff'; ctx.fillText(text, x, y);
+}
+
+// ── zoomed state "spotlight" — counties, affected-county highlight, polygon ───
+function renderSpotlight(states, feature, centroid, w, h, accent, geo, affected) {
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+
+    const affSet = new Set((affected || []).map((c) => c.fips));
+    const affStates = US_STATES.features.filter((f) => states.includes(f.properties.name));
+    if (!affStates.length) return renderLocator(states, centroid, w, h); // fallback
+
+    // Frame to the affected state(s).
+    const bb = turf.bbox(turf.featureCollection(affStates.map((f) => turf.feature(f.geometry))));
+    const project = fitProjection(bb, w, h, 0.07);
+
+    // 1) neighboring states for context (muted).
+    for (const f of US_STATES.features) {
+        if (states.includes(f.properties.name)) continue;
+        tracePath(ctx, f.geometry, project);
+        ctx.fillStyle = 'rgba(120,132,150,0.16)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+
+    // 2) affected state fill.
+    for (const f of affStates) {
+        tracePath(ctx, f.geometry, project);
+        ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill();
+    }
+
+    // 3) county borders within the affected state(s).
+    const abbrs = states.map(abbrOf);
+    const cList = [];
+    for (const abbr of abbrs) for (const c of (geo.byAbbr[abbr] || [])) cList.push(c);
+    ctx.lineWidth = 1;
+    for (const c of cList) {
+        tracePath(ctx, c.geometry, project);
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.stroke();
+    }
+
+    // 4) highlight the affected counties.
+    for (const c of cList) {
+        if (!affSet.has(c.fips)) continue;
+        tracePath(ctx, c.geometry, project);
+        ctx.fillStyle = hexA(accent, 0.34); ctx.fill();
+        ctx.strokeStyle = hexA(accent, 0.95); ctx.lineWidth = 1.4; ctx.stroke();
+    }
+
+    // 5) crisp outline of the affected state(s).
+    ctx.lineJoin = 'round';
+    for (const f of affStates) {
+        tracePath(ctx, f.geometry, project);
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2.2; ctx.stroke();
+    }
+
+    // 6) the warning polygon itself.
+    if (feature && feature.geometry) {
+        tracePath(ctx, feature.geometry, project);
+        ctx.fillStyle = hexA(accent, 0.16); ctx.fill('evenodd');
+        tracePath(ctx, feature.geometry, project);
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 4; ctx.stroke();
+        tracePath(ctx, feature.geometry, project);
+        ctx.strokeStyle = lighten(accent, 0.35); ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    // 7) labels: name every affected county; if the state is small, name them all.
+    const labelAll = cList.length <= 46;
+    const fontPx = Math.max(11, Math.round(w * 0.021));
+    for (const c of cList) {
+        const on = affSet.has(c.fips);
+        if (!on && !labelAll) continue;
+        let ctr;
+        try { ctr = turf.getCoord(turf.centroid(c)); } catch (e) { continue; }
+        const [x, y] = project(ctr[0], ctr[1]);
+        if (x < -20 || x > w + 20 || y < -10 || y > h + 10) continue;
+        if (on) haloText(ctx, c.properties.name, x, y, fontPx);
+        else {
+            ctx.font = `600 ${Math.round(fontPx * 0.82)}px 'Onest', system-ui, sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillText(c.properties.name, x, y);
+        }
+    }
+    return cv.toDataURL('image/png');
+}
+
+// #rrggbb -> rgba() string with alpha; and a simple lighten toward white.
+function hexA(hex, a) {
+    const h = (hex || '#c8102e').replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+function lighten(hex, t) {
+    const h = (hex || '#c8102e').replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const mix = (v) => Math.round(v + (255 - v) * t);
+    return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+}
+
 // ── DOM helpers for the layout ────────────────────────────────────────────────
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
 
@@ -284,19 +469,34 @@ function fitText(el, maxPx) {
     while (el.scrollWidth > el.clientWidth && size > 12 && guard-- > 0) { size -= Math.max(1, size * 0.06); el.style.fontSize = size + 'px'; }
 }
 
+// Build a compact "Cobb, Fulton +2" style county readout.
+function countyReadout(affected) {
+    if (!affected || !affected.length) return null;
+    const multiState = new Set(affected.map((c) => c.stateAbbr)).size > 1;
+    const names = affected.map((c) => (multiState ? `${c.properties.name} ${c.stateAbbr}` : c.properties.name));
+    const shown = names.slice(0, 4).join(', ');
+    return names.length > 4 ? `${shown} +${names.length - 4}` : shown;
+}
+
 // Build the full-size layout element (off-screen) for html2canvas.
-function buildLayout(info, mapImg, locatorImg, pop, homes, size) {
+function buildLayout(info, mapImg, locatorImg, pop, homes, size, extra) {
+    extra = extra || {};
     const accent = eventColor(info.event);
     const root = document.createElement('div');
     root.className = 'wg-root';
     root.style.width = size.w + 'px';
     root.style.height = size.h + 'px';
+    root.style.setProperty('--accent', accent);
+
+    const affected = extra.affected || [];
+    const countyList = countyReadout(affected);
 
     const rows = [];
     const row = (label, val) => { if (val) rows.push(`<div class="wg-row"><span>${esc(label)}</span><b>${esc(val)}</b></div>`); };
     row('Expires', info.expires);
     row('Issued', info.issued);
     row('Source', info.source);
+    if (countyList) row(affected.length > 1 ? 'Counties' : 'County', countyList);
     row('Hazard', info.hazard);
     row('Wind', info.wind);
     row('Hail', info.hail);
@@ -308,6 +508,12 @@ function buildLayout(info, mapImg, locatorImg, pop, homes, size) {
 
     const safety = safetyFor(info.event);
     const state = info.stateName ? `IN ${info.stateName.toUpperCase()}` : '';
+
+    // Spotlight caption: state name + affected-county count.
+    const spotStates = (extra.highlightStates || []).join(' & ');
+    const spotCaption = affected.length
+        ? `${affected.length} ${affected.length === 1 ? 'county' : 'counties'} affected`
+        : (spotStates || '');
 
     root.innerHTML = `
         <div class="wg-map" style="background-image:url('${mapImg}')"></div>
@@ -334,7 +540,11 @@ function buildLayout(info, mapImg, locatorImg, pop, homes, size) {
         </div>
 
         <div class="wg-locator">
+            <div class="wg-locator-head">
+                <span class="wg-locator-title">Affected Area${spotStates ? ` &middot; ${esc(spotStates)}` : ''}</span>
+            </div>
             <img src="${locatorImg}" alt="" />
+            ${spotCaption ? `<div class="wg-locator-cap"><span class="wg-locator-dot" style="background:${accent}"></span>${esc(spotCaption)}</div>` : ''}
         </div>
 
         <div class="wg-legend">
@@ -374,16 +584,21 @@ function injectLayoutStyles() {
     .wg-brand-name{font-weight:900;letter-spacing:1.5px;font-size:18px;opacity:.95;}
     .wg-panel{position:absolute;background:rgba(9,14,24,.82);border:1px solid rgba(255,255,255,.14);
         border-radius:16px;box-shadow:0 16px 40px rgba(0,0,0,.5);}
-    .wg-info{left:2.4%;top:16.5%;width:30%;max-width:560px;padding:18px 20px;}
-    .wg-panel-title{font-weight:800;font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:#8fd0ff;margin-bottom:10px;}
+    .wg-info{left:2.4%;top:16.5%;width:30%;max-width:560px;padding:18px 20px;border-left:4px solid var(--accent,#c8102e);}
+    .wg-panel-title{display:flex;align-items:center;gap:9px;font-weight:800;font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:#8fd0ff;margin-bottom:10px;}
+    .wg-panel-title::before{content:'';width:10px;height:10px;border-radius:50%;background:var(--accent,#c8102e);box-shadow:0 0 0 1px rgba(255,255,255,.35);}
     .wg-row{display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:16px;line-height:1.35;}
     .wg-row span{opacity:.72;}.wg-row b{text-align:right;font-weight:700;}
     .wg-safety{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);}
     .wg-safety-title{font-weight:800;color:#ffd24a;font-size:14px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;}
     .wg-safety-item{font-size:14.5px;line-height:1.5;opacity:.95;}
-    .wg-locator{position:absolute;left:2.4%;bottom:3.5%;width:19%;max-width:300px;
-        background:rgba(9,14,24,.82);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:8px;box-shadow:0 14px 34px rgba(0,0,0,.5);}
-    .wg-locator img{width:100%;display:block;border-radius:8px;}
+    .wg-locator{position:absolute;left:2.4%;bottom:3.5%;width:25%;max-width:400px;
+        background:rgba(9,14,24,.86);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 10px 8px;box-shadow:0 14px 34px rgba(0,0,0,.5);}
+    .wg-locator-head{display:flex;align-items:center;justify-content:space-between;margin:0 2px 7px;}
+    .wg-locator-title{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#8fd0ff;}
+    .wg-locator img{width:100%;display:block;border-radius:8px;background:#070b14;}
+    .wg-locator-cap{display:flex;align-items:center;gap:7px;margin:8px 2px 2px;font-size:13px;font-weight:700;opacity:.92;}
+    .wg-locator-dot{width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.5);flex-shrink:0;}
     .wg-legend{position:absolute;right:2.4%;bottom:3.5%;width:22%;max-width:340px;
         background:rgba(9,14,24,.82);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:12px 14px;box-shadow:0 14px 34px rgba(0,0,0,.5);}
     .wg-legend-title{font-size:12px;font-weight:700;letter-spacing:.06em;opacity:.85;margin-bottom:4px;text-transform:uppercase;}
@@ -420,10 +635,19 @@ async function generate(size, opts) {
     // to the centroid's state.
     let highlightStates = statesFromArea(feature.properties && feature.properties.areaDesc);
     if (!highlightStates.length) { const s = stateAt(centroid); if (s) highlightStates = [s]; }
-    const locatorImg = renderLocator(highlightStates, centroid, 420, 300);
+
+    // Zoomed state spotlight with county detail. Falls back to the CONUS locator
+    // if the county geometry can't be loaded.
+    const accent = eventColor(info.event);
+    const geo = await loadCountyGeo();
+    const abbrs = highlightStates.map(abbrOf);
+    const affected = affectedCounties(feature, abbrs, geo);
+    const locatorImg = (geo && geo.byAbbr && highlightStates.length)
+        ? renderSpotlight(highlightStates, feature, centroid, 660, 520, accent, geo, affected)
+        : renderLocator(highlightStates, centroid, 420, 300);
 
     injectLayoutStyles();
-    const layout = buildLayout(info, mapImg, locatorImg, pop, homes, size);
+    const layout = buildLayout(info, mapImg, locatorImg, pop, homes, size, { highlightStates, affected });
     // Lay it out off-screen (rendered but not visible) for html2canvas.
     layout.style.position = 'fixed';
     layout.style.left = '-10000px';
