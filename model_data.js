@@ -16,7 +16,21 @@
  *   GET /api/models/:id/list?prefix         -> S3 listing (browse; used by NDFD)
  */
 
-const { renderField } = require('./grib2_render');
+const { renderField, legendFor } = require('./grib2_render');
+const { buildSounding } = require('./soundings_grib');
+
+// Byte-capped LRU of rendered field PNGs so scrubbing forecast hours / re-plotting
+// is instant. Keyed by model+run+fhr+field+bbox.
+const PNG_CACHE = { max: 120 * 1024 * 1024, bytes: 0, map: new Map() };
+function pngGet(k) { const v = PNG_CACHE.map.get(k); if (v) { PNG_CACHE.map.delete(k); PNG_CACHE.map.set(k, v); } return v; }
+function pngSet(k, buf) {
+  if (PNG_CACHE.map.has(k)) { PNG_CACHE.bytes -= PNG_CACHE.map.get(k).png.length; PNG_CACHE.map.delete(k); }
+  PNG_CACHE.map.set(k, buf); PNG_CACHE.bytes += buf.png.length;
+  while (PNG_CACHE.bytes > PNG_CACHE.max && PNG_CACHE.map.size) {
+    const fk = PNG_CACHE.map.keys().next().value;
+    PNG_CACHE.bytes -= PNG_CACHE.map.get(fk).png.length; PNG_CACHE.map.delete(fk);
+  }
+}
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const pad3 = (n) => String(n).padStart(3, '0');
@@ -27,7 +41,7 @@ const MODELS = {
     name: 'HRRR (3 km CONUS)', bucket: 'noaa-hrrr-bdp-pds', region: 'us-east-1',
     type: 'cycle', hourly: true, fhrMax: 48, fhrDigits: 2,
     products: { sfc: 'wrfsfc', prs: 'wrfprs', nat: 'wrfnat', subh: 'wrfsubh' },
-    defaultProduct: 'sfc',
+    defaultProduct: 'sfc', soundingProduct: 'prs',
     dir: (d) => `hrrr.${d}/conus/`,
     file: (d, c, f, p) => `hrrr.${d}/conus/hrrr.t${c}z.${MODELS.hrrr.products[p || 'sfc']}f${pad2(f)}.grib2`,
     // match a product's files in a dir listing -> capture forecast hour
@@ -265,21 +279,54 @@ function attachModels(app, requireAuth) {
       }
       if (!msg) return res.status(404).json({ error: 'Field not found; check /index' });
 
-      const range = `bytes=${msg.start}-${msg.end == null ? '' : msg.end}`;
-      const upstream = await fetch(s3KeyUrl(m.bucket, key), { headers: { Range: range } });
-      if (!(upstream.ok || upstream.status === 206)) return res.status(502).json({ error: `S3 ${upstream.status}` });
-      const bytes = new Uint8Array(await upstream.arrayBuffer());
-
-      const { png } = renderField(bytes, msg.variable, bbox);
+      const cacheKey = `${req.params.id}:${date}:${cycle}:${fhr}:${msg.n}:${bbox.join(',')}`;
+      let entry = pngGet(cacheKey);
+      if (!entry) {
+        const range = `bytes=${msg.start}-${msg.end == null ? '' : msg.end}`;
+        const upstream = await fetch(s3KeyUrl(m.bucket, key), { headers: { Range: range } });
+        if (!(upstream.ok || upstream.status === 206)) return res.status(502).json({ error: `S3 ${upstream.status}` });
+        const bytes = new Uint8Array(await upstream.arrayBuffer());
+        const { png } = renderField(bytes, msg.variable, bbox);
+        entry = { png, variable: msg.variable, level: msg.level, legend: legendFor(msg.variable) };
+        pngSet(cacheKey, entry);
+      }
       res.setHeader('Content-Type', 'image/png');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-Bbox', bbox.join(','));
-      res.setHeader('X-Var', msg.variable);
-      res.setHeader('X-Level', msg.level);
-      res.send(Buffer.from(png));
+      res.setHeader('X-Var', entry.variable);
+      res.setHeader('X-Level', entry.level);
+      res.setHeader('Access-Control-Expose-Headers', 'X-Legend, X-Var, X-Level, X-Bbox');
+      res.setHeader('X-Legend', JSON.stringify(entry.legend));
+      res.send(Buffer.from(entry.png));
     } catch (e) {
       res.status(502).json({ error: String(e.message || e) });
     }
+  });
+
+  // Point forecast sounding assembled from raw GRIB (soundings_grib.js).
+  app.get('/api/models/:id/sounding', guard, async (req, res) => {
+    const m = MODELS[req.params.id];
+    if (!m || m.type !== 'cycle') return res.status(404).json({ error: 'Unknown cycle model' });
+    const lat = Number(req.query.lat), lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: 'lat & lon required' });
+    const fhr = Number(req.query.fhr || 0);
+    if (!Number.isFinite(fhr)) return res.status(400).json({ error: 'bad fhr' });
+    try {
+      const product = req.query.product || m.soundingProduct || m.defaultProduct;
+      let date = req.query.date, cycle = req.query.cycle;
+      if (!VALID_DATE.test(date || '') || !VALID_CYCLE.test(cycle || '')) {
+        const run = await latestRun(m, product);
+        if (!run) return res.status(502).json({ error: 'No recent run found' });
+        date = run.date; cycle = run.cycle;
+      }
+      const key = m.file(date, cycle, fhr, product);
+      const messages = await fetchIdx(m.bucket, key);
+      if (!messages) return res.status(404).json({ error: 'No .idx for that run/hour yet' });
+      const fileUrl = s3KeyUrl(m.bucket, key);
+      const header = `${m.name.split(' (')[0]} ${cycle}Z +${fhr}h · ${date}`;
+      const snd = await buildSounding({ fileUrl, messages, lat, lon, header });
+      res.json({ id: req.params.id, date, cycle, fhr, product, ...snd });
+    } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
   });
 
   app.get('/api/models/:id/list', guard, async (req, res) => {

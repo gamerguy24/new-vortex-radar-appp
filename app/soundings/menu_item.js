@@ -7,14 +7,21 @@
  */
 
 const map = require('../core/map/map');
-const { MODELS, fetchSounding } = require('./rucsoundings');
 const { renderSounding } = require('./skewt');
 
 const icon = '#soundingMenuItemIcon';
 
-// forecast lead times offered (0 => the model's shortest/analysis)
+// Models served by the raw-GRIB sounding endpoint (server: soundings_grib.js).
+// GFS decodes cleanly (incl. winds) with the pure-JS decoder. NAM is deferred:
+// its UGRD complex-packing reconstruction is wrong in grib2_decode.js (winds
+// come out garbage); HRRR is deferred too (JPEG2000). Both need a decoder fix.
+const MODELS = [
+    { id: 'gfs', label: 'GFS (0.25°)' },
+];
+
+// forecast lead times offered, in hours (0 = analysis)
 const FCST = [
-    { v: 'shortest', label: 'Analysis' },
+    { v: '0', label: 'Analysis' },
     { v: '3', label: '+3 h' }, { v: '6', label: '+6 h' }, { v: '12', label: '+12 h' },
     { v: '24', label: '+24 h' }, { v: '48', label: '+48 h' },
 ];
@@ -121,7 +128,10 @@ function openSoundingModal(lat, lon) {
         const model = modelEl.value;
         const fcst = fcstEl.value;
         try {
-            const snd = await fetchSounding(model, lat, lon, fcst);
+            const url = `/api/models/${model}/sounding?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&fhr=${encodeURIComponent(fcst)}`;
+            const res = await fetch(url);
+            const snd = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(snd.error || ('HTTP ' + res.status));
             canvas = document.createElement('canvas');
             const fLabel = (FCST.find((f) => f.v === fcst) || {}).label || '';
             renderSounding(canvas, snd, {

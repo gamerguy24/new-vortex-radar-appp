@@ -12,7 +12,10 @@ const MODEL_SRC = 'vortex-model-src';
 const MODEL_LAYER = 'vortex-model-layer';
 
 let panel = null;
-const state = { model: null, run: null, fhr: 0, opacity: 0.8, plotted: null };
+const state = {
+  model: null, run: null, fhr: 0, opacity: 0.8, plotted: null,
+  hours: [], hourIdx: 0, messages: [], activePreset: null, playing: false, timer: null,
+};
 
 function j(url) {
   return fetch(url).then((r) => {
@@ -23,6 +26,48 @@ function j(url) {
 function el(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstElementChild; }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 const pad2 = (n) => String(n).padStart(2, '0');
+
+// Curated quick-pick fields (resolved against the run's index; variable + a
+// level matcher). Covers the common broadcast fields; missing ones are hidden.
+const PRESETS = [
+  { label: '2 m Temp', v: 'TMP', lvl: '2 m above ground' },
+  { label: 'Composite Reflectivity', v: 'REFC', lvl: 'entire atmosphere' },
+  { label: 'MSLP', v: 'PRMSL', lvl: 'mean sea level' },
+  { label: 'Surface CAPE', v: 'CAPE', lvl: 'surface' },
+  { label: 'Precipitable Water', v: 'PWAT', lvl: 'entire atmosphere' },
+  { label: '850 mb Temp', v: 'TMP', lvl: '850 mb' },
+  { label: '500 mb Temp', v: 'TMP', lvl: '500 mb' },
+  { label: 'Total Precip', v: 'APCP', lvl: 'surface' },
+];
+// Find the index message matching a preset (variable exact; level starts-with).
+function resolvePreset(messages, p) {
+  const v = p.v.toUpperCase(), lvl = p.lvl.toLowerCase();
+  return messages.find((m) => m.variable.toUpperCase() === v && m.level.toLowerCase().startsWith(lvl)) || null;
+}
+
+function injectPhase2Styles() {
+  if (document.getElementById('vmp-p2-styles')) return;
+  const s = document.createElement('style');
+  s.id = 'vmp-p2-styles';
+  s.textContent = `
+    .vmp-presets{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px;}
+    .vmp-preset{padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);
+      color:#dbe6f5;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;}
+    .vmp-preset:hover{background:rgba(255,255,255,.12);}
+    .vmp-preset.active{background:#27beff;color:#04121c;border-color:transparent;}
+    .vmp-scrub{display:flex;align-items:center;gap:6px;margin:4px 0 8px;}
+    .vmp-scrub button{width:30px;height:28px;border-radius:7px;border:1px solid rgba(255,255,255,.16);
+      background:rgba(255,255,255,.06);color:#e7eef7;cursor:pointer;font-size:13px;}
+    .vmp-scrub button:hover{background:rgba(255,255,255,.14);}
+    .vmp-scrub .vmp-fhrlabel{font-size:12px;color:#9fb2c9;min-width:150px;}
+    #vortexModelLegend{position:absolute;right:16px;bottom:96px;z-index:60;background:rgba(9,14,24,.9);
+      border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:9px 11px;color:#e7eef7;
+      font-family:'Onest',system-ui,sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.5);min-width:190px;}
+    #vortexModelLegend .vml-title{font-size:12px;font-weight:800;margin-bottom:6px;}
+    #vortexModelLegend .vml-bar{height:12px;border-radius:6px;border:1px solid rgba(255,255,255,.18);}
+    #vortexModelLegend .vml-scale{display:flex;justify-content:space-between;font-size:10px;opacity:.75;margin-top:3px;}`;
+  document.head.appendChild(s);
+}
 
 function fmtRun(run) { return `${run.date.slice(0, 4)}-${run.date.slice(4, 6)}-${run.date.slice(6, 8)} ${run.cycle}z`; }
 function validTime(run, fhr) {
@@ -41,7 +86,26 @@ function clearOverlay() {
   }
   if (state.plotted && state.plotted.objUrl) { try { URL.revokeObjectURL(state.plotted.objUrl); } catch (e) {} }
   state.plotted = null;
+  clearLegend();
   markActive();
+}
+
+// On-map legend built from the /field response's X-Legend header.
+function clearLegend() { const el = document.getElementById('vortexModelLegend'); if (el) el.remove(); }
+function drawLegend(legend, title) {
+  clearLegend();
+  if (!legend || !legend.stops || !legend.stops.length) return;
+  const stops = legend.stops;
+  const min = stops[0][0], max = stops[stops.length - 1][0];
+  const span = (max - min) || 1;
+  const grad = stops.map(([val, col]) => `${col} ${((val - min) / span * 100).toFixed(1)}%`).join(', ');
+  const mid = stops[Math.floor(stops.length / 2)][0];
+  const el = document.createElement('div');
+  el.id = 'vortexModelLegend';
+  el.innerHTML = `<div class="vml-title">${esc(title)} <span style="opacity:.6">(${esc(legend.unit || '')})</span></div>
+    <div class="vml-bar" style="background:linear-gradient(90deg, ${grad})"></div>
+    <div class="vml-scale"><span>${min}</span><span>${mid}</span><span>${max}</span></div>`;
+  document.body.appendChild(el);
 }
 
 // Toggle a field overlay on the map. Fetches the rendered PNG so failures are
@@ -67,6 +131,9 @@ async function plotField(m, msg, btn) {
       try { m2 = (await res.json()).error || m2; } catch (e) {}
       throw new Error(m2);
     }
+    let legend = null;
+    try { legend = JSON.parse(res.headers.get('X-Legend') || 'null'); } catch (e) {}
+    const vLabel = `${res.headers.get('X-Var') || msg.variable} · ${res.headers.get('X-Level') || msg.level}`;
     const objUrl = URL.createObjectURL(await res.blob());
     clearOverlay();
     map.addSource(MODEL_SRC, { type: 'image', url: objUrl, coordinates: [[W, N], [E, N], [E, S], [W, S]] });
@@ -75,6 +142,7 @@ async function plotField(m, msg, btn) {
       paint: { 'raster-opacity': state.opacity, 'raster-fade-duration': 0 },
     }, map.getLayer('baseReflectivity') ? 'baseReflectivity' : undefined);
     state.plotted = { model: m.id, msg: msg.n, objUrl };
+    drawLegend(legend, vLabel);
     markActive();
   } catch (e) {
     alert('Could not plot this field:\n' + e.message
@@ -94,10 +162,11 @@ function markActive(fallbackLabel) {
   });
 }
 
-function close() { if (panel) { panel.remove(); panel = null; } }
+function close() { stopPlay(); clearLegend(); if (panel) { panel.remove(); panel = null; } }
 
 async function open() {
   if (panel) { close(); return; }
+  injectPhase2Styles();
   panel = el(`<div id="vortexModelsPanel">
     <div class="vmp-head"><span>Models &amp; Forecast</span>
       <span class="vmp-head-actions">
@@ -147,12 +216,21 @@ async function selectModel(m) {
     state.run = run;
     const { hours } = await j(`${API}/${m.id}/hours?date=${run.date}&cycle=${run.cycle}`);
     status.innerHTML = `<span class="vmp-src">Live · <b>${esc(m.bucket)}</b> (NOAA Open Data on AWS)</span><br>Run <b>${fmtRun(run)}</b> · ${hours.length} forecast hours`;
+    state.hours = hours; state.hourIdx = 0; state.activePreset = null;
     document.getElementById('vmpControls').innerHTML = `
-      <label class="vmp-field">Forecast hour
+      <div class="vmp-scrub">
+        <button id="vmpPrev" title="Previous hour">◀</button>
         <select id="vmpFhr">${hours.map((h) => `<option value="${h}">f${pad2(h)} · valid ${validTime(run, h)}</option>`).join('')}</select>
-      </label>
+        <button id="vmpNext" title="Next hour">▶</button>
+        <button id="vmpPlay" title="Animate forecast hours">▶︎</button>
+        <span class="vmp-fhrlabel" id="vmpFhrLabel"></span>
+      </div>
+      <div id="vmpPresets" class="vmp-presets"></div>
       <input id="vmpFilter" class="vmp-filter" placeholder="Filter variables (TMP, REFC, APCP…)" />`;
-    document.getElementById('vmpFhr').onchange = (e) => loadIndex(m, run, Number(e.target.value));
+    document.getElementById('vmpFhr').onchange = (e) => { stopPlay(); setHour(state.hours.indexOf(Number(e.target.value))); };
+    document.getElementById('vmpPrev').onclick = () => { stopPlay(); setHour(state.hourIdx - 1); };
+    document.getElementById('vmpNext').onclick = () => { stopPlay(); setHour(state.hourIdx + 1); };
+    document.getElementById('vmpPlay').onclick = togglePlay;
     document.getElementById('vmpFilter').oninput = (e) => {
       const q = e.target.value.toLowerCase();
       panel.querySelectorAll('#vmpList .vmp-row').forEach((r) => { r.style.display = (r.dataset.txt || '').includes(q) ? '' : 'none'; });
@@ -161,12 +239,87 @@ async function selectModel(m) {
   } catch (e) { status.innerHTML = `<span class="vmp-err">${esc(e.message)}</span>`; }
 }
 
+// Curated quick-pick buttons for the fields present in this run's index.
+function renderPresets(m) {
+  const wrap = document.getElementById('vmpPresets');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  for (const p of PRESETS) {
+    const msg = resolvePreset(state.messages, p);
+    if (!msg) continue;
+    const b = el(`<button class="vmp-preset" data-msg="${msg.n}">${esc(p.label)}</button>`);
+    if (state.activePreset && state.activePreset.label === p.label) b.classList.add('active');
+    b.onclick = () => {
+      const isOn = state.activePreset && state.activePreset.label === p.label && state.plotted && state.plotted.msg === msg.n;
+      if (isOn) { state.activePreset = null; clearOverlay(); renderPresets(m); return; }
+      state.activePreset = p; plotField(m, msg, null); renderPresets(m); prefetchHour(state.hourIdx + 1);
+    };
+    wrap.appendChild(b);
+  }
+}
+
+function updateHourLabel() {
+  const lab = document.getElementById('vmpFhrLabel');
+  if (lab && state.run) lab.textContent = `f${pad2(state.fhr)} · valid ${validTime(state.run, state.fhr)}`;
+}
+
+// Jump to an hour by index into state.hours; reloads the index + replots active preset.
+async function setHour(idx) {
+  if (!state.hours.length) return;
+  idx = Math.max(0, Math.min(state.hours.length - 1, idx));
+  state.hourIdx = idx;
+  const fhr = state.hours[idx];
+  const sel = document.getElementById('vmpFhr');
+  if (sel) sel.value = String(fhr);
+  await loadIndex(state.model, state.run, fhr);
+}
+
+// Warm the server PNG cache for the active preset at a future hour.
+function prefetchHour(idx) {
+  if (!state.activePreset || idx < 0 || idx >= state.hours.length) return;
+  const m = state.model, fhr = state.hours[idx];
+  fetch(`${API}/${m.id}/index?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${fhr}`)
+    .then((r) => r.json()).then((idxData) => {
+      const msg = resolvePreset(idxData.messages || [], state.activePreset);
+      if (!msg) return;
+      const map = mapObj(); if (!map) return;
+      const b = map.getBounds();
+      const bbox = `${Math.max(-179, b.getWest()).toFixed(3)},${Math.max(-85, b.getSouth()).toFixed(3)},${Math.min(179, b.getEast()).toFixed(3)},${Math.min(85, b.getNorth()).toFixed(3)}`;
+      fetch(`${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${fhr}&msg=${msg.n}&bbox=${bbox}`).catch(() => {});
+    }).catch(() => {});
+}
+
+function stopPlay() {
+  state.playing = false;
+  if (state.timer) { clearInterval(state.timer); state.timer = null; }
+  const b = document.getElementById('vmpPlay'); if (b) b.textContent = '▶︎';
+}
+function togglePlay() {
+  if (state.playing) { stopPlay(); return; }
+  if (!state.activePreset) { alert('Pick a quick field first, then press play to animate it.'); return; }
+  state.playing = true;
+  const b = document.getElementById('vmpPlay'); if (b) b.textContent = '⏸';
+  state.timer = setInterval(async () => {
+    let next = state.hourIdx + 1; if (next >= state.hours.length) next = 0;
+    await setHour(next);
+    prefetchHour(next + 1);
+  }, 1100);
+}
+
 async function loadIndex(m, run, fhr) {
-  state.fhr = fhr;
+  state.fhr = fhr; state.model = m; state.run = run;
+  updateHourLabel();
   const list = document.getElementById('vmpList');
   list.innerHTML = '<div class="vmp-hint">Loading variables…</div>';
   try {
     const idx = await j(`${API}/${m.id}/index?date=${run.date}&cycle=${run.cycle}&fhr=${fhr}`);
+    state.messages = idx.messages || [];
+    renderPresets(m);
+    // Replot the active preset at the (possibly new) hour.
+    if (state.activePreset) {
+      const pm = resolvePreset(state.messages, state.activePreset);
+      if (pm) plotField(m, pm, null);
+    }
     list.innerHTML = '';
     for (const mm of idx.messages) {
       const kb = mm.end != null ? Math.round((mm.end - mm.start + 1) / 1024) : null;

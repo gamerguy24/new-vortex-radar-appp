@@ -33,20 +33,57 @@ const RAMPS = {
     stops: [[0.2, [120, 230, 120]], [1, [60, 195, 85]], [2, [40, 150, 60]], [5, [235, 230, 95]],
       [10, [235, 170, 50]], [20, [230, 80, 50]], [40, [160, 30, 120]], [75, [210, 150, 230]]],
   },
+  // wind speed (kt)
+  wind: {
+    underAlpha: true,
+    stops: [[5, [90, 120, 160]], [15, [70, 150, 200]], [25, [60, 190, 150]], [35, [120, 210, 80]],
+      [50, [235, 225, 90]], [65, [240, 160, 55]], [85, [230, 90, 55]], [110, [200, 40, 120]], [140, [220, 150, 235]]],
+  },
+  // surface-based CAPE (J/kg)
+  cape: {
+    underAlpha: true,
+    stops: [[250, [90, 150, 210]], [500, [90, 200, 130]], [1000, [230, 220, 90]], [2000, [240, 160, 55]],
+      [3000, [230, 90, 55]], [4000, [190, 40, 60]], [5000, [210, 120, 235]]],
+  },
+  // mean sea-level pressure (hPa) — diverging around 1013
+  mslp: {
+    underAlpha: true,
+    stops: [[960, [150, 40, 60]], [984, [230, 120, 60]], [1000, [235, 220, 120]], [1013, [235, 235, 235]],
+      [1024, [140, 200, 235]], [1036, [70, 130, 210]], [1050, [40, 60, 160]]],
+  },
 };
 
 function classify(variable) {
   const v = String(variable).toUpperCase();
   if (/REF|RETOP|REFC|REFD|REFL/.test(v)) return 'refl';
-  if (/^T(MP|MAX|MIN)|^TMP|DPT|APT|POT/.test(v)) return 'temp';
+  if (/CAPE/.test(v)) return 'cape';
+  if (/PRMSL|MSLET|MSLMA|^MSL/.test(v)) return 'mslp';
+  if (/WIND|GUST|^UGRD|^VGRD|^VEL|^WS/.test(v)) return 'wind';
   if (/APCP|PRATE|PWAT|CPRAT|ASNOW|WEASD|SNOD|QPF/.test(v)) return 'precip';
+  if (/^T(MP|MAX|MIN)|DPT|APT|POT/.test(v)) return 'temp';
   return 'temp';
 }
 
-// Physical value -> ramp units. Temp K->F; refl dBZ; precip mm (kg/m^2 == mm).
+// Physical value -> ramp units. Temp K->F; wind m/s->kt; mslp Pa->hPa; else raw.
 function toRampUnits(kind, v) {
   if (kind === 'temp') return (v - 273.15) * 9 / 5 + 32;
+  if (kind === 'wind') return v * 1.943844;
+  if (kind === 'mslp') return v / 100;
   return v;
+}
+
+// Units label per kind, for the client legend.
+const KIND_UNIT = { temp: '°F', refl: 'dBZ', precip: 'mm', wind: 'kt', cape: 'J/kg', mslp: 'hPa' };
+
+// Legend descriptor for a variable: ramp stops (in display units) + unit label.
+function legendFor(variable) {
+  const kind = classify(variable);
+  const ramp = RAMPS[kind];
+  return {
+    kind,
+    unit: KIND_UNIT[kind] || '',
+    stops: ramp.stops.map(([val, rgb]) => [val, `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`]),
+  };
 }
 
 function rampColor(ramp, x, out) {
@@ -140,4 +177,13 @@ function renderField(gribBytes, variable, bbox, maxW = 1400) {
   return { png: PNG.sync.write(png), width: OW, height: OH, kind };
 }
 
-module.exports = { renderField, classify };
+// Sample one decoded field at a lon/lat (nearest grid point). Returns null if
+// off-grid or missing. `grid` + `values` come from decodeGrib2Message().
+function sampleAt(grid, values, lon, lat) {
+  const idx = makeSampler(grid)(lon, lat);
+  if (idx < 0) return null;
+  const v = values[idx];
+  return Number.isFinite(v) ? v : null;
+}
+
+module.exports = { renderField, classify, legendFor, makeSampler, sampleAt };
