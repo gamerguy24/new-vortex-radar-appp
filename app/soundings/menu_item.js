@@ -66,24 +66,39 @@ function injectStyles() {
     const s = document.createElement('style');
     s.id = 'snd-styles';
     s.textContent = `
-    .snd-bg{position:fixed;inset:0;z-index:100065;background:rgba(4,8,16,.72);backdrop-filter:blur(6px);
-        display:flex;align-items:center;justify-content:center;padding:22px;font-family:'Onest',system-ui,sans-serif;}
-    .snd-modal{width:min(1040px,96vw);max-height:94vh;overflow:auto;background:rgba(11,18,32,.98);
-        border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.6);color:#e7eef7;}
-    .snd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.1);flex-wrap:wrap;}
-    .snd-head h2{margin:0;font-size:1.05em;display:flex;align-items:center;gap:8px;}
-    .snd-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-    .snd-select{padding:7px 10px;border-radius:8px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);color:#e7eef7;font-family:inherit;font-size:13px;}
+    .snd-bg{position:fixed;inset:0;z-index:100065;background:rgba(3,7,14,.74);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+        display:flex;align-items:center;justify-content:center;padding:24px;font-family:'Onest',system-ui,sans-serif;}
+    .snd-modal{width:min(1060px,96vw);max-height:94vh;overflow:auto;color:#e7eef7;
+        background:linear-gradient(180deg,rgba(17,25,42,.99),rgba(9,14,26,.99));
+        border:1px solid rgba(255,255,255,.10);border-radius:20px;
+        box-shadow:0 34px 90px rgba(0,0,0,.64),inset 0 1px 0 rgba(255,255,255,.05);}
+    .snd-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;flex-wrap:wrap;
+        border-bottom:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(39,190,255,.09),rgba(39,190,255,0));}
+    .snd-title{display:flex;align-items:center;gap:12px;min-width:0;}
+    .snd-badge{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+        background:linear-gradient(180deg,#33c2ff,#1f8fd0);color:#04121e;font-size:16px;box-shadow:0 4px 14px rgba(39,190,255,.4);}
+    .snd-h{font-size:16px;font-weight:800;letter-spacing:.2px;}
+    .snd-hsub{font-size:11.5px;color:#8ea4bd;font-weight:600;margin-top:1px;}
+    .snd-controls{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
+    .snd-fieldgrp{display:flex;flex-direction:column;gap:4px;font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:#7f93b0;}
+    .snd-select{padding:8px 11px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.13);
+        color:#e7eef7;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;}
     .snd-select:focus{outline:none;border-color:#27beff;}
-    .snd-x{cursor:pointer;opacity:.7;font-size:22px;line-height:1;}.snd-x:hover{opacity:1;}
-    .snd-body{padding:14px 16px;}
-    .snd-canvas-wrap{border-radius:12px;overflow:hidden;background:#0b1220;border:1px solid rgba(255,255,255,.1);min-height:200px;display:flex;align-items:center;justify-content:center;}
+    .snd-x{width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);
+        color:#93a6be;cursor:pointer;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;align-self:center;transition:all .12s;}
+    .snd-x:hover{color:#fff;background:rgba(255,90,90,.16);border-color:rgba(255,90,90,.4);}
+    .snd-body{padding:16px 18px 18px;}
+    .snd-canvas-wrap{border-radius:14px;overflow:hidden;background:#0a0f1c;border:1px solid rgba(255,255,255,.08);
+        min-height:220px;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 2px 22px rgba(0,0,0,.35);}
     .snd-canvas-wrap canvas{max-width:100%;height:auto;display:block;}
-    .snd-msg{padding:26px;color:#9fb0c8;text-align:center;font-size:14px;}
-    .snd-actions{display:flex;gap:8px;margin-top:12px;}
-    .snd-btn{padding:9px 14px;border-radius:9px;border:none;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;background:rgba(255,255,255,.08);color:#e7eef7;}
-    .snd-btn:hover{background:rgba(255,255,255,.16);}
-    .snd-spinner{width:36px;height:36px;border:4px solid rgba(255,255,255,.15);border-top-color:#27beff;border-radius:50%;animation:snd-spin .8s linear infinite;}
+    .snd-msg{padding:30px;color:#9fb0c8;text-align:center;font-size:14px;line-height:1.55;}
+    .snd-actions{display:flex;gap:9px;margin-top:14px;}
+    .snd-btn{padding:10px 16px;border-radius:10px;border:1px solid rgba(255,255,255,.12);font-weight:800;font-size:13px;
+        cursor:pointer;font-family:inherit;background:rgba(255,255,255,.06);color:#e7eef7;transition:all .12s;}
+    .snd-btn:hover{background:rgba(255,255,255,.13);}
+    .snd-btn.primary{background:linear-gradient(180deg,#57d3ff,#27beff);color:#04121e;border-color:transparent;}
+    .snd-btn.primary:hover{filter:brightness(1.08);}
+    .snd-spinner{width:38px;height:38px;border:4px solid rgba(255,255,255,.14);border-top-color:#27beff;border-radius:50%;animation:snd-spin .8s linear infinite;}
     @keyframes snd-spin{to{transform:rotate(360deg);}}`;
     document.head.appendChild(s);
 }
@@ -99,16 +114,27 @@ function openSoundingModal(lat, lon) {
     bg.innerHTML = `
         <div class="snd-modal">
             <div class="snd-head">
-                <h2><i class="fa fa-chart-area"></i> Forecast Sounding</h2>
+                <div class="snd-title">
+                    <span class="snd-badge"><i class="fa fa-chart-area"></i></span>
+                    <div><div class="snd-h">Forecast Sounding</div>
+                        <div class="snd-hsub">${lat.toFixed(2)}, ${lon.toFixed(2)}</div></div>
+                </div>
                 <div class="snd-controls">
-                    <select class="snd-select" id="snd-model">${MODELS.map((m) => `<option value="${m.id}">${m.label}</option>`).join('')}</select>
-                    <select class="snd-select" id="snd-fcst">${FCST.map((f) => `<option value="${f.v}">${f.label}</option>`).join('')}</select>
-                    <span class="snd-x" id="snd-close">&times;</span>
+                    <label class="snd-fieldgrp">Model
+                        <select class="snd-select" id="snd-model">${MODELS.map((m) => `<option value="${m.id}">${m.label}</option>`).join('')}</select>
+                    </label>
+                    <label class="snd-fieldgrp">Forecast hour
+                        <select class="snd-select" id="snd-fcst">${FCST.map((f) => `<option value="${f.v}">${f.label}</option>`).join('')}</select>
+                    </label>
+                    <button class="snd-x" id="snd-close" title="Close">&times;</button>
                 </div>
             </div>
             <div class="snd-body">
                 <div class="snd-canvas-wrap" id="snd-wrap"><div class="snd-msg">Loading sounding…</div></div>
-                <div class="snd-actions"><button class="snd-btn" id="snd-save">Save PNG</button></div>
+                <div class="snd-actions">
+                    <button class="snd-btn primary" id="snd-save">⤓ Save PNG</button>
+                    <button class="snd-btn" id="snd-copy">Copy image</button>
+                </div>
             </div>
         </div>`;
     document.body.appendChild(bg);
@@ -117,6 +143,7 @@ function openSoundingModal(lat, lon) {
     const modelEl = bg.querySelector('#snd-model');
     const fcstEl = bg.querySelector('#snd-fcst');
     const saveBtn = bg.querySelector('#snd-save');
+    const copyBtn = bg.querySelector('#snd-copy');
     let canvas = null;
 
     const close = () => bg.remove();
@@ -157,6 +184,18 @@ function openSoundingModal(lat, lon) {
             a.click();
             setTimeout(() => URL.revokeObjectURL(a.href), 4000);
         }, 'image/png');
+    };
+    copyBtn.onclick = async () => {
+        if (!canvas) return;
+        try {
+            const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+            await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => (copyBtn.textContent = 'Copy image'), 1600);
+        } catch (e) {
+            copyBtn.textContent = 'Copy failed';
+            setTimeout(() => (copyBtn.textContent = 'Copy image'), 1600);
+        }
     };
 
     load();
