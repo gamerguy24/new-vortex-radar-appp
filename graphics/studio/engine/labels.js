@@ -1,13 +1,17 @@
 // City label layer. Broadcast-style navy pills with condensed white caps, a
 // light rim and a soft drop shadow — matching on-air city labels.
-import { placeCities } from './cities.js';
+import { CITIES } from './cities.js';
 import { COLORS, caps, capsWidth, withShadow, panelPath } from './style.js';
 
-function drawPill(ctx, cx, cy, text, fs) {
+// Actual pill footprint for a label at font size `fs` (keeps collision tests and
+// drawing in sync).
+function pillSize(ctx, text, fs) {
   const tw = capsWidth(ctx, text, fs, 800, 0.94);
-  const padX = 15;
-  const pillH = fs + 14;
-  const pillW = tw + padX * 2;
+  return { w: tw + 22, h: fs + 11 };
+}
+
+function drawPill(ctx, cx, cy, text, fs) {
+  const { w: pillW, h: pillH } = pillSize(ctx, text, fs);
   const px = cx - pillW / 2;
   const py = cy - pillH / 2;
   withShadow(ctx, () => {
@@ -25,14 +29,37 @@ function drawPill(ctx, cx, cy, text, fs) {
   caps(ctx, text, cx, cy + 1, { size: fs, weight: 800, color: COLORS.white, align: 'center', scaleX: 0.94, shadow: false });
 }
 
-export function cityLabelLayer({ maxRank = 3, fontSize = 22, bounds = null } = {}) {
+export function cityLabelLayer({ maxRank = 3, fontSize = 18, bounds = null, gap = 8 } = {}) {
   return {
     name: 'cities',
     draw(ctx, scene) {
       const b = bounds || { x0: 0, y0: 0, x1: scene.width, y1: scene.height };
-      const cities = placeCities(scene.projection, b, { maxRank });
-      for (const c of cities) {
-        drawPill(ctx, c.x, c.y, c.name, c.rank === 1 ? fontSize + 3 : fontSize);
+      // Candidate cities: projected, in-bounds, within the rank limit.
+      const cands = [];
+      for (const [name, lat, lon, rank] of CITIES) {
+        if (rank > maxRank) continue;
+        const p = scene.projection([lon, lat]);
+        if (!p) continue;
+        const [x, y] = p;
+        if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
+        cands.push({ name, x, y, rank });
+      }
+      // Place bigger/major cities first so smaller ones yield to them.
+      cands.sort((a, c) => a.rank - c.rank);
+
+      // Real, measured collision: skip any pill that would touch a placed one
+      // (expanded by `gap`), so labels never overlap.
+      const placed = [];
+      for (const c of cands) {
+        const fs = c.rank === 1 ? fontSize + 2 : fontSize;
+        const { w, h } = pillSize(ctx, c.name, fs);
+        const rect = {
+          x0: c.x - w / 2 - gap, y0: c.y - h / 2 - gap,
+          x1: c.x + w / 2 + gap, y1: c.y + h / 2 + gap,
+        };
+        if (placed.some((r) => !(rect.x1 < r.x0 || rect.x0 > r.x1 || rect.y1 < r.y0 || rect.y0 > r.y1))) continue;
+        placed.push(rect);
+        drawPill(ctx, c.x, c.y, c.name, fs);
       }
     },
   };

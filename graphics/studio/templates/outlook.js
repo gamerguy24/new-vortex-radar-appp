@@ -83,7 +83,7 @@ export default {
       ));
     }
     // City labels last so the paint never covers them.
-    scene.add(cityLabelLayer({ maxRank: 1, fontSize: 26, bounds: mapRect }));
+    scene.add(cityLabelLayer({ maxRank: 1, fontSize: 16, bounds: mapRect }));
     if (config.branding) {
       scene.add(brandingLayer({ text: config.branding, rect: { x: 30, y: 940, w: 230, h: 120 } }));
     }

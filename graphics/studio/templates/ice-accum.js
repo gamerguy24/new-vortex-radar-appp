@@ -79,7 +79,7 @@ export default {
         ctrl.rerender();
       },
     }));
-    scene.add(cityLabelLayer({ maxRank: 2, fontSize: 22, bounds: mapRect }));
+    scene.add(cityLabelLayer({ maxRank: 2, fontSize: 17, bounds: mapRect }));
 
     scene.add(titleBarLayer({ title: config.title, subtitle: config.subtitle, rect: { x: 180, y: 90, w: 1560, h: 150 } }));
 

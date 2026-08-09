@@ -134,6 +134,6 @@ export default {
     }
 
     // City labels last so they sit on top of the paint and the legend strip.
-    if (config.showCities) scene.add(cityLabelLayer({ maxRank: 2, fontSize: 24, bounds: mapRect }));
+    if (config.showCities) scene.add(cityLabelLayer({ maxRank: 2, fontSize: 18, bounds: mapRect }));
   },
 };

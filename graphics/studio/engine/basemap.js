@@ -14,7 +14,7 @@ const STYLES = {
   // Real MapTiler satellite imagery (composited by engine/satellite.js). The
   // land fill is transparent so the photo shows through — this layer only paints
   // the ocean fallback + crisp white borders/counties on top of the imagery.
-  hybrid: { ocean: '#0b1c2c', land: 'rgba(0,0,0,0)', border: '#ffffff', borderW: 1.5, county: 'rgba(255,255,255,0.32)', countyW: 0.7, relief: false },
+  hybrid: { ocean: '#0b1c2c', land: 'rgba(0,0,0,0)', border: '#ffffff', borderW: 2, county: 'rgba(255,255,255,0.9)', countyW: 1.2, countyHalo: 'rgba(0,0,0,0.55)', countyHaloW: 3.2, borderHalo: 'rgba(0,0,0,0.6)', borderHaloW: 4.5, relief: false },
 };
 
 export function getBasemapStyle(name) {
@@ -71,18 +71,31 @@ export function landLayer({ styleName, landFeatures, countyFeatures, borderMesh,
         ctx.fillRect(0, 0, scene.width, scene.height);
         ctx.restore();
       }
-      // County hairlines
+      // County hairlines. On photo basemaps a dark halo underneath keeps the
+      // lines legible over any imagery (set countyHalo in the style).
       if (countyFeatures && s.countyW > 0) {
+        ctx.lineJoin = 'round';
         ctx.beginPath();
         for (const f of countyFeatures) path(f);
+        if (s.countyHalo) {
+          ctx.lineWidth = s.countyHaloW || s.countyW + 2;
+          ctx.strokeStyle = s.countyHalo;
+          ctx.stroke();
+        }
         ctx.lineWidth = s.countyW;
         ctx.strokeStyle = s.county;
         ctx.stroke();
       }
-      // State borders
+      // State borders (with an optional dark halo, same idea).
       if (borderMesh) {
+        ctx.lineJoin = 'round';
         ctx.beginPath();
         path(borderMesh);
+        if (s.borderHalo) {
+          ctx.lineWidth = s.borderHaloW || s.borderW + 2.5;
+          ctx.strokeStyle = s.borderHalo;
+          ctx.stroke();
+        }
         ctx.lineWidth = s.borderW;
         ctx.strokeStyle = s.border;
         ctx.stroke();

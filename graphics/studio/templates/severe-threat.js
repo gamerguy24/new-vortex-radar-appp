@@ -81,7 +81,7 @@ export default {
         ctrl.rerender();
       },
     }));
-    scene.add(cityLabelLayer({ maxRank: 3, fontSize: 22, bounds: mapRect }));
+    scene.add(cityLabelLayer({ maxRank: 3, fontSize: 17, bounds: mapRect }));
 
     // Chrome
     scene.add(bannerHeaderLayer({
