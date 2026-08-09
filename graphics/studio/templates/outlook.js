@@ -49,7 +49,7 @@ export default {
 
     scene.clearLayers();
     scene.add(backgroundLayer(config.basemap));
-    scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, borderMesh: geo.stateBorders }));
+    scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyFeatures: geo.counties, borderMesh: geo.stateBorders }));
 
     if (config.spcFeatures && config.spcFeatures.features?.length) {
       // Draw imported SPC categorical polygons (shared layer; low risk first).

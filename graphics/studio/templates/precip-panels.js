@@ -118,9 +118,9 @@ function makePanelLayer({ proj, counties, style, fills, rect, dayLabel, active, 
         ctx.fill(path(f));
       }
       ctx.globalAlpha = 1;
-      // county hairlines + borders
+      // county hairlines + borders (all counties, clipped to this panel)
       ctx.lineWidth = 0.4; ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-      for (const f of counties) ctx.stroke(path(f));
+      for (const f of geo.counties) ctx.stroke(path(f));
       const geoPath = d3.geoPath(proj, ctx);
       ctx.beginPath(); geoPath(geo.stateBorders); ctx.lineWidth = 1; ctx.strokeStyle = '#000'; ctx.stroke();
       ctx.restore();
