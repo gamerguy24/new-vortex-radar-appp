@@ -3,7 +3,7 @@
 // (forecast conditions / precip type / threat level), with the state name as a
 // header, city labels, and a matching legend. Switch states one at a time.
 import { fitProjection } from '../engine/projection.js';
-import { backgroundLayer, landLayer } from '../engine/basemap.js';
+import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { choroplethLayer, outlineLayer } from '../engine/choropleth.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { categoricalLegendLayer } from '../engine/legend.js';
@@ -56,7 +56,7 @@ export default {
       { key: 'subtitle', label: 'Subtitle', type: 'text' },
       { key: 'date', label: 'Date label (optional)', type: 'text' },
       { key: 'basemap', label: 'Basemap', type: 'select',
-        options: ['satellite', 'relief', 'flat', 'dark'].map((v) => ({ value: v, label: v })) },
+        options: BASEMAP_OPTIONS },
       { key: 'showCities', label: 'Show city labels', type: 'toggle' },
       { key: 'showSpc', label: 'Show current SPC outlook', type: 'toggle' },
       { key: 'spcDay', label: 'SPC outlook day', type: 'select',

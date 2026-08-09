@@ -11,11 +11,25 @@ const STYLES = {
   satellite: { ocean: '#0b1c2c', land: '#5b6b52', border: '#cfe0cf', borderW: 1.2, county: 'rgba(255,255,255,0.18)', countyW: 0.6 },
   flat: { ocean: '#cfe4f5', land: '#e9ede2', border: '#9aa6b2', borderW: 1.2, county: 'rgba(120,130,140,0.35)', countyW: 0.5 },
   dark: { ocean: '#060b14', land: '#1d2738', border: '#33415c', borderW: 1.2, county: 'rgba(120,140,170,0.2)', countyW: 0.5 },
+  // Real MapTiler satellite imagery (composited by engine/satellite.js). The
+  // land fill is transparent so the photo shows through — this layer only paints
+  // the ocean fallback + crisp white borders/counties on top of the imagery.
+  hybrid: { ocean: '#0b1c2c', land: 'rgba(0,0,0,0)', border: '#ffffff', borderW: 1.5, county: 'rgba(255,255,255,0.32)', countyW: 0.7, relief: false },
 };
 
 export function getBasemapStyle(name) {
   return STYLES[name] || STYLES.relief;
 }
+
+// Basemap choices offered on every (single-map) template's Basemap dropdown.
+// 'hybrid' is real MapTiler satellite imagery; the rest are procedural styles.
+export const BASEMAP_OPTIONS = [
+  { value: 'hybrid', label: 'Satellite photo' },
+  { value: 'satellite', label: 'Satellite (styled)' },
+  { value: 'relief', label: 'Relief' },
+  { value: 'flat', label: 'Flat' },
+  { value: 'dark', label: 'Dark' },
+];
 
 // Background fill (ocean / sky). Optional subtle vertical gradient for depth.
 export function backgroundLayer(styleName, override = {}) {
@@ -45,15 +59,18 @@ export function landLayer({ styleName, landFeatures, countyFeatures, borderMesh,
       for (const f of landFeatures) path(f);
       ctx.fillStyle = s.land;
       ctx.fill();
-      // Subtle relief shading: lighten top edge
-      ctx.save();
-      ctx.clip();
-      const g = ctx.createLinearGradient(0, scene.height * 0.2, 0, scene.height);
-      g.addColorStop(0, 'rgba(255,255,255,0.06)');
-      g.addColorStop(1, 'rgba(0,0,0,0.18)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, scene.width, scene.height);
-      ctx.restore();
+      // Subtle relief shading: lighten top edge (skipped for photo basemaps so
+      // the imagery isn't dimmed).
+      if (s.relief !== false) {
+        ctx.save();
+        ctx.clip();
+        const g = ctx.createLinearGradient(0, scene.height * 0.2, 0, scene.height);
+        g.addColorStop(0, 'rgba(255,255,255,0.06)');
+        g.addColorStop(1, 'rgba(0,0,0,0.18)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, scene.width, scene.height);
+        ctx.restore();
+      }
       // County hairlines
       if (countyFeatures && s.countyW > 0) {
         ctx.beginPath();

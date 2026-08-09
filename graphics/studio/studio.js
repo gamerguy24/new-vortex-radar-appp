@@ -5,6 +5,7 @@ import { Scene } from './engine/scene.js';
 import { loadGeo } from './engine/geo.js';
 import { freehandLayer, logoLayer, panelOverlayLayer, nameOverlayLayer } from './engine/overlays.js';
 import { fetchRadar, radarLayer } from './engine/radar.js';
+import { fetchSatellite, satelliteLayer, satelliteSig } from './engine/satellite.js';
 import { TEMPLATES, TEMPLATE_BY_ID } from './templates/index.js';
 
 const $ = (id) => document.getElementById(id);
@@ -24,6 +25,9 @@ const state = {
   logo: null,           // { img, src, corner, scale } — drawn on every template
   overlays: [],         // [{ type:'panel'|'name', ... }] — draggable, on every template
   radar: null,          // { img, bbox, opacity } — live NEXRAD reflectivity overlay
+  satellite: null,      // { mosaic, ... } — MapTiler satellite imagery for the 'hybrid' basemap
+  _satSig: null,        // signature of the region the loaded satellite covers
+  _satLoading: null,    // signature currently being fetched (in-flight guard)
 };
 
 // Template layer names that are "chrome" (labels / headers / legend / branding).
@@ -39,6 +43,43 @@ function insertRadarLayer(sc = scene) {
   const idx = sc.layers.findIndex((l) => RADAR_CHROME.has(l.name));
   if (idx < 0) sc.add(layer);
   else sc.layers.splice(idx, 0, layer);
+}
+
+// Satellite ('hybrid') basemap: real MapTiler imagery composited under the
+// vector overlays. The imagery is fetched asynchronously (like radar) and warped
+// to whatever projection the active template built, then inserted just above the
+// ocean background so the transparent-land border/label layers sit on top.
+function insertSatelliteLayer(sc = scene) {
+  if (state.config.basemap !== 'hybrid') return;
+  ensureSatellite();
+  if (!(state.satellite && state.satellite.mosaic)) return;
+  const layer = satelliteLayer(state.satellite);
+  const idx = sc.layers.findIndex((l) => l.name === 'background');
+  if (idx < 0) sc.layers.unshift(layer);
+  else sc.layers.splice(idx + 1, 0, layer);
+}
+
+// Fetch satellite imagery for the current view if we don't already have it.
+// Re-fetches only when the region/zoom signature changes (state/region/resize).
+function ensureSatellite() {
+  if (!scene || !scene.projection) return;
+  let want;
+  try { want = satelliteSig(scene); } catch (e) { return; }
+  if (state.satellite && state._satSig === want) return; // already loaded
+  if (state._satLoading === want) return;                // in flight
+  state._satLoading = want;
+  fetchSatellite(scene)
+    .then((sat) => {
+      state._satLoading = null;
+      if (state.config.basemap !== 'hybrid') return;      // user switched away
+      state.satellite = sat;
+      state._satSig = want;
+      rerender();
+    })
+    .catch((err) => {
+      state._satLoading = null;
+      console.warn('[studio] satellite basemap load failed:', err.message || err);
+    });
 }
 
 // Per-template freehand strokes, kept on the config so Reset / template switch
@@ -70,6 +111,8 @@ function activeScale() {
 function rerender() {
   if (!geo) return;
   state.template.build(scene, geo, state.config, ctrl);
+  // Satellite ('hybrid') imagery sits just above the ocean, under the map data.
+  insertSatelliteLayer();
   // Radar sits over the map data but under labels/chrome and user overlays.
   insertRadarLayer();
   // User overlays sit on top of every template (build() clears layers first).
@@ -877,7 +920,7 @@ async function savePsd() {
     const agPsd = await loadAgPsd();
     const children = [];
     // Bottom-to-top: the base graphic, then overlays, drawings, logo.
-    children.push({ name: 'Graphic', canvas: renderLayerCanvas((s) => { state.template.build(s, geo, state.config, ctrl); insertRadarLayer(s); }) });
+    children.push({ name: 'Graphic', canvas: renderLayerCanvas((s) => { state.template.build(s, geo, state.config, ctrl); insertSatelliteLayer(s); insertRadarLayer(s); }) });
     if (state.overlays.length) {
       children.push({ name: 'Overlays', canvas: renderLayerCanvas((s) => {
         for (const ov of state.overlays) s.add(ov.type === 'name' ? nameOverlayLayer(ov) : panelOverlayLayer(ov));

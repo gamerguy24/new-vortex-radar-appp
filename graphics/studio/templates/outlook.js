@@ -2,7 +2,7 @@
 // categorical risk areas. Risk geometry can be imported live from SPC (via the
 // server proxy) or assigned by state with the paint tool as a fallback.
 import { fitProjection } from '../engine/projection.js';
-import { backgroundLayer, landLayer } from '../engine/basemap.js';
+import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { choroplethLayer } from '../engine/choropleth.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { categoricalLegendLayer } from '../engine/legend.js';
@@ -34,7 +34,7 @@ export default {
       { key: 'title', label: 'Title', type: 'text' },
       { key: 'subtitle', label: 'Subtitle', type: 'text' },
       { key: 'basemap', label: 'Basemap', type: 'select',
-        options: ['relief', 'dark', 'flat', 'satellite'].map((v) => ({ value: v, label: v })) },
+        options: BASEMAP_OPTIONS },
       { key: 'branding', label: 'Branding (bug)', type: 'text' },
       { key: 'importSpc', label: 'SPC live data', type: 'action', action: 'import-spc' },
       { key: 'paint', label: 'Manual risk (paint states)', type: 'paint' },

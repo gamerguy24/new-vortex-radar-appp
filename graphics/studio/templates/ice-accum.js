@@ -1,7 +1,7 @@
 // Template: Ice Accumulation — single regional map shaded by ice amount, with
 // a stepped inches color scale across the bottom and a day label under the map.
 import { fitProjection } from '../engine/projection.js';
-import { backgroundLayer, landLayer } from '../engine/basemap.js';
+import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { choroplethLayer } from '../engine/choropleth.js';
 import { titleBarLayer } from '../engine/chrome.js';
 import { gradientScaleLayer } from '../engine/legend.js';
@@ -34,6 +34,7 @@ export default {
       { key: 'region', label: 'Region', type: 'select',
         options: Object.entries(REGION_PRESETS).filter(([k]) => k !== 'conus').map(([k, v]) => ({ value: k, label: v.label })) },
       { key: 'dayLabel', label: 'Day label', type: 'text' },
+      { key: 'basemap', label: 'Basemap', type: 'select', options: BASEMAP_OPTIONS },
       { key: 'paint', label: 'Ice amount (inches)', type: 'paint' },
     ];
   },

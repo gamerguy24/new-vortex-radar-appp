@@ -1,7 +1,7 @@
 // Template: Severe Storm Threat — regional county choropleth on a 5-level
 // threat scale, with the boxed "STORM THREATS" icon legend and city labels.
 import { fitProjection } from '../engine/projection.js';
-import { backgroundLayer, landLayer } from '../engine/basemap.js';
+import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { choroplethLayer } from '../engine/choropleth.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { categoricalLegendLayer } from '../engine/legend.js';
@@ -39,7 +39,7 @@ export default {
         options: Object.entries(REGION_PRESETS).filter(([k]) => k !== 'conus').map(([k, v]) => ({ value: k, label: v.label })) },
       { key: 'date', label: 'Date label', type: 'text' },
       { key: 'basemap', label: 'Basemap', type: 'select',
-        options: ['satellite', 'relief', 'flat', 'dark'].map((v) => ({ value: v, label: v })) },
+        options: BASEMAP_OPTIONS },
       { key: 'paint', label: 'Threat levels', type: 'paint' },
       { key: 'threats', label: 'Storm threats list', type: 'threats' },
     ];
