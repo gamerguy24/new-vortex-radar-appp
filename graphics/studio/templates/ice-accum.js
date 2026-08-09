@@ -65,7 +65,7 @@ export default {
 
     scene.clearLayers();
     scene.add(backgroundLayer(config.basemap, { ocean: '#0c1a2e' }));
-    scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyFeatures: geo.counties, borderMesh: geo.stateBorders }));
+    scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyMesh: geo.countyBorders, borderMesh: geo.stateBorders }));
     scene.add(choroplethLayer({
       features: counties,
       keyFn: (f) => f.fips,

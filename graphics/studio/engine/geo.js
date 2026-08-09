@@ -54,6 +54,10 @@ export async function loadGeo() {
   const nation = topojson.feature(nationTopo, nationTopo.objects.nation).features[0];
   // Mesh of state borders for clean internal lines.
   const stateBorders = topojson.mesh(statesTopo, statesTopo.objects.states, (a, b) => a !== b);
+  // Mesh of county borders — interior shared edges only (a !== b), so every
+  // border is a single clean line (no double-stroking) and the ragged coastline
+  // is left to the state/nation outlines. Used for crisp county lines on the map.
+  const countyBorders = topojson.mesh(countiesTopo, countiesTopo.objects.counties, (a, b) => a !== b);
 
   const countyByFips = new Map();
   const countiesByState = new Map();
@@ -78,7 +82,7 @@ export async function loadGeo() {
   }
 
   cache = {
-    states, counties, nation, stateBorders,
+    states, counties, nation, stateBorders, countyBorders,
     countyByFips, countiesByState, stateByFips, stateByAbbr,
   };
   return cache;

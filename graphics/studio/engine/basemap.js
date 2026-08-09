@@ -48,7 +48,7 @@ export function backgroundLayer(styleName, override = {}) {
 
 // Land + borders. `landFeatures` = states for fill, `countyFeatures` optional
 // for thin internal county lines, `borderMesh` for crisp state outlines.
-export function landLayer({ styleName, landFeatures, countyFeatures, borderMesh, override = {} }) {
+export function landLayer({ styleName, landFeatures, countyFeatures, countyMesh, borderMesh, override = {} }) {
   const s = { ...getBasemapStyle(styleName), ...override };
   return {
     name: 'land',
@@ -71,12 +71,16 @@ export function landLayer({ styleName, landFeatures, countyFeatures, borderMesh,
         ctx.fillRect(0, 0, scene.width, scene.height);
         ctx.restore();
       }
-      // County hairlines. On photo basemaps a dark halo underneath keeps the
-      // lines legible over any imagery (set countyHalo in the style).
-      if (countyFeatures && s.countyW > 0) {
+      // County lines. Prefer a border MESH (each shared edge drawn exactly once)
+      // for clean, crisp lines; fall back to per-polygon strokes if only feature
+      // geometry is provided. A dark halo underneath keeps lines legible on photo
+      // basemaps (set countyHalo in the style).
+      if (s.countyW > 0 && (countyMesh || countyFeatures)) {
         ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        for (const f of countyFeatures) path(f);
+        if (countyMesh) path(countyMesh);
+        else for (const f of countyFeatures) path(f);
         if (s.countyHalo) {
           ctx.lineWidth = s.countyHaloW || s.countyW + 2;
           ctx.strokeStyle = s.countyHalo;

@@ -94,7 +94,7 @@ export default {
     scene.add(backgroundLayer(config.basemap));
     // Context: all states as land, all counties for context, then the focal
     // state's bold outline on top.
-    scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyFeatures: geo.counties, borderMesh: geo.stateBorders }));
+    scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyMesh: geo.countyBorders, borderMesh: geo.stateBorders }));
     scene.add(choroplethLayer({
       features: counties,
       keyFn: (f) => f.fips,
