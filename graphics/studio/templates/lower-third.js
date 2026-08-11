@@ -17,6 +17,7 @@ export default {
   defaultConfig() {
     return {
       style: 'futurecast',
+      logoImg: '/logo.png',          // the app's Vortex Radar logo (transparent PNG)
       logoState: 'LA',
       logoLine1: 'SW LOUISIANA',
       logoLine2: 'WEATHER',
@@ -173,32 +174,59 @@ function drawScale(ctx, x, y, w, h, accent) {
   }
 }
 
-// ── logo image: knock out the black background, cache by src ────────────────────
+// ── logo image processing, cached by src ────────────────────────────────────────
 const _logoCache = {}; // src -> canvas | 'loading' | null
-function knockoutBlack(img) {
-  const c = document.createElement('canvas');
-  c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
-  const g = c.getContext('2d');
-  g.drawImage(img, 0, 0);
-  const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
-  for (let i = 0; i < p.length; i += 4) {
-    const mx = Math.max(p[i], p[i + 1], p[i + 2]);
-    if (mx < 18) p[i + 3] = 0;                                   // pure black → clear
-    else if (mx < 52) p[i + 3] = Math.round(p[i + 3] * (mx - 18) / 34); // soft edge ramp
+
+// Crop away fully-transparent margins so the art fills the panel.
+function trimTransparent(c) {
+  const w = c.width, h = c.height;
+  const p = c.getContext('2d').getImageData(0, 0, w, h).data;
+  let minX = w, minY = h, maxX = 0, maxY = 0, found = false;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (p[(y * w + x) * 4 + 3] > 16) { found = true; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
   }
-  g.putImageData(d, 0, 0);
-  return c;
+  if (!found) return c;
+  const cw = maxX - minX + 1, ch = maxY - minY + 1;
+  const out = document.createElement('canvas'); out.width = cw; out.height = ch;
+  out.getContext('2d').drawImage(c, minX, minY, cw, ch, 0, 0, cw, ch);
+  return out;
 }
+
+// Smart prep: keep already-transparent logos as-is (black is part of the art);
+// only knock out a solid BLACK background when the corners are opaque black.
+function processLogo(img) {
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, w, h), p = d.data;
+  const idx = (x, y) => (y * w + x) * 4;
+  const corners = [idx(0, 0), idx(w - 1, 0), idx(0, h - 1), idx(w - 1, h - 1)];
+  let transp = 0, black = 0;
+  for (const ci of corners) {
+    if (p[ci + 3] < 12) transp++;
+    else if (Math.max(p[ci], p[ci + 1], p[ci + 2]) < 24) black++;
+  }
+  if (transp < 2 && black >= 3) {          // solid black background → knock it out
+    for (let i = 0; i < p.length; i += 4) {
+      const mx = Math.max(p[i], p[i + 1], p[i + 2]);
+      if (mx < 18) p[i + 3] = 0;
+      else if (mx < 52) p[i + 3] = Math.round(p[i + 3] * (mx - 18) / 34);
+    }
+    g.putImageData(d, 0, 0);
+  }
+  return trimTransparent(c);
+}
+
 // Returns the processed logo canvas, or null (kicking off async load + rerender).
-function getLogo(config, ctrl) {
-  const src = config.logoImg;
+function getLogo(src, ctrl) {
   if (!src) return null;
   const hit = _logoCache[src];
   if (hit === 'loading') return null;
   if (hit !== undefined) return hit;      // canvas or null
   _logoCache[src] = 'loading';
   const img = new Image();
-  img.onload = () => { try { _logoCache[src] = knockoutBlack(img); } catch (e) { _logoCache[src] = null; } if (ctrl && ctrl.rerender) ctrl.rerender(); };
+  img.crossOrigin = 'anonymous';          // same-origin logo → export stays clean
+  img.onload = () => { try { _logoCache[src] = processLogo(img); } catch (e) { _logoCache[src] = null; } if (ctrl && ctrl.rerender) ctrl.rerender(); };
   img.onerror = () => { _logoCache[src] = null; };
   img.src = src;
   return null;
@@ -213,7 +241,9 @@ function futurecast(config, geo, ctrl) {
       const barH = Math.round(H * 0.14);
       const barY = H - barH - Math.round(H * 0.035);
       const accent = config.accent || '#e7b53b';
-      const logo = getLogo(config, ctrl);
+      // default to the app's Vortex Radar logo; explicit '' means "use text wordmark"
+      const logoSrc = config.logoImg == null ? '/logo.png' : config.logoImg;
+      const logo = getLogo(logoSrc, ctrl);
 
       // ---- main title bar: dark gradient fading to the right ----
       const bg = ctx.createLinearGradient(0, 0, W, 0);

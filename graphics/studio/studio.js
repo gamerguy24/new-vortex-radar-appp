@@ -450,7 +450,7 @@ function renderField(f) {
         r.readAsDataURL(fl);
         file.value = '';
       };
-      rem.onclick = () => { delete cfg[f.key]; btn.textContent = 'Upload image'; rem.style.display = 'none'; rerender(); };
+      rem.onclick = () => { cfg[f.key] = ''; btn.textContent = 'Upload image'; rem.style.display = 'none'; rerender(); };
       row.append(btn, rem, file);
       div.appendChild(row);
       const hint = document.createElement('div'); hint.className = 'hint-text'; hint.style.marginTop = '6px';
