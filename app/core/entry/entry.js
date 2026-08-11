@@ -103,6 +103,9 @@ function load() {
     // load the click-a-point forecast sounding tool
     require('../../soundings/menu_item');
 
+    // load the county power-outages overlay (MassOutage live data)
+    require('../../power_outages/menu_item');
+
     // load the attribution map div
     require('../attribution/attribution');
 
