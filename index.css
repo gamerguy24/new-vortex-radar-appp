@@ -2163,16 +2163,10 @@ td.day.active, span.month.active, span.year.active {
     #vortexBarIcons .fa { font-size: 15px !important; }
     #vortexBarIcons .menu_item_not_selected { padding: 5px; }
 
-    /* Reflectivity legend + product/elevation tab: side-by-side at bottom-left,
-       lifted above the centered footer so neither overlaps it. Pinned with
-       position:fixed so their placement is independent of their DOM parents. */
-    #vortexLegend {
-        position: fixed !important;
-        left: 12px !important; bottom: 90px !important; top: auto !important; right: auto !important;
-    }
-    #productMapFooter {
-        position: fixed !important;
-        left: 264px !important; bottom: 90px !important; top: auto !important; right: auto !important;
-        z-index: 505 !important;
-    }
+    /* Reflectivity legend + product/elevation tab both lifted above the centered
+       footer so it never overlaps them. The product tab is the LIVE products
+       menu, so we only nudge it vertically (never tear it out of its container):
+       product tab on top, color-scale legend just below it, both bottom-left. */
+    #vortexLegend { bottom: 96px !important; }
+    #productMapFooter { bottom: 176px !important; }
 }
