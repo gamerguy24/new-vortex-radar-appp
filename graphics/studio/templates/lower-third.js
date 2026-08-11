@@ -42,8 +42,9 @@ export default {
         { value: 'title-bar', label: 'Top title bar' },
         { value: 'name-strip', label: 'Name strip' },
       ] },
+      { key: 'logoImg', label: 'Banner logo image (PNG — black auto-removed)', type: 'image' },
       { key: 'logoState', label: 'Logo state silhouette', type: 'select', options: states },
-      { key: 'logoLine1', label: 'Logo line 1', type: 'text' },
+      { key: 'logoLine1', label: 'Logo line 1 (used if no image)', type: 'text' },
       { key: 'logoLine2', label: 'Logo line 2 (gold)', type: 'text' },
       { key: 'title', label: 'Title', type: 'text' },
       { key: 'subtitle', label: 'Date / subtitle', type: 'text' },
@@ -54,7 +55,7 @@ export default {
     ];
   },
 
-  build(scene, geo, config) {
+  build(scene, geo, config, ctrl) {
     scene.clearLayers();
     if (!config.transparent) {
       scene.add({ name: 'bg', draw(ctx, s) {
@@ -79,7 +80,7 @@ export default {
         break;
       case 'futurecast':
       default:
-        scene.add(futurecast(config, geo));
+        scene.add(futurecast(config, geo, ctrl));
         break;
     }
   },
@@ -172,8 +173,39 @@ function drawScale(ctx, x, y, w, h, accent) {
   }
 }
 
+// ── logo image: knock out the black background, cache by src ────────────────────
+const _logoCache = {}; // src -> canvas | 'loading' | null
+function knockoutBlack(img) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const mx = Math.max(p[i], p[i + 1], p[i + 2]);
+    if (mx < 18) p[i + 3] = 0;                                   // pure black → clear
+    else if (mx < 52) p[i + 3] = Math.round(p[i + 3] * (mx - 18) / 34); // soft edge ramp
+  }
+  g.putImageData(d, 0, 0);
+  return c;
+}
+// Returns the processed logo canvas, or null (kicking off async load + rerender).
+function getLogo(config, ctrl) {
+  const src = config.logoImg;
+  if (!src) return null;
+  const hit = _logoCache[src];
+  if (hit === 'loading') return null;
+  if (hit !== undefined) return hit;      // canvas or null
+  _logoCache[src] = 'loading';
+  const img = new Image();
+  img.onload = () => { try { _logoCache[src] = knockoutBlack(img); } catch (e) { _logoCache[src] = null; } if (ctrl && ctrl.rerender) ctrl.rerender(); };
+  img.onerror = () => { _logoCache[src] = null; };
+  img.src = src;
+  return null;
+}
+
 // ── the broadcast banner ───────────────────────────────────────────────────────
-function futurecast(config, geo) {
+function futurecast(config, geo, ctrl) {
   return {
     name: 'lt-futurecast',
     draw(ctx, s) {
@@ -181,6 +213,7 @@ function futurecast(config, geo) {
       const barH = Math.round(H * 0.14);
       const barY = H - barH - Math.round(H * 0.035);
       const accent = config.accent || '#e7b53b';
+      const logo = getLogo(config, ctrl);
 
       // ---- main title bar: dark gradient fading to the right ----
       const bg = ctx.createLinearGradient(0, 0, W, 0);
@@ -195,14 +228,17 @@ function futurecast(config, geo) {
       // ---- logo block (angled, overhangs the bar) ----
       const lbX = 22, lbTop = barY - Math.round(barH * 0.18), lbH = barH + Math.round(barH * 0.18);
       const lbW = Math.round(W * 0.185), skew = Math.round(lbH * 0.42);
-      // panel
+      // panel — bright blue for the text wordmark; dark (blends into the bar) for a logo image
       const pg = ctx.createLinearGradient(lbX, lbTop, lbX, lbTop + lbH);
-      pg.addColorStop(0, '#12305c'); pg.addColorStop(0.5, '#0c1f3d'); pg.addColorStop(1, '#060f1f');
+      if (logo) { pg.addColorStop(0, '#0e2542'); pg.addColorStop(0.5, '#0a1a30'); pg.addColorStop(1, '#060f1f'); }
+      else { pg.addColorStop(0, '#12305c'); pg.addColorStop(0.5, '#0c1f3d'); pg.addColorStop(1, '#060f1f'); }
       skewRect(ctx, lbX, lbTop, lbW, lbH, skew); ctx.save(); ctx.fillStyle = pg; ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 4; ctx.fill(); ctx.restore();
-      // state silhouette inside the panel (clipped)
-      ctx.save(); skewRect(ctx, lbX, lbTop, lbW, lbH, skew); ctx.clip();
-      drawState(ctx, geo, config.logoState, { x: lbX + 6, y: lbTop + 4, w: lbW - 12, h: lbH - 8 }, 'rgba(120,180,255,0.16)', 'rgba(150,200,255,0.35)');
-      ctx.restore();
+      // state silhouette inside the panel (only when there's no logo image)
+      if (!logo) {
+        ctx.save(); skewRect(ctx, lbX, lbTop, lbW, lbH, skew); ctx.clip();
+        drawState(ctx, geo, config.logoState, { x: lbX + 6, y: lbTop + 4, w: lbW - 12, h: lbH - 8 }, 'rgba(120,180,255,0.16)', 'rgba(150,200,255,0.35)');
+        ctx.restore();
+      }
       // top bevel highlight on the panel
       ctx.save(); skewRect(ctx, lbX, lbTop, lbW, lbH, skew); ctx.clip();
       ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(lbX, lbTop, lbW, 3); ctx.restore();
@@ -213,16 +249,28 @@ function futurecast(config, geo) {
       const sg = ctx.createLinearGradient(0, lbTop, 0, lbTop + lbH); sg.addColorStop(0, '#ffe9a8'); sg.addColorStop(1, shade(accent, 0.6));
       ctx.fillStyle = sg; ctx.fill(); ctx.restore();
 
-      // logo text
-      const cx = lbX + 30;
-      const l1Size = Math.round(barH * 0.24);
-      heavy(ctx, (config.logoLine1 || '').toUpperCase(), cx, lbTop + lbH * 0.42, l1Size, { align: 'left', condense: 0.9, weight: 800, color: '#fff', shadow: true });
-      const l2Size = Math.round(barH * 0.46);
-      goldText(ctx, (config.logoLine2 || '').toUpperCase(), cx, lbTop + lbH * 0.9, l2Size, 0.86);
-      // gold underline swoosh under the wordmark
-      const uw = Math.min(lbW - 60, heavyWidth(ctx, (config.logoLine2 || '').toUpperCase(), l2Size, 0.86) + 10);
-      const ug = ctx.createLinearGradient(cx, 0, cx + uw, 0); ug.addColorStop(0, accent); ug.addColorStop(1, 'rgba(231,181,59,0)');
-      ctx.fillStyle = ug; ctx.fillRect(cx, lbTop + lbH * 0.92, uw, 3);
+      if (logo) {
+        // fit the (black-removed) logo into the panel — contain + centered, with a soft drop
+        const px = lbX + 20, py = lbTop + 12, pw = lbW - 46, ph = lbH - 24;
+        const sc = Math.min(pw / logo.width, ph / logo.height);
+        const dw = logo.width * sc, dh = logo.height * sc;
+        const dx = px + (pw - dw) / 2, dy = py + (ph - dh) / 2;
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 3;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(logo, dx, dy, dw, dh);
+        ctx.restore();
+      } else {
+        // text wordmark fallback
+        const cx = lbX + 30;
+        const l1Size = Math.round(barH * 0.24);
+        heavy(ctx, (config.logoLine1 || '').toUpperCase(), cx, lbTop + lbH * 0.42, l1Size, { align: 'left', condense: 0.9, weight: 800, color: '#fff', shadow: true });
+        const l2Size = Math.round(barH * 0.46);
+        goldText(ctx, (config.logoLine2 || '').toUpperCase(), cx, lbTop + lbH * 0.9, l2Size, 0.86);
+        const uw = Math.min(lbW - 60, heavyWidth(ctx, (config.logoLine2 || '').toUpperCase(), l2Size, 0.86) + 10);
+        const ug = ctx.createLinearGradient(cx, 0, cx + uw, 0); ug.addColorStop(0, accent); ug.addColorStop(1, 'rgba(231,181,59,0)');
+        ctx.fillStyle = ug; ctx.fillRect(cx, lbTop + lbH * 0.92, uw, 3);
+      }
 
       // ---- title + subtitle (center) ----
       const tx = lbX + lbW + 40;

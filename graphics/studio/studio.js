@@ -432,6 +432,32 @@ function renderField(f) {
     case 'panelpick': {
       div.appendChild(renderPanelPick()); break;
     }
+    case 'image': {
+      const row = document.createElement('div');
+      row.style.display = 'flex'; row.style.gap = '8px'; row.style.alignItems = 'center';
+      const btn = document.createElement('button'); btn.className = 'action-btn';
+      btn.textContent = cfg[f.key] ? 'Replace image' : 'Upload image';
+      const file = document.createElement('input');
+      file.type = 'file'; file.accept = 'image/*'; file.style.display = 'none';
+      const rem = document.createElement('button');
+      rem.className = 'ghost small'; rem.textContent = 'Remove'; rem.style.display = cfg[f.key] ? '' : 'none';
+      btn.onclick = () => file.click();
+      file.onchange = () => {
+        const fl = file.files && file.files[0];
+        if (!fl) return;
+        const r = new FileReader();
+        r.onload = () => { cfg[f.key] = r.result; btn.textContent = 'Replace image'; rem.style.display = ''; rerender(); };
+        r.readAsDataURL(fl);
+        file.value = '';
+      };
+      rem.onclick = () => { delete cfg[f.key]; btn.textContent = 'Upload image'; rem.style.display = 'none'; rerender(); };
+      row.append(btn, rem, file);
+      div.appendChild(row);
+      const hint = document.createElement('div'); hint.className = 'hint-text'; hint.style.marginTop = '6px';
+      hint.textContent = 'PNG/JPG. A solid black background is removed automatically.';
+      div.appendChild(hint);
+      break;
+    }
     case 'action': {
       const b = document.createElement('button'); b.className = 'action-btn';
       b.textContent = f.action === 'import-spc' ? 'Import live SPC outlook' : f.label;
