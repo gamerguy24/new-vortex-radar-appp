@@ -279,14 +279,16 @@ function attachModels(app, requireAuth) {
       }
       if (!msg) return res.status(404).json({ error: 'Field not found; check /index' });
 
-      const cacheKey = `${req.params.id}:${date}:${cycle}:${fhr}:${msg.n}:${bbox.join(',')}`;
+      // Optional small render for thumbnails (w=180 etc.); default full res.
+      const maxW = Math.max(60, Math.min(1600, Number(req.query.w) || 1400));
+      const cacheKey = `${req.params.id}:${date}:${cycle}:${fhr}:${msg.n}:${bbox.join(',')}:${maxW}`;
       let entry = pngGet(cacheKey);
       if (!entry) {
         const range = `bytes=${msg.start}-${msg.end == null ? '' : msg.end}`;
         const upstream = await fetch(s3KeyUrl(m.bucket, key), { headers: { Range: range } });
         if (!(upstream.ok || upstream.status === 206)) return res.status(502).json({ error: `S3 ${upstream.status}` });
         const bytes = new Uint8Array(await upstream.arrayBuffer());
-        const { png } = renderField(bytes, msg.variable, bbox);
+        const { png } = renderField(bytes, msg.variable, bbox, maxW);
         entry = { png, variable: msg.variable, level: msg.level, legend: legendFor(msg.variable) };
         pngSet(cacheKey, entry);
       }

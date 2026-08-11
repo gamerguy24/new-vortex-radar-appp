@@ -30,15 +30,16 @@ const pad2 = (n) => String(n).padStart(2, '0');
 // Curated quick-pick fields (resolved against the run's index; variable + a
 // level matcher). Covers the common broadcast fields; missing ones are hidden.
 const PRESETS = [
-  { label: '2 m Temp', v: 'TMP', lvl: '2 m above ground' },
-  { label: 'Composite Reflectivity', v: 'REFC', lvl: 'entire atmosphere' },
-  { label: 'MSLP', v: 'PRMSL', lvl: 'mean sea level' },
-  { label: 'Surface CAPE', v: 'CAPE', lvl: 'surface' },
-  { label: 'Precipitable Water', v: 'PWAT', lvl: 'entire atmosphere' },
-  { label: '850 mb Temp', v: 'TMP', lvl: '850 mb' },
-  { label: '500 mb Temp', v: 'TMP', lvl: '500 mb' },
-  { label: 'Total Precip', v: 'APCP', lvl: 'surface' },
+  { label: '2 m Temp', v: 'TMP', lvl: '2 m above ground', icon: '🌡️' },
+  { label: 'Reflectivity', v: 'REFC', lvl: 'entire atmosphere', icon: '📡' },
+  { label: 'MSLP', v: 'PRMSL', lvl: 'mean sea level', icon: '🌀' },
+  { label: 'Surface CAPE', v: 'CAPE', lvl: 'surface', icon: '⚡' },
+  { label: 'Precip. Water', v: 'PWAT', lvl: 'entire atmosphere', icon: '💧' },
+  { label: '850 mb Temp', v: 'TMP', lvl: '850 mb', icon: '🌡️' },
+  { label: '500 mb Temp', v: 'TMP', lvl: '500 mb', icon: '❄️' },
+  { label: 'Total Precip', v: 'APCP', lvl: 'surface', icon: '🌧️' },
 ];
+const CONUS_BBOX = '-125,24,-66.5,50';
 // Find the index message matching a preset (variable exact; level starts-with).
 function resolvePreset(messages, p) {
   const v = p.v.toUpperCase(), lvl = p.lvl.toLowerCase();
@@ -50,12 +51,29 @@ function injectPhase2Styles() {
   const s = document.createElement('style');
   s.id = 'vmp-p2-styles';
   s.textContent = `
-    .vmp-sub{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#7f93b0;margin:2px 0 7px;}
-    .vmp-presets{display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 13px;}
-    .vmp-preset{padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);
-      color:#cddaea;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .12s;}
-    .vmp-preset:hover{background:rgba(39,190,255,.12);color:#eaf3ff;border-color:rgba(39,190,255,.3);}
-    .vmp-preset.active{background:linear-gradient(180deg,#33c2ff,#1f92d6);color:#04121e;border-color:transparent;box-shadow:0 3px 12px rgba(39,190,255,.3);}
+    .vmp-sub{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#7f93b0;margin:2px 0 8px;}
+    /* Quick-field cards with thumbnails */
+    .vmp-cards{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:2px 0 6px;}
+    .vmp-card{position:relative;border-radius:12px;overflow:hidden;cursor:pointer;
+      border:1px solid rgba(255,255,255,.1);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));transition:all .12s;}
+    .vmp-card:hover{border-color:rgba(39,190,255,.4);transform:translateY(-1px);}
+    .vmp-card.active{border-color:#33c2ff;box-shadow:0 0 0 1px #33c2ff,0 6px 18px rgba(39,190,255,.32);}
+    .vmp-card-thumb{width:100%;height:60px;display:block;object-fit:cover;background:#0a1424;
+      border-bottom:1px solid rgba(255,255,255,.06);opacity:0;transition:opacity .3s;}
+    .vmp-card-thumb.loaded{opacity:1;}
+    .vmp-card-ph{position:absolute;top:0;left:0;right:0;height:60px;display:flex;align-items:center;justify-content:center;
+      font-size:22px;background:linear-gradient(135deg,rgba(39,190,255,.12),rgba(39,190,255,0));pointer-events:none;}
+    .vmp-card-lbl{padding:7px 9px;font-size:11.5px;font-weight:700;color:#dbe6f5;}
+    .vmp-card.active .vmp-card-lbl{color:#eaf3ff;}
+    /* Advanced (all variables) collapsible */
+    .vmp-adv{margin-top:8px;}
+    .vmp-adv-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:10.5px;font-weight:700;
+      text-transform:uppercase;letter-spacing:.09em;color:#7f93b0;padding:6px 0;user-select:none;}
+    .vmp-adv-toggle:hover{color:#aab9cc;}
+    .vmp-adv-chev{transition:transform .15s;display:inline-block;}
+    .vmp-adv.open .vmp-adv-chev{transform:rotate(90deg);}
+    .vmp-adv-body{display:none;}
+    .vmp-adv.open .vmp-adv-body{display:block;}
     .vmp-scrub{display:flex;align-items:center;gap:6px;margin:2px 0 13px;padding:7px;border-radius:12px;
       background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);}
     .vmp-scrub button{width:34px;height:32px;border-radius:9px;border:1px solid rgba(255,255,255,.1);
@@ -206,6 +224,10 @@ async function open() {
       b.onclick = () => selectModel(m);
       side.appendChild(b);
     }
+    // Smoother flow: auto-open a model so you land on fields (prefer GFS — it
+    // decodes cleanly; some HRRR products are JPEG2000-packed and won't render).
+    const first = models.find((m) => m.id === 'gfs') || models.find((m) => m.type === 'cycle') || models[0];
+    if (first) selectModel(first);
   } catch (e) {
     document.getElementById('vmpMain').innerHTML = `<div class="vmp-err">Could not load models: ${esc(e.message)}</div>`;
   }
@@ -213,9 +235,10 @@ async function open() {
 
 async function selectModel(m) {
   state.model = m;
+  _thumbCache = { model: m.id, byLabel: {} };  // fresh thumbnails per model
   panel.querySelectorAll('.vmp-model').forEach((b) => b.classList.toggle('active', b.dataset.id === m.id));
   const main = document.getElementById('vmpMain');
-  main.innerHTML = `<div class="vmp-title">${esc(m.name)}</div><div class="vmp-status" id="vmpStatus">Loading…</div><div id="vmpControls"></div><div id="vmpList" class="vmp-list"></div>`;
+  main.innerHTML = `<div class="vmp-title">${esc(m.name)}</div><div class="vmp-status" id="vmpStatus">Loading…</div><div id="vmpControls"></div>`;
   const status = document.getElementById('vmpStatus');
   try {
     if (m.type === 'browse') { status.innerHTML = `<span class="vmp-src">Live · <b>${esc(m.bucket)}</b> (NOAA Open Data on AWS)</span>`; await browse(m); return; }
@@ -233,13 +256,19 @@ async function selectModel(m) {
         <span class="vmp-fhrlabel" id="vmpFhrLabel"></span>
       </div>
       <div class="vmp-sub">Quick fields</div>
-      <div id="vmpPresets" class="vmp-presets"></div>
-      <div class="vmp-sub">All variables</div>
-      <input id="vmpFilter" class="vmp-filter" placeholder="Filter variables (TMP, REFC, APCP…)" />`;
+      <div id="vmpPresets" class="vmp-cards"></div>
+      <div class="vmp-adv" id="vmpAdv">
+        <div class="vmp-adv-toggle" id="vmpAdvToggle"><span class="vmp-adv-chev">▸</span> All variables</div>
+        <div class="vmp-adv-body">
+          <input id="vmpFilter" class="vmp-filter" placeholder="Filter variables (TMP, REFC, APCP…)" />
+          <div id="vmpList" class="vmp-list"></div>
+        </div>
+      </div>`;
     document.getElementById('vmpFhr').onchange = (e) => { stopPlay(); setHour(state.hours.indexOf(Number(e.target.value))); };
     document.getElementById('vmpPrev').onclick = () => { stopPlay(); setHour(state.hourIdx - 1); };
     document.getElementById('vmpNext').onclick = () => { stopPlay(); setHour(state.hourIdx + 1); };
     document.getElementById('vmpPlay').onclick = togglePlay;
+    document.getElementById('vmpAdvToggle').onclick = () => document.getElementById('vmpAdv').classList.toggle('open');
     document.getElementById('vmpFilter').oninput = (e) => {
       const q = e.target.value.toLowerCase();
       panel.querySelectorAll('#vmpList .vmp-row').forEach((r) => { r.style.display = (r.dataset.txt || '').includes(q) ? '' : 'none'; });
@@ -248,23 +277,57 @@ async function selectModel(m) {
   } catch (e) { status.innerHTML = `<span class="vmp-err">${esc(e.message)}</span>`; }
 }
 
-// Curated quick-pick buttons for the fields present in this run's index.
+// Curated quick-pick CARDS (with lazy thumbnails) for fields present in the run.
 function renderPresets(m) {
   const wrap = document.getElementById('vmpPresets');
   if (!wrap) return;
   wrap.innerHTML = '';
+  const thumbs = [];
   for (const p of PRESETS) {
     const msg = resolvePreset(state.messages, p);
     if (!msg) continue;
-    const b = el(`<button class="vmp-preset" data-msg="${msg.n}">${esc(p.label)}</button>`);
-    if (state.activePreset && state.activePreset.label === p.label) b.classList.add('active');
-    b.onclick = () => {
+    const active = state.activePreset && state.activePreset.label === p.label;
+    const card = el(`<div class="vmp-card${active ? ' active' : ''}" data-msg="${msg.n}">
+        <div class="vmp-card-ph">${p.icon || '▦'}</div>
+        <img class="vmp-card-thumb" alt="">
+        <div class="vmp-card-lbl">${esc(p.label)}</div>
+      </div>`);
+    card.onclick = () => {
       const isOn = state.activePreset && state.activePreset.label === p.label && state.plotted && state.plotted.msg === msg.n;
       if (isOn) { state.activePreset = null; clearOverlay(); renderPresets(m); return; }
       state.activePreset = p; plotField(m, msg, null); renderPresets(m); prefetchHour(state.hourIdx + 1);
     };
-    wrap.appendChild(b);
+    wrap.appendChild(card);
+    const img = card.querySelector('.vmp-card-thumb');
+    const ph = card.querySelector('.vmp-card-ph');
+    const cached = _thumbCache.model === m.id && _thumbCache.byLabel[p.label];
+    if (cached) { img.onload = () => { img.classList.add('loaded'); ph.style.display = 'none'; }; img.src = cached; }
+    else { thumbs.push({ img, ph, msg, label: p.label }); }
   }
+  if (thumbs.length) loadThumbs(m, thumbs);
+}
+
+// Small CONUS thumbnails, cached per model so hour changes don't re-fetch them.
+let _thumbSeq = 0;
+let _thumbCache = { model: null, byLabel: {} };
+function loadThumbs(m, thumbs) {
+  const seq = ++_thumbSeq;
+  let i = 0;
+  const worker = async () => {
+    while (i < thumbs.length && seq === _thumbSeq) {
+      const t = thumbs[i++];
+      const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${t.msg.n}&bbox=${CONUS_BBOX}&w=240`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok || seq !== _thumbSeq) continue;
+        const obj = URL.createObjectURL(await res.blob());
+        _thumbCache.byLabel[t.label] = obj;
+        t.img.onload = () => { t.img.classList.add('loaded'); if (t.ph) t.ph.style.display = 'none'; };
+        t.img.src = obj;
+      } catch (e) { /* leave placeholder */ }
+    }
+  };
+  worker(); worker();
 }
 
 function updateHourLabel() {
