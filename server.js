@@ -1246,6 +1246,7 @@ app.post('/api/spotters/reports', requireAuth, (req, res) => spotterProxy('repor
 // isn't configured).
 app.use('/api/models', requireAuth, billing.requirePro);
 require('./model_data').attachModels(app, requireAuth);
+require('./ndfd').attachNdfd(app, requireAuth);
 
 // ─── Static files ──────────────────────────────────────────────────────────────
 const sendFile = (file) => (req, res) => res.sendFile(path.join(ROOT, file));

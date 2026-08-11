@@ -51,6 +51,12 @@ const RAMPS = {
     stops: [[960, [150, 40, 60]], [984, [230, 120, 60]], [1000, [235, 220, 120]], [1013, [235, 235, 235]],
       [1024, [140, 200, 235]], [1036, [70, 130, 210]], [1050, [40, 60, 160]]],
   },
+  // percent (RH, sky cover, PoP) — dry brown → wet blue/green
+  percent: {
+    underAlpha: true,
+    stops: [[10, [150, 110, 70]], [30, [185, 165, 95]], [50, [120, 185, 120]],
+      [70, [70, 185, 150]], [85, [55, 150, 205]], [100, [45, 90, 200]]],
+  },
 };
 
 function classify(variable) {
@@ -58,6 +64,7 @@ function classify(variable) {
   if (/REF|RETOP|REFC|REFD|REFL/.test(v)) return 'refl';
   if (/CAPE/.test(v)) return 'cape';
   if (/PRMSL|MSLET|MSLMA|^MSL/.test(v)) return 'mslp';
+  if (/RH$|^RH|POP|TCDC|SKY|CLOUD|^RHM/.test(v)) return 'percent';
   if (/WIND|GUST|^UGRD|^VGRD|^VEL|^WS/.test(v)) return 'wind';
   if (/APCP|PRATE|PWAT|CPRAT|ASNOW|WEASD|SNOD|QPF/.test(v)) return 'precip';
   if (/^T(MP|MAX|MIN)|DPT|APT|POT/.test(v)) return 'temp';
@@ -73,7 +80,7 @@ function toRampUnits(kind, v) {
 }
 
 // Units label per kind, for the client legend.
-const KIND_UNIT = { temp: '°F', refl: 'dBZ', precip: 'mm', wind: 'kt', cape: 'J/kg', mslp: 'hPa' };
+const KIND_UNIT = { temp: '°F', refl: 'dBZ', precip: 'mm', wind: 'kt', cape: 'J/kg', mslp: 'hPa', percent: '%' };
 
 // Legend descriptor for a variable: ramp stops (in display units) + unit label.
 function legendFor(variable) {

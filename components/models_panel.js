@@ -15,6 +15,7 @@ let panel = null;
 const state = {
   model: null, run: null, fhr: 0, opacity: 0.8, plotted: null,
   hours: [], hourIdx: 0, messages: [], activePreset: null, playing: false, timer: null,
+  ndfdVp: null, ndfdElem: null, ndfdLabel: '', ndfdTimes: [], ndfdTimeIdx: 0,
 };
 
 function j(url) {
@@ -90,7 +91,12 @@ function injectPhase2Styles() {
       -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);}
     #vortexModelLegend .vml-title{font-size:12px;font-weight:800;margin-bottom:8px;letter-spacing:.2px;}
     #vortexModelLegend .vml-bar{height:13px;border-radius:7px;border:1px solid rgba(255,255,255,.18);box-shadow:inset 0 1px 2px rgba(0,0,0,.35);}
-    #vortexModelLegend .vml-scale{display:flex;justify-content:space-between;font-size:10px;opacity:.72;margin-top:5px;font-weight:600;}`;
+    #vortexModelLegend .vml-scale{display:flex;justify-content:space-between;font-size:10px;opacity:.72;margin-top:5px;font-weight:600;}
+    .vmp-vps{display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 13px;}
+    .vmp-vp{padding:7px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.045);
+      color:#c4d3e6;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .12s;}
+    .vmp-vp:hover{background:rgba(39,190,255,.12);color:#eaf3ff;}
+    .vmp-vp.active{background:linear-gradient(180deg,#33c2ff,#1f92d6);color:#04121e;border-color:transparent;box-shadow:0 3px 12px rgba(39,190,255,.3);}`;
   document.head.appendChild(s);
 }
 
@@ -113,6 +119,7 @@ function clearOverlay() {
   state.plotted = null;
   clearLegend();
   markActive();
+  markNdfdCards();
 }
 
 // On-map legend built from the /field response's X-Legend header.
@@ -133,41 +140,49 @@ function drawLegend(legend, title) {
   document.body.appendChild(el);
 }
 
-// Toggle a field overlay on the map. Fetches the rendered PNG so failures are
-// visible (e.g. server not restarted after adding /field) rather than silent.
+// Shared overlay plotter: fetch a rendered field PNG and drop it on the map,
+// with its legend. `plotted` is stored on state so toggling works.
+async function plotOverlayFromUrl(url, W, E, S, N, plotted, fallbackLabel) {
+  const map = mapObj();
+  const res = await fetch(url);
+  if (!res.ok) {
+    let m2 = 'HTTP ' + res.status;
+    try { m2 = (await res.json()).error || m2; } catch (e) {}
+    throw new Error(m2);
+  }
+  let legend = null;
+  try { legend = JSON.parse(res.headers.get('X-Legend') || 'null'); } catch (e) {}
+  const vLabel = fallbackLabel || `${res.headers.get('X-Var') || ''} · ${res.headers.get('X-Level') || ''}`;
+  const objUrl = URL.createObjectURL(await res.blob());
+  clearOverlay();
+  map.addSource(MODEL_SRC, { type: 'image', url: objUrl, coordinates: [[W, N], [E, N], [E, S], [W, S]] });
+  map.addLayer({
+    id: MODEL_LAYER, type: 'raster', source: MODEL_SRC,
+    paint: { 'raster-opacity': state.opacity, 'raster-fade-duration': 0 },
+  }, map.getLayer('baseReflectivity') ? 'baseReflectivity' : undefined);
+  plotted.objUrl = objUrl;
+  state.plotted = plotted;
+  drawLegend(legend, vLabel);
+}
+
+function viewBounds() {
+  const b = mapObj().getBounds();
+  const W = Math.max(-179, b.getWest()), E = Math.min(179, b.getEast());
+  const S = Math.max(-85, b.getSouth()), N = Math.min(85, b.getNorth());
+  return { W, E, S, N, bbox: `${W.toFixed(3)},${S.toFixed(3)},${E.toFixed(3)},${N.toFixed(3)}` };
+}
+
+// Toggle a forecast-model field overlay on the map.
 async function plotField(m, msg, btn) {
   const map = mapObj();
   if (!map) { alert('Map is not ready yet.'); return; }
-  // Clicking the field that's already plotted turns it off.
   if (state.plotted && state.plotted.model === m.id && state.plotted.msg === msg.n) { clearOverlay(); return; }
-
-  const b = map.getBounds();
-  const W = Math.max(-179, b.getWest()), E = Math.min(179, b.getEast());
-  const S = Math.max(-85, b.getSouth()), N = Math.min(85, b.getNorth());
-  const bbox = `${W.toFixed(3)},${S.toFixed(3)},${E.toFixed(3)},${N.toFixed(3)}`;
+  const { W, E, S, N, bbox } = viewBounds();
   const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${msg.n}&bbox=${bbox}`;
-
   const label = btn ? btn.textContent : '';
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
   try {
-    const res = await fetch(url);
-    if (!res.ok) {
-      let m2 = 'HTTP ' + res.status;
-      try { m2 = (await res.json()).error || m2; } catch (e) {}
-      throw new Error(m2);
-    }
-    let legend = null;
-    try { legend = JSON.parse(res.headers.get('X-Legend') || 'null'); } catch (e) {}
-    const vLabel = `${res.headers.get('X-Var') || msg.variable} · ${res.headers.get('X-Level') || msg.level}`;
-    const objUrl = URL.createObjectURL(await res.blob());
-    clearOverlay();
-    map.addSource(MODEL_SRC, { type: 'image', url: objUrl, coordinates: [[W, N], [E, N], [E, S], [W, S]] });
-    map.addLayer({
-      id: MODEL_LAYER, type: 'raster', source: MODEL_SRC,
-      paint: { 'raster-opacity': state.opacity, 'raster-fade-duration': 0 },
-    }, map.getLayer('baseReflectivity') ? 'baseReflectivity' : undefined);
-    state.plotted = { model: m.id, msg: msg.n, objUrl };
-    drawLegend(legend, vLabel);
+    await plotOverlayFromUrl(url, W, E, S, N, { model: m.id, msg: msg.n }, `${msg.variable} · ${msg.level}`);
     markActive();
   } catch (e) {
     alert('Could not plot this field:\n' + e.message
@@ -241,6 +256,7 @@ async function selectModel(m) {
   main.innerHTML = `<div class="vmp-title">${esc(m.name)}</div><div class="vmp-status" id="vmpStatus">Loading…</div><div id="vmpControls"></div>`;
   const status = document.getElementById('vmpStatus');
   try {
+    if (m.id === 'ndfd') { await selectNdfd(m); return; }
     if (m.type === 'browse') {
       status.innerHTML = `<span class="vmp-src">Live · <b>${esc(m.bucket)}</b> (NOAA Open Data on AWS)</span>`;
       document.getElementById('vmpControls').innerHTML = '<div id="vmpList" class="vmp-list"></div>';
@@ -410,6 +426,96 @@ async function loadIndex(m, run, fhr) {
     }
     markActive();
   } catch (e) { list.innerHTML = `<div class="vmp-err">${esc(e.message)}</div>`; }
+}
+
+// ── NDFD (2.5 km gridded forecast): plottable element cards + time scrubber ─────
+function vpLabel(v) { const m = v.match(/(\d+)-(\d+)/); return m ? `${+m[1]}–${+m[2]}` : v; }
+
+async function selectNdfd(m) {
+  const main = document.getElementById('vmpMain');
+  main.innerHTML = `<div class="vmp-title">${esc(m.name)}</div>
+    <div class="vmp-status"><span class="vmp-src">Live · <b>${esc(m.bucket)}</b> (NOAA Open Data on AWS)</span></div>
+    <div id="vmpControls"><div class="vmp-hint">Loading…</div></div>`;
+  state.ndfdElem = null; state.ndfdTimes = []; state.ndfdTimeIdx = 0;
+  let cat;
+  try { cat = await j(`${API}/ndfd/catalog`); }
+  catch (e) { document.getElementById('vmpControls').innerHTML = `<div class="vmp-err">${esc(e.message)}</div>`; return; }
+  state.ndfdVp = cat.vps[0];
+  const controls = document.getElementById('vmpControls');
+  controls.innerHTML = `
+    <div class="vmp-sub">Forecast range (days)</div>
+    <div class="vmp-vps" id="ndfdVps">${cat.vps.map((v, i) => `<button class="vmp-vp${i === 0 ? ' active' : ''}" data-vp="${v}">${vpLabel(v)}</button>`).join('')}</div>
+    <div class="vmp-scrub" id="ndfdScrub" style="display:none">
+      <button id="ndfdPrev" title="Previous time">◀</button>
+      <select id="ndfdTime"></select>
+      <button id="ndfdNext" title="Next time">▶</button>
+      <span class="vmp-fhrlabel" id="ndfdTimeLabel"></span>
+    </div>
+    <div class="vmp-sub">Fields</div>
+    <div id="ndfdCards" class="vmp-cards"></div>`;
+
+  controls.querySelectorAll('.vmp-vp').forEach((b) => {
+    b.onclick = () => {
+      controls.querySelectorAll('.vmp-vp').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active'); state.ndfdVp = b.dataset.vp;
+      if (state.ndfdElem) selectNdfdElem(state.ndfdElem, state.ndfdLabel);
+    };
+  });
+  const wrap = controls.querySelector('#ndfdCards');
+  for (const f of cat.fields) {
+    const card = el(`<div class="vmp-card" data-elem="${f.elem}">
+        <div class="vmp-card-ph">${f.icon || '▦'}</div>
+        <div class="vmp-card-lbl">${esc(f.label)}</div></div>`);
+    card.onclick = () => {
+      if (state.plotted && state.plotted.model === 'ndfd' && state.plotted.ndfdElem === f.elem) {
+        clearOverlay(); state.ndfdElem = null; document.getElementById('ndfdScrub').style.display = 'none'; markNdfdCards(); return;
+      }
+      selectNdfdElem(f.elem, f.label);
+    };
+    wrap.appendChild(card);
+  }
+  controls.querySelector('#ndfdPrev').onclick = () => ndfdStep(-1);
+  controls.querySelector('#ndfdNext').onclick = () => ndfdStep(1);
+  controls.querySelector('#ndfdTime').onchange = (e) => { state.ndfdTimeIdx = +e.target.value; plotNdfdCurrent(); };
+}
+
+function markNdfdCards() {
+  if (!panel) return;
+  panel.querySelectorAll('#ndfdCards .vmp-card').forEach((c) => {
+    c.classList.toggle('active', state.plotted && state.plotted.model === 'ndfd' && c.dataset.elem === state.plotted.ndfdElem);
+  });
+}
+
+async function selectNdfdElem(elem, label) {
+  state.ndfdElem = elem; state.ndfdLabel = label;
+  const scrub = document.getElementById('ndfdScrub');
+  const sel = document.getElementById('ndfdTime');
+  if (scrub) scrub.style.display = '';
+  if (sel) sel.innerHTML = '<option>Loading…</option>';
+  try {
+    const data = await j(`${API}/ndfd/elem?vp=${state.ndfdVp}&elem=${elem}`);
+    state.ndfdTimes = data.times || []; state.ndfdTimeIdx = 0;
+    if (sel) sel.innerHTML = state.ndfdTimes.map((t, i) => `<option value="${i}">+${t.fhr} h</option>`).join('');
+    plotNdfdCurrent();
+  } catch (e) { if (sel) sel.innerHTML = ''; alert('Could not load NDFD field:\n' + e.message); }
+}
+
+function plotNdfdCurrent() {
+  const t = state.ndfdTimes[state.ndfdTimeIdx];
+  const lab = document.getElementById('ndfdTimeLabel');
+  if (lab) lab.textContent = t ? `valid +${t.fhr} h` : '';
+  const sel = document.getElementById('ndfdTime'); if (sel) sel.value = String(state.ndfdTimeIdx);
+  const { W, E, S, N, bbox } = viewBounds();
+  const url = `${API}/ndfd/elemfield?vp=${state.ndfdVp}&elem=${state.ndfdElem}&msg=${state.ndfdTimeIdx}&bbox=${bbox}`;
+  plotOverlayFromUrl(url, W, E, S, N, { model: 'ndfd', ndfdElem: state.ndfdElem }, state.ndfdLabel)
+    .then(markNdfdCards)
+    .catch((e) => alert('Could not plot NDFD field:\n' + e.message));
+}
+
+function ndfdStep(d) {
+  if (!state.ndfdTimes.length) return;
+  state.ndfdTimeIdx = Math.max(0, Math.min(state.ndfdTimes.length - 1, state.ndfdTimeIdx + d));
+  plotNdfdCurrent();
 }
 
 function parentPrefix(p) { const t = p.replace(/\/$/, ''); const i = t.lastIndexOf('/'); return i >= 0 ? t.slice(0, i + 1) : ''; }
