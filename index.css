@@ -412,6 +412,12 @@ https://tobiasahlin.com/spinkit/
 }
 .mapFooterMenuItem {
     cursor: pointer;
+    transition: transform 0.1s ease;
+}
+/* Mouse hover polish (laptop/desktop): lift + brighten footer icons on hover. */
+@media (hover: hover) and (pointer: fine) {
+    .mapFooterMenuItem:hover { transform: translateY(-1px); }
+    .mapFooterMenuItem:hover .menu_item_not_selected { color: #dfe8f5; transition: color 0.12s ease; }
 }
 
 .menu_item_selected {
@@ -2131,3 +2137,29 @@ td.day.active, span.month.active, span.year.active {
 
 /* play button loading state */
 #vortexPlayBtn.vortexLoading { opacity: 0.7; cursor: default; }
+
+/* ── Laptop / desktop layout (mouse + wide screens). Mobile/touch untouched. ── */
+@media (min-width: 900px) and (hover: hover) and (pointer: fine) {
+    /* Layers/settings menu becomes a compact LEFT side-dock: the map stays
+       visible (uses the width), full height with internal scroll (no overflow). */
+    #atticRadarMenu { background-color: transparent; pointer-events: none; }
+    #atticRadarMenuContainer {
+        left: 12px; right: auto; top: 12px; bottom: 12px; margin: 0;
+        width: 340px; max-width: 340px;
+        overflow-y: auto; overflow-x: hidden;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+        pointer-events: auto;
+    }
+    #atticRadarMenuBody { padding: 12px; }
+
+    /* Tighter rows + section headers so more fits without scrolling. */
+    .atticRadarMenuRow { padding: 8px 10px; font-size: 13px; border-radius: 10px; }
+    .armrIcon { margin-right: 8px; }
+    .armrHeader { font-size: 11px; margin-bottom: 6px; }
+
+    /* Slightly more compact footer toolbar icons. */
+    #vortexBarIcons .fa { font-size: 15px !important; }
+    #vortexBarIcons .menu_item_not_selected { padding: 5px; }
+}

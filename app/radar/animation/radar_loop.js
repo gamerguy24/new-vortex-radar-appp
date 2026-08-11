@@ -150,6 +150,17 @@ function onPlayClick() {
     }
 }
 
+// Step one frame back/forward (pauses the loop). Returns true if it handled the
+// step (a loop is loaded); false lets the caller fall back (e.g. map panning).
+function step(dir) {
+    if (frames.length === 0) { return false; }
+    stop();
+    idx = (idx + dir + frames.length) % frames.length;
+    showFrame(idx);
+    updateSlider();
+    return true;
+}
+
 function onSliderInput() {
     if (frames.length === 0) { return; }
     stop();
@@ -174,4 +185,4 @@ function init() {
 
 init();
 
-module.exports = { reset };
+module.exports = { reset, togglePlay: onPlayClick, step };

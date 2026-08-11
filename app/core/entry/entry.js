@@ -106,6 +106,9 @@ function load() {
     // load the county power-outages overlay (MassOutage live data)
     require('../../power_outages/menu_item');
 
+    // global keyboard shortcuts for laptop/desktop (loop play/step, Esc, help)
+    require('../keyboard/shortcuts');
+
     // load the attribution map div
     require('../attribution/attribution');
 

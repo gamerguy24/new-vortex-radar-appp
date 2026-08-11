@@ -239,7 +239,9 @@ function futurecast(config, geo, ctrl) {
     draw(ctx, s) {
       const W = s.width, H = s.height;
       const barH = Math.round(H * 0.14);
-      const barY = H - barH - Math.round(H * 0.035);
+      // Top-positioned banner. The logo panel overhangs the bar by ~18%, so offset
+      // barY down by that much to keep the overhang on-screen below a small margin.
+      const barY = Math.round(H * 0.04) + Math.round(barH * 0.18);
       const accent = config.accent || '#e7b53b';
       // default to the app's Vortex Radar logo; explicit '' means "use text wordmark"
       const logoSrc = config.logoImg == null ? '/logo.png' : config.logoImg;
