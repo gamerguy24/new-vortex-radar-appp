@@ -12,7 +12,18 @@ export const COLORS = {
   sub: '#cfe0f5',
   border: 'rgba(150,185,235,0.55)',
   pillBorder: 'rgba(150,185,235,0.6)',
+  gold: '#e7b53b',
+  goldLt: '#ffe9a8',
+  cyan: '#8fd6ff',
 };
+
+// Darken/lighten a hex color by factor (>1 lighter, <1 darker). Broadcast seams.
+export function shade(hex, f) {
+  const c = String(hex).replace('#', '');
+  const n = parseInt(c.length === 3 ? c.split('').map((x) => x + x).join('') : c, 16);
+  const cl = (v) => Math.max(0, Math.min(255, Math.round(v * f)));
+  return `rgb(${cl((n >> 16) & 255)},${cl((n >> 8) & 255)},${cl(n & 255)})`;
+}
 
 // A strong, widely-available sans. Weight + caps + slight condense give the
 // broadcast feel without shipping a custom font (keeps exports untainted).

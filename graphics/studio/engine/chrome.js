@@ -2,36 +2,60 @@
 // branding bug, and the boxed threat-icon legend. Restyled to read like on-air
 // weather graphics: deep-navy header, crimson date bar, a white station-brand
 // block, condensed bold caps, and soft depth shadows.
-import { COLORS, navyGradient, withShadow, caps, capsWidth, panelPath } from './style.js';
+import { COLORS, withShadow, caps, capsWidth, panelPath, shade } from './style.js';
 
-// Shared broadcast header: [white brand block] BIG TITLE  on navy, with a crimson
-// date/subtitle bar beneath. All the header variants below map onto this.
-function renderHeader(ctx, { brand, title, subtitle, rect }) {
+// Shared broadcast header: an angled gold accent cap, a dark gradient title bar
+// with a bright cyan top sheen, a big condensed headline, an accent date/subtitle
+// strip with a gold seam, and (optionally) a beveled station-brand flag. Every
+// header variant below maps onto this, so all banners read TV-grade.
+function renderHeader(ctx, { brand, title, subtitle, rect, accent }) {
   const { x, y, w, h } = rect;
-  const subH = subtitle ? Math.max(24, Math.round(h * 0.34)) : 0;
+  const acc = accent || COLORS.red;
+  const subH = subtitle ? Math.max(26, Math.round(h * 0.34)) : 0;
   const barH = h - subH;
-  const pad = Math.max(6, Math.round(barH * 0.16));
+  const pad = Math.max(8, Math.round(barH * 0.16));
 
   // Depth shadow behind the whole header block.
-  withShadow(ctx, () => { ctx.fillStyle = COLORS.navyBot; ctx.fillRect(x, y, w, h); }, { blur: 18, y: 6 });
+  withShadow(ctx, () => { ctx.fillStyle = '#06101f'; ctx.fillRect(x, y, w, h); }, { blur: 22, y: 7 });
 
-  // Navy title bar + a subtle lit top edge.
-  ctx.fillStyle = navyGradient(ctx, x, y, barH);
-  ctx.fillRect(x, y, w, barH);
-  ctx.fillStyle = 'rgba(255,255,255,0.10)';
-  ctx.fillRect(x, y, w, 2);
+  // Title bar — horizontal dark-navy gradient.
+  const hg = ctx.createLinearGradient(x, 0, x + w, 0);
+  hg.addColorStop(0, '#103058'); hg.addColorStop(0.5, '#0b2244'); hg.addColorStop(1, '#08182e');
+  ctx.fillStyle = hg; ctx.fillRect(x, y, w, barH);
+  // top vertical sheen
+  const sh = ctx.createLinearGradient(x, y, x, y + barH * 0.5);
+  sh.addColorStop(0, 'rgba(255,255,255,0.14)'); sh.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sh; ctx.fillRect(x, y, w, barH * 0.5);
+  // bright cyan top edge line
+  const te = ctx.createLinearGradient(x, 0, x + w, 0);
+  te.addColorStop(0, 'rgba(140,214,255,0)'); te.addColorStop(0.12, 'rgba(150,220,255,0.9)');
+  te.addColorStop(0.7, 'rgba(90,150,210,0.25)'); te.addColorStop(1, 'rgba(90,150,210,0)');
+  ctx.fillStyle = te; ctx.fillRect(x, y, w, 3);
+  // bottom shadow line
+  ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(x, y + barH - 2, w, 2);
 
-  // Crimson date/subtitle bar.
+  // Accent date/subtitle strip with a gold seam on top.
   if (subH) {
     const g = ctx.createLinearGradient(x, y + barH, x, y + h);
-    g.addColorStop(0, COLORS.red);
-    g.addColorStop(1, COLORS.redDark);
-    ctx.fillStyle = g;
-    ctx.fillRect(x, y + barH, w, subH);
+    g.addColorStop(0, acc); g.addColorStop(1, shade(acc, 0.72));
+    ctx.fillStyle = g; ctx.fillRect(x, y + barH, w, subH);
+    const gs = ctx.createLinearGradient(x, 0, x + w, 0);
+    gs.addColorStop(0, COLORS.goldLt); gs.addColorStop(0.5, COLORS.gold); gs.addColorStop(1, 'rgba(231,181,59,0.12)');
+    ctx.fillStyle = gs; ctx.fillRect(x, y + barH, w, 2.5);
+    ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x, y + barH + 2.5, w, 2);
   }
 
-  // White station-brand block (crimson accent stripe on top, navy text).
-  let tx = x + pad + 6;
+  // Left angled gold accent cap.
+  const capSkew = Math.round(barH * 0.42);
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(x + 15, y); ctx.lineTo(x + 15 - capSkew, y + barH); ctx.lineTo(x, y + barH); ctx.closePath();
+  const cg = ctx.createLinearGradient(x, y, x, y + barH);
+  cg.addColorStop(0, COLORS.goldLt); cg.addColorStop(1, shade(COLORS.gold, 0.6));
+  ctx.fillStyle = cg; ctx.fill();
+
+  let tx = x + pad + 16;
+
+  // Beveled white station-brand flag (accent stripe on top, navy text).
   if (brand) {
     const bh = barH - pad * 2;
     const by = y + pad;
@@ -48,10 +72,12 @@ function renderHeader(ctx, { brand, title, subtitle, rect }) {
       widest = capsWidth(ctx, brand, lineFs, 900, 0.92);
     }
     const bw = Math.max(bh * 1.5, widest + bpad * 2);
-    withShadow(ctx, () => { ctx.fillStyle = COLORS.white; ctx.fillRect(x + pad, by, bw, bh); }, { blur: 8, y: 2 });
-    ctx.fillStyle = COLORS.red;
-    ctx.fillRect(x + pad, by, bw, Math.max(4, Math.round(bh * 0.13)));
-    const cx = x + pad + bw / 2;
+    const bx = x + pad + 16;
+    withShadow(ctx, () => { ctx.fillStyle = COLORS.white; ctx.fillRect(bx, by, bw, bh); }, { blur: 10, y: 3 });
+    ctx.fillStyle = acc; ctx.fillRect(bx, by, bw, Math.max(4, Math.round(bh * 0.13)));
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(bx, by, bw, 1.5);       // top bevel
+    ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(bx, by + bh - 2, bw, 2);     // bottom bevel
+    const cx = bx + bw / 2;
     if (stacked) {
       const half = Math.ceil(words.length / 2);
       caps(ctx, words.slice(0, half).join(' '), cx, by + bh * 0.50, { size: lineFs, color: COLORS.navyBot, align: 'center', shadow: false });
@@ -59,15 +85,13 @@ function renderHeader(ctx, { brand, title, subtitle, rect }) {
     } else {
       caps(ctx, brand, cx, by + bh * 0.60, { size: lineFs, color: COLORS.navyBot, align: 'center', shadow: false });
     }
-    tx = x + pad + bw + pad;
+    tx = bx + bw + pad;
   }
 
-  // Title (condensed bold caps).
-  caps(ctx, title, tx, y + barH / 2 + 1, { size: barH * 0.52, color: COLORS.white, maxWidth: x + w - tx - pad });
-
-  // Subtitle in the crimson bar.
+  // Headline (condensed heavy caps) + accent subtitle.
+  caps(ctx, title, tx, y + barH / 2 + 1, { size: barH * 0.56, color: COLORS.white, scaleX: 0.9, maxWidth: x + w - tx - pad });
   if (subtitle && subH) {
-    caps(ctx, subtitle, tx, y + barH + subH / 2 + 1, { size: subH * 0.52, color: COLORS.white, scaleX: 0.94, maxWidth: x + w - tx - pad });
+    caps(ctx, subtitle, tx, y + barH + subH / 2 + 1, { size: subH * 0.56, color: COLORS.white, scaleX: 0.93, maxWidth: x + w - tx - pad });
   }
 }
 
@@ -110,9 +134,14 @@ export function threatBoxLayer({ title, items, rect }) {
       ctx.lineWidth = 1.5;
       panelPath(ctx, x, y, w, h, 12);
       ctx.stroke();
-      // header
+      // top sheen line
+      ctx.save(); panelPath(ctx, x, y, w, h, 12); ctx.clip();
+      ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x, y, w, 3); ctx.restore();
+      // header + gold underline
       caps(ctx, title || 'Threats', x + 22, y + headH / 2 + 2, { size: 26, color: COLORS.white });
-      ctx.fillStyle = COLORS.red;
+      const ug = ctx.createLinearGradient(x + 22, 0, x + 22 + Math.min(w - 44, 150), 0);
+      ug.addColorStop(0, COLORS.goldLt); ug.addColorStop(1, shade(COLORS.gold, 0.6));
+      ctx.fillStyle = ug;
       ctx.fillRect(x + 22, y + headH - 8, Math.min(w - 44, 150), 4);
       // rows
       let ry = y + headH + 12;
@@ -187,8 +216,14 @@ export function brandingLayer({ text, rect, color = COLORS.red }) {
       ctx.lineWidth = 1.25;
       panelPath(ctx, x, y, w, h, 10);
       ctx.stroke();
-      ctx.fillStyle = color;
-      ctx.fillRect(x + 12, y + 10, w - 24, Math.max(4, h * 0.09));
+      // top sheen + gold accent bar (clipped to the rounded panel)
+      ctx.save();
+      panelPath(ctx, x, y, w, h, 10); ctx.clip();
+      ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x, y, w, 3);
+      const gg = ctx.createLinearGradient(x + 14, 0, x + w - 14, 0);
+      gg.addColorStop(0, COLORS.goldLt); gg.addColorStop(1, shade(COLORS.gold, 0.6));
+      ctx.fillStyle = gg; ctx.fillRect(x + 14, y + 12, w - 28, Math.max(4, h * 0.09));
+      ctx.restore();
       const lines = String(text).split('\n');
       const startY = y + h * 0.42;
       const lh = h * 0.2;
