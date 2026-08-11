@@ -2090,7 +2090,7 @@ td.day.active, span.month.active, span.year.active {
     position: absolute;
     z-index: 505;
     left: 14px;
-    bottom: 14px;
+    bottom: 78px; /* sit above the centered footer bar so it never overlaps the product/station tab */
     width: 240px;
     padding: 8px 10px 6px;
     background: var(--vortex-panel);
