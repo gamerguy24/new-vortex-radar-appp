@@ -280,13 +280,18 @@ function futurecast(config, geo, ctrl) {
       ctx.fillStyle = sg; ctx.fill(); ctx.restore();
 
       if (logo) {
-        // fit the (black-removed) logo into the panel — contain + centered, with a soft drop
-        const px = lbX + 20, py = lbTop + 12, pw = lbW - 46, ph = lbH - 24;
-        const sc = Math.min(pw / logo.width, ph / logo.height);
+        // Fit inside the STRAIGHT part of the slanted panel (left of the gold seam),
+        // with padding + a little breathing room, and center it in that box.
+        const padX = 24, padY = 20;
+        const boxX = lbX + padX;
+        const boxRight = lbX + lbW - skew - 12;        // clear the angled gold seam
+        const pw = Math.max(24, boxRight - boxX);
+        const py = lbTop + padY, ph = lbH - padY * 2;
+        const sc = Math.min(pw / logo.width, ph / logo.height) * 0.9; // shrink for margin
         const dw = logo.width * sc, dh = logo.height * sc;
-        const dx = px + (pw - dw) / 2, dy = py + (ph - dh) / 2;
+        const dx = boxX + (pw - dw) / 2, dy = py + (ph - dh) / 2;
         ctx.save();
-        ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 3;
+        ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 3;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(logo, dx, dy, dw, dh);
         ctx.restore();
