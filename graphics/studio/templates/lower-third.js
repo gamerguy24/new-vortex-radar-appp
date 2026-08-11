@@ -287,7 +287,7 @@ function futurecast(config, geo, ctrl) {
         const boxRight = lbX + lbW - skew - 12;        // clear the angled gold seam
         const pw = Math.max(24, boxRight - boxX);
         const py = lbTop + padY, ph = lbH - padY * 2;
-        const sc = Math.min(pw / logo.width, ph / logo.height) * 0.9; // shrink for margin
+        const sc = Math.min(pw / logo.width, ph / logo.height) * 0.82; // shrink for margin
         const dw = logo.width * sc, dh = logo.height * sc;
         const dx = boxX + (pw - dw) / 2, dy = py + (ph - dh) / 2;
         ctx.save();
