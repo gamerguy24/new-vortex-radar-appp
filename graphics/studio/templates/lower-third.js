@@ -166,11 +166,11 @@ function drawScale(ctx, x, y, w, h, accent) {
   ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,0.5)'; roundRect(ctx, barX, y, barW, h, 5); ctx.stroke();
   // EXTREME label
   heavy(ctx, 'EXTREME', barX + barW + 10, y + h / 2 + 1, h * 0.82, { align: 'left', condense: 0.92, weight: 800, color: '#dfe8f5', shadow: true });
-  // threshold labels on the bar
+  // threshold labels on the bar — smaller so they sit inside the bar
   const marks = [['20MPH', 0.2], ['50MPH', 0.55], ['75MPH+', 0.8]];
   ctx.textBaseline = 'middle';
   for (const [lab, t] of marks) {
-    heavy(ctx, lab, barX + barW * t, y + h / 2 + 1, h * 0.78, { align: 'center', condense: 0.9, weight: 800, color: '#fff', shadow: true });
+    heavy(ctx, lab, barX + barW * t, y + h / 2 + 1, h * 0.56, { align: 'center', condense: 0.85, weight: 800, color: '#fff', shadow: true });
   }
 }
 
