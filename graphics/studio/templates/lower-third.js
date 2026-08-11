@@ -170,7 +170,7 @@ function drawScale(ctx, x, y, w, h, accent) {
   const marks = [['20MPH', 0.2], ['50MPH', 0.55], ['75MPH+', 0.8]];
   ctx.textBaseline = 'middle';
   for (const [lab, t] of marks) {
-    heavy(ctx, lab, barX + barW * t, y + h / 2 + 1, h * 0.56, { align: 'center', condense: 0.85, weight: 800, color: '#fff', shadow: true });
+    heavy(ctx, lab, barX + barW * t, y + h / 2 + 1 + h * 0.16, h * 0.56, { align: 'center', condense: 0.85, weight: 800, color: '#fff', shadow: true });
   }
 }
 
