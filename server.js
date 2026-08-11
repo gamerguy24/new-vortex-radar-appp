@@ -1279,6 +1279,12 @@ app.use((req, res, next) => {
 app.use('/graphics', billing.requireProPage);
 
 app.get('/', sendFile('index.html'));
+// The graphics studio is ESM loaded directly (no bundler), so browsers can serve
+// stale engine/template modules after an update. Tell them to always revalidate.
+app.use('/graphics/studio', (req, res, next) => {
+    if (/\.(js|css|html)$/.test(req.path)) res.setHeader('Cache-Control', 'no-cache');
+    next();
+});
 app.use(express.static(ROOT, { index: false }));
 
 // Final 404
