@@ -241,7 +241,12 @@ async function selectModel(m) {
   main.innerHTML = `<div class="vmp-title">${esc(m.name)}</div><div class="vmp-status" id="vmpStatus">Loading…</div><div id="vmpControls"></div>`;
   const status = document.getElementById('vmpStatus');
   try {
-    if (m.type === 'browse') { status.innerHTML = `<span class="vmp-src">Live · <b>${esc(m.bucket)}</b> (NOAA Open Data on AWS)</span>`; await browse(m); return; }
+    if (m.type === 'browse') {
+      status.innerHTML = `<span class="vmp-src">Live · <b>${esc(m.bucket)}</b> (NOAA Open Data on AWS)</span>`;
+      document.getElementById('vmpControls').innerHTML = '<div id="vmpList" class="vmp-list"></div>';
+      await browse(m);
+      return;
+    }
     const run = await j(`${API}/${m.id}/latest`);
     state.run = run;
     const { hours } = await j(`${API}/${m.id}/hours?date=${run.date}&cycle=${run.cycle}`);
