@@ -74,20 +74,26 @@ function upgradeToast(name, requiredTier) {
   setTimeout(() => el.remove(), 6000);
 }
 
-function intercept(e, feature) {
-  if (!isLocked(feature.tier)) return; // at/above required tier, or no paywall → allow
-  e.preventDefault();
-  e.stopImmediatePropagation();
-  const menu = document.getElementById('atticRadarMenu');
-  if (menu) menu.style.display = 'none';
-  upgradeToast(feature.name, feature.tier);
-}
-
 function init() {
-  for (const f of FEATURES) {
-    const el = document.getElementById(f.id);
-    if (el) el.addEventListener('click', (e) => intercept(e, f), true); // capture
-  }
+  // ONE capture-phase listener on the document. Because the capture phase
+  // descends document → target, this always runs BEFORE any element's own click
+  // handler — regardless of which library bound it, in what order, or which
+  // sub-element (icon vs. button) was actually clicked. stopImmediatePropagation
+  // then reliably prevents the feature from ever running for a locked viewer.
+  document.addEventListener('click', (e) => {
+    if (!e.target || !e.target.closest) return;
+    for (const f of FEATURES) {
+      if (!e.target.closest('#' + f.id)) continue;
+      if (isLocked(f.tier)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const menu = document.getElementById('atticRadarMenu');
+        if (menu) menu.style.display = 'none';
+        upgradeToast(f.name, f.tier);
+      }
+      return; // matched a gated feature; stop scanning
+    }
+  }, true);
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
