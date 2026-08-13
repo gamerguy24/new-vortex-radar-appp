@@ -148,6 +148,7 @@ function parseAlert(feature, centroid) {
         stateName,
         expires: fmtTime(p.expires || p.ends),
         issued: fmtTime(p.effective || p.sent),
+        office: (p.senderName || '').trim() || null,
         source: (sourceText && sourceText.trim()) || p.senderName || null,
         hazard: (hazardText && hazardText.trim()) || null,
         wind: param(p, 'maxWindGust'),
@@ -220,14 +221,14 @@ function estimatePopulation(feature) {
 }
 
 // ── capture the live map, with the featured polygon outlined ──────────────────
-function captureMap(feature) {
+function captureMap(feature, accent) {
     const c = map.getCanvas();
     const cap = document.createElement('canvas');
     cap.width = c.width; cap.height = c.height; // full drawing-buffer resolution
     const ctx = cap.getContext('2d');
     ctx.drawImage(c, 0, 0);
 
-    // Emphasize the featured warning: thick black outline + red border + red fill.
+    // Emphasize the featured warning: thick black outline + accent border + fill.
     if (feature && feature.geometry) {
         const dpr = c.width / (c.clientWidth || c.width);
         const proj = (lng, lat) => { const p = map.project([lng, lat]); return [p.x * dpr, p.y * dpr]; };
@@ -241,11 +242,32 @@ function captureMap(feature) {
                 ctx.closePath();
             }
         };
-        trace(); ctx.fillStyle = 'rgba(220,20,40,0.18)'; ctx.fill('evenodd');
-        trace(); ctx.lineJoin = 'round'; ctx.strokeStyle = '#000'; ctx.lineWidth = 8 * dpr; ctx.stroke();
-        trace(); ctx.strokeStyle = '#ff2436'; ctx.lineWidth = 4 * dpr; ctx.stroke();
+        trace(); ctx.fillStyle = hexA(accent || '#c8102e', 0.16); ctx.fill('evenodd');
+        trace(); ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 8 * dpr; ctx.stroke();
+        trace(); ctx.strokeStyle = lighten(accent || '#ff2436', 0.28); ctx.lineWidth = 4 * dpr; ctx.stroke();
     }
     return cap.toDataURL('image/png');
+}
+
+// Reframe the live map to the warning polygon so the graphic shows the warning's
+// location (not wherever the user happened to be panned). Waits for the map to
+// settle + radar tiles to paint before returning.
+async function frameMapToFeature(feature) {
+    if (!feature || !feature.geometry) return;
+    let bb;
+    try { bb = turf.bbox(turf.feature(feature.geometry)); } catch (e) { return; }
+    if (!bb || bb.some((n) => !isFinite(n))) return;
+    const cv = map.getCanvas();
+    const pad = Math.round(Math.min(cv.clientWidth || 800, cv.clientHeight || 600) * 0.12);
+    await new Promise((resolve) => {
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        map.once('idle', finish);
+        try { map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: pad, duration: 600, maxZoom: 11 }); }
+        catch (e) { finish(); return; }
+        setTimeout(finish, 1800); // fallback if 'idle' never fires
+    });
+    await new Promise((r) => setTimeout(r, 350)); // let reflectivity tiles repaint
 }
 
 // ── US locator (bottom-left) — highlight the state + drop a marker ────────────
@@ -479,6 +501,10 @@ function countyReadout(affected) {
 }
 
 // Build the full-size layout element (off-screen) for html2canvas.
+// Composition mirrors the server-side broadcast graphic (nws_graphic.js): a
+// full-bleed framed map, a color banner up top, and a clean lower-third info
+// strip (affected areas · until · office) with a compact hazard-chip row, plus
+// a tidy county spotlight inset and a small reflectivity legend.
 function buildLayout(info, mapImg, locatorImg, pop, homes, size, extra) {
     extra = extra || {};
     const accent = eventColor(info.event);
@@ -487,29 +513,26 @@ function buildLayout(info, mapImg, locatorImg, pop, homes, size, extra) {
     root.style.width = size.w + 'px';
     root.style.height = size.h + 'px';
     root.style.setProperty('--accent', accent);
+    root.style.setProperty('--accent-lt', lighten(accent, 0.42));
 
     const affected = extra.affected || [];
-    const countyList = countyReadout(affected);
+    const countyLine = countyReadout(affected) || (info.areaDesc || '').split(';')[0].trim();
 
-    const rows = [];
-    const row = (label, val) => { if (val) rows.push(`<div class="wg-row"><span>${esc(label)}</span><b>${esc(val)}</b></div>`); };
-    row('Expires', info.expires);
-    row('Issued', info.issued);
-    row('Source', info.source);
-    if (countyList) row(affected.length > 1 ? 'Counties' : 'County', countyList);
-    row('Hazard', info.hazard);
-    row('Wind', info.wind);
-    row('Hail', info.hail);
-    row('Tornado', info.tornado);
-    row('Damage Threat', info.damage);
-    row('Movement', info.movement);
-    if (pop) row('Population', pop.toLocaleString());
-    if (homes) row('Homes', homes.toLocaleString());
+    // Compact hazard chips — only the fields NWS actually provided.
+    const chips = [];
+    const chip = (label, val) => { if (val) chips.push(`<div class="wg-chip"><span>${esc(label)}</span><b>${esc(val)}</b></div>`); };
+    chip('WIND', info.wind);
+    chip('HAIL', info.hail);
+    chip('TORNADO', info.tornado);
+    chip('DAMAGE', info.damage);
+    chip('MOVING', info.movement ? info.movement.replace(/^Moving\s+/i, '') : null);
+    if (pop) chip('POP', pop.toLocaleString());
 
-    const safety = safetyFor(info.event);
     const state = info.stateName ? `IN ${info.stateName.toUpperCase()}` : '';
+    const subLine = [info.expires ? `Until ${info.expires}` : null, info.office || null]
+        .filter(Boolean).join('   •   ');
 
-    // Spotlight caption: state name + affected-county count.
+    // Spotlight caption: affected-county count (or state names).
     const spotStates = (extra.highlightStates || []).join(' & ');
     const spotCaption = affected.length
         ? `${affected.length} ${affected.length === 1 ? 'county' : 'counties'} affected`
@@ -526,35 +549,32 @@ function buildLayout(info, mapImg, locatorImg, pop, homes, size, extra) {
             </div>
             <div class="wg-brand">
                 <img src="/logo.png" class="wg-logo" alt="" onerror="this.style.display='none'"/>
-                <div class="wg-brand-name">VORTEX RADAR</div>
+                <div class="wg-brand-col">
+                    <div class="wg-brand-name">VORTEX RADAR</div>
+                    <div class="wg-brand-tag">LIVE WARNING</div>
+                </div>
             </div>
         </div>
 
-        <div class="wg-panel wg-info">
-            <div class="wg-panel-title">Warning Details</div>
-            ${rows.join('') || '<div class="wg-row"><span>No details available</span></div>'}
-            <div class="wg-safety">
-                <div class="wg-safety-title">${esc(safety.title)}</div>
-                ${safety.items.map((i) => `<div class="wg-safety-item">• ${esc(i)}</div>`).join('')}
-            </div>
-        </div>
-
-        <div class="wg-locator">
-            <div class="wg-locator-head">
-                <span class="wg-locator-title">Affected Area${spotStates ? ` &middot; ${esc(spotStates)}` : ''}</span>
-            </div>
+        ${locatorImg ? `<div class="wg-locator">
+            <div class="wg-locator-head"><span class="wg-locator-title">Affected Area${spotStates ? ` &middot; ${esc(spotStates)}` : ''}</span></div>
             <img src="${locatorImg}" alt="" />
             ${spotCaption ? `<div class="wg-locator-cap"><span class="wg-locator-dot" style="background:${accent}"></span>${esc(spotCaption)}</div>` : ''}
-        </div>
+        </div>` : ''}
 
         <div class="wg-legend">
             <div class="wg-legend-title">Reflectivity (dBZ)</div>
             <div class="wg-legend-bar wg-ref"></div>
             <div class="wg-legend-scale"><span>5</span><span>30</span><span>50</span><span>75</span></div>
-            <div class="wg-legend-title" style="margin-top:8px;">Velocity (kt)</div>
-            <div class="wg-legend-bar wg-vel"></div>
-            <div class="wg-legend-scale"><span>-60</span><span>0</span><span>+60</span></div>
-            <div class="wg-timestamp" id="wg-ts">${esc(new Date().toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }))}</div>
+        </div>
+
+        <div class="wg-strip" style="--accent:${accent};">
+            <div class="wg-strip-main">
+                <div class="wg-strip-area" id="wg-area">${esc(countyLine || info.areaDesc || '')}</div>
+                ${subLine ? `<div class="wg-strip-sub">${esc(subLine)}</div>` : ''}
+                ${info.issued ? `<div class="wg-strip-issued">Issued ${esc(info.issued)}</div>` : ''}
+            </div>
+            ${chips.length ? `<div class="wg-chips">${chips.join('')}</div>` : ''}
         </div>`;
     return root;
 }
@@ -568,45 +588,56 @@ function injectLayoutStyles() {
     .wg-root{position:relative;overflow:hidden;background:#05070c;font-family:'Onest',system-ui,-apple-system,'Segoe UI',sans-serif;color:#fff;}
     .wg-map{position:absolute;inset:0;width:100%;height:100%;background-size:cover;background-position:center;background-repeat:no-repeat;}
     .wg-vignette{position:absolute;inset:0;background:
-        linear-gradient(180deg, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 18%),
-        linear-gradient(90deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,0) 34%),
-        linear-gradient(0deg, rgba(0,0,0,.5) 0%, rgba(0,0,0,0) 26%);}
-    .wg-banner{position:absolute;top:0;left:0;right:0;height:12.5%;min-height:66px;
+        linear-gradient(180deg, rgba(3,7,14,.45) 0%, rgba(0,0,0,0) 16%),
+        linear-gradient(0deg, rgba(3,7,14,.72) 0%, rgba(3,7,14,.28) 14%, rgba(0,0,0,0) 30%);}
+    /* Top banner */
+    .wg-banner{position:absolute;top:0;left:0;right:0;height:12.5%;min-height:64px;
         background-color:var(--accent);
-        background-image:linear-gradient(180deg, rgba(255,255,255,.10), rgba(0,0,0,.42));
-        display:flex;align-items:center;justify-content:space-between;padding:0 3%;
-        box-shadow:0 6px 22px rgba(0,0,0,.5);border-bottom:3px solid rgba(255,255,255,.85);}
+        background-image:linear-gradient(180deg, rgba(255,255,255,.10), rgba(0,0,0,.20));
+        display:flex;align-items:center;justify-content:space-between;padding:0 2.6%;
+        box-shadow:0 8px 26px rgba(0,0,0,.5);border-bottom:4px solid rgba(0,0,0,.22);}
     .wg-banner-inner{min-width:0;flex:1;}
-    .wg-banner-title{font-weight:900;letter-spacing:.5px;line-height:1;white-space:nowrap;overflow:hidden;text-shadow:0 3px 10px rgba(0,0,0,.45);}
-    .wg-banner-sub{font-weight:800;opacity:.95;letter-spacing:2px;margin-top:6px;font-size:24px;}
-    .wg-brand{display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:16px;}
+    .wg-banner-title{font-weight:900;letter-spacing:.5px;line-height:1;white-space:nowrap;overflow:hidden;text-shadow:0 3px 10px rgba(0,0,0,.4);}
+    .wg-banner-sub{font-weight:800;opacity:.95;letter-spacing:2.5px;margin-top:5px;font-size:24px;}
+    .wg-brand{display:flex;align-items:center;gap:11px;flex-shrink:0;margin-left:16px;}
     .wg-logo{height:46px;width:auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));}
-    .wg-brand-name{font-weight:900;letter-spacing:1.5px;font-size:18px;opacity:.95;}
-    .wg-panel{position:absolute;background:rgba(9,14,24,.82);border:1px solid rgba(255,255,255,.14);
-        border-radius:16px;box-shadow:0 16px 40px rgba(0,0,0,.5);}
-    .wg-info{left:2.4%;top:16.5%;width:30%;max-width:560px;padding:18px 20px;border-left:4px solid var(--accent,#c8102e);}
-    .wg-panel-title{display:flex;align-items:center;gap:9px;font-weight:800;font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:#8fd0ff;margin-bottom:10px;}
-    .wg-panel-title::before{content:'';width:10px;height:10px;border-radius:50%;background:var(--accent,#c8102e);box-shadow:0 0 0 1px rgba(255,255,255,.35);}
-    .wg-row{display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:16px;line-height:1.35;}
-    .wg-row span{opacity:.72;}.wg-row b{text-align:right;font-weight:700;}
-    .wg-safety{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);}
-    .wg-safety-title{font-weight:800;color:#ffd24a;font-size:14px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;}
-    .wg-safety-item{font-size:14.5px;line-height:1.5;opacity:.95;}
-    .wg-locator{position:absolute;left:2.4%;bottom:3.5%;width:25%;max-width:400px;
-        background:rgba(9,14,24,.86);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 10px 8px;box-shadow:0 14px 34px rgba(0,0,0,.5);}
-    .wg-locator-head{display:flex;align-items:center;justify-content:space-between;margin:0 2px 7px;}
-    .wg-locator-title{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#8fd0ff;}
-    .wg-locator img{width:100%;display:block;border-radius:8px;background:#070b14;}
-    .wg-locator-cap{display:flex;align-items:center;gap:7px;margin:8px 2px 2px;font-size:13px;font-weight:700;opacity:.92;}
-    .wg-locator-dot{width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.5);flex-shrink:0;}
-    .wg-legend{position:absolute;right:2.4%;bottom:3.5%;width:22%;max-width:340px;
-        background:rgba(9,14,24,.82);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:12px 14px;box-shadow:0 14px 34px rgba(0,0,0,.5);}
-    .wg-legend-title{font-size:12px;font-weight:700;letter-spacing:.06em;opacity:.85;margin-bottom:4px;text-transform:uppercase;}
-    .wg-legend-bar{height:12px;border-radius:6px;border:1px solid rgba(255,255,255,.18);}
+    .wg-brand-col{display:flex;flex-direction:column;align-items:flex-end;line-height:1.05;}
+    .wg-brand-name{font-weight:900;letter-spacing:1.5px;font-size:20px;}
+    .wg-brand-tag{font-weight:700;letter-spacing:1.5px;font-size:11px;opacity:.82;}
+    /* County spotlight inset (bottom-left, above the strip) */
+    .wg-locator{position:absolute;left:2.2%;bottom:19%;width:23%;max-width:380px;
+        background:rgba(8,13,23,.82);border:1px solid rgba(255,255,255,.12);border-radius:12px;
+        padding:9px 9px 7px;box-shadow:0 14px 34px rgba(0,0,0,.5);backdrop-filter:blur(2px);}
+    .wg-locator-head{margin:0 2px 6px;}
+    .wg-locator-title{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#9fd2ff;}
+    .wg-locator img{width:100%;display:block;border-radius:7px;background:#070b14;}
+    .wg-locator-cap{display:flex;align-items:center;gap:7px;margin:7px 2px 1px;font-size:12.5px;font-weight:700;opacity:.92;}
+    .wg-locator-dot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.5);flex-shrink:0;}
+    /* Reflectivity legend (bottom-right, above the strip) */
+    .wg-legend{position:absolute;right:2.2%;bottom:19%;width:19%;max-width:300px;
+        background:rgba(8,13,23,.8);border:1px solid rgba(255,255,255,.12);border-radius:12px;
+        padding:10px 13px;box-shadow:0 14px 34px rgba(0,0,0,.5);backdrop-filter:blur(2px);}
+    .wg-legend-title{font-size:11px;font-weight:700;letter-spacing:.08em;opacity:.85;margin-bottom:5px;text-transform:uppercase;}
+    .wg-legend-bar{height:11px;border-radius:6px;border:1px solid rgba(255,255,255,.18);}
     .wg-ref{background:linear-gradient(90deg,#00d200,#00a000,#ffff00,#ff9000,#ff0000,#c00000,#ff00ff,#a000a0);}
-    .wg-vel{background:linear-gradient(90deg,#00c000,#00ff00,#8f8f8f,#ff0000,#900000);}
     .wg-legend-scale{display:flex;justify-content:space-between;font-size:11px;opacity:.7;margin-top:3px;}
-    .wg-timestamp{margin-top:10px;font-size:13px;font-weight:700;opacity:.9;border-top:1px solid rgba(255,255,255,.12);padding-top:8px;}`;
+    /* Bottom info strip (lower third) */
+    .wg-strip{position:absolute;left:0;right:0;bottom:0;padding:2.4% 2.6% 2.2%;
+        display:flex;align-items:flex-end;justify-content:space-between;gap:20px;
+        background:linear-gradient(0deg, rgba(3,7,14,.94) 0%, rgba(3,7,14,.72) 55%, rgba(3,7,14,0) 100%);
+        border-top:3px solid var(--accent,#c8102e);}
+    .wg-strip-main{min-width:0;flex:1;}
+    .wg-strip-area{font-weight:800;line-height:1.1;text-shadow:0 2px 8px rgba(0,0,0,.55);
+        font-size:34px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .wg-strip-sub{margin-top:7px;font-weight:700;color:var(--accent-lt,#ff8f88);letter-spacing:.01em;
+        font-size:20px;text-shadow:0 2px 6px rgba(0,0,0,.5);}
+    .wg-strip-issued{margin-top:5px;font-size:13px;font-weight:600;opacity:.66;}
+    .wg-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;max-width:46%;}
+    .wg-chip{display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+        background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);border-radius:10px;
+        padding:6px 12px;backdrop-filter:blur(2px);}
+    .wg-chip span{font-size:11px;font-weight:700;letter-spacing:.09em;opacity:.62;text-transform:uppercase;}
+    .wg-chip b{font-size:16px;font-weight:800;white-space:nowrap;}`;
     document.head.appendChild(s);
 }
 
@@ -629,8 +660,18 @@ async function generate(size, opts) {
 
     const pop = estimatePopulation(feature);
     const homes = pop ? Math.round(pop / 2.53) : null; // ~US avg household size
+    const accent = eventColor(info.event);
 
-    const mapImg = captureMap(feature);
+    // Frame the live map to the warning polygon so the graphic actually shows the
+    // warning's location (not wherever the user was panned), capture it, then snap
+    // the user's original view back so generating a graphic doesn't hijack the map.
+    let prevCam = null;
+    if (opts.reframe !== false) {
+        try { prevCam = { center: map.getCenter(), zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() }; } catch (e) { /* ignore */ }
+        await frameMapToFeature(feature);
+    }
+    const mapImg = captureMap(feature, accent);
+    if (prevCam) { try { map.jumpTo(prevCam); } catch (e) { /* ignore */ } }
     // Highlight every state the warning covers (from its areaDesc), falling back
     // to the centroid's state.
     let highlightStates = statesFromArea(feature.properties && feature.properties.areaDesc);
@@ -638,7 +679,6 @@ async function generate(size, opts) {
 
     // Zoomed state spotlight with county detail. Falls back to the CONUS locator
     // if the county geometry can't be loaded.
-    const accent = eventColor(info.event);
     const geo = await loadCountyGeo();
     const abbrs = highlightStates.map(abbrOf);
     const affected = affectedCounties(feature, abbrs, geo);
@@ -660,6 +700,18 @@ async function generate(size, opts) {
     fitText(title, Math.round(size.h * 0.072));
     const sub = layout.querySelector('.wg-banner-sub');
     if (sub) sub.style.fontSize = Math.round(size.h * 0.026) + 'px';
+
+    // Scale the lower-third strip + chips to the frame (fixed px, not vw, so the
+    // off-screen html2canvas render sizes correctly at every export preset).
+    const setSize = (sel, frac, min) => layout.querySelectorAll(sel).forEach((el) => { el.style.fontSize = Math.max(min || 10, Math.round(size.h * frac)) + 'px'; });
+    setSize('.wg-strip-area', 0.033, 16);
+    setSize('.wg-strip-sub', 0.021, 12);
+    setSize('.wg-strip-issued', 0.0135, 10);
+    setSize('.wg-chip b', 0.017, 12);
+    setSize('.wg-chip span', 0.0108, 9);
+    // Fit the area line to the available width for long multi-county readouts.
+    const areaEl = layout.querySelector('#wg-area');
+    if (areaEl) fitText(areaEl, Math.round(size.h * 0.033));
 
     // Wait a tick so the <img> map/locator decode before rasterizing.
     await new Promise((r) => setTimeout(r, 60));
