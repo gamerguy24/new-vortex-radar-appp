@@ -39,7 +39,7 @@ export const nwsxAdminStyles = `
 .nwsx-btn.primary { background:#27beff; color:#04121c; border-color:#27beff; font-weight:700; }
 .nwsx-btn.danger { color:#f87171; }
 .nwsx-btn:disabled { opacity:0.5; cursor:not-allowed; }
-.nwsx-test select { padding:8px 10px; background:rgba(0,0,0,0.35); border:1px solid var(--border-color,rgba(255,255,255,0.14)); color:#fff; border-radius:8px; font-family:inherit; }
+.nwsx-test select, .nwsx-radar-sel { padding:8px 10px; background:rgba(0,0,0,0.35); border:1px solid var(--border-color,rgba(255,255,255,0.14)); color:#fff; border-radius:8px; font-family:inherit; }
 .nwsx-preview { display:none; gap:10px; flex-direction:column; }
 .nwsx-preview img { width:100%; max-width:640px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); }
 .nwsx-preview .txt { font-size:0.9em; background:rgba(0,0,0,0.3); border-radius:8px; padding:8px 10px; color:#cfe0f2; white-space:pre-wrap; }
@@ -74,6 +74,13 @@ export function nwsxAdminHTML() {
       <div class="nwsx-row">
         <div><div class="lbl">Post cancellations</div><div class="sub">Announce when a warning is cancelled early.</div></div>
         <label class="nwsx-switch"><input type="checkbox" id="nwsx-cancels"><span></span></label>
+      </div>
+      <div class="nwsx-row">
+        <div><div class="lbl">Radar product</div><div class="sub">Super-res NEXRAD Level 2 — the same data the main radar uses.</div></div>
+        <select id="nwsx-radar" class="nwsx-radar-sel">
+          <option value="reflectivity">Base Reflectivity</option>
+          <option value="velocity">Base Velocity</option>
+        </select>
       </div>
     </div>
 
@@ -191,6 +198,7 @@ export function initNwsxAdmin(root) {
     $('nwsx-enabled').checked = !!c.enabled;
     $('nwsx-updates').checked = !!c.postUpdates;
     $('nwsx-cancels').checked = !!c.postCancellations;
+    if ($('nwsx-radar')) $('nwsx-radar').value = c.radarProduct === 'velocity' ? 'velocity' : 'reflectivity';
 
     const types = $('nwsx-types');
     types.innerHTML = catalog.map((name) =>
@@ -213,6 +221,7 @@ export function initNwsxAdmin(root) {
       enabled: $('nwsx-enabled').checked,
       postUpdates: $('nwsx-updates').checked,
       postCancellations: $('nwsx-cancels').checked,
+      radarProduct: $('nwsx-radar') ? $('nwsx-radar').value : 'reflectivity',
       alertTypes,
       scope: {
         states: splitList($('nwsx-states').value).map((s) => s.toUpperCase()),
@@ -245,7 +254,8 @@ export function initNwsxAdmin(root) {
     btn.disabled = true;
     if (post && !confirm('Send a clearly-labeled [TEST] post to the connected Bluesky account?')) { btn.disabled = false; return; }
     try {
-      const d = await api('POST', '/admin/nwsx/test', { sample, post });
+      const radarProduct = $('nwsx-radar') ? $('nwsx-radar').value : 'reflectivity';
+      const d = await api('POST', '/admin/nwsx/test', { sample, post, radarProduct });
       $('nwsx-preview').style.display = 'flex';
       $('nwsx-preview-txt').textContent = d.previewText || '';
       $('nwsx-preview-img').src = d.image || '';

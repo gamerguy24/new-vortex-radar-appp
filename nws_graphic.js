@@ -4,11 +4,11 @@
  *
  * Given a single NWS alert feature (GeoJSON geometry + `properties`), it composites:
  *   1. a Mapbox Static basemap framed to the warning polygon,
- *   2. live NOAA NEXRAD base reflectivity (the same free ImageServer the Vortex
- *      Graphics studio uses in graphics/studio/engine/radar.js), warped from
- *      EPSG:4326 onto the web-mercator basemap,
+ *   2. live super-res NEXRAD Level 2 radar — the SAME data + decoder the main app
+ *      uses (nws_radar_l2.js): base reflectivity or base velocity, plotted gate
+ *      by gate to canvas with the app's own colormaps,
  *   3. the warning polygon in its official NWS color (app/alerts/colors/noaa_colors.js),
- *   4. a TV-style banner + info strip + US locator + Vortex Radar branding.
+ *   4. a TV-style banner + info strip + county spotlight + hazard chips + branding.
  *
  * Runs entirely on the server with @napi-rs/canvas (prebuilt, no native build) —
  * no browser, no paid service. Every network step is guarded: if the basemap or
@@ -41,9 +41,29 @@ const MAPBOX_TOKEN = process.env.MAPBOX_STATIC_TOKEN ||
   'pk.eyJ1IjoiZGF2aWR3YWxsaXMwMCIsImEiOiJjbHlpNHJvZ2QwYzduMmpvZmdjejlkYjAxIn0.JNNcliJC4EFmok7iT5I6MQ';
 const MAPBOX_STYLE = process.env.MAPBOX_STATIC_STYLE || 'dark-v11';
 
-// Free, key-less NOAA reflectivity ImageServer (EPSG:4326 PNG over a bbox).
-const RADAR_SERVICE =
-  'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/ImageServer/exportImage';
+// Radar is the SAME data + decoder the main app uses: super-res NEXRAD Level 2
+// volumes (nws_radar_l2.js) plotted here to canvas with the app's own colormaps
+// and Vincenty gate geometry.
+const { getRadarData } = require('./nws_radar_l2');
+const destVincenty = require('./app/radar/plot/dest_vincenty');
+const colormaps = require('./app/radar/colormaps/colormaps');
+const chroma = require('chroma-js');
+const RADAR_PRODUCTS = {
+  reflectivity: { code: 'REF', label: 'Base Reflectivity', unit: 'dBZ' },
+  velocity: { code: 'VEL', label: 'Base Velocity', unit: 'kt' },
+};
+
+// Copy of scaleValues() from app/core/utils.js (that module is browser-coupled):
+// velocity colortables are in knots but gate data is m/s.
+function scaleValues(values, product) {
+  if (['N0G', 'N0U', 'VEL', 'TVX', 'TV0', 'TV1', 'TV2'].includes(product)) {
+    for (const i in values) { if (values[i] !== 999) values[i] = values[i] / 1.944; }
+  } else if (product === 'N0S') {
+    for (const i in values) { if (values[i] !== 999) values[i] = values[i] - 0.5; }
+  }
+  for (let i = 0; i < values.length; i++) { if (values[i] === values[i + 1]) values[i] = values[i] - 0.00001; }
+  return values;
+}
 
 // NWS requires a descriptive User-Agent on api.weather.gov; reuse it here too.
 const USER_AGENT = process.env.NWS_USER_AGENT ||
@@ -392,47 +412,101 @@ async function loadBasemap(view) {
 
 // Warp the EPSG:4326 radar raster (over its own bbox) onto the mercator view,
 // compositing over whatever is already on the canvas. No-op on any failure.
-async function drawRadar(ctx, proj, view) {
-  // Visible geographic rectangle of the current view (invert the corners).
-  const vW = proj.lonAt(0), vE = proj.lonAt(W), vN = proj.latAt(0), vS = proj.latAt(H);
-  const rw = Math.max(600, Math.round(1000));
-  const rh = Math.max(1, Math.round(rw * (vN - vS) / (vE - vW)));
-  const url = `${RADAR_SERVICE}?bbox=${vW},${vS},${vE},${vN}&bboxSR=4326&imageSR=4326` +
-    `&size=${rw},${rh}&format=png32&transparent=true&f=image`;
-  let img;
-  try { img = await loadImage(await fetchBuffer(url)); }
-  catch (e) { console.warn('[NWS-BSKY] radar fetch failed:', e.message); return; }
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371, toR = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toR, dLon = (lon2 - lon1) * toR;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * toR) * Math.cos(lat2 * toR) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
 
-  const sw = img.width, sh = img.height;
-  const src = createCanvas(sw, sh);
-  src.getContext('2d').drawImage(img, 0, 0, sw, sh);
-  const sdata = src.getContext('2d').getImageData(0, 0, sw, sh).data;
+// Build a 256-entry value→'rgb()' lookup so we color 10k+ gates without a chroma
+// call per gate.
+function buildColorLut(product) {
+  const cm = colormaps[product];
+  if (!cm) return null;
+  const values = scaleValues([...cm.values], product);
+  const scale = chroma.scale([...cm.colors]).domain(values).mode('lab');
+  const vmin = values[0], vmax = values[values.length - 1];
+  const N = 256;
+  const lut = new Array(N);
+  for (let i = 0; i < N; i++) lut[i] = scale(vmin + (i / (N - 1)) * (vmax - vmin)).css();
+  return { lut, vmin, vmax, N };
+}
 
-  const out = ctx.getImageData(0, 0, W, H);
-  const od = out.data;
-  const OPACITY = 0.72;
-  for (let py = 0; py < H; py++) {
-    const lat = proj.latAt(py + 0.5);
-    const v = (vN - lat) / (vN - vS);
-    if (v < 0 || v >= 1) continue;
-    const sy = Math.min(sh - 1, (v * sh) | 0);
-    for (let px = 0; px < W; px++) {
-      const lon = proj.lonAt(px + 0.5);
-      const u = (lon - vW) / (vE - vW);
-      if (u < 0 || u >= 1) continue;
-      const sx = Math.min(sw - 1, (u * sw) | 0);
-      const si = (sy * sw + sx) * 4;
-      const sa = sdata[si + 3];
-      if (sa < 12) continue;
-      const a = (sa / 255) * OPACITY;
-      const di = (py * W + px) * 4;
-      od[di] = sdata[si] * a + od[di] * (1 - a);
-      od[di + 1] = sdata[si + 1] * a + od[di + 1] * (1 - a);
-      od[di + 2] = sdata[si + 2] * a + od[di + 2] * (1 - a);
-      od[di + 3] = 255;
+// Plot the nearest radar's super-res Level 2 base sweep (REF/VEL) onto the
+// canvas: fetch + decode the volume (nws_radar_l2.js), then fill each gate as a
+// Vincenty-projected quad using the app's colormap. Only gates inside the view
+// are computed. Adjacent quads share exact corner coords, so there are no seams.
+async function drawRadarL2(ctx, proj, view, product) {
+  const code = (RADAR_PRODUCTS[product] || RADAR_PRODUCTS.reflectivity).code;
+  const cLat = proj.latAt(H / 2), cLon = proj.lonAt(W / 2);
+
+  let rd;
+  try { rd = await getRadarData(cLat, cLon, code); }
+  catch (e) { console.warn('[NWS-BSKY] Level 2 radar failed:', e.message); return null; }
+  if (!rd || !rd.data || !rd.location) return null;
+
+  const { azimuths, ranges, data, location, site } = rd;
+  const rLat = location[0], rLng = location[1];
+  if (!rLat && !rLng) return null;
+  const radar = { lat: rLat, lng: rLng };
+
+  const col = buildColorLut(code);
+  if (!col) return null;
+  const { lut, vmin, vmax, N } = col;
+  const colorFor = (v) => lut[Math.max(0, Math.min(N - 1, ((v - vmin) / (vmax - vmin) * (N - 1)) | 0))];
+
+  // Range window: only gates whose distance from the radar can fall in view.
+  const probes = [[0, 0], [W, 0], [0, H], [W, H], [W / 2, H / 2]].map(([px, py]) => [proj.lonAt(px), proj.latAt(py)]);
+  let dMin = Infinity, dMax = 0;
+  for (const [lon, lat] of probes) { const d = haversineKm(rLat, rLng, lat, lon); dMin = Math.min(dMin, d); dMax = Math.max(dMax, d); }
+  dMin = Math.max(0, dMin - 15); dMax = dMax + 15;
+  let nMin = 0, nMax = ranges.length - 1;
+  while (nMin < ranges.length && ranges[nMin] < dMin) nMin++;
+  while (nMax > 0 && ranges[nMax] > dMax) nMax--;
+  nMin = Math.max(0, nMin - 1); nMax = Math.min(ranges.length - 2, nMax + 1);
+  if (nMax <= nMin) return site;
+  const nMid = (nMin + nMax) >> 1;
+
+  // Compute a radial's gate-boundary pixel column (shared between adjacent gates).
+  const column = (az) => {
+    const c = new Array(nMax - nMin + 2);
+    for (let n = nMin; n <= nMax + 1; n++) {
+      const [lng, lat] = destVincenty(radar, ranges[n] * 1000, az);
+      c[n - nMin] = proj.project(lng, lat);
+    }
+    return c;
+  };
+
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  ctx.imageSmoothingEnabled = false;
+  let prevCol = null, prevIdx = -1;
+  for (let i = 0; i < azimuths.length - 1; i++) {
+    const row = data[i];
+    if (!row) continue;
+    // Cheap radial cull: is this radial's mid-range point anywhere near canvas?
+    const [mlng, mlat] = destVincenty(radar, ranges[nMid] * 1000, azimuths[i]);
+    const mp = proj.project(mlng, mlat);
+    if (mp.x < -150 || mp.x > W + 150 || mp.y < -150 || mp.y > H + 150) { prevCol = null; continue; }
+
+    const cA = (prevIdx === i && prevCol) ? prevCol : column(azimuths[i]);
+    const cB = column(azimuths[i + 1]);
+    prevCol = cB; prevIdx = i + 1;
+
+    for (let n = nMin; n <= nMax; n++) {
+      const v = row[n];
+      if (v == null) continue;
+      const k = n - nMin;
+      const a = cA[k], b = cA[k + 1], c = cB[k + 1], d = cB[k];
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.closePath();
+      ctx.fillStyle = colorFor(v);
+      ctx.fill();
     }
   }
-  ctx.putImageData(out, 0, 0);
+  ctx.restore();
+  return site;
 }
 
 // ── text helpers ──────────────────────────────────────────────────────────────
@@ -510,11 +584,12 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
-async function renderWarningGraphic(alert) {
+async function renderWarningGraphic(alert, opts = {}) {
   const props = (alert && alert.properties) || {};
   const geom = alert && alert.geometry;
   const event = props.event || 'Weather Warning';
   const accent = eventColor(event);
+  const radarProduct = opts.radarProduct === 'velocity' ? 'velocity' : 'reflectivity';
 
   const states = affectedStates(props);
   const bbox = geometryBbox(geom) || statesBbox(states) || [-98, 35, -95, 38];
@@ -531,7 +606,7 @@ async function renderWarningGraphic(alert) {
   if (base) ctx.drawImage(base, 0, 0, W, H);
 
   // 2) radar (guarded; composites over basemap)
-  await drawRadar(ctx, proj, view);
+  const radarSite = await drawRadarL2(ctx, proj, view, radarProduct);
 
   // 3) warning polygon in official color
   if (geometryBbox(geom)) {
@@ -627,24 +702,32 @@ async function renderWarningGraphic(alert) {
     }
   }
 
-  // ── reflectivity legend inset (bottom-right, above the strip) ─────────────────
+  // ── radar legend inset (bottom-right, above the strip); product-aware ─────────
   {
+    const isVel = radarProduct === 'velocity';
+    const title = isVel ? 'VELOCITY (kt)' : 'REFLECTIVITY (dBZ)';
+    const stops = isVel
+      ? ['#00e400', '#00a000', '#2e5e3a', '#7d7d7d', '#5e2e2e', '#c00000', '#ff2a2a']
+      : ['#00d200', '#00a000', '#ffff00', '#ff9000', '#ff0000', '#c00000', '#ff00ff', '#a000a0'];
+    const shownMarks = isVel
+      ? [['−50', 0], ['0', 0.5], ['+50', 1]]
+      : [['5', 0], ['30', 0.33], ['50', 0.62], ['75', 1]];
+
     const lw = 214, lh = 66, lx = W - 24 - lw, ly = insetBottom - lh;
     roundRect(ctx, lx, ly, lw, lh, 12);
     ctx.fillStyle = 'rgba(8,13,23,0.82)'; ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.font = `700 11px ${FONT}`; ctx.fillStyle = 'rgba(230,238,247,0.85)'; ctx.textBaseline = 'alphabetic';
-    ctx.fillText('REFLECTIVITY (dBZ)', lx + 14, ly + 20);
+    ctx.font = `700 11px ${FONT}`; ctx.fillStyle = 'rgba(230,238,247,0.85)'; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+    ctx.fillText(title, lx + 14, ly + 20);
     const bx = lx + 14, by = ly + 28, bw = lw - 28, bh = 11;
     const grad = ctx.createLinearGradient(bx, 0, bx + bw, 0);
-    ['#00d200', '#00a000', '#ffff00', '#ff9000', '#ff0000', '#c00000', '#ff00ff', '#a000a0']
-      .forEach((c, i, a) => grad.addColorStop(i / (a.length - 1), c));
+    stops.forEach((c, i, a) => grad.addColorStop(i / (a.length - 1), c));
     ctx.fillStyle = grad; roundRect(ctx, bx, by, bw, bh, 4); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1; ctx.stroke();
     ctx.font = `600 11px ${FONT}`; ctx.fillStyle = 'rgba(200,212,226,0.72)';
-    const marks = [['5', bx], ['30', bx + bw * 0.33], ['50', bx + bw * 0.62], ['75', bx + bw]];
-    marks.forEach(([t, mx], i) => { ctx.textAlign = i === marks.length - 1 ? 'right' : (i === 0 ? 'left' : 'center'); ctx.fillText(t, mx, by + bh + 15); });
+    shownMarks.forEach(([t, f], i) => { ctx.textAlign = f === 1 ? 'right' : (f === 0 ? 'left' : 'center'); ctx.fillText(t, bx + bw * f, by + bh + 15); });
     ctx.textAlign = 'left';
+    if (isVel) { ctx.font = `600 9px ${FONT}`; ctx.fillStyle = 'rgba(160,200,160,0.7)'; ctx.textAlign = 'left'; ctx.fillText('inbound', bx, by - 3); ctx.fillStyle = 'rgba(220,150,150,0.7)'; ctx.textAlign = 'right'; ctx.fillText('outbound', bx + bw, by - 3); ctx.textAlign = 'left'; }
   }
 
   // ── 6) bottom info strip (lower third) ───────────────────────────────────────
@@ -687,9 +770,12 @@ async function renderWarningGraphic(alert) {
   const infoLine = [untilStr ? `Until ${untilStr}` : null, office ? `NWS ${office}` : null].filter(Boolean).join('   •   ');
   ctx.fillText(truncateToWidth(ctx, infoLine, leftMaxW), 26, H - stripH + 78);
 
-  if (issued) {
+  {
+    const prodLabel = (RADAR_PRODUCTS[radarProduct] || RADAR_PRODUCTS.reflectivity).label;
+    const radarAttr = radarSite ? `${radarSite} ${prodLabel} (Level 2)` : `NEXRAD ${prodLabel}`;
+    const left = issued ? `Issued ${issued}  ·  ${radarAttr}` : radarAttr;
     ctx.font = `500 14px ${FONT}`; ctx.fillStyle = 'rgba(190,205,222,0.72)';
-    ctx.fillText(`Issued ${issued}  ·  NEXRAD base reflectivity, NWS`, 26, H - 18);
+    ctx.fillText(left, 26, H - 18);
   }
 
   return canvas.toBuffer('image/png');

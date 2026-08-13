@@ -62,6 +62,7 @@ function defaultConfig() {
     alertTypes,
     postUpdates: true,
     postCancellations: false,
+    radarProduct: 'reflectivity', // 'reflectivity' (base reflectivity) | 'velocity' (base velocity)
     scope: { states: [...ALL_STATES], counties: [], offices: [] },
   };
 }
@@ -245,7 +246,7 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
     const rec = baseRec(alert, 'pending');
     let png = null;
     try {
-      png = await renderWarningGraphic(alert);
+      png = await renderWarningGraphic(alert, { radarProduct: config.radarProduct });
       const file = path.join(GRAPHICS_DIR, `${sanitizeId(id)}.png`);
       fs.writeFileSync(file, png);
       rec.graphicPath = path.basename(file);
@@ -373,6 +374,7 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
     if (typeof b.enabled === 'boolean') config.enabled = b.enabled;
     if (typeof b.postUpdates === 'boolean') config.postUpdates = b.postUpdates;
     if (typeof b.postCancellations === 'boolean') config.postCancellations = b.postCancellations;
+    if (b.radarProduct === 'reflectivity' || b.radarProduct === 'velocity') config.radarProduct = b.radarProduct;
     if (b.alertTypes && typeof b.alertTypes === 'object') {
       for (const [k, v] of Object.entries(b.alertTypes)) {
         if (k in config.alertTypes) config.alertTypes[k] = !!v;
@@ -411,9 +413,10 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
   app.post('/admin/nwsx/test', requireAdmin, express_json_guard, async (req, res) => {
     const sample = String((req.body && req.body.sample) || 'tornado');
     const doPost = !!(req.body && req.body.post);
+    const radarProduct = (req.body && req.body.radarProduct) || config.radarProduct;
     const alert = sampleAlert(sample);
     try {
-      const png = await renderWarningGraphic(alert);
+      const png = await renderWarningGraphic(alert, { radarProduct });
       let posted = null;
       if (doPost) {
         if (!blueskyConfigured()) return res.status(400).json({ error: 'Bluesky credentials not configured on the server.' });

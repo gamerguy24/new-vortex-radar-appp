@@ -1279,7 +1279,7 @@ app.use((req, res, next) => {
     const p = req.path.toLowerCase();
     if (p.startsWith('/server_data') || p.startsWith('/node_modules') ||
         p === '/server.js' || p === '/billing.js' || p === '/model_data.js' ||
-        p === '/nws_bluesky.js' || p === '/nws_graphic.js' || p === '/ndfd.js' ||
+        p === '/nws_bluesky.js' || p === '/nws_graphic.js' || p === '/nws_radar_l2.js' || p === '/ndfd.js' ||
         p.startsWith('/.env') || p.startsWith('/package') || p.startsWith('/.git')) {
         return res.status(404).end();
     }
