@@ -30,6 +30,8 @@ export const nwsxAdminStyles = `
 .nwsx-types label { display:flex; align-items:center; gap:8px; font-size:0.9em; padding:2px 0; cursor:pointer; }
 .nwsx-scope label { display:block; font-size:0.85em; color:rgba(255,255,255,0.7); margin-bottom:4px; }
 .nwsx-scope input { width:100%; padding:8px 10px; background:rgba(0,0,0,0.35); border:1px solid var(--border-color,rgba(255,255,255,0.14)); color:#fff; border-radius:8px; font-family:inherit; font-size:0.9em; }
+.nwsx-scope-btns { display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap; }
+.nwsx-mini { padding:4px 10px !important; font-size:0.8em !important; }
 .nwsx-scope .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .nwsx-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 .nwsx-btn { background:rgba(255,255,255,0.08); border:1px solid var(--border-color,rgba(255,255,255,0.16)); color:#fff; border-radius:8px; padding:8px 14px; font-family:inherit; font-size:0.9em; cursor:pointer; }
@@ -85,6 +87,11 @@ export function nwsxAdminHTML() {
       <div>
         <label>States (USPS codes, comma-separated — e.g. GA, AL, TN)</label>
         <input id="nwsx-states" placeholder="GA, AL, TN">
+        <div class="nwsx-scope-btns">
+          <button type="button" class="nwsx-btn nwsx-mini" id="nwsx-all-states">All 50 states</button>
+          <button type="button" class="nwsx-btn nwsx-mini" id="nwsx-clear-states">Clear</button>
+          <span class="nwsx-note" id="nwsx-states-count"></span>
+        </div>
       </div>
       <div class="grid">
         <div>
@@ -148,6 +155,9 @@ export function initNwsxAdmin(root) {
   const $ = (id) => root.querySelector('#' + id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  // All 50 US states (USPS). DC/PR are covered too when the field is left blank.
+  const ALL_STATES = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'];
+
   async function api(method, url, body) {
     const opts = { method, headers: { Accept: 'application/json' }, credentials: 'same-origin' };
     if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
@@ -190,6 +200,7 @@ export function initNwsxAdmin(root) {
     $('nwsx-states').value = (c.scope.states || []).join(', ');
     $('nwsx-offices').value = (c.scope.offices || []).join(', ');
     $('nwsx-counties').value = (c.scope.counties || []).join(', ');
+    updateStatesCount();
 
     loadLog();
   }
@@ -210,6 +221,16 @@ export function initNwsxAdmin(root) {
       },
     };
   }
+
+  // States quick-fill helpers.
+  function updateStatesCount() {
+    const n = String($('nwsx-states').value || '').split(',').map((x) => x.trim()).filter(Boolean).length;
+    const el = $('nwsx-states-count');
+    if (el) el.textContent = n ? `${n} selected — click Save settings to apply` : 'blank = entire US';
+  }
+  $('nwsx-all-states').addEventListener('click', () => { $('nwsx-states').value = ALL_STATES.join(', '); updateStatesCount(); });
+  $('nwsx-clear-states').addEventListener('click', () => { $('nwsx-states').value = ''; updateStatesCount(); });
+  $('nwsx-states').addEventListener('input', updateStatesCount);
 
   $('nwsx-save').addEventListener('click', async () => {
     const btn = $('nwsx-save'); btn.disabled = true;

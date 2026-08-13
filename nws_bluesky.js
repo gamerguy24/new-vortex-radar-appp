@@ -48,19 +48,21 @@ const DEFAULT_ON = new Set([
   'Special Marine Warning', 'Extreme Wind Warning', 'Dust Storm Warning',
 ]);
 
+// All 50 US states (USPS). Blank scope also covers DC/PR/territories.
+const ALL_STATES = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'];
+
 function defaultConfig() {
   const alertTypes = {};
   for (const t of ALERT_TYPES) {
     if (t.category === 'warning') alertTypes[t.name] = DEFAULT_ON.has(t.name);
   }
-  // A couple of watch types are commonly wanted; expose them OFF by default too.
   return {
     enabled: false,           // master switch — nothing posts until explicitly turned on
     platform: 'bluesky',
     alertTypes,
     postUpdates: true,
     postCancellations: false,
-    scope: { states: ['GA', 'AL', 'TN'], counties: [], offices: [] },
+    scope: { states: [...ALL_STATES], counties: [], offices: [] },
   };
 }
 
