@@ -91,10 +91,24 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
   async function bskyAgent() {
     if (!blueskyConfigured()) return null;
     if (agent && Date.now() - agentAt < 50 * 60 * 1000) return agent;
+    // Normalize: strip whitespace and a stray leading "@" from the handle.
+    const identifier = String(process.env.BLUESKY_HANDLE || '').trim().replace(/^@/, '');
+    const password = String(process.env.BLUESKY_APP_PASSWORD || '').trim();
     const a = new AtpAgent({ service: process.env.BLUESKY_SERVICE || 'https://bsky.social' });
-    await a.login({ identifier: process.env.BLUESKY_HANDLE, password: process.env.BLUESKY_APP_PASSWORD });
+    try {
+      await a.login({ identifier, password });
+    } catch (e) {
+      // Surface a precise, non-secret hint for the most common misconfigs.
+      const msg = (e && e.message) || String(e);
+      if (/invalid identifier or password/i.test(msg)) {
+        throw new Error('Bluesky rejected the credentials. Check that BLUESKY_HANDLE is your full handle ' +
+          '(e.g. name.bsky.social, no @) and BLUESKY_APP_PASSWORD is an App Password ' +
+          '(Settings → App Passwords, format xxxx-xxxx-xxxx-xxxx) — not your account login password.');
+      }
+      throw e;
+    }
     agent = a; agentAt = Date.now();
-    log('Bluesky session established for', process.env.BLUESKY_HANDLE);
+    log('Bluesky session established for', identifier);
     return agent;
   }
 
