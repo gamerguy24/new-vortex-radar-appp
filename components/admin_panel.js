@@ -6,6 +6,8 @@
  * (c) 2026 Twistcaster Live Media LLC.
  */
 
+import { nwsxAdminHTML, initNwsxAdmin } from './nws_bluesky_admin.js';
+
 export const adminPanelStyles = `
 .admin-panel { display: flex; flex-direction: column; gap: 12px; }
 .admin-panel-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -180,6 +182,7 @@ export function createAdminPanelHTML() {
                     <tr><td colspan="5" class="admin-panel-empty">Loading…</td></tr>
                 </tbody>
             </table>
+            ${nwsxAdminHTML()}
         </div>
         <div class="admin-panel-modal-bg" id="admin-panel-modal-bg">
             <div class="admin-panel-modal" role="dialog" aria-modal="true">
@@ -529,4 +532,7 @@ export function initAdminPanel(root) {
 
     loadPending();
     loadUsers();
+
+    // Automatic Warning Posts (NWS → Bluesky) section.
+    try { initNwsxAdmin(root); } catch (e) { console.warn('[nwsx-admin] init failed', e); }
 }

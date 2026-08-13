@@ -1248,6 +1248,16 @@ app.use('/api/models', requireAuth, billing.requirePro);
 require('./model_data').attachModels(app, requireAuth);
 require('./ndfd').attachNdfd(app, requireAuth);
 
+// ─── Automatic NWS warning → Bluesky posting ─────────────────────────────────
+// Server-side poller + graphic generator + Bluesky client + admin routes.
+// Self-contained and guarded; never throws into the event loop. Credentials
+// come only from env (BLUESKY_HANDLE / BLUESKY_APP_PASSWORD) — never the client.
+try {
+    require('./nws_bluesky').attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson });
+} catch (e) {
+    console.error('[NWS-BSKY] failed to attach (feature disabled):', e.message);
+}
+
 // ─── Static files ──────────────────────────────────────────────────────────────
 const sendFile = (file) => (req, res) => res.sendFile(path.join(ROOT, file));
 
@@ -1269,6 +1279,7 @@ app.use((req, res, next) => {
     const p = req.path.toLowerCase();
     if (p.startsWith('/server_data') || p.startsWith('/node_modules') ||
         p === '/server.js' || p === '/billing.js' || p === '/model_data.js' ||
+        p === '/nws_bluesky.js' || p === '/nws_graphic.js' || p === '/ndfd.js' ||
         p.startsWith('/.env') || p.startsWith('/package') || p.startsWith('/.git')) {
         return res.status(404).end();
     }
