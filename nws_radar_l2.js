@@ -92,43 +92,58 @@ const L2_BUCKET = 'https://noaa-nexrad-level2.s3.amazonaws.com';
 const USER_AGENT = process.env.NWS_USER_AGENT ||
   'VortexRadar (vortex-dome22.onrender.com, davidwallis17@gmail.com)';
 
-// The same volumes are mirrored on Google Cloud; we try AWS first, then GCP, so
-// a listing/egress hiccup on one doesn't sink us.
-const GCP_BUCKET = 'https://storage.googleapis.com/gcp-public-data-nexrad-l2';
-const GCP_LIST = 'https://storage.googleapis.com/storage/v1/b/gcp-public-data-nexrad-l2/o';
+// Primary source: Unidata THREDDS realtime Level 2 (works from any host, no auth
+// or anonymous-listing quirks). Falls back to the AWS Open Data bucket, which is
+// lower-latency but sometimes refuses anonymous listing.
+const THREDDS = 'https://thredds.ucar.edu/thredds';
 
-async function listKeysAWS(prefix) {
-  const url = `${L2_BUCKET}/?list-type=2&prefix=${encodeURIComponent(prefix)}`;
-  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
-  if (!res.ok) throw new Error('AWS list HTTP ' + res.status);
-  const xml = await res.text();
-  const keys = []; const re = /<Key>([^<]+)<\/Key>/g; let m;
-  while ((m = re.exec(xml))) keys.push(m[1]);
-  return keys;
-}
-async function listKeysGCP(prefix) {
-  const url = `${GCP_LIST}?prefix=${encodeURIComponent(prefix)}&maxResults=1000&fields=items(name)`;
-  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
-  if (!res.ok) throw new Error('GCP list HTTP ' + res.status);
-  const j = await res.json();
-  return (j.items || []).map((i) => i.name);
-}
-function newestVolume(keys) {
-  const v = keys.filter((k) => !k.endsWith('_MDM') && /_V0\d$/.test(k));
-  return v.length ? v[v.length - 1] : null;
+async function fetchText(url, ms = 15000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: ctrl.signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.text();
+  } finally { clearTimeout(t); }
 }
 
-// Returns { key, source } where source is 'aws' | 'gcp'.
-async function latestLevel2Key(station) {
+// Newest volume via THREDDS: site catalog → newest dated sub-catalog → newest
+// .ar2v (THREDDS lists files newest-first). Returns { url, name } | null.
+async function threddsLatest(station) {
+  const cat = await fetchText(`${THREDDS}/catalog/nexrad/level2/${station}/catalog.xml`);
+  let days = [...cat.matchAll(/catalogRef\s+xlink:href="([^"]+)"/g)].map((m) => m[1].replace('/catalog.xml', ''));
+  if (!days.length) return null;
+  days.sort();
+  for (let i = days.length - 1; i >= Math.max(0, days.length - 2); i--) { // newest 2 days
+    let dcat;
+    try { dcat = await fetchText(`${THREDDS}/catalog/nexrad/level2/${station}/${days[i]}/catalog.xml`); } catch { continue; }
+    const files = [...dcat.matchAll(/urlPath="(nexrad\/level2\/[^"]+\.ar2v)"/g)].map((m) => m[1]);
+    if (files.length) return { url: `${THREDDS}/fileServer/${files[0]}`, name: files[0].split('/').pop() };
+  }
+  return null;
+}
+
+// Newest volume via the AWS Open Data bucket. Returns { url, name } | null.
+async function awsLatest(station) {
   const now = new Date();
   for (let dayBack = 0; dayBack < 2; dayBack++) {
     const d = new Date(now.getTime() - dayBack * 86400000);
     const prefix = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${station}/`;
-    let key = null, source = null;
-    try { key = newestVolume(await listKeysAWS(prefix)); source = 'aws'; } catch { /* try GCP */ }
-    if (!key) { try { key = newestVolume(await listKeysGCP(prefix)); source = 'gcp'; } catch { /* none */ } }
-    if (key) return { key, source };
+    let xml;
+    try { xml = await fetchText(`${L2_BUCKET}/?list-type=2&prefix=${encodeURIComponent(prefix)}`); } catch { continue; }
+    const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1])
+      .filter((k) => !k.endsWith('_MDM') && /_V0\d$/.test(k));
+    if (keys.length) { const key = keys[keys.length - 1]; return { url: `${L2_BUCKET}/${key}`, name: key.split('/').pop() }; }
   }
+  return null;
+}
+
+// Latest volume { url, name, source }, trying THREDDS then AWS.
+async function latestVolume(station) {
+  try { const t = await threddsLatest(station); if (t) return { ...t, source: 'thredds' }; }
+  catch (e) { console.warn('[NWS-BSKY] THREDDS list failed for', station + ':', e.message); }
+  try { const a = await awsLatest(station); if (a) return { ...a, source: 'aws' }; }
+  catch (e) { console.warn('[NWS-BSKY] AWS list failed for', station + ':', e.message); }
   return null;
 }
 
@@ -176,17 +191,7 @@ function decodeVolume(buffer, filename) {
 // Cache the single most-recently decoded volume so a burst of warnings near the
 // same radar (e.g. a squall line) reuses one ~15MB decode instead of repeating
 // it. Only one is kept — parsed volumes are large, and Render's RAM is limited.
-let _volCache = null; // { key, factory }
-
-async function fetchVolume(key, source) {
-  const url = source === 'gcp' ? `${GCP_BUCKET}/${key}` : `${L2_BUCKET}/${key}`;
-  try { return await fetchBuffer(url); }
-  catch (e) {
-    // cross-source fallback
-    const alt = source === 'gcp' ? `${L2_BUCKET}/${key}` : `${GCP_BUCKET}/${key}`;
-    return fetchBuffer(alt);
-  }
-}
+let _volCache = null; // { name, factory }
 
 /**
  * Fetch + decode the nearest radar's latest volume and return the base-sweep
@@ -195,17 +200,16 @@ async function fetchVolume(key, source) {
 async function getRadarData(lat, lon, product = 'REF') {
   const site = nearestStation(lat, lon);
   if (!site) return null;
-  const found = await latestLevel2Key(site);
+  const found = await latestVolume(site);
   if (!found) { console.warn('[NWS-BSKY] no Level 2 file for', site); return null; }
-  const { key, source } = found;
 
   let factory;
-  if (_volCache && _volCache.key === key) {
+  if (_volCache && _volCache.name === found.name) {
     factory = _volCache.factory;
   } else {
-    const buf = await fetchVolume(key, source);
-    factory = decodeVolume(buf, key.split('/').pop());
-    if (factory) _volCache = { key, factory };
+    const buf = await fetchBuffer(found.url);
+    factory = decodeVolume(buf, found.name);
+    if (factory) _volCache = { name: found.name, factory };
   }
   if (!factory) { console.warn('[NWS-BSKY] Level 2 decode produced no factory for', site); return null; }
 
@@ -225,4 +229,31 @@ async function getRadarData(lat, lon, product = 'REF') {
   return { site, azimuths, ranges, data, location, product, elevationAngle, time };
 }
 
-module.exports = { getRadarData, nearestStation, latestLevel2Key, decodeVolume };
+// Diagnostic: report exactly which step of the radar pipeline works for a point.
+// Used by the admin radar-check endpoint so failures on the host are visible.
+async function diagnose(lat, lon, product = 'REF') {
+  const out = { lat, lon, product };
+  const t0 = Date.now();
+  out.site = nearestStation(lat, lon);
+  if (!out.site) { out.error = 'no nearest station'; return out; }
+  let found = null;
+  try { found = await latestVolume(out.site); } catch (e) { out.error = 'latestVolume: ' + e.message; }
+  out.volume = found ? { name: found.name, source: found.source } : null;
+  if (!found) { out.error = out.error || 'no Level 2 file found (THREDDS + AWS both empty)'; return out; }
+  try {
+    const buf = await fetchBuffer(found.url);
+    out.downloadedBytes = buf.length;
+    const factory = decodeVolume(buf, found.name);
+    if (!factory) { out.error = 'decode returned null'; return out; }
+    const e = bestElevationFor(factory, product);
+    if (e == null) { out.error = 'no ' + product + ' sweep'; return out; }
+    const data = factory.get_data(product, e);
+    let nn = 0; for (const row of data) { if (row) for (const v of row) if (v != null) nn++; }
+    out.station = factory.station; out.elevation = e; out.nonNullGates = nn;
+    out.ok = nn > 0;
+  } catch (e) { out.error = 'fetch/decode: ' + e.message; }
+  out.ms = Date.now() - t0;
+  return out;
+}
+
+module.exports = { getRadarData, nearestStation, latestVolume, decodeVolume, diagnose };

@@ -402,6 +402,18 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
     res.json({ rows, total: Object.keys(store).length });
   });
 
+  // Diagnostic: does the Level 2 radar pipeline work from THIS host? Reports the
+  // nearest station, which source served the volume, bytes, and gate count.
+  app.get('/admin/nwsx/radar-check', requireAdmin, async (req, res) => {
+    let lat = parseFloat(req.query.lat), lon = parseFloat(req.query.lon);
+    if (!isFinite(lat) || !isFinite(lon)) { lat = 35.33; lon = -97.28; } // near KTLX (central US)
+    const product = req.query.product === 'velocity' ? 'VEL' : 'REF';
+    try {
+      const { diagnose } = require('./nws_radar_l2');
+      res.json(await diagnose(lat, lon, product));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get('/admin/nwsx/graphic/:id', requireAdmin, (req, res) => {
     const file = path.join(GRAPHICS_DIR, `${sanitizeId(req.params.id)}.png`);
     if (!file.startsWith(GRAPHICS_DIR) || !fs.existsSync(file)) return res.status(404).end();

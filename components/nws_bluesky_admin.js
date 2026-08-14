@@ -127,6 +127,7 @@ export function nwsxAdminHTML() {
           <option value="cancellation">Tornado Warning (Cancellation)</option>
         </select>
         <button class="nwsx-btn" id="nwsx-preview-btn">Preview graphic</button>
+        <button class="nwsx-btn" id="nwsx-radarcheck-btn">Check radar source</button>
         <button class="nwsx-btn danger" id="nwsx-testpost-btn">Send test post to Bluesky</button>
       </div>
       <div class="nwsx-preview" id="nwsx-preview">
@@ -265,6 +266,17 @@ export function initNwsxAdmin(root) {
   }
   $('nwsx-preview-btn').addEventListener('click', () => runTest(false));
   $('nwsx-testpost-btn').addEventListener('click', () => runTest(true));
+
+  $('nwsx-radarcheck-btn').addEventListener('click', async () => {
+    const btn = $('nwsx-radarcheck-btn'); btn.disabled = true;
+    flash('Checking radar source (fetch + decode a Level 2 volume)…');
+    try {
+      const d = await api('GET', '/admin/nwsx/radar-check');
+      if (d.ok) flash(`Radar OK — ${d.station} via ${d.volume.source}, ${d.nonNullGates.toLocaleString()} gates (${(d.downloadedBytes / 1e6).toFixed(1)} MB, ${d.ms} ms).`);
+      else flash(`Radar FAILED — ${d.error || 'unknown'}${d.site ? ' (nearest ' + d.site + ')' : ''}.`, 'err');
+    } catch (e) { flash('Radar check failed: ' + e.message, 'err'); }
+    finally { btn.disabled = false; }
+  });
 
   async function loadLog() {
     const tbody = $('nwsx-log-rows');
