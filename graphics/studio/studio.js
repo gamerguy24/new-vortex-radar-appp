@@ -147,6 +147,7 @@ const TEMPLATE_META = {
   'ice-accum': { mono: 'I', color: '#38bdf8', name: 'Ice Accumulation', sub: 'Totals by inches' },
   'state-spotlight': { mono: 'S', color: '#a855f7', name: 'State Spotlight', sub: 'One state, full frame' },
   'lower-third': { mono: 'L', color: '#94a3b8', name: 'Lower-Third', sub: 'Titles & banners' },
+  'radar-forecast': { mono: 'R', color: '#1b53b3', name: 'Radar Forecast', sub: 'Broadcast radar + panels' },
 };
 function metaFor(id) {
   return TEMPLATE_META[id] || { mono: '•', color: '#94a3b8', name: id, sub: '' };

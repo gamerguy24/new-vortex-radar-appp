@@ -116,6 +116,8 @@ export const REGION_PRESETS = {
   'ne-indiana': { label: 'NE Indiana / NW Ohio', states: ['IN', 'OH'] },
   california: { label: 'California / Oregon', states: ['CA', 'OR', 'NV'] },
   oklahoma: { label: 'Oklahoma', states: ['OK'] },
+  georgia: { label: 'Georgia', states: ['GA'] },
+  'north-georgia': { label: 'North Georgia', states: ['GA', 'TN', 'SC'] },
   'southern-plains': { label: 'Southern Plains', states: ['OK', 'KS', 'TX', 'MO', 'AR'] },
   southeast: { label: 'Southeast', states: ['GA', 'AL', 'FL', 'SC', 'TN', 'NC'] },
   midwest: { label: 'Midwest', states: ['IL', 'IN', 'OH', 'MI', 'WI', 'IA', 'MO', 'KY'] },
