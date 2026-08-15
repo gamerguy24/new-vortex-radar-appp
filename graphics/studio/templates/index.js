@@ -6,6 +6,7 @@ import iceAccum from './ice-accum.js';
 import stateSpotlight from './state-spotlight.js';
 import lowerThird from './lower-third.js';
 import radarForecast from './radar-forecast.js';
+import forecastModel from './forecast-model.js';
 
-export const TEMPLATES = [severeThreat, outlook, precipPanels, iceAccum, stateSpotlight, lowerThird, radarForecast];
+export const TEMPLATES = [severeThreat, outlook, precipPanels, iceAccum, stateSpotlight, lowerThird, radarForecast, forecastModel];
 export const TEMPLATE_BY_ID = Object.fromEntries(TEMPLATES.map((t) => [t.id, t]));
