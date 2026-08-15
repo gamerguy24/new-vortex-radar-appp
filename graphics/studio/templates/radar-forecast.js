@@ -13,8 +13,34 @@ import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.j
 import { cityLabelLayer } from '../engine/labels.js';
 import { REGION_PRESETS, countiesForStates } from '../engine/geo.js';
 import { roundRect } from '../engine/scene.js';
+import { fetchRadar, radarLayer } from '../engine/radar.js';
+import {
+  loadModelField, modelFieldLayer, fieldLegendLayer, MODEL_OPTIONS, MODEL_PRESETS, FHR_OPTIONS,
+} from '../engine/model_field.js';
 
 const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
+
+// Async overlay state (module-scoped): one model-field + one radar request.
+const fieldStore = { key: null, status: 'idle', field: null, error: null };
+const radarStore = { key: null, status: 'idle', radar: null, error: null };
+
+// Padded visible lon/lat rectangle for the model-field request.
+function viewBbox(scene) {
+  const p = scene.projection;
+  if (!p || !p.invert) return [-125, 24, -66.5, 50];
+  const cs = [[0, 0], [scene.width, 0], [0, scene.height], [scene.width, scene.height], [scene.width / 2, scene.height / 2]];
+  let W = Infinity, S = Infinity, E = -Infinity, N = -Infinity;
+  for (const [x, y] of cs) {
+    const ll = p.invert([x, y]);
+    if (!ll || !isFinite(ll[0]) || !isFinite(ll[1])) continue;
+    W = Math.min(W, ll[0]); E = Math.max(E, ll[0]); S = Math.min(S, ll[1]); N = Math.max(N, ll[1]);
+  }
+  if (!isFinite(W)) return [-125, 24, -66.5, 50];
+  const padX = (E - W) * 0.12 + 0.25, padY = (N - S) * 0.12 + 0.25;
+  W -= padX; E += padX; S -= padY; N += padY;
+  const r = (x) => Math.round(x * 2) / 2;
+  return [Math.max(-179, r(W)), Math.max(-85, r(S)), Math.min(179, r(E)), Math.min(85, r(N))];
+}
 
 // Simple image cache: returns the loaded <img> or null (and triggers a rerender
 // once it decodes). Used for the sponsor logo + CTA app icon.
@@ -58,6 +84,13 @@ export default {
       time: '5:00 PM',
       region: 'north-georgia',
       basemap: 'hybrid',
+      // Map overlay: live radar, or a forecast-model field (GFS/NAM/HRRR).
+      overlay: 'radar',
+      model: 'gfs',
+      field: 't2m',
+      fhr: '24',
+      overlayOpacity: '0.85',
+      showFieldLegend: true,
       // Brand flag (top-left). Defaults to the app's identity — edit to your own.
       brandTop: 'VORTEX',
       brandBig: 'RADAR',
@@ -86,6 +119,15 @@ export default {
     return [
       { key: 'title', label: 'Title', type: 'text' },
       { key: 'time', label: 'Time label', type: 'text' },
+      { key: 'overlay', label: 'Map overlay', type: 'select', options: [
+        { value: 'radar', label: 'Live radar (NEXRAD)' },
+        { value: 'field', label: 'Forecast field (model)' }] },
+      { key: 'model', label: 'Model (field mode)', type: 'select', options: MODEL_OPTIONS },
+      { key: 'field', label: 'Field (field mode)', type: 'select', options: MODEL_PRESETS.map((p) => ({ value: p.id, label: p.label })) },
+      { key: 'fhr', label: 'Forecast hour (field mode)', type: 'select', options: FHR_OPTIONS },
+      { key: 'overlayOpacity', label: 'Overlay opacity', type: 'select', options: [
+        { value: '1', label: '100%' }, { value: '0.85', label: '85%' }, { value: '0.7', label: '70%' }, { value: '0.55', label: '55%' }] },
+      { key: 'showFieldLegend', label: 'Show field legend', type: 'toggle' },
       { key: 'region', label: 'Region', type: 'select',
         options: Object.entries(REGION_PRESETS).filter(([k]) => k !== 'conus').map(([k, v]) => ({ value: k, label: v.label })) },
       { key: 'basemap', label: 'Basemap', type: 'select', options: BASEMAP_OPTIONS },
@@ -122,13 +164,49 @@ export default {
     scene.clearLayers();
     scene.add(backgroundLayer(config.basemap));
     scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyMesh: geo.countyBorders, borderMesh: geo.stateBorders }));
+
+    // Map overlay (under labels/chrome): live radar or a forecast-model field.
+    // Loads asynchronously; borders are re-stroked on top so lines stay crisp.
+    const opacity = parseFloat(config.overlayOpacity) || 0.85;
+    const bordersOver = () => scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyMesh: geo.countyBorders, borderMesh: geo.stateBorders, override: { land: 'rgba(0,0,0,0)', relief: false } }));
+    let fieldReady = false;
+
+    if (config.overlay === 'field') {
+      const bbox = viewBbox(scene);
+      const key = `${config.model}|${config.field}|${config.fhr}|${bbox.join(',')}`;
+      if (fieldStore.key !== key) {
+        fieldStore.key = key; fieldStore.status = 'loading'; fieldStore.error = null;
+        loadModelField(config.model, config.field, config.fhr, bbox)
+          .then((f) => { if (fieldStore.key === key) { fieldStore.field = f; fieldStore.status = 'ready'; ctrl.rerender(); } })
+          .catch((e) => { if (fieldStore.key === key) { fieldStore.status = 'error'; fieldStore.error = e.message; fieldStore.field = null; ctrl.rerender(); } });
+      }
+      fieldReady = fieldStore.status === 'ready' && fieldStore.field && fieldStore.key === key;
+      if (fieldReady) { scene.add(modelFieldLayer(fieldStore.field, opacity)); bordersOver(); }
+    } else {
+      // Live radar (self-contained, so the picker works without the ◈ toggle).
+      const key = `${config.region}|${viewBbox(scene).join(',')}`;
+      if (radarStore.key !== key) {
+        radarStore.key = key; radarStore.status = 'loading'; radarStore.error = null;
+        fetchRadar(scene, { opacity })
+          .then((rd) => { if (radarStore.key === key) { radarStore.radar = rd; radarStore.status = 'ready'; ctrl.rerender(); } })
+          .catch((e) => { if (radarStore.key === key) { radarStore.status = 'error'; radarStore.error = e.message; radarStore.radar = null; ctrl.rerender(); } });
+      }
+      if (radarStore.status === 'ready' && radarStore.radar && radarStore.key === key) {
+        radarStore.radar.opacity = opacity; scene.add(radarLayer(radarStore.radar)); bordersOver();
+      }
+    }
+
     scene.add(cityLabelLayer({ maxRank: 3, fontSize: 18, bounds: { x0: 20, y0: 170, x1: 1900, y1: 1060 } }));
-    // Radar is auto-inserted by the studio just before 'cities' (over the map,
-    // under the header/panel/CTA added below).
 
     scene.add(headerLayer(config, ctrl));
     if (config.showPanel) scene.add(panelLayer(config));
     if (config.showCta) scene.add(ctaLayer(config, ctrl));
+
+    // Model-field data legend (bottom, right of the CTA) — only in field mode.
+    if (config.overlay === 'field' && config.showFieldLegend !== false && fieldReady && fieldStore.field.legend) {
+      const p = MODEL_PRESETS.find((mp) => mp.id === config.field);
+      scene.add(fieldLegendLayer(fieldStore.field.legend, { x: 470, y: 986, w: 940, h: 74 }, { title: (p && p.label) || 'Forecast' }));
+    }
   },
 };
 
