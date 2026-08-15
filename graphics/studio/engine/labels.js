@@ -1,32 +1,40 @@
-// City label layer. Broadcast-style navy pills with condensed white caps, a
-// light rim and a soft drop shadow — matching on-air city labels.
+// City label layer. Clean broadcast style: a small city marker dot beside the
+// name in crisp condensed caps with a dark halo + soft shadow — no heavy box, so
+// it reads on satellite, radar, or dark basemaps like premium TV graphics.
 import { CITIES } from './cities.js';
-import { COLORS, caps, capsWidth, withShadow, panelPath } from './style.js';
+import { FONT, capsWidth, withShadow } from './style.js';
 
-// Actual pill footprint for a label at font size `fs` (keeps collision tests and
-// drawing in sync).
-function pillSize(ctx, text, fs) {
-  const tw = capsWidth(ctx, text, fs, 800, 0.94);
-  return { w: tw + 22, h: fs + 11 };
+// A city marker: white core, dark ring, small blue center (reads on any bg).
+function cityDot(ctx, x, y, r, accent = '#1c74d6') {
+  withShadow(ctx, () => {
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = '#ffffff'; ctx.fill();
+  }, { blur: 5, y: 1 });
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.lineWidth = 1.6; ctx.strokeStyle = 'rgba(8,16,28,0.9)'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y, Math.max(1, r - 2.4), 0, Math.PI * 2); ctx.fillStyle = accent; ctx.fill();
 }
 
-function drawPill(ctx, cx, cy, text, fs) {
-  const { w: pillW, h: pillH } = pillSize(ctx, text, fs);
-  const px = cx - pillW / 2;
-  const py = cy - pillH / 2;
-  withShadow(ctx, () => {
-    panelPath(ctx, px, py, pillW, pillH, pillH / 2);
-    const g = ctx.createLinearGradient(px, py, px, py + pillH);
-    g.addColorStop(0, '#14406e');
-    g.addColorStop(1, COLORS.navyPill);
-    ctx.fillStyle = g;
-    ctx.fill();
-  }, { blur: 8, y: 3 });
-  ctx.strokeStyle = COLORS.pillBorder;
-  ctx.lineWidth = 1.5;
-  panelPath(ctx, px, py, pillW, pillH, pillH / 2);
-  ctx.stroke();
-  caps(ctx, text, cx, cy + 1, { size: fs, weight: 800, color: COLORS.white, align: 'center', scaleX: 0.94, shadow: false });
+// Left-aligned condensed caps with a rounded dark halo (outline) + soft shadow.
+function haloCaps(ctx, text, x, y, fs) {
+  const t = String(text).toUpperCase();
+  ctx.save();
+  ctx.font = `800 ${fs}px ${FONT}`;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.translate(x, y); ctx.scale(0.94, 1);
+  ctx.lineJoin = 'round'; ctx.miterLimit = 2;
+  ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 5; ctx.shadowOffsetY = 1;
+  ctx.lineWidth = Math.max(3, fs * 0.34); ctx.strokeStyle = 'rgba(4,10,18,0.9)';
+  ctx.strokeText(t, 0, 0);
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = '#ffffff'; ctx.fillText(t, 0, 0);
+  ctx.restore();
+}
+
+// Footprint (dot + gap + text) so collision tests match what's drawn.
+function labelBox(ctx, text, fs, rank) {
+  const dotR = rank === 1 ? 5 : 4;
+  const tw = capsWidth(ctx, text, fs, 800, 0.94);
+  return { dotR, tw, textGap: 9, h: fs + 8 };
 }
 
 export function cityLabelLayer({ maxRank = 3, fontSize = 18, bounds = null, gap = 8 } = {}) {
@@ -34,7 +42,6 @@ export function cityLabelLayer({ maxRank = 3, fontSize = 18, bounds = null, gap 
     name: 'cities',
     draw(ctx, scene) {
       const b = bounds || { x0: 0, y0: 0, x1: scene.width, y1: scene.height };
-      // Candidate cities: projected, in-bounds, within the rank limit.
       const cands = [];
       for (const [name, lat, lon, rank] of CITIES) {
         if (rank > maxRank) continue;
@@ -44,28 +51,28 @@ export function cityLabelLayer({ maxRank = 3, fontSize = 18, bounds = null, gap 
         if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
         cands.push({ name, x, y, rank });
       }
-      // Place bigger/major cities first so smaller ones yield to them.
+      // Place major cities first so smaller ones yield to them.
       cands.sort((a, c) => a.rank - c.rank);
 
-      // Real, measured collision: skip any pill that would touch a placed one
-      // (expanded by `gap`), so labels never overlap.
       const placed = [];
       for (const c of cands) {
         const fs = c.rank === 1 ? fontSize + 2 : fontSize;
-        const { w, h } = pillSize(ctx, c.name, fs);
+        const { dotR, tw, textGap, h } = labelBox(ctx, c.name, fs, c.rank);
+        // The label runs from the dot (at c.x) rightward through the text.
         const rect = {
-          x0: c.x - w / 2 - gap, y0: c.y - h / 2 - gap,
-          x1: c.x + w / 2 + gap, y1: c.y + h / 2 + gap,
+          x0: c.x - dotR - gap, y0: c.y - h / 2 - gap,
+          x1: c.x + dotR + textGap + tw + gap, y1: c.y + h / 2 + gap,
         };
         if (placed.some((r) => !(rect.x1 < r.x0 || rect.x0 > r.x1 || rect.y1 < r.y0 || rect.y0 > r.y1))) continue;
         placed.push(rect);
-        drawPill(ctx, c.x, c.y, c.name, fs);
+        cityDot(ctx, c.x, c.y, dotR);
+        haloCaps(ctx, c.name, c.x + dotR + textGap, c.y + 1, fs);
       }
     },
   };
 }
 
-// Draw arbitrary point labels (e.g. user-placed markers) with an accent dot.
+// Arbitrary point labels (user-placed markers): accent dot + haloed name.
 export function pointLabelLayer(points, opts = {}) {
   return {
     name: 'point-labels',
@@ -75,17 +82,8 @@ export function pointLabelLayer(points, opts = {}) {
         const p = scene.projection([pt.lon, pt.lat]);
         if (!p) continue;
         const [x, y] = p;
-        withShadow(ctx, () => {
-          ctx.beginPath();
-          ctx.arc(x, y, 6, 0, Math.PI * 2);
-          ctx.fillStyle = opts.dotColor || '#ffd54a';
-          ctx.fill();
-        }, { blur: 6, y: 2 });
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-        ctx.stroke();
-        const half = capsWidth(ctx, pt.name, fs, 800, 0.94) / 2;
-        drawPill(ctx, x + 25 + half, y, pt.name, fs);
+        cityDot(ctx, x, y, 6, opts.dotColor || '#ffd54a');
+        haloCaps(ctx, pt.name, x + 14, y + 1, fs);
       }
     },
   };

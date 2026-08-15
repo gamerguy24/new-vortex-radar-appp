@@ -169,28 +169,34 @@ function headerLayer(config, ctrl) {
       const tSize = fitTxt(ctx, (config.title || '').toUpperCase(), barW - 60, 60, '900');
       txt(ctx, (config.title || '').toUpperCase(), barX + barW / 2, 8 + (titleH - 8) / 2 + tSize * 0.34, { size: tSize, weight: 900, align: 'center', color: '#0b1526' });
 
-      // ---- precip scale bar (black) ----
+      // ---- precip scale bar (black) — swatches auto-sized to fit the bar ----
       if (config.showScale) {
         const sy = titleH + 4, sh = H - titleH - 8;
         roundRect(ctx, barX, sy, barW, sh, 5); ctx.fillStyle = '#0a0d12'; ctx.fill();
         const midY = sy + sh / 2;
-        txt(ctx, config.time || '', barX + 20, midY + 9, { size: 27, weight: 800, color: '#fff' });
-        // three swatches: RAIN (reflectivity ramp), ICE (magenta), SNOW (blue)
-        let sx = barX + 20 + ctx.measureText(config.time || '').width + 40;
-        const swW = 150, gap = 22, labelGap = 10;
-        const swatch = (label, stops) => {
-          txt(ctx, label, sx, midY + 8, { size: 22, weight: 800, color: '#fff' });
+        const items = [
+          ['RAIN', ['#22c55e', '#eaff00', '#ff8a00', '#ff0000', '#b10000']],
+          ['ICE', ['#ff5ad0', '#c13ba8']],
+          ['SNOW', ['#eaf4ff', '#7cc4ff', '#2b7fd6']],
+        ];
+        const lblSize = 21, labelGap = 9, gap = 18, padL = 18, padR = 16;
+        ctx.font = `800 ${lblSize}px ${FONT}`;
+        txt(ctx, config.time || '', barX + padL, midY + 9, { size: 25, weight: 800, color: '#fff' });
+        const start = barX + padL + ctx.measureText(config.time || '').width + 30;
+        const right = barX + barW - padR;
+        const labelsW = items.reduce((a, [l]) => a + ctx.measureText(l).width + labelGap, 0);
+        const swW = Math.max(64, Math.floor((right - start - labelsW - gap * items.length) / items.length));
+        let sx = start;
+        for (const [label, stops] of items) {
+          ctx.font = `800 ${lblSize}px ${FONT}`;
+          txt(ctx, label, sx, midY + 8, { size: lblSize, weight: 800, color: '#fff' });
           const lx = sx + ctx.measureText(label).width + labelGap;
           const g = ctx.createLinearGradient(lx, 0, lx + swW, 0);
           stops.forEach((c, i) => g.addColorStop(i / (stops.length - 1), c));
           roundRect(ctx, lx, midY - 11, swW, 22, 4); ctx.fillStyle = g; ctx.fill();
           ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; ctx.stroke();
           sx = lx + swW + gap;
-        };
-        ctx.font = `800 22px ${FONT}`;
-        swatch('RAIN', ['#22c55e', '#eaff00', '#ff8a00', '#ff0000', '#b10000']);
-        swatch('ICE', ['#ff5ad0', '#c13ba8']);
-        swatch('SNOW', ['#eaf4ff', '#7cc4ff', '#2b7fd6']);
+        }
       }
 
       // ---- sponsor slot ----
