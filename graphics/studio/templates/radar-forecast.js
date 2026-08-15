@@ -211,7 +211,7 @@ export default {
 };
 
 // ── header: brand flag + title slab + precip scale + sponsor ───────────────────
-function headerLayer(config, ctrl) {
+export function headerLayer(config, ctrl) {
   return {
     name: 'title-bar',
     draw(ctx) {
@@ -300,7 +300,7 @@ function headerLayer(config, ctrl) {
 }
 
 // ── left forecast panel ────────────────────────────────────────────────────────
-function panelLayer(config) {
+export function panelLayer(config) {
   return {
     name: 'wx-panel',
     draw(ctx) {
@@ -341,7 +341,7 @@ function panelLayer(config) {
 }
 
 // ── bottom-left app CTA ─────────────────────────────────────────────────────────
-function ctaLayer(config, ctrl) {
+export function ctaLayer(config, ctrl) {
   return {
     name: 'wx-cta',
     draw(ctx) {

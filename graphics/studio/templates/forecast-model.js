@@ -1,17 +1,16 @@
-// Template: Forecast Model (Futurecast) — a full-frame broadcast map for pro
-// users, showing either a forecast-model field (GFS/NAM/HRRR: 2 m temp,
-// reflectivity, MSLP, CAPE, precip, upper-air temps…) at a chosen hour, OR live
-// NEXRAD radar. Pick the overlay in the properties panel. Data (model field via
-// /api/models/:id/field, radar via the studio radar service) loads asynchronously
-// and the scene re-renders when it arrives. County/state lines are drawn over the
-// overlay so the map stays legible.
+// Template: Forecast Model (Futurecast) — the broadcast overlay (brand flag +
+// title slab + RAIN/ICE/SNOW scale + sponsor + left forecast panel + app CTA,
+// shared with the Radar Forecast template) laid over a full-frame forecast-model
+// field (GFS/NAM/HRRR: 2 m temp, reflectivity, MSLP, CAPE, precip, upper-air
+// temps…) OR live radar. Pick the overlay in the properties panel. Data loads
+// asynchronously and the scene re-renders when it arrives.
 import { fitProjection } from '../engine/projection.js';
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
-import { bannerHeaderLayer } from '../engine/chrome.js';
-import { roundRect } from '../engine/scene.js';
 import { REGION_PRESETS, countiesForStates } from '../engine/geo.js';
+import { roundRect } from '../engine/scene.js';
 import { fetchRadar, radarLayer } from '../engine/radar.js';
+import { headerLayer, panelLayer, ctaLayer } from './radar-forecast.js';
 import {
   MODEL_OPTIONS, MODEL_PRESETS, FHR_OPTIONS, loadModelField, modelFieldLayer, fieldLegendLayer,
 } from '../engine/model_field.js';
@@ -19,12 +18,9 @@ import {
 const FONT = '"Segoe UI", "Helvetica Neue", Arial, sans-serif';
 const REFLECT_LEGEND = { unit: 'dBZ', stops: [[5, 'rgb(34,197,94)'], [20, 'rgb(0,160,0)'], [35, 'rgb(255,255,0)'], [45, 'rgb(255,144,0)'], [55, 'rgb(255,0,0)'], [65, 'rgb(255,0,255)'], [75, 'rgb(160,0,160)']] };
 
-// Async load state (module-scoped): one model-field request + one radar request.
 const fieldStore = { key: null, status: 'idle', field: null, error: null };
 const radarStore = { key: null, status: 'idle', radar: null, error: null };
 
-// Visible lon/lat rectangle (padded) for the field request, so the overlay
-// covers the whole frame with margin to spare.
 function viewBbox(scene) {
   const p = scene.projection;
   if (!p || !p.invert) return [-125, 24, -66.5, 50];
@@ -38,7 +34,7 @@ function viewBbox(scene) {
   if (!isFinite(W)) return [-125, 24, -66.5, 50];
   const padX = (E - W) * 0.12 + 0.25, padY = (N - S) * 0.12 + 0.25;
   W -= padX; E += padX; S -= padY; N += padY;
-  const r = (x) => Math.round(x * 2) / 2; // 0.5° grid stabilizes the request key
+  const r = (x) => Math.round(x * 2) / 2;
   return [Math.max(-179, r(W)), Math.max(-85, r(S)), Math.min(179, r(E)), Math.min(85, r(N))];
 }
 
@@ -63,15 +59,35 @@ export default {
 
   defaultConfig() {
     return {
+      // overlay
       overlay: 'field',   // 'field' = model field, 'radar' = live NEXRAD
       model: 'gfs',
       field: 't2m',
       fhr: '24',
       region: 'southeast',
       basemap: 'relief',
-      title: '',
-      opacity: '0.85',
-      showLegend: true,
+      overlayOpacity: '0.85',
+      showFieldLegend: true,
+      // broadcast chrome (shared with Radar Forecast)
+      title: '2 M TEMPERATURE',
+      time: '5:00 PM',
+      brandTop: 'VORTEX',
+      brandBig: 'RADAR',
+      brandBottom: 'WEATHER',
+      brandColor: '#1b53b3',
+      showScale: false, // RAIN/ICE/SNOW scale off by default (doesn't fit model fields)
+      sponsorImg: '',
+      sponsorText: 'YOUR SPONSOR',
+      showPanel: true,
+      rainLabel: 'CHANCE OF RAIN',
+      rainValue: '40%',
+      hazardLabel: 'MAIN HAZARD',
+      hazards: ['DMG. WIND GUSTS', 'FLASH FLOODING'],
+      coverage: 'ISOLATED',
+      showCta: true,
+      ctaText: 'DOWNLOAD OUR FREE WEATHER APP',
+      ctaSub: 'LINK BELOW',
+      ctaIcon: '/logo.png',
     };
   },
 
@@ -83,13 +99,32 @@ export default {
       { key: 'model', label: 'Model', type: 'select', options: MODEL_OPTIONS },
       { key: 'field', label: 'Field', type: 'select', options: MODEL_PRESETS.map((p) => ({ value: p.id, label: p.label })) },
       { key: 'fhr', label: 'Forecast hour', type: 'select', options: FHR_OPTIONS },
+      { key: 'overlayOpacity', label: 'Overlay opacity', type: 'select', options: [
+        { value: '1', label: '100%' }, { value: '0.85', label: '85%' }, { value: '0.7', label: '70%' }, { value: '0.55', label: '55%' }] },
+      { key: 'showFieldLegend', label: 'Show data legend', type: 'toggle' },
       { key: 'region', label: 'Region', type: 'select',
         options: Object.entries(REGION_PRESETS).map(([k, v]) => ({ value: k, label: v.label })) },
       { key: 'basemap', label: 'Basemap', type: 'select', options: BASEMAP_OPTIONS },
-      { key: 'opacity', label: 'Overlay opacity', type: 'select', options: [
-        { value: '1', label: '100%' }, { value: '0.85', label: '85%' }, { value: '0.7', label: '70%' }, { value: '0.55', label: '55%' }] },
-      { key: 'title', label: 'Title (blank = auto)', type: 'text' },
-      { key: 'showLegend', label: 'Show legend', type: 'toggle' },
+      // broadcast chrome
+      { key: 'title', label: 'Title', type: 'text' },
+      { key: 'time', label: 'Time label', type: 'text' },
+      { key: 'showScale', label: 'Show RAIN/ICE/SNOW scale', type: 'toggle' },
+      { key: 'brandTop', label: 'Brand — top line', type: 'text' },
+      { key: 'brandBig', label: 'Brand — big line', type: 'text' },
+      { key: 'brandBottom', label: 'Brand — bottom line', type: 'text' },
+      { key: 'brandColor', label: 'Brand color', type: 'color' },
+      { key: 'sponsorImg', label: 'Sponsor logo (image)', type: 'image' },
+      { key: 'sponsorText', label: 'Sponsor placeholder text', type: 'text' },
+      { key: 'showPanel', label: 'Show forecast panel', type: 'toggle' },
+      { key: 'rainLabel', label: 'Panel — stat 1 label', type: 'text' },
+      { key: 'rainValue', label: 'Panel — stat 1 value', type: 'text' },
+      { key: 'hazardLabel', label: 'Panel — hazard label', type: 'text' },
+      { key: 'hazards', label: 'Panel — hazard lines (comma sep)', type: 'csv' },
+      { key: 'coverage', label: 'Panel — coverage value', type: 'text' },
+      { key: 'showCta', label: 'Show app CTA', type: 'toggle' },
+      { key: 'ctaText', label: 'CTA text', type: 'text' },
+      { key: 'ctaSub', label: 'CTA sub-text', type: 'text' },
+      { key: 'ctaIcon', label: 'CTA app icon (image)', type: 'image' },
     ];
   },
 
@@ -98,7 +133,6 @@ export default {
     const rp = REGION_PRESETS[config.region] || REGION_PRESETS.southeast;
     const nationView = rp.states == null;
     const feats = nationView ? geo.states : countiesForStates(geo, rp.states || ['GA']);
-    // Full-bleed map (header + legend overlay it); overscan avoids edge gaps.
     const mapRect = { x0: -40, y0: -30, x1: 1960, y1: 1110 };
     scene.projection = fitProjection(nationView ? 'albersUsa' : 'mercator', feats, mapRect, { pad: 8 });
 
@@ -106,13 +140,13 @@ export default {
     scene.add(backgroundLayer(config.basemap));
     scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyMesh: geo.countyBorders, borderMesh: geo.stateBorders }));
 
-    const opacity = parseFloat(config.opacity) || 0.85;
+    const opacity = parseFloat(config.overlayOpacity) || 0.85;
+    const bordersOver = () => scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyMesh: geo.countyBorders, borderMesh: geo.stateBorders, override: { land: 'rgba(0,0,0,0)', relief: false } }));
     const bbox = viewBbox(scene);
     const isRadar = config.overlay === 'radar';
-    let ready = false, legend = null, legendTitle = '', headTitle = '', headRegion = '', headDate = '';
+    let ready = false, legend = null, legendTitle = '';
 
     if (isRadar) {
-      // ── live radar overlay ──
       const key = `${config.region}|${bbox.join(',')}`;
       if (radarStore.key !== key) {
         radarStore.key = key; radarStore.status = 'loading'; radarStore.error = null;
@@ -121,17 +155,9 @@ export default {
           .catch((e) => { if (radarStore.key === key) { radarStore.status = 'error'; radarStore.error = e.message; radarStore.radar = null; ctrl.rerender(); } });
       }
       ready = radarStore.status === 'ready' && radarStore.radar && radarStore.key === key;
-      if (ready) {
-        radarStore.radar.opacity = opacity;
-        scene.add(radarLayer(radarStore.radar));
-        scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyMesh: geo.countyBorders, borderMesh: geo.stateBorders, override: { land: 'rgba(0,0,0,0)', relief: false } }));
-      }
+      if (ready) { radarStore.radar.opacity = opacity; scene.add(radarLayer(radarStore.radar)); bordersOver(); }
       legend = REFLECT_LEGEND; legendTitle = 'Base Reflectivity';
-      headTitle = (config.title && config.title.trim()) || 'Live Radar';
-      headRegion = 'NEXRAD base reflectivity';
-      if (radarStore.status === 'loading') scene.add(cityLabelLayer({ maxRank: nationView ? 2 : 3, fontSize: 18, bounds: { x0: 20, y0: 150, x1: 1900, y1: 1050 } }));
     } else {
-      // ── forecast-model field overlay ──
       const key = `${config.model}|${config.field}|${config.fhr}|${bbox.join(',')}`;
       if (fieldStore.key !== key) {
         fieldStore.key = key; fieldStore.status = 'loading'; fieldStore.error = null;
@@ -140,25 +166,20 @@ export default {
           .catch((e) => { if (fieldStore.key === key) { fieldStore.status = 'error'; fieldStore.error = e.message; fieldStore.field = null; ctrl.rerender(); } });
       }
       ready = fieldStore.status === 'ready' && fieldStore.field && fieldStore.key === key;
-      if (ready) {
-        scene.add(modelFieldLayer(fieldStore.field, opacity));
-        scene.add(landLayer({ styleName: config.basemap, landFeatures: geo.states, countyMesh: geo.countyBorders, borderMesh: geo.stateBorders, override: { land: 'rgba(0,0,0,0)', relief: false } }));
-      }
-      legend = ready ? fieldStore.field.legend : null;
-      legendTitle = (config.title && config.title.trim()) || preset.label;
-      headTitle = (config.title && config.title.trim()) || preset.label;
-      const fhrLabel = ready ? `+${fieldStore.field.fhr} h` : `+${config.fhr} h`;
-      headRegion = `${config.model.toUpperCase()} · ${fhrLabel}`;
-      headDate = ready && fieldStore.field.validTime ? `Valid ${fieldStore.field.validTime}` : '';
+      if (ready) { scene.add(modelFieldLayer(fieldStore.field, opacity)); bordersOver(); }
+      legend = ready ? fieldStore.field.legend : null; legendTitle = preset.label;
     }
 
-    // City labels above the overlay + borders.
-    scene.add(cityLabelLayer({ maxRank: nationView ? 2 : 3, fontSize: 18, bounds: { x0: 20, y0: 150, x1: 1900, y1: 1050 } }));
+    scene.add(cityLabelLayer({ maxRank: nationView ? 2 : 3, fontSize: 18, bounds: { x0: 20, y0: 170, x1: 1900, y1: 1050 } }));
 
-    scene.add(bannerHeaderLayer({ title: headTitle, region: headRegion, date: headDate, rect: { x: 36, y: 24, w: 1180, h: 64 } }));
+    // ── broadcast chrome (shared with Radar Forecast) ──
+    scene.add(headerLayer(config, ctrl));
+    if (config.showPanel) scene.add(panelLayer(config));
+    if (config.showCta) scene.add(ctaLayer(config, ctrl));
 
-    if (config.showLegend !== false && ready && legend) {
-      scene.add(fieldLegendLayer(legend, { x: 460, y: 1000, w: 1000, h: 74 }, { title: legendTitle }));
+    // Data legend (bottom, right of the CTA).
+    if (config.showFieldLegend !== false && ready && legend) {
+      scene.add(fieldLegendLayer(legend, { x: 470, y: 986, w: 940, h: 74 }, { title: legendTitle }));
     }
 
     const status = isRadar ? radarStore.status : fieldStore.status;
