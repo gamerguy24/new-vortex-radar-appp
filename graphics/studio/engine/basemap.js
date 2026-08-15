@@ -7,14 +7,14 @@
 import { canvasPath } from './projection.js';
 
 const STYLES = {
-  relief: { ocean: '#0a3a66', land: '#8d9094', border: '#ffffff', borderW: 1.6, county: 'rgba(20,28,40,0.6)', countyW: 0.9 },
-  satellite: { ocean: '#0b1c2c', land: '#5b6b52', border: '#eef6ee', borderW: 1.5, county: 'rgba(255,255,255,0.6)', countyW: 0.9, countyHalo: 'rgba(0,0,0,0.4)', countyHaloW: 2.2 },
-  flat: { ocean: '#cfe4f5', land: '#e9ede2', border: '#6b7683', borderW: 1.5, county: 'rgba(70,84,100,0.65)', countyW: 0.9 },
-  dark: { ocean: '#060b14', land: '#1d2738', border: '#5a6d90', borderW: 1.5, county: 'rgba(150,175,210,0.6)', countyW: 0.9, countyHalo: 'rgba(0,0,0,0.35)', countyHaloW: 2.2 },
+  relief: { ocean: '#0a3a66', land: '#8d9094', border: '#ffffff', borderW: 1.8, county: 'rgba(15,22,34,0.85)', countyW: 1.4, countyHalo: 'rgba(255,255,255,0.25)', countyHaloW: 2.8 },
+  satellite: { ocean: '#0b1c2c', land: '#5b6b52', border: '#f4faf4', borderW: 1.8, county: 'rgba(255,255,255,0.95)', countyW: 1.6, countyHalo: 'rgba(0,0,0,0.6)', countyHaloW: 3.4 },
+  flat: { ocean: '#cfe4f5', land: '#e9ede2', border: '#5a6673', borderW: 1.8, county: 'rgba(60,74,92,0.9)', countyW: 1.4 },
+  dark: { ocean: '#060b14', land: '#1d2738', border: '#6f84ac', borderW: 1.8, county: 'rgba(165,190,225,0.85)', countyW: 1.5, countyHalo: 'rgba(0,0,0,0.5)', countyHaloW: 3.0 },
   // Real MapTiler satellite imagery (composited by engine/satellite.js). The
   // land fill is transparent so the photo shows through — this layer only paints
   // the ocean fallback + crisp white borders/counties on top of the imagery.
-  hybrid: { ocean: '#0b1c2c', land: 'rgba(0,0,0,0)', border: '#ffffff', borderW: 2, county: 'rgba(255,255,255,0.9)', countyW: 1.2, countyHalo: 'rgba(0,0,0,0.55)', countyHaloW: 3.2, borderHalo: 'rgba(0,0,0,0.6)', borderHaloW: 4.5, relief: false },
+  hybrid: { ocean: '#0b1c2c', land: 'rgba(0,0,0,0)', border: '#ffffff', borderW: 2.2, county: 'rgba(255,255,255,0.95)', countyW: 1.6, countyHalo: 'rgba(0,0,0,0.6)', countyHaloW: 3.6, borderHalo: 'rgba(0,0,0,0.6)', borderHaloW: 4.8, relief: false },
 };
 
 export function getBasemapStyle(name) {
