@@ -197,6 +197,24 @@
       <div class="msg" id="change-msg" role="alert"></div>
     </form>
 
+    <div class="form" id="reset-pending-form">
+      <p class="sub" style="margin: -6px 0 14px;">Your password reset request was submitted. An admin needs to <b>approve</b> it. Once approved, come back to this page <b>on this device</b> and set your new password — no email needed.</p>
+      <button class="primary" type="button" id="reset-check-btn">Check approval status</button>
+      <button type="button" class="link-btn" id="reset-cancel-btn" style="margin-top:12px;">Cancel</button>
+      <div class="msg" id="reset-pending-msg" role="alert"></div>
+    </div>
+
+    <form class="form" id="reset-set-form" autocomplete="on">
+      <p class="sub" style="margin: -6px 0 14px;">✓ Approved. Choose a new password to sign in.</p>
+      <label for="reset-password">New password (10+ characters)</label>
+      <input id="reset-password" type="password" required minlength="10" autocomplete="new-password" />
+      <label for="reset-password2">Confirm new password</label>
+      <input id="reset-password2" type="password" required minlength="10" autocomplete="new-password" />
+      <button type="button" class="link-btn" id="reset-generate-btn" style="margin:2px 0 12px;">⚙ Generate a strong password</button>
+      <button class="primary" type="submit">Set password &amp; sign in</button>
+      <div class="msg" id="reset-set-msg" role="alert"></div>
+    </form>
+
     <div class="help">
       <a href="#" id="forgot-link">Forgot your password?</a>
     </div>
@@ -211,8 +229,18 @@
       register: document.getElementById('register-form'),
       admin: document.getElementById('admin-form'),
       forgot: document.getElementById('forgot-form'),
-      change: document.getElementById('change-form')
+      change: document.getElementById('change-form'),
+      resetPending: document.getElementById('reset-pending-form'),
+      resetSet: document.getElementById('reset-set-form')
     };
+    const RESET_KEY = 'vortexResetToken';
+    const getResetToken = () => { try { return localStorage.getItem(RESET_KEY) || ''; } catch { return ''; } };
+    const setResetToken = (t) => { try { t ? localStorage.setItem(RESET_KEY, t) : localStorage.removeItem(RESET_KEY); } catch {} };
+    function genPassword(len = 16) {
+      const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';
+      const a = new Uint32Array(len); crypto.getRandomValues(a);
+      return Array.from(a, (x) => chars[x % chars.length]).join('');
+    }
     function activateTab(name) {
       tabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
       Object.entries(forms).forEach(([k, f]) => f.classList.toggle('active', k === name));
@@ -305,14 +333,15 @@
       setMsg('forgot-msg', '');
       const email = document.getElementById('forgot-email').value;
       const message = document.getElementById('forgot-message').value;
-      const { ok } = await postJson('/auth/forgot', { email, message });
+      const { ok, data } = await postJson('/auth/forgot', { email, message });
       btn.disabled = false;
       if (!ok) {
         setMsg('forgot-msg', 'Could not submit request. Try again later.', 'error');
         return;
       }
-      setMsg('forgot-msg', 'Support ticket opened. If an account exists for that email, an admin will reset your password and reply — you\'ll see the ticket in-app once you sign back in.', 'success');
-      forms.forgot.querySelector('button').disabled = true;
+      if (data && data.claimToken) setResetToken(data.claimToken);
+      showRecovery('pending');
+      setMsg('reset-pending-msg', 'Request submitted. An admin will approve it shortly — then set your new password here.', 'success');
     });
 
     forms.admin.addEventListener('submit', async (e) => {
@@ -357,6 +386,50 @@
         return;
       }
       window.location.href = _pendingChange.redirectTo || '/';
+    });
+
+    // ── Self-service recovery (admin-approved) ────────────────────────────
+    function showRecovery(view) { // 'pending' | 'set'
+      chooserEl.classList.remove('active');
+      authFormsEl.style.display = 'block';
+      document.querySelector('.tabs').style.display = 'none';
+      document.querySelector('.help').style.display = 'none';
+      backLinkEl.style.display = 'none';
+      cardSub.textContent = view === 'set' ? 'Set your new password.' : 'Reset pending admin approval.';
+      Object.entries(forms).forEach(([k, f]) => f.classList.toggle('active',
+        (view === 'set' && k === 'resetSet') || (view === 'pending' && k === 'resetPending')));
+    }
+    async function checkResetStatus(silent) {
+      const token = getResetToken();
+      if (!token) { if (!silent) setMsg('reset-pending-msg', 'No pending reset on this device.', 'error'); return; }
+      const { data } = await postJson('/auth/reset/status', { claimToken: token });
+      const status = data && data.status;
+      if (status === 'approved') { showRecovery('set'); document.getElementById('reset-password').focus(); }
+      else if (status === 'pending') { if (!silent) setMsg('reset-pending-msg', 'Still waiting for an admin to approve. Check back shortly.', ''); }
+      else { setResetToken(''); if (!silent) setMsg('reset-pending-msg', 'This reset is no longer valid — start over.', 'error'); }
+    }
+    document.getElementById('reset-check-btn').addEventListener('click', () => checkResetStatus(false));
+    document.getElementById('reset-cancel-btn').addEventListener('click', () => { setResetToken(''); location.reload(); });
+    document.getElementById('reset-generate-btn').addEventListener('click', () => {
+      const pw = genPassword(16);
+      const a = document.getElementById('reset-password'), b = document.getElementById('reset-password2');
+      a.value = pw; b.value = pw; a.type = 'text'; b.type = 'text';
+      setMsg('reset-set-msg', 'Strong password generated (shown above) — copy it somewhere safe, then continue.', 'success');
+    });
+    forms.resetSet.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const p1 = document.getElementById('reset-password').value;
+      const p2 = document.getElementById('reset-password2').value;
+      if (p1.length < 10) { setMsg('reset-set-msg', 'Password must be at least 10 characters.', 'error'); return; }
+      if (p1 !== p2) { setMsg('reset-set-msg', 'Passwords do not match.', 'error'); return; }
+      const btn = forms.resetSet.querySelector('button[type="submit"]'); btn.disabled = true;
+      setMsg('reset-set-msg', '');
+      const { ok, data } = await postJson('/auth/reset/complete', { claimToken: getResetToken(), newPassword: p1 });
+      btn.disabled = false;
+      if (!ok) { setMsg('reset-set-msg', (data && data.error) || 'Could not set your password.', 'error'); return; }
+      setResetToken('');
+      if (data && data.user) saveProfile(data.user.email || '', data.user);
+      window.location.href = '/';
     });
 
     // ── Saved profiles (account chooser) ──────────────────────────────────
@@ -431,8 +504,10 @@
     });
     document.getElementById('back-to-profiles').addEventListener('click', showChooser);
 
-    // On load: if any profiles are remembered, show the chooser first.
-    if (loadProfiles().length) showChooser(); else showForms(false);
+    // On load: an in-progress password recovery takes priority; otherwise show
+    // the saved-profile chooser (if any), else the sign-in forms.
+    if (getResetToken()) { showRecovery('pending'); checkResetStatus(true); }
+    else if (loadProfiles().length) showChooser(); else showForms(false);
 
     fetch('/auth/support', { headers: { 'Accept': 'application/json' } })
       .then((r) => r.json())

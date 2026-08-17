@@ -159,6 +159,9 @@ export function createAdminPanelHTML() {
             </div>
             <div class="admin-panel-pending">
                 <h4><i class="ti ti-key"></i> Pending password resets</h4>
+                <div style="margin:0 0 10px;">
+                    <button id="admin-panel-require-reset" class="danger" title="Invalidate every user's password (except the super admin) so returning users must reset via the approved-reset flow. Use after moving hosts.">Require ALL users to reset password</button>
+                </div>
                 <div id="admin-panel-pending-list">
                     <div class="admin-panel-pending-empty">Loading…</div>
                 </div>
@@ -433,12 +436,16 @@ export function initAdminPanel(root) {
         requests.forEach((r) => {
             const row = document.createElement('div');
             row.className = 'admin-panel-pending-row';
+            const approved = r.status === 'approved';
             row.innerHTML = `
                 <div class="who">
-                    <div class="email">${escapeHtml(r.email)}</div>
+                    <div class="email">${escapeHtml(r.email)}${approved ? ' <span style="color:#34d399;font-size:.82em;">✓ approved</span>' : ''}</div>
                     <div class="when">Requested ${fmtDate(r.requestedAt)}</div>
                 </div>
-                <button data-pending-action="fulfill" data-id="${r.id}" data-email="${escapeHtml(r.email)}" class="primary">Issue temp password</button>
+                ${approved
+                    ? '<button disabled title="Approved — waiting for the user to set their password">Waiting for user…</button>'
+                    : `<button data-pending-action="approve" data-id="${r.id}" data-email="${escapeHtml(r.email)}" class="primary">Approve reset</button>`}
+                <button data-pending-action="fulfill" data-id="${r.id}" data-email="${escapeHtml(r.email)}">Temp password…</button>
                 <button data-pending-action="dismiss" data-id="${r.id}" data-email="${escapeHtml(r.email)}">Dismiss</button>
             `;
             list.appendChild(row);
@@ -450,6 +457,15 @@ export function initAdminPanel(root) {
         if (!btn) return;
         const { id, email } = btn.dataset;
         const action = btn.dataset.pendingAction;
+
+        if (action === 'approve') {
+            try {
+                await api('POST', `/admin/reset-requests/${id}/approve`);
+                flash(`Approved — ${email} can now set their own new password.`, 'success');
+                loadPending();
+            } catch (err) { flash(err.message, 'error'); }
+            return;
+        }
 
         if (action === 'fulfill') {
             openModal({
@@ -529,6 +545,17 @@ export function initAdminPanel(root) {
             }
         })
         .catch(() => {});
+
+    const requireResetBtn = $('#admin-panel-require-reset');
+    if (requireResetBtn) requireResetBtn.addEventListener('click', async () => {
+        if (!confirm('This will log out ALL users and invalidate their passwords (except the super admin). Each user must then request a reset and set a new password (which you approve). Continue?')) return;
+        requireResetBtn.disabled = true;
+        try {
+            const d = await api('POST', '/admin/users/require-reset');
+            flash(`Done — ${d.count} user(s) must now reset their password.`, 'success');
+        } catch (err) { flash(err.message, 'error'); }
+        finally { requireResetBtn.disabled = false; }
+    });
 
     loadPending();
     loadUsers();

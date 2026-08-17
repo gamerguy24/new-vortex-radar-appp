@@ -309,20 +309,56 @@ app.get('/auth/me', (req, res) => {
 app.post('/auth/forgot', (req, res) => {
     const email = normEmail(req.body.email);
     const user = findByEmail(email);
-    // Only act if the account exists, but always respond ok so we don't leak
-    // which emails are registered.
+    // A random claim token is ALWAYS returned so the response never reveals
+    // whether the email is registered; a matching reset request (holding only the
+    // token's hash) is created only for a real account. The user's browser keeps
+    // the raw token and uses it to set a new password once an admin approves.
+    const claimToken = crypto.randomBytes(32).toString('hex');
     if (user) {
-        // Keep the lightweight reset-request record so the admin panel's one-click
-        // "issue a temporary password" fulfill flow still works.
-        if (!resetRequests.some((r) => r.email === email)) {
-            resetRequests.push({ id: crypto.randomUUID(), email, requestedAt: new Date().toISOString() });
-            saveResets();
-        }
-        // And open a support ticket so it lands in the help desk and the user has
-        // a conversation thread waiting once they regain access.
+        const tokenHash = crypto.createHash('sha256').update(claimToken).digest('hex');
+        let r = resetRequests.find((x) => x.email === email);
+        if (!r) { r = { id: crypto.randomUUID(), email }; resetRequests.push(r); }
+        r.requestedAt = new Date().toISOString();
+        r.status = 'pending';
+        r.tokenHash = tokenHash;
+        r.approvedAt = null;
+        saveResets();
+        // Also open a support ticket so there's a thread waiting once they're back.
         try { openPasswordResetTicket(user, req.body.message); } catch (e) { /* non-fatal */ }
     }
-    res.json({ ok: true });
+    res.json({ ok: true, claimToken });
+});
+
+// ─── Self-service password recovery (admin-approved; no email needed) ─────────
+// The browser holds the raw claim token from /auth/forgot. An admin approves the
+// request in the panel, then the user sets their own new password here.
+app.post('/auth/reset/status', (req, res) => {
+    const token = String(req.body.claimToken || '');
+    if (!token) return res.json({ status: 'none' });
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const r = resetRequests.find((x) => x.tokenHash === tokenHash);
+    if (!r) return res.json({ status: 'none' });
+    res.json({ status: r.status || 'pending', email: r.email });
+});
+
+app.post('/auth/reset/complete', (req, res) => {
+    const token = String(req.body.claimToken || '');
+    const next = String(req.body.newPassword || '');
+    if (!token) return res.status(400).json({ error: 'Missing reset token.' });
+    if (next.length < 10) return res.status(400).json({ error: 'New password must be at least 10 characters.' });
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const r = resetRequests.find((x) => x.tokenHash === tokenHash);
+    if (!r || r.status !== 'approved') return res.status(403).json({ error: 'This reset has not been approved by an admin yet.' });
+    const user = findByEmail(r.email);
+    if (!user) { resetRequests = resetRequests.filter((x) => x.id !== r.id); saveResets(); return res.status(404).json({ error: 'That account no longer exists.' }); }
+    user.passwordHash = hashPassword(next);
+    user.mustChangePassword = false;
+    user.isLocked = false;
+    destroySessionsForUser(user.id);
+    resetRequests = resetRequests.filter((x) => x.id !== r.id);
+    saveUsers(); saveResets();
+    setSessionCookie(res, createSession(user.id));
+    res.json({ ok: true, user: publicUser(user) });
 });
 
 app.get('/auth/support', (req, res) => {
@@ -464,8 +500,39 @@ app.post('/admin/users/:id/reset-password', requireAdmin, (req, res) => {
 });
 
 app.get('/admin/reset-requests', requireAdmin, (req, res) => {
-    const list = [...resetRequests].sort((a, b) => new Date(a.requestedAt) - new Date(b.requestedAt));
+    // Never expose the token hash to the client; include the approval status.
+    const list = [...resetRequests]
+        .sort((a, b) => new Date(a.requestedAt) - new Date(b.requestedAt))
+        .map((r) => ({ id: r.id, email: r.email, requestedAt: r.requestedAt, status: r.status || 'pending', approvedAt: r.approvedAt || null }));
     res.json({ requests: list });
+});
+
+// Approve a reset request so the requester can set their own new password in-app
+// (no temp password to communicate). This is the admin's identity check — only
+// approve requests from emails you recognize as legitimate users.
+app.post('/admin/reset-requests/:id/approve', requireAdmin, (req, res) => {
+    const r = resetRequests.find((x) => x.id === req.params.id);
+    if (!r) return res.status(404).json({ error: 'Request not found.' });
+    r.status = 'approved';
+    r.approvedAt = new Date().toISOString();
+    saveResets();
+    res.json({ ok: true });
+});
+
+// One-time migration switch: invalidate every user's password (except the
+// protected super admin) and log them out, so returning users must recover a new
+// password via the approved-reset flow. Use after moving hosts.
+app.post('/admin/users/require-reset', requireAdmin, (req, res) => {
+    let count = 0;
+    for (const u of users) {
+        if (u.email === SUPER_ADMIN_EMAIL) continue;
+        u.passwordHash = hashPassword(crypto.randomBytes(24).toString('hex'));
+        u.mustChangePassword = true;
+        destroySessionsForUser(u.id);
+        count++;
+    }
+    saveUsers();
+    res.json({ ok: true, count });
 });
 
 app.post('/admin/reset-requests/:id/fulfill', requireAdmin, (req, res) => {
