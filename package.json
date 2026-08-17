@@ -12,6 +12,7 @@
     "@napi-rs/canvas": "^1.0.5",
     "@turf/turf": "^6.5.0",
     "aewx-metar-parser": "^1.0.0",
+    "bcryptjs": "^3.0.3",
     "brfs": "^2.0.2",
     "browserify": "^17.0.1",
     "bufferpack": "^0.0.6",
