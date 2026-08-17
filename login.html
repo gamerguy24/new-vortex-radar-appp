@@ -336,10 +336,20 @@
       const { ok, data } = await postJson('/auth/forgot', { email, message });
       btn.disabled = false;
       if (!ok) {
-        setMsg('forgot-msg', 'Could not submit request. Try again later.', 'error');
+        // A 429 from the reset rate limiter carries its own explanation.
+        setMsg('forgot-msg', (data && data.error) || 'Could not submit request. Try again later.', 'error');
         return;
       }
       if (data && data.claimToken) setResetToken(data.claimToken);
+      // When mail is configured the temporary password has already been sent,
+      // so there is nothing to wait on — they just sign in with it.
+      if (data && data.emailed) {
+        setMsg('forgot-msg',
+          'If that email is registered, a temporary password is on its way to it. ' +
+          'Check your inbox (and spam folder), then sign in with it — you\'ll be asked to pick a new password straight away.',
+          'success');
+        return;
+      }
       showRecovery('pending');
       setMsg('reset-pending-msg', 'Request submitted. An admin will approve it shortly — then set your new password here.', 'success');
     });

@@ -45,6 +45,24 @@ const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@twistcasterli
 const SESSION_TTL_MS = (parseInt(process.env.SESSION_TTL_DAYS, 10) || 30) * 24 * 60 * 60 * 1000;
 const COOKIE = 'vr_session';
 
+// ─── Outgoing mail ──────────────────────────────────────────────────────────
+// When SMTP is configured a forgotten password needs no admin involvement: the
+// server issues a generated temporary password and emails it to the account.
+// With SMTP unset everything falls back to the original admin-approval queue,
+// so the app still works if mail is unavailable.
+const SMTP_HOST = process.env.SMTP_HOST || '';
+const SMTP_PORT = parseInt(process.env.SMTP_PORT, 10) || 465;
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASSWORD = process.env.SMTP_PASSWORD || '';
+// Port 465 is implicit TLS; anything else upgrades via STARTTLS.
+const SMTP_SECURE = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : SMTP_PORT === 465;
+const MAIL_FROM = process.env.MAIL_FROM || SMTP_USER;
+const APP_NAME = process.env.APP_NAME || 'Vortex Radar';
+// Shown in the email so the recipient knows where to sign in.
+const APP_URL = process.env.APP_URL || '';
+// How long an emailed temporary password stays valid.
+const TEMP_PASSWORD_TTL_MS = (parseInt(process.env.TEMP_PASSWORD_TTL_MINUTES, 10) || 60) * 60 * 1000;
+
 // ─── Persistence ────────────────────────────────────────────────────────────
 function readJson(file, fallback) {
     try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
@@ -132,6 +150,124 @@ function verifyPassword(password, stored) {
     const dk = crypto.scryptSync(password, Buffer.from(saltHex, 'hex'), 64);
     return hash.length === dk.length && crypto.timingSafeEqual(hash, dk);
 }
+
+// ─── Temporary password generation ───────────────────────────────────────────
+// 0/O and 1/l/I are left out so a generated password can be read aloud or typed
+// from a phone screen without ambiguity. randomInt is unbiased, unlike
+// (random() * n). Four groups of four gives roughly 90 bits of entropy.
+const TEMP_PW_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+function generateTempPassword() {
+    const groups = [];
+    for (let g = 0; g < 4; g++) {
+        let group = '';
+        for (let i = 0; i < 4; i++) group += TEMP_PW_ALPHABET[crypto.randomInt(TEMP_PW_ALPHABET.length)];
+        groups.push(group);
+    }
+    return groups.join('-');
+}
+
+/**
+ * Applies a generated temporary password to a user: forces a change at next
+ * sign-in, unlocks the account, and signs out every active session so the old
+ * password stops working everywhere. Returns the plaintext, which is the only
+ * time it exists — only the hash is stored.
+ */
+function issueTempPassword(user, { expires = false } = {}) {
+    const password = generateTempPassword();
+    user.passwordHash = hashPassword(password);
+    user.mustChangePassword = true;
+    user.isLocked = false;
+    user.tempPasswordExpiresAt = expires ? new Date(Date.now() + TEMP_PASSWORD_TTL_MS).toISOString() : null;
+    destroySessionsForUser(user.id);
+    saveUsers();
+    return password;
+}
+
+// ─── Outgoing mail (nodemailer) ──────────────────────────────────────────────
+// Required lazily so the server still boots if dependencies have not been
+// installed yet; mail is simply reported as unavailable in that case.
+let nodemailer = null;
+try { nodemailer = require('nodemailer'); } catch (e) { /* mail disabled */ }
+
+let mailTransport = null;
+function mailReady() {
+    return Boolean(nodemailer && SMTP_HOST && SMTP_USER && SMTP_PASSWORD);
+}
+function getMailTransport() {
+    if (!mailReady()) return null;
+    if (!mailTransport) {
+        mailTransport = nodemailer.createTransport({
+            host: SMTP_HOST,
+            port: SMTP_PORT,
+            secure: SMTP_SECURE,
+            auth: { user: SMTP_USER, pass: SMTP_PASSWORD },
+        });
+    }
+    return mailTransport;
+}
+
+/**
+ * Returns true only when the provider accepted the message. Callers must not
+ * surface this to an unauthenticated user, since it reveals whether an address
+ * is registered.
+ */
+async function sendMail({ to, subject, text }) {
+    const transport = getMailTransport();
+    if (!transport) return false;
+    try {
+        await transport.sendMail({ from: MAIL_FROM, to, subject, text });
+        return true;
+    } catch (err) {
+        console.error(`[mail] failed to send to ${to}:`, err && err.message ? err.message : err);
+        return false;
+    }
+}
+
+function tempPasswordEmail(email, password, { expires }) {
+    const where = APP_URL ? `\n  Sign in at:         ${APP_URL}/login.html\n` : '';
+    const expiryLine = expires
+        ? `This temporary password expires in ${Math.round(TEMP_PASSWORD_TTL_MS / 60000)} minutes.\n`
+        : '';
+    return {
+        subject: `${APP_NAME} — your temporary password`,
+        text:
+            `A password reset was requested for your ${APP_NAME} account.\n\n` +
+            `  Email:              ${email}\n` +
+            `  Temporary password: ${password}\n` + where +
+            `\n${expiryLine}` +
+            `You will be asked to choose a new password as soon as you sign in.\n\n` +
+            `If you did not request this, your old password has already been replaced — ` +
+            `sign in with the temporary password above and set a new one, or contact ${SUPPORT_EMAIL}.\n\n` +
+            `— ${APP_NAME}\n`,
+    };
+}
+
+async function sendTempPasswordEmail(user, password, opts = {}) {
+    const { subject, text } = tempPasswordEmail(user.email, password, { expires: !!opts.expires });
+    return sendMail({ to: user.email, subject, text });
+}
+
+// ─── Reset request rate limiting ─────────────────────────────────────────────
+// /auth/forgot replaces the account's password, so an unthrottled endpoint would
+// let anyone repeatedly lock a user out. Per-account limits are tight; the
+// per-IP budget is looser because several users can share one address.
+const resetHits = new Map();
+function rateLimited(key, max, windowMs) {
+    const now = Date.now();
+    const hits = (resetHits.get(key) || []).filter((t) => now - t < windowMs);
+    if (hits.length >= max) { resetHits.set(key, hits); return true; }
+    hits.push(now);
+    resetHits.set(key, hits);
+    return false;
+}
+// Keep the map from growing without bound on a long-lived process.
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, hits] of resetHits) {
+        const live = hits.filter((t) => now - t < 60 * 60 * 1000);
+        if (live.length) resetHits.set(key, live); else resetHits.delete(key);
+    }
+}, 15 * 60 * 1000).unref();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -294,6 +430,15 @@ app.post('/auth/login', (req, res) => {
     }
     if (user.isLocked) return res.status(403).json({ error: 'This account is locked. Contact an admin.' });
 
+    // An emailed temporary password is only good for a short window. Admin-issued
+    // ones carry no expiry, since the admin controls when they hand it over.
+    if (user.tempPasswordExpiresAt && Date.parse(user.tempPasswordExpiresAt) < Date.now()) {
+        return res.status(401).json({
+            error: 'That temporary password has expired. Use "Forgot your password?" to get a new one.',
+            tempPasswordExpired: true,
+        });
+    }
+
     user.lastLoginAt = new Date().toISOString();
     saveUsers();
     setSessionCookie(res, createSession(user.id));
@@ -311,7 +456,7 @@ app.get('/auth/me', (req, res) => {
     res.json({ user: publicUser(req.user) });
 });
 
-app.post('/auth/forgot', (req, res) => {
+app.post('/auth/forgot', async (req, res) => {
     const email = normEmail(req.body.email);
     const user = findByEmail(email);
     // A random claim token is ALWAYS returned so the response never reveals
@@ -319,7 +464,39 @@ app.post('/auth/forgot', (req, res) => {
     // token's hash) is created only for a real account. The user's browser keeps
     // the raw token and uses it to set a new password once an admin approves.
     const claimToken = crypto.randomBytes(32).toString('hex');
-    if (user) {
+
+    // Counted before the account lookup so probing costs the same either way.
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const throttled =
+        rateLimited(`reset:email:${email}`, 3, 60 * 60 * 1000) ||
+        rateLimited(`reset:ip:${ip}`, 20, 60 * 60 * 1000);
+
+    if (throttled) {
+        return res.status(429).json({ error: 'Too many reset requests. Try again in an hour.' });
+    }
+
+    // With mail configured this is fully self-service: issue a temporary
+    // password and send it to the address on the account. It is never returned
+    // to the browser, so only someone with access to that inbox can use it.
+    let emailed = mailReady();
+    let handledByEmail = false;
+
+    if (user && mailReady()) {
+        const tempPassword = issueTempPassword(user, { expires: true });
+        handledByEmail = await sendTempPasswordEmail(user, tempPassword, { expires: true });
+        emailed = handledByEmail;
+        if (handledByEmail) {
+            // Resolved without an admin, so drop any queued request for this user.
+            resetRequests = resetRequests.filter((x) => x.email !== email);
+            saveResets();
+        } else {
+            // Delivery failed after the password was already rotated, so fall
+            // through to the admin queue rather than stranding the user.
+            console.error(`[mail] temp password for ${email} undeliverable; falling back to admin approval.`);
+        }
+    }
+
+    if (user && !handledByEmail) {
         const tokenHash = crypto.createHash('sha256').update(claimToken).digest('hex');
         let r = resetRequests.find((x) => x.email === email);
         if (!r) { r = { id: crypto.randomUUID(), email }; resetRequests.push(r); }
@@ -331,7 +508,12 @@ app.post('/auth/forgot', (req, res) => {
         // Also open a support ticket so there's a thread waiting once they're back.
         try { openPasswordResetTicket(user, req.body.message); } catch (e) { /* non-fatal */ }
     }
-    res.json({ ok: true, claimToken });
+
+    // The response is deliberately identical for registered and unregistered
+    // addresses: claimToken is always present (it is inert unless a matching
+    // request exists) and `emailed` reflects configuration, not whether the
+    // account was found.
+    res.json({ ok: true, claimToken, emailed });
 });
 
 // ─── Self-service password recovery (admin-approved; no email needed) ─────────
@@ -358,6 +540,7 @@ app.post('/auth/reset/complete', (req, res) => {
     if (!user) { resetRequests = resetRequests.filter((x) => x.id !== r.id); saveResets(); return res.status(404).json({ error: 'That account no longer exists.' }); }
     user.passwordHash = hashPassword(next);
     user.mustChangePassword = false;
+    user.tempPasswordExpiresAt = null;
     user.isLocked = false;
     destroySessionsForUser(user.id);
     resetRequests = resetRequests.filter((x) => x.id !== r.id);
@@ -380,6 +563,7 @@ app.post('/auth/change-password', requireAuth, (req, res) => {
     if (next.length < 10) return res.status(400).json({ error: 'New password must be at least 10 characters.' });
     req.user.passwordHash = hashPassword(next);
     req.user.mustChangePassword = false;
+    req.user.tempPasswordExpiresAt = null;
     saveUsers();
     res.json({ ok: true });
 });
@@ -488,20 +672,39 @@ app.delete('/admin/users/:id', requireAdmin, (req, res) => {
 // Directly reset any user's password from the admin panel (no pending request
 // needed). Sets a temporary password the user must change on next sign-in, and
 // signs out their active sessions so the old password stops working everywhere.
-app.post('/admin/users/:id/reset-password', requireAdmin, (req, res) => {
+app.post('/admin/users/:id/reset-password', requireAdmin, async (req, res) => {
     const user = findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found.' });
-    const newPassword = String(req.body.newPassword || '');
-    if (newPassword.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters.' });
-    user.passwordHash = hashPassword(newPassword);
-    user.mustChangePassword = true;
-    user.isLocked = false;
-    destroySessionsForUser(user.id);
+
+    // newPassword is optional: omit it and the server generates a strong one.
+    const supplied = String(req.body.newPassword || '');
+    if (supplied && supplied.length < 10) {
+        return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+    }
+
+    let tempPassword;
+    if (supplied) {
+        tempPassword = supplied;
+        user.passwordHash = hashPassword(supplied);
+        user.mustChangePassword = true;
+        user.isLocked = false;
+        user.tempPasswordExpiresAt = null;
+        destroySessionsForUser(user.id);
+        saveUsers();
+    } else {
+        // Admin-issued passwords do not expire: the admin controls delivery timing.
+        tempPassword = issueTempPassword(user, { expires: false });
+    }
+
+    const emailed = await sendTempPasswordEmail(user, tempPassword, { expires: false });
+
     // Clear any pending reset request for this user now that it's handled.
     resetRequests = resetRequests.filter((r) => r.email !== user.email);
-    saveUsers();
     saveResets();
-    res.json({ ok: true });
+
+    // The plaintext is returned once so the admin can relay it when mail is not
+    // configured or the address is unreachable. Only the hash is stored.
+    res.json({ ok: true, tempPassword, emailed });
 });
 
 app.get('/admin/reset-requests', requireAdmin, (req, res) => {
@@ -540,25 +743,41 @@ app.post('/admin/users/require-reset', requireAdmin, (req, res) => {
     res.json({ ok: true, count });
 });
 
-app.post('/admin/reset-requests/:id/fulfill', requireAdmin, (req, res) => {
+app.post('/admin/reset-requests/:id/fulfill', requireAdmin, async (req, res) => {
     const reqItem = resetRequests.find((r) => r.id === req.params.id);
     if (!reqItem) return res.status(404).json({ error: 'Request not found.' });
-    const newPassword = String(req.body.newPassword || '');
-    if (newPassword.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+
+    // newPassword is optional: omit it and the server generates a strong one.
+    const supplied = String(req.body.newPassword || '');
+    if (supplied && supplied.length < 10) {
+        return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+    }
+
     const user = findByEmail(reqItem.email);
     if (!user) {
         resetRequests = resetRequests.filter((r) => r.id !== reqItem.id);
         saveResets();
         return res.status(404).json({ error: 'The user for this request no longer exists.' });
     }
-    user.passwordHash = hashPassword(newPassword);
-    user.mustChangePassword = true;
-    user.isLocked = false;
-    destroySessionsForUser(user.id);
+
+    let tempPassword;
+    if (supplied) {
+        tempPassword = supplied;
+        user.passwordHash = hashPassword(supplied);
+        user.mustChangePassword = true;
+        user.isLocked = false;
+        user.tempPasswordExpiresAt = null;
+        destroySessionsForUser(user.id);
+        saveUsers();
+    } else {
+        tempPassword = issueTempPassword(user, { expires: false });
+    }
+
+    const emailed = await sendTempPasswordEmail(user, tempPassword, { expires: false });
+
     resetRequests = resetRequests.filter((r) => r.id !== reqItem.id);
-    saveUsers();
     saveResets();
-    res.json({ ok: true });
+    res.json({ ok: true, tempPassword, emailed });
 });
 
 app.post('/admin/reset-requests/:id/dismiss', requireAdmin, (req, res) => {
@@ -1382,4 +1601,14 @@ ensureSuperAdmin();
 const HOST = process.env.HOST || '0.0.0.0';
 app.listen(PORT, HOST, () => {
     console.log(`Vortex Radar server running on ${HOST}:${PORT}`);
+    if (mailReady()) {
+        console.log(`[mail] smtp ${SMTP_HOST}:${SMTP_PORT} as ${SMTP_USER} — password resets are self-service.`);
+        if (MAIL_FROM && SMTP_USER && !MAIL_FROM.includes(SMTP_USER)) {
+            console.warn(`[mail] MAIL_FROM (${MAIL_FROM}) does not contain ${SMTP_USER}; most providers reject a From address that is not the authenticated account.`);
+        }
+    } else if (!nodemailer) {
+        console.warn('[mail] nodemailer is not installed — run "npm install". Password resets fall back to the admin approval queue.');
+    } else {
+        console.warn('[mail] SMTP_HOST/SMTP_USER/SMTP_PASSWORD not fully set — password resets fall back to the admin approval queue.');
+    }
 });

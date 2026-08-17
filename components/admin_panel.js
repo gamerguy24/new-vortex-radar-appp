@@ -315,6 +315,55 @@ export function initAdminPanel(root) {
     const modalCancel = $('#admin-panel-modal-cancel');
     let modalSubmit = null;
 
+    /**
+     * Shows a generated temporary password once, with a copy button, and says
+     * whether the server managed to email it. Stays on screen until dismissed —
+     * a toast would vanish before the admin could copy it.
+     */
+    function showTempPassword(email, data) {
+        const pw = data && data.tempPassword;
+        if (!pw) { flash(`Password reset for ${email}`, 'success'); return; }
+
+        const emailed = !!(data && data.emailed);
+        const bg = document.createElement('div');
+        bg.style.cssText = `
+            position: fixed; inset: 0; background: rgba(4,10,18,0.72);
+            backdrop-filter: blur(6px); z-index: 100000;
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        `;
+        bg.innerHTML = `
+            <div style="background:#0f1723;border:1px solid #27beff55;border-radius:12px;
+                        padding:20px;max-width:460px;width:100%;font-family:inherit;color:#e6edf5;">
+                <div style="font-weight:600;margin-bottom:6px;">Temporary password for ${email}</div>
+                <div style="font-size:.86em;opacity:.75;margin-bottom:14px;">
+                    ${emailed
+                        ? 'Emailed to them. Shown here too in case you need to relay it.'
+                        : 'Not emailed — no mail configured or delivery failed, so you will need to pass this on.'}
+                    They must change it at next sign-in.
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <code style="flex:1;background:#060c14;border:1px solid #ffffff1a;border-radius:8px;
+                                 padding:10px 12px;font-size:1.1em;letter-spacing:.06em;">${pw}</code>
+                    <button id="ap-copy-pw" class="primary" style="white-space:nowrap;">Copy</button>
+                </div>
+                <div style="margin-top:16px;text-align:right;">
+                    <button id="ap-close-pw">Done</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(bg);
+        bg.querySelector('#ap-copy-pw').addEventListener('click', async (ev) => {
+            try {
+                await navigator.clipboard.writeText(pw);
+                ev.target.textContent = 'Copied';
+                setTimeout(() => { ev.target.textContent = 'Copy'; }, 1800);
+            } catch (e) { flash('Could not copy — select it manually.', 'error'); }
+        });
+        const close = () => bg.remove();
+        bg.querySelector('#ap-close-pw').addEventListener('click', close);
+        bg.addEventListener('click', (ev) => { if (ev.target === bg) close(); });
+    }
+
     function openModal({ title, desc, fields, onSubmit }) {
         modalTitle.textContent = title;
         modalDesc.textContent = desc || '';
@@ -366,13 +415,13 @@ export function initAdminPanel(root) {
         if (action === 'reset-password') {
             openModal({
                 title: `Reset password for ${email}`,
-                desc: 'Set a temporary password (10+ chars). The user must change it on next sign-in, and any active sessions are signed out. Share it with them privately — it is not shown again.',
-                fields: `<label>Temporary password</label><input id="ap-reset-pw" type="text" autocomplete="off" minlength="10" />`,
+                desc: 'Leave blank to have a strong temporary password generated and emailed to the user. The user must change it on next sign-in, and any active sessions are signed out.',
+                fields: `<label>Temporary password <span style="opacity:.7;font-weight:400;">(optional — blank generates one)</span></label><input id="ap-reset-pw" type="text" autocomplete="off" placeholder="Leave blank to generate" />`,
                 onSubmit: async () => {
-                    const pw = root.querySelector('#ap-reset-pw').value;
-                    if (pw.length < 10) throw new Error('Password must be at least 10 characters.');
-                    await api('POST', `/admin/users/${id}/reset-password`, { newPassword: pw });
-                    flash(`Password reset for ${email}`, 'success');
+                    const pw = root.querySelector('#ap-reset-pw').value.trim();
+                    if (pw && pw.length < 10) throw new Error('Password must be at least 10 characters.');
+                    const data = await api('POST', `/admin/users/${id}/reset-password`, pw ? { newPassword: pw } : {});
+                    showTempPassword(email, data);
                     loadUsers();
                     loadPending();
                 }
@@ -470,13 +519,13 @@ export function initAdminPanel(root) {
         if (action === 'fulfill') {
             openModal({
                 title: `Issue temp password for ${email}`,
-                desc: 'Enter a temporary password (10+ chars). The user will be required to change it on next sign-in. Share it with them privately — it is not shown again.',
-                fields: `<label>Temporary password</label><input id="ap-new-pw" type="text" autocomplete="off" minlength="10" />`,
+                desc: 'Leave blank to have a strong temporary password generated and emailed to the user. They will be required to change it on next sign-in.',
+                fields: `<label>Temporary password <span style="opacity:.7;font-weight:400;">(optional — blank generates one)</span></label><input id="ap-new-pw" type="text" autocomplete="off" placeholder="Leave blank to generate" />`,
                 onSubmit: async () => {
-                    const pw = root.querySelector('#ap-new-pw').value;
-                    if (pw.length < 10) throw new Error('Password must be at least 10 characters.');
-                    await api('POST', `/admin/reset-requests/${id}/fulfill`, { newPassword: pw });
-                    flash(`Temp password issued for ${email}`, 'success');
+                    const pw = root.querySelector('#ap-new-pw').value.trim();
+                    if (pw && pw.length < 10) throw new Error('Password must be at least 10 characters.');
+                    const data = await api('POST', `/admin/reset-requests/${id}/fulfill`, pw ? { newPassword: pw } : {});
+                    showTempPassword(email, data);
                     loadPending();
                     loadUsers();
                 }
