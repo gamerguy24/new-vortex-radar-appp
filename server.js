@@ -17,6 +17,7 @@ try { require('dotenv').config(); } catch (e) {}
 
 const express = require('express');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const { createBilling } = require('./billing');
@@ -121,7 +122,11 @@ function hashPassword(password) {
     return salt.toString('hex') + ':' + dk.toString('hex');
 }
 function verifyPassword(password, stored) {
-    if (!stored || !stored.includes(':')) return false;
+    if (!stored) return false;
+    // bcrypt hashes (e.g. migrated from the old Postgres-backed deployment)
+    // look like $2a$/$2b$/$2y$<cost>$<salt+hash>.
+    if (/^\$2[aby]\$/.test(stored)) return bcrypt.compareSync(password, stored);
+    if (!stored.includes(':')) return false;
     const [saltHex, hashHex] = stored.split(':');
     const hash = Buffer.from(hashHex, 'hex');
     const dk = crypto.scryptSync(password, Buffer.from(saltHex, 'hex'), 64);
