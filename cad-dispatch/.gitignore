@@ -1,0 +1,18 @@
+# Dependencies and build output
+node_modules/
+dist/
+build/
+
+# Local configuration. backend/.env holds the SMTP app password.
+.env
+.env.local
+.env.*.local
+
+# Runtime state: JWT signing key, file-backed user store, generated emails.
+# Never commit — this is the password store.
+backend/data/
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+*.log
