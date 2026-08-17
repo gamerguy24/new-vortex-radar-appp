@@ -1,6 +1,0 @@
-node_modules/
-dist/
-.env
-
-# Contains the JWT signing key and the password-hash store. Never commit.
-data/
