@@ -218,64 +218,175 @@ function drawSkewT(ctx, T, snd) {
     ctx.restore();
 }
 
-// ── hodograph ─────────────────────────────────────────────────────────────────
-function drawHodograph(ctx, rect, snd) {
-    const { x, y, w, h } = rect;
-    const cx = x + w / 2, cy = y + h / 2;
-    const R = Math.min(w, h) / 2 - 16;
-
-    const wl = snd.levels
+// ── severe parameters (computed from the profile) ─────────────────────────────
+const KT2MS = 0.514444;
+function toUV(dir, spd) { const r = dir * Math.PI / 180; return { u: -spd * Math.sin(r), v: -spd * Math.cos(r) }; } // kt
+function uvToDirSpd(u, v) { const spd = Math.hypot(u, v); let dir = Math.atan2(-u, -v) * 180 / Math.PI; if (dir < 0) dir += 360; return { dir: Math.round(dir), spd: Math.round(spd) }; }
+function windProfile(snd) {
+    return snd.levels
         .filter((l) => l.wdir != null && l.wspd != null && l.z != null)
-        .map((l) => ({ agl: l.z - snd.surfaceZ, dir: l.wdir, spd: l.wspd }))
-        .filter((l) => l.agl >= -50 && l.agl <= 12000)
+        .map((l) => ({ agl: l.z - snd.surfaceZ, ...toUV(l.wdir, l.wspd) }))
+        .filter((l) => l.agl >= -50 && l.agl <= 15000)
         .sort((a, b) => a.agl - b.agl);
+}
+function interpUV(wp, agl) {
+    if (!wp.length) return null;
+    if (agl <= wp[0].agl) return { u: wp[0].u, v: wp[0].v };
+    for (let i = 1; i < wp.length; i++) if (agl <= wp[i].agl) { const t = (agl - wp[i - 1].agl) / ((wp[i].agl - wp[i - 1].agl) || 1); return { u: wp[i - 1].u + t * (wp[i].u - wp[i - 1].u), v: wp[i - 1].v + t * (wp[i].v - wp[i - 1].v) }; }
+    return { u: wp[wp.length - 1].u, v: wp[wp.length - 1].v };
+}
+function meanWind(wp, z0, z1) { let su = 0, sv = 0, n = 0; for (const l of wp) if (l.agl >= z0 && l.agl <= z1) { su += l.u; sv += l.v; n++; } if (!n) { const a = interpUV(wp, z0), b = interpUV(wp, z1); return { u: (a.u + b.u) / 2, v: (a.v + b.v) / 2 }; } return { u: su / n, v: sv / n }; }
+function shearMag(wp, z0, z1) { const a = interpUV(wp, z0), b = interpUV(wp, z1); if (!a || !b) return null; return Math.hypot(b.u - a.u, b.v - a.v); } // kt
+function srhRel(wp, z0, z1, C) {
+    let s = 0; const seg = wp.filter((l) => l.agl >= -20 && l.agl <= z1 + 300).sort((a, b) => a.agl - b.agl);
+    for (let i = 1; i < seg.length; i++) {
+        const a = seg[i - 1], b = seg[i]; if (b.agl < z0 || a.agl > z1) continue;
+        const au = (a.u - C.u) * KT2MS, av = (a.v - C.v) * KT2MS, bu = (b.u - C.u) * KT2MS, bv = (b.v - C.v) * KT2MS;
+        s += (bu * av - au * bv);
+    }
+    return s; // m²/s²
+}
+function bunkers(wp) {
+    if (wp.length < 2) return null;
+    const mean = meanWind(wp, 0, 6000);
+    const lo = interpUV(wp, 0), hi = interpUV(wp, 6000);
+    const shu = hi.u - lo.u, shv = hi.v - lo.v, mag = Math.hypot(shu, shv) || 1;
+    const dev = 7.5 / KT2MS; // 7.5 m/s in kt
+    const pu = (shv / mag) * dev, pv = (-shu / mag) * dev;
+    return { mean, RM: { u: mean.u + pu, v: mean.v + pv }, LM: { u: mean.u - pu, v: mean.v - pv } };
+}
+function heightAtP(snd, p) {
+    const L = snd.levels.filter((l) => l.p != null && l.z != null).sort((a, b) => b.p - a.p);
+    if (!L.length) return null;
+    if (p >= L[0].p) return L[0].z; if (p <= L[L.length - 1].p) return L[L.length - 1].z;
+    for (let i = 0; i < L.length - 1; i++) if (p <= L[i].p && p >= L[i + 1].p) { const f = (L[i].p - p) / (L[i].p - L[i + 1].p); return L[i].z + (L[i + 1].z - L[i].z) * f; }
+    return null;
+}
+function computeParams(snd) {
+    const P = { cape: snd.cape, cin: snd.cin, pw: snd.pw, surfaceZ: snd.surfaceZ };
+    const wp = windProfile(snd); P.wp = wp;
+    const bk = bunkers(wp); P.storm = bk;
+    if (bk) {
+        P.shr01 = shearMag(wp, 0, 1000); P.shr06 = shearMag(wp, 0, 6000);
+        P.srh01 = srhRel(wp, 0, 1000, bk.RM); P.srh03 = srhRel(wp, 0, 3000, bk.RM);
+    }
+    const lv = snd.levels.filter((l) => l.p != null && l.t != null).sort((a, b) => b.p - a.p);
+    const sfc = lv.find((l) => l.type === 9) || lv[0];
+    if (sfc && sfc.td != null) {
+        const { Plcl } = lcl(sfc.t, sfc.td, sfc.p); P.lclP = Plcl; P.lclZ = heightAtP(snd, Plcl) - snd.surfaceZ;
+        const env = makeEnvT(lv), par = parcelPath(sfc, P_TOP);
+        let lfcP = null, elP = null, wasPos = false;
+        for (const pt of par) { if (pt.p > Plcl) continue; const e = env(pt.p); if (e == null) continue; const pos = pt.t > e; if (pos && !wasPos && lfcP == null) lfcP = pt.p; if (!pos && wasPos && lfcP != null) elP = pt.p; wasPos = pos; }
+        P.lfcP = lfcP; P.lfcZ = lfcP != null ? heightAtP(snd, lfcP) - snd.surfaceZ : null;
+        P.elP = elP; P.elZ = elP != null ? heightAtP(snd, elP) - snd.surfaceZ : null;
+    }
+    const cape = snd.cape || 0;
+    if (bk && P.srh03 != null && P.shr06 != null) { const e = P.shr06 * KT2MS, et = e < 10 ? 0 : (e > 20 ? 1 : e / 20); P.scp = (cape / 1000) * (Math.max(0, P.srh03) / 50) * et; }
+    if (bk && P.srh01 != null && P.lclZ != null && P.shr06 != null) { const s = P.shr06 * KT2MS, st = s < 12.5 ? 0 : (s > 30 ? 1.5 : s / 20), lt = P.lclZ < 1000 ? 1 : (P.lclZ > 2000 ? 0 : (2000 - P.lclZ) / 1000); P.stp = (cape / 1500) * lt * (Math.max(0, P.srh01) / 150) * st; }
+    if (P.srh03 != null) P.ehi = (cape * Math.max(0, P.srh03)) / 160000;
+    P.hazard = hazardOf(P);
+    return P;
+}
+function hazardOf(P) {
+    const stp = P.stp || 0, scp = P.scp || 0, cape = P.cape || 0;
+    if (stp >= 3) return { text: 'PDS TORNADO', color: '#ff2d78' };
+    if (stp >= 1) return { text: 'TORNADO', color: '#ff5b5b' };
+    if (scp >= 2) return { text: 'SUPERCELL', color: '#ff9f1c' };
+    if (cape >= 1000 || scp >= 0.5) return { text: 'SEVERE STORMS', color: '#ffd24a' };
+    if (cape >= 250) return { text: 'THUNDERSTORMS', color: '#4fc3ff' };
+    return { text: 'GENERAL', color: '#8ea4bd' };
+}
 
-    // auto-scale so light-wind cases still fill the plot
-    const maxSpd = Math.max(20, ...wl.map((l) => l.spd));
+// ── hodograph (with Bunkers storm motion) ─────────────────────────────────────
+function drawHodograph(ctx, rect, P) {
+    const { x, y, w, h } = rect;
+    const cx = x + w / 2, cy = y + h / 2, R = Math.min(w, h) / 2 - 18;
+    const wp = P.wp;
+    const spds = wp.map((l) => Math.hypot(l.u, l.v));
+    const rmSpd = P.storm ? Math.hypot(P.storm.RM.u, P.storm.RM.v) : 0;
+    const maxSpd = Math.max(20, ...spds, rmSpd);
     const ring = maxSpd <= 20 ? 5 : maxSpd <= 40 ? 10 : maxSpd <= 80 ? 20 : 30;
-    const top = Math.ceil(maxSpd / ring) * ring;
-    const sc = R / top;
+    const top = Math.ceil(maxSpd / ring) * ring, sc = R / top;
+    const plot = (u, v) => [cx + u * sc, cy - v * sc];
 
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.fillStyle = '#8398b0';
+    ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.fillStyle = '#7f93ab';
     ctx.font = '600 10px "Onest", system-ui, sans-serif'; ctx.textAlign = 'center';
     for (let s = ring; s <= top; s += ring) { ctx.beginPath(); ctx.arc(cx, cy, s * sc, 0, Math.PI * 2); ctx.stroke(); ctx.fillText(String(s), cx, cy - s * sc - 1); }
-    ctx.strokeStyle = 'rgba(255,255,255,0.20)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
     ctx.beginPath(); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.stroke();
     ctx.restore();
 
-    const uv = (l) => { const r = (l.dir * Math.PI) / 180; return [cx + (-l.spd * Math.sin(r)) * sc, cy - (-l.spd * Math.cos(r)) * sc]; };
     const band = (agl) => (agl <= 1000 ? '#ff4136' : agl <= 3000 ? '#ff9f1c' : agl <= 6000 ? '#ffe14d' : '#4fc3ff');
-    for (let i = 1; i < wl.length; i++) line(ctx, [uv(wl[i - 1]), uv(wl[i])], band(wl[i].agl), 2.6);
-    if (wl.length) { const [sx, sy] = uv(wl[0]); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, 3.5, 0, Math.PI * 2); ctx.fill(); }
+    for (let i = 1; i < wp.length; i++) line(ctx, [plot(wp[i - 1].u, wp[i - 1].v), plot(wp[i].u, wp[i].v)], band(wp[i].agl), 2.6);
+    if (wp.length) { const [sx, sy] = plot(wp[0].u, wp[0].v); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, 3.5, 0, Math.PI * 2); ctx.fill(); }
 
-    ctx.fillStyle = '#9fb2c9'; ctx.font = '700 12px "Onest", system-ui, sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('Hodograph (kt)', x, y - 8);
+    if (P.storm) {
+        const mk = (pt, col, lab) => { const [mx, my] = plot(pt.u, pt.v); ctx.beginPath(); ctx.arc(mx, my, 5, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = '#0a0f1c'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = col; ctx.font = '800 11px "Onest", system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(lab, mx + 8, my + 4); };
+        mk(P.storm.mean, '#c9d6e6', 'MW'); mk(P.storm.LM, '#4fc3ff', 'LM'); mk(P.storm.RM, '#ff5b5b', 'RM');
+    }
+    ctx.fillStyle = '#9fb2c9'; ctx.font = '700 12px "Onest", system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.fillText('Hodograph (kt)', x, y - 8);
 }
 
-// ── indices panel ─────────────────────────────────────────────────────────────
-function drawIndices(ctx, rect, snd) {
-    const { x, y, w } = rect;
-    const rows = [
-        ['CAPE', snd.cape == null ? '—' : snd.cape + ' J/kg', snd.cape > 1000 ? '#ff6b5b' : '#eaf1fb'],
-        ['CIN', snd.cin == null ? '—' : snd.cin + ' J/kg', '#eaf1fb'],
-        ['0-3 km SRH', snd.helic == null ? '—' : snd.helic + ' m²/s²', '#eaf1fb'],
-        ['Precip. water', snd.pw == null ? '—' : (snd.pw / 10).toFixed(1) + ' mm', '#eaf1fb'],
-    ];
-    ctx.save();
-    ctx.fillStyle = '#9fb2c9'; ctx.font = '700 12px "Onest", system-ui, sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('Indices', x, y - 8);
-    let yy = y + 14;
+// ── LCL / LFC / EL markers on the Skew-T ──────────────────────────────────────
+function drawParcelMarkers(ctx, T, P) {
+    const { yP, x, w } = T;
+    const mark = (p, lab, col) => { if (p == null) return; const yy = yP(p); ctx.strokeStyle = col; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x + w - 66, yy); ctx.lineTo(x + w, yy); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = col; ctx.font = '800 11px "Onest", system-ui, sans-serif'; ctx.textAlign = 'right'; ctx.fillText(lab, x + w - 2, yy - 3); };
+    mark(P.lclP, 'LCL', '#69d2ff'); mark(P.lfcP, 'LFC', '#ffd24a'); mark(P.elP, 'EL', '#c9d6e6');
+}
+
+// ── parameter table (one titled column) ───────────────────────────────────────
+function drawIndicesCol(ctx, x, y, w, title, rows) {
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#7f93ab'; ctx.font = '800 10px "Onest", system-ui, sans-serif'; ctx.fillText(title, x, y);
+    let yy = y + 8;
     for (const [k, v, col] of rows) {
-        ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-        roundRect(ctx, x, yy - 13, w, 28, 8); ctx.fill();
-        ctx.fillStyle = '#9fb2c9'; ctx.font = '600 13px "Onest", system-ui, sans-serif'; ctx.textAlign = 'left';
-        ctx.fillText(k, x + 12, yy + 2);
-        ctx.fillStyle = col; ctx.font = '800 14px "Onest", system-ui, sans-serif'; ctx.textAlign = 'right';
-        ctx.fillText(v, x + w - 12, yy + 2);
-        yy += 34;
+        ctx.fillStyle = 'rgba(255,255,255,0.045)'; roundRect(ctx, x, yy, w, 22, 6); ctx.fill();
+        ctx.fillStyle = '#9fb2c9'; ctx.font = '600 11.5px "Onest", system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(k, x + 10, yy + 15);
+        ctx.fillStyle = col; ctx.font = '800 12px "Onest", system-ui, sans-serif'; ctx.textAlign = 'right'; ctx.fillText(v, x + w - 10, yy + 15);
+        yy += 26;
     }
-    ctx.restore();
+    return yy + 8;
+}
+const _fmt = (v, d, suf) => (v == null || isNaN(v)) ? '—' : ((Math.abs(v) >= 100 ? Math.round(v) : (+v).toFixed(d == null ? 0 : d)) + (suf || ''));
+const _km = (z) => z == null ? '—' : (z / 1000).toFixed(1) + ' km';
+function thermoRows(P) {
+    return [
+        ['SB CAPE', _fmt(P.cape, 0, ' J/kg'), (P.cape || 0) >= 1000 ? '#ff6b5b' : '#eaf1fb'],
+        ['SB CIN', _fmt(P.cin, 0, ' J/kg'), '#eaf1fb'],
+        ['LCL height', _km(P.lclZ), '#69d2ff'],
+        ['LFC height', _km(P.lfcZ), '#ffd24a'],
+        ['EL height', _km(P.elZ), '#c9d6e6'],
+        ['PWAT', P.pw == null ? '—' : (P.pw / 10).toFixed(1) + ' mm', '#eaf1fb'],
+    ];
+}
+function kinRows(P) {
+    return [
+        ['0–1 km SRH', _fmt(P.srh01, 0, ' m²/s²'), (P.srh01 || 0) >= 150 ? '#ff9f1c' : '#eaf1fb'],
+        ['0–3 km SRH', _fmt(P.srh03, 0, ' m²/s²'), (P.srh03 || 0) >= 250 ? '#ff9f1c' : '#eaf1fb'],
+        ['0–1 km shear', _fmt(P.shr01, 0, ' kt'), '#eaf1fb'],
+        ['0–6 km shear', _fmt(P.shr06, 0, ' kt'), (P.shr06 || 0) >= 35 ? '#ff9f1c' : '#eaf1fb'],
+    ];
+}
+function compRows(P) {
+    return [
+        ['Supercell (SCP)', _fmt(P.scp, 1), (P.scp || 0) >= 2 ? '#ff9f1c' : '#eaf1fb'],
+        ['Sig. Tornado (STP)', _fmt(P.stp, 1), (P.stp || 0) >= 1 ? '#ff5b5b' : '#eaf1fb'],
+        ['0–3 km EHI', _fmt(P.ehi, 1), (P.ehi || 0) >= 1 ? '#ff9f1c' : '#eaf1fb'],
+    ];
+}
+function drawStormReadout(ctx, x, y, P) {
+    ctx.textAlign = 'left'; ctx.fillStyle = '#7f93ab'; ctx.font = '800 10px "Onest", system-ui, sans-serif';
+    ctx.fillText('STORM MOTION', x, y);
+    if (!P.storm) return;
+    const rows = [['RM', P.storm.RM, '#ff5b5b'], ['LM', P.storm.LM, '#4fc3ff'], ['MW', P.storm.mean, '#c9d6e6']];
+    let yy = y + 18;
+    for (const [lab, m, col] of rows) {
+        const d = uvToDirSpd(m.u, m.v);
+        ctx.fillStyle = col; ctx.font = '800 12px "Onest", system-ui, sans-serif'; ctx.fillText(lab, x, yy);
+        ctx.fillStyle = '#cdd9ea'; ctx.font = '600 12px "Onest", system-ui, sans-serif'; ctx.fillText(`${d.dir}° @ ${d.spd} kt`, x + 34, yy);
+        yy += 18;
+    }
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -291,20 +402,35 @@ function renderSounding(canvas, snd, meta) {
     const W = 1000, H = 720;
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
-    // panel background
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#111a2c'); g.addColorStop(1, '#0a0f1c');
+    g.addColorStop(0, '#0f1728'); g.addColorStop(1, '#080d18');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
     ctx.fillStyle = '#eaf1fb'; ctx.font = '800 18px "Onest", system-ui, sans-serif'; ctx.textAlign = 'left';
     ctx.fillText(meta.title || 'Forecast Sounding', 22, 30);
     if (meta.sub) { ctx.fillStyle = '#8ea4bd'; ctx.font = '600 12.5px "Onest", system-ui, sans-serif'; ctx.fillText(meta.sub, 22, 50); }
 
-    const T = makeTransforms({ x: 58, y: 72, w: 486, h: 590 });
-    drawSkewT(ctx, T, snd);
+    const P = computeParams(snd);
 
-    drawHodograph(ctx, { x: 662, y: 104, w: 300, h: 300 }, snd);
-    drawIndices(ctx, { x: 662, y: 460, w: 300 }, snd);
+    // hazard chip (top-right)
+    if (P.hazard) {
+        const t = P.hazard.text; ctx.font = '800 13px "Onest", system-ui, sans-serif';
+        const bw = ctx.measureText(t).width + 26, bx = W - 22 - bw, by = 14;
+        ctx.fillStyle = P.hazard.color; roundRect(ctx, bx, by, bw, 26, 13); ctx.fill();
+        ctx.fillStyle = '#0a0f1c'; ctx.textAlign = 'center'; ctx.fillText(t, bx + bw / 2, by + 18);
+    }
+
+    const T = makeTransforms({ x: 54, y: 72, w: 470, h: 596 });
+    drawSkewT(ctx, T, snd);
+    drawParcelMarkers(ctx, T, P);
+
+    drawHodograph(ctx, { x: 604, y: 92, w: 276, h: 276 }, P);
+    drawStormReadout(ctx, 900, 110, P);
+
+    // parameter tables (two columns)
+    drawIndicesCol(ctx, 548, 452, 190, 'THERMODYNAMIC', thermoRows(P));
+    const ky = drawIndicesCol(ctx, 762, 452, 218, 'KINEMATIC', kinRows(P));
+    drawIndicesCol(ctx, 762, ky + 6, 218, 'COMPOSITE', compRows(P));
 }
 
 module.exports = { renderSounding };
