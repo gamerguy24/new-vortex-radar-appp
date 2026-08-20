@@ -8,8 +8,10 @@ const filter_lightning = require('./filter_lightning');
 
 // https://luker.org/resources/grlevelx/placefiles/
 
-// const url = `${ut.phpProxy}http://placefilenation.com/Placefiles/20lightning.php`;
-const url = `${ut.phpProxy}https://saratoga-weather.org/USA-blitzortung/placefile.txt`;
+// PlacefileNation 20-minute lightning. Every Icon in this feed uses the same
+// age (no per-strike timestamp — text is always "Strike within last 20 min"),
+// so all plotted strikes are treated as current (within 20 min).
+const url = `${ut.phpProxy}https://placefilenation.com/Placefiles/20lightning.php`;
 
 function load_lightning(callback) {
     fetch(url, {
@@ -26,24 +28,17 @@ function load_lightning(callback) {
             var points = [];
             for (var i in data) {
                 var row = data[i];
-                if (row.startsWith('Icon:')) {
-                    row = row.replace('Icon: ', '');
-                    row = row.split(',');
+                if (row.trim().startsWith('Icon:')) {
+                    row = row.trim().replace(/^Icon:\s*/, '').split(',');
 
                     var lat = parseFloat(row[0]);
                     var lng = parseFloat(row[1]);
-                    var time = row[5].replace('Blitzortung @ ', '').slice(0, -4);
+                    if (isNaN(lat) || isNaN(lng)) continue;
 
-                    // old format was "HH:mm:ss", e.g. "18:34:26" or "03:16:45"
-                    // new format is "h:mm:ssa", e.g. "8:34:26am" or "7:30:33pm"
-                    const date = luxon.DateTime.fromFormat(time, 'h:mm:ssa', { zone: 'America/Los_Angeles' }); // PDT
-                    const diff = luxon.DateTime.now().diff(date);
-                    const diff_minutes = diff.as('minutes');
-                    const current_point = turf.point([lng, lat], { 'time': time, 'diff_minutes': diff_minutes });
-
-                    if (diff_minutes <= 15) {
-                        points.push(current_point);
-                    }
+                    // PlacefileNation gives no per-strike timestamp — every strike
+                    // is simply "within the last 20 min", so treat them all as
+                    // current (diff_minutes = 0 → full opacity in the layer paint).
+                    points.push(turf.point([lng, lat], { 'time': 'within 20 min', 'diff_minutes': 0 }));
                 }
             }
             var collection = turf.featureCollection(points);
