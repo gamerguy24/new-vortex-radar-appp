@@ -138,11 +138,31 @@ function apply() {
 
   if (!rw) return;
   if (!state.signedIn) { rw.style.display = 'none'; return; }
-  // Show for everyone signed in (incl. admins, so it's visible/testable).
+
+  // Anyone who already has paid/pro access must NEVER be shown "Upgrade to Pro":
+  //   - admins (pro by role),
+  //   - any paid tier (Tier One+ / legacy "pro"),
+  //   - anyone with a Stripe customer record.
+  const alreadyHasAccess = !!(state.isPro || state.isAdmin || (state.tierLevel || 0) >= 1 || state.hasStripeCustomer);
+
+  if (alreadyHasAccess) {
+    if (state.hasStripeCustomer) {
+      // A real Stripe subscriber — let them manage/change their plan in the portal.
+      rw.style.display = '';
+      if (label()) label().textContent = 'Manage Subscription';
+      rw.dataset.action = 'portal';
+    } else {
+      // Pro by admin grant or admin role — nothing to manage in Stripe, and they
+      // must not be prompted to upgrade, so hide the row entirely.
+      rw.style.display = 'none';
+    }
+    return;
+  }
+
+  // Free user — offer the upgrade.
   rw.style.display = '';
-  const subscriber = state.hasStripeCustomer || (state.tier === 'pro' && !state.isAdmin);
-  if (label()) label().textContent = subscriber ? 'Manage Subscription' : 'Upgrade to Pro';
-  rw.dataset.action = subscriber ? 'portal' : 'checkout';
+  if (label()) label().textContent = 'Upgrade to Pro';
+  rw.dataset.action = 'checkout';
 }
 
 async function go(action, body) {
