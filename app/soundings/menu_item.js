@@ -145,6 +145,7 @@ function openSoundingModal(lat, lon) {
     const saveBtn = bg.querySelector('#snd-save');
     const copyBtn = bg.querySelector('#snd-copy');
     let canvas = null;
+    let imageBlob = null; // set when the exact SounderPy image is available
 
     const close = () => bg.remove();
     bg.querySelector('#snd-close').onclick = close;
@@ -152,11 +153,30 @@ function openSoundingModal(lat, lon) {
 
     async function load() {
         wrap.innerHTML = '<div class="snd-spinner"></div>';
+        canvas = null; imageBlob = null;
         const model = modelEl.value;
         const fcst = fcstEl.value;
+        const qs = `lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&fhr=${encodeURIComponent(fcst)}`;
+
+        // 1) Prefer the exact SharpPy/SounderPy image. If SounderPy isn't set up
+        // on the server the endpoint returns non-image (501) and we fall back.
         try {
-            const url = `/api/models/${model}/sounding?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&fhr=${encodeURIComponent(fcst)}`;
-            const res = await fetch(url);
+            const imgRes = await fetch(`/api/models/${model}/sounding/image?${qs}`);
+            if (imgRes.ok && (imgRes.headers.get('content-type') || '').indexOf('image') !== -1) {
+                imageBlob = await imgRes.blob();
+                const img = document.createElement('img');
+                img.alt = 'Sounding';
+                img.style.cssText = 'max-width:100%;height:auto;display:block;';
+                img.src = URL.createObjectURL(imageBlob);
+                wrap.innerHTML = '';
+                wrap.appendChild(img);
+                return;
+            }
+        } catch (e) { /* fall back to the built-in renderer */ }
+
+        // 2) Built-in Skew-T / hodograph / parameter panel (always available).
+        try {
+            const res = await fetch(`/api/models/${model}/sounding?${qs}`);
             const snd = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(snd.error || ('HTTP ' + res.status));
             canvas = document.createElement('canvas');
@@ -175,20 +195,25 @@ function openSoundingModal(lat, lon) {
 
     modelEl.onchange = load;
     fcstEl.onchange = load;
-    saveBtn.onclick = () => {
-        if (!canvas) return;
-        canvas.toBlob((blob) => {
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = `vortex-sounding-${Date.now()}.png`;
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-        }, 'image/png');
+    // Current image bytes — the SounderPy PNG when present, else the canvas.
+    const currentBlob = async () => {
+        if (imageBlob) return imageBlob;
+        if (canvas) return await new Promise((r) => canvas.toBlob(r, 'image/png'));
+        return null;
+    };
+    saveBtn.onclick = async () => {
+        const blob = await currentBlob();
+        if (!blob) return;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `vortex-sounding-${Date.now()}.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     };
     copyBtn.onclick = async () => {
-        if (!canvas) return;
+        const blob = await currentBlob();
+        if (!blob) return;
         try {
-            const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
             await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
             copyBtn.textContent = 'Copied!';
             setTimeout(() => (copyBtn.textContent = 'Copy image'), 1600);

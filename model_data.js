@@ -18,6 +18,42 @@
 
 const { renderField, legendFor } = require('./grib2_render');
 const { buildSounding } = require('./soundings_grib');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+
+// Optional SounderPy (Python) sounding renderer. When the host has it installed
+// the sounding tool serves an exact SHARPpy/SounderPy image; if anything is
+// missing or errors, the endpoint fails soft and the client falls back to the
+// built-in JS renderer. Nothing else in the app depends on this.
+const SOUNDERPY_PYTHON = process.env.SOUNDERPY_PYTHON || 'python3';
+const SOUNDERPY_SCRIPT = path.join(__dirname, 'tools', 'sounding_sounderpy.py');
+const SOUNDERPY_TIMEOUT_MS = parseInt(process.env.SOUNDERPY_TIMEOUT_MS, 10) || 60000;
+
+function renderSounderpyImage(snd, meta) {
+  return new Promise((resolve, reject) => {
+    const base = path.join(os.tmpdir(), `vrsnd_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    const jsonPath = base + '.json', pngPath = base + '.png';
+    const cleanup = () => { try { fs.unlinkSync(jsonPath); } catch (e) {} try { fs.unlinkSync(pngPath); } catch (e) {} };
+    try { fs.writeFileSync(jsonPath, JSON.stringify({ levels: snd.levels, surfaceZ: snd.surfaceZ, meta })); }
+    catch (e) { return reject(e); }
+    let stderr = '';
+    let done = false;
+    const finish = (fn) => { if (done) return; done = true; clearTimeout(timer); fn(); };
+    const py = spawn(SOUNDERPY_PYTHON, [SOUNDERPY_SCRIPT, jsonPath, pngPath], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const timer = setTimeout(() => { try { py.kill('SIGKILL'); } catch (e) {} finish(() => { cleanup(); reject(new Error('render timed out')); }); }, SOUNDERPY_TIMEOUT_MS);
+    py.stderr.on('data', (d) => { stderr += d.toString(); });
+    py.on('error', (e) => finish(() => { cleanup(); reject(new Error('python not available (' + e.message + ')')); }));
+    py.on('close', (code) => finish(() => {
+      let buf = null;
+      try { if (code === 0 && fs.existsSync(pngPath)) buf = fs.readFileSync(pngPath); } catch (e) {}
+      cleanup();
+      if (buf) resolve(buf);
+      else reject(new Error((stderr.trim().split('\n').pop() || ('exit ' + code)).slice(0, 300)));
+    }));
+  });
+}
 
 // Byte-capped LRU of rendered field PNGs so scrubbing forecast hours / re-plotting
 // is instant. Keyed by model+run+fhr+field+bbox.
@@ -329,6 +365,43 @@ function attachModels(app, requireAuth) {
       const snd = await buildSounding({ fileUrl, messages, lat, lon, header });
       res.json({ id: req.params.id, date, cycle, fhr, product, ...snd });
     } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
+  });
+
+  // Exact SHARPpy/SounderPy sounding IMAGE (PNG), rendered by the Python helper.
+  // Fails soft (501) when SounderPy isn't installed/errors so the client falls
+  // back to the built-in JS sounding — this endpoint only ADDS capability.
+  app.get('/api/models/:id/sounding/image', guard, async (req, res) => {
+    const m = MODELS[req.params.id];
+    if (!m || m.type !== 'cycle') return res.status(404).json({ error: 'Unknown cycle model' });
+    const lat = Number(req.query.lat), lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: 'lat & lon required' });
+    const fhr = Number(req.query.fhr || 0);
+    if (!Number.isFinite(fhr)) return res.status(400).json({ error: 'bad fhr' });
+    try {
+      const product = req.query.product || m.soundingProduct || m.defaultProduct;
+      let date = req.query.date, cycle = req.query.cycle;
+      if (!VALID_DATE.test(date || '') || !VALID_CYCLE.test(cycle || '')) {
+        const run = await latestRun(m, product);
+        if (!run) return res.status(502).json({ error: 'No recent run found' });
+        date = run.date; cycle = run.cycle;
+      }
+      const cacheKey = `spy:${req.params.id}:${date}:${cycle}:${fhr}:${product}:${lat.toFixed(3)}:${lon.toFixed(3)}`;
+      const cached = pngGet(cacheKey);
+      if (cached) { res.setHeader('Cache-Control', 'no-store'); res.type('png'); return res.send(cached.png); }
+      const key = m.file(date, cycle, fhr, product);
+      const messages = await fetchIdx(m.bucket, key);
+      if (!messages) return res.status(404).json({ error: 'No .idx for that run/hour yet' });
+      const fileUrl = s3KeyUrl(m.bucket, key);
+      const header = `${m.name.split(' (')[0]} ${cycle}Z +${fhr}h · ${date}`;
+      const snd = await buildSounding({ fileUrl, messages, lat, lon, header });
+      const meta = { lat, lon, model: m.name.split(' (')[0], modelId: req.params.id, fhr, date, cycle, cape: snd.cape, cin: snd.cin, title: header };
+      const png = await renderSounderpyImage(snd, meta);
+      pngSet(cacheKey, { png });
+      res.setHeader('Cache-Control', 'no-store'); res.type('png'); res.send(png);
+    } catch (e) {
+      // 501 → the client quietly falls back to the built-in sounding.
+      res.status(501).json({ error: 'sounderpy unavailable: ' + String(e.message || e) });
+    }
   });
 
   app.get('/api/models/:id/list', guard, async (req, res) => {
