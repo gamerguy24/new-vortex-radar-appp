@@ -78,6 +78,10 @@ function load() {
     // load the Warning Graphic generator (footer button)
     require('../../graphics/warning_graphic/menu_item');
 
+    // bulletproof guard: hide "Upgrade to Pro" for admins / paid / pro users
+    // (lives here in the bundle so it deploys reliably via the cache-buster).
+    require('../billing_guard');
+
     // load the SPC module
     require('../../spc/menu_item');
 
