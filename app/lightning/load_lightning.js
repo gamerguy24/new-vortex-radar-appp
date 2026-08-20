@@ -71,13 +71,15 @@ function load_lightning(callback) {
                             10,
                             0.23
                         ],
-                        // 'text-allow-overlap': true,
-                        // 'text-ignore-placement': true,
-                        'icon-allow-overlap': false,
-                        // 'icon-ignore-placement': true,
+                        // Pin every strike to its exact geographic point and never
+                        // declutter. With allow-overlap off, Mapbox drops/re-places
+                        // overlapping icons as you zoom, which makes the strikes look
+                        // like they "move" around — this keeps them fixed.
+                        'icon-anchor': 'center',
+                        'icon-allow-overlap': true,
+                        'icon-ignore-placement': true,
                         'icon-padding': 0,
-                        'symbol-sort-key': ['get', 'diff_minutes'],
-                        'symbol-z-order': 'viewport-y'
+                        'symbol-z-order': 'source'
                     },
                     paint: {
                         'icon-opacity': [
