@@ -1417,6 +1417,62 @@ app.delete('/api/push/register', requireAuth, (req, res) => {
     res.json({ ok: true });
 });
 
+// ─── Expo (native iOS/Android app) push sending ──────────────────────────────
+// Sends to every stored Expo push token via Expo's push service. Docs:
+// https://docs.expo.dev/push-notifications/sending-notifications/  No key needed
+// server-side — Expo relays to APNs/FCM using credentials set up during the build.
+function pruneToken(token) {
+    for (const uid of Object.keys(pushTokens)) {
+        pushTokens[uid] = (pushTokens[uid] || []).filter((t) => t.token !== token);
+        if (!pushTokens[uid].length) delete pushTokens[uid];
+    }
+    savePushTokens();
+}
+function allExpoTokens() {
+    const out = new Set();
+    for (const uid of Object.keys(pushTokens)) for (const t of (pushTokens[uid] || [])) {
+        if (t && (t.platform === 'expo' || /^ExponentPushToken\[/.test(String(t.token)))) out.add(t.token);
+    }
+    return [...out];
+}
+async function sendExpoPush({ title, body, data }) {
+    const tokens = allExpoTokens();
+    if (!tokens.length) return { sent: 0, tokens: 0, errors: [] };
+    let sent = 0; const errors = [];
+    for (let i = 0; i < tokens.length; i += 100) {
+        const chunk = tokens.slice(i, i + 100);
+        const messages = chunk.map((to) => ({ to, title: title || 'Vortex Radar', body: body || '', sound: 'default', priority: 'high', data: data || {} }));
+        try {
+            const r = await fetch('https://exp.host/--/api/v2/push/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify(messages),
+            });
+            const j = await r.json().catch(() => ({}));
+            const arr = Array.isArray(j.data) ? j.data : [];
+            arr.forEach((d, idx) => {
+                if (d && d.status === 'ok') sent++;
+                else if (d && d.status === 'error' && d.details && d.details.error === 'DeviceNotRegistered') pruneToken(chunk[idx]);
+            });
+            if (!arr.length && j.errors) errors.push(JSON.stringify(j.errors).slice(0, 200));
+        } catch (e) { errors.push(String(e.message || e)); }
+    }
+    return { sent, tokens: tokens.length, errors };
+}
+
+// Admin: broadcast a push to all native (Expo) app installs. `url` (optional) is
+// carried in the notification payload so tapping it deep-links the app there.
+app.post('/admin/push/send', requireAdmin, async (req, res) => {
+    const title = String(req.body?.title || 'Vortex Radar').slice(0, 120);
+    const body = String(req.body?.body || '').slice(0, 500);
+    const url = req.body?.url ? String(req.body.url).slice(0, 800) : null;
+    if (!body.trim()) return res.status(400).json({ error: 'A message body is required.' });
+    try {
+        const result = await sendExpoPush({ title, body, data: url ? { url } : {} });
+        res.json({ ok: true, ...result });
+    } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
+});
+
 // ─── Level-II proxy ──────────────────────────────────────────────────────────
 // The archive bucket (noaa-nexrad-level2) denies anonymous listing, so we use
 // the realtime chunks bucket (unidata-nexrad-level2-chunks). A volume is stored
