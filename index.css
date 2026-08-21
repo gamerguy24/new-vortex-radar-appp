@@ -1753,13 +1753,19 @@ td.day.active, span.month.active, span.year.active {
    Vortex Radar mockup). Overrides the legacy full-width bar layout.
    ========================================================================= */
 :root {
-    --vortex-panel: rgba(17, 19, 24, 0.92);
-    --vortex-panel-2: rgba(28, 32, 39, 0.95);
-    --vortex-border: rgba(255, 255, 255, 0.09);
-    --vortex-accent: #2aa7ff;
-    --vortex-text: #e9eef5;
-    --vortex-subtext: #9aa6b6;
-    --vortex-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+    --vortex-panel: rgba(16, 18, 23, 0.94);
+    --vortex-panel-2: rgba(26, 29, 36, 0.96);
+    --vortex-border: rgba(255, 255, 255, 0.08);
+    --vortex-hairline: rgba(255, 255, 255, 0.06);
+    --vortex-accent: #3a9be8;
+    --vortex-accent-soft: rgba(58, 155, 232, 0.14);
+    --vortex-text: #eef1f6;
+    --vortex-subtext: #93a0b1;
+    --vortex-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    /* one consistent radius scale — no more one-off corner sizes */
+    --vortex-r-lg: 12px;
+    --vortex-r-md: 9px;
+    --vortex-r-sm: 7px;
 }
 
 /* Full-bleed map: ignore the inline top/bottom offsets the old bar layout writes. */
@@ -1790,7 +1796,7 @@ td.day.active, span.month.active, span.year.active {
     max-width: 268px;
     background: var(--vortex-panel) !important;
     border: 1px solid var(--vortex-border);
-    border-radius: 11px;
+    border-radius: var(--vortex-r-lg);
     padding: 7px 11px 13px 12px; /* extra bottom room for the brand wordmark */
     flex-direction: row !important;
     justify-content: space-between !important;
@@ -1809,7 +1815,7 @@ td.day.active, span.month.active, span.year.active {
     font-size: 12.5px;
     font-weight: 800;
     letter-spacing: 0.3px;
-    color: #38d6c1;
+    color: var(--vortex-accent);
     text-transform: uppercase;
     line-height: 1.15;
     display: none;
@@ -1852,7 +1858,7 @@ td.day.active, span.month.active, span.year.active {
 .mapboxgl-ctrl-group {
     background: var(--vortex-panel) !important;
     border: 1px solid var(--vortex-border) !important;
-    border-radius: 10px !important;
+    border-radius: var(--vortex-r-md) !important;
     overflow: hidden;
     box-shadow: var(--vortex-shadow) !important;
 }
@@ -1876,19 +1882,21 @@ td.day.active, span.month.active, span.year.active {
     left: 12px;
     display: flex;
     align-items: center;
-    gap: 5px;
-    background: linear-gradient(180deg, #ff5252, #e02b2b);
+    gap: 6px;
+    background: #d93b3b;
     color: #fff;
-    font-weight: 800;
-    font-size: 14px;
+    font-weight: 700;
+    font-size: 13.5px;
+    letter-spacing: 0.2px;
     padding: 7px 12px;
-    border-radius: 12px;
+    border-radius: var(--vortex-r-md);
     cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 6px 20px rgba(224, 43, 43, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: var(--vortex-shadow);
+    transition: background 0.12s ease;
 }
-#vortexAlertPill:hover { filter: brightness(1.08); }
-#vortexAlertPill.vortexAlertActive { box-shadow: 0 0 0 2px rgba(255,255,255,0.55), 0 6px 20px rgba(224,43,43,0.5); }
+#vortexAlertPill:hover { background: #e5504f; }
+#vortexAlertPill.vortexAlertActive { box-shadow: 0 0 0 1.5px rgba(255,255,255,0.35), var(--vortex-shadow); }
 
 /* Flash the alert pill when a brand-new alert arrives (added for 30s by
    syncAlerts, then removed). */
@@ -1921,13 +1929,13 @@ td.day.active, span.month.active, span.year.active {
     width: auto !important;
     max-width: 94vw;
     height: auto !important;
-    background: linear-gradient(180deg, rgba(26, 30, 38, 0.96), rgba(13, 15, 20, 0.97)) !important;
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 14px;
-    padding: 7px 8px;
-    gap: 8px;
+    background: var(--vortex-panel) !important;
+    border: 1px solid var(--vortex-border);
+    border-radius: var(--vortex-r-lg);
+    padding: 7px 9px;
+    gap: 9px;
     color: var(--vortex-text);
-    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    box-shadow: var(--vortex-shadow);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
 }
@@ -1941,10 +1949,10 @@ td.day.active, span.month.active, span.year.active {
     height: auto !important;
     min-width: 84px;
     max-width: 208px;
-    padding: 3px 8px !important;
-    background: rgba(255, 255, 255, 0.035) !important;
-    border-left: 3px solid var(--vortex-accent);
-    border-radius: 6px;
+    padding: 4px 9px !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border-left: 2px solid var(--vortex-accent);
+    border-radius: var(--vortex-r-sm);
     text-align: left;
     line-height: 1.15;
 }
@@ -1960,7 +1968,7 @@ td.day.active, span.month.active, span.year.active {
     letter-spacing: 0.2px;
 }
 #footerStation { color: var(--vortex-text); font-weight: 800; letter-spacing: 0.4px; font-size: 10.5px !important; }
-#productsDropdownTriggerText { color: #5cc0ff; font-size: 10.5px !important; }
+#productsDropdownTriggerText { color: var(--vortex-accent); font-size: 10.5px !important; }
 #extraProductInfo { font-size: 8px !important; color: var(--vortex-subtext); text-transform: uppercase; letter-spacing: 0.4px; }
 #radarDateTime {
     position: static !important;
@@ -1976,17 +1984,17 @@ td.day.active, span.month.active, span.year.active {
     display: none; /* shown by components/billing_ui.js only for actual Pro members */
     align-items: center;
     gap: 5px;
-    background: linear-gradient(180deg, #ffd766, #efa62a);
-    color: #3a2500;
-    font-weight: 800;
+    background: rgba(230, 178, 76, 0.14);
+    color: #e6b24c;
+    font-weight: 700;
     font-size: 11px;
     letter-spacing: 0.6px;
     text-transform: uppercase;
     padding: 6px 11px;
-    border-radius: 8px;
+    border-radius: var(--vortex-r-sm);
     white-space: nowrap;
     flex: 0 0 auto;
-    box-shadow: 0 2px 9px rgba(239, 166, 42, 0.35);
+    border: 1px solid rgba(230, 178, 76, 0.32);
 }
 #vortexProBadge .fa { font-size: 10px; }
 
@@ -1995,16 +2003,16 @@ td.day.active, span.month.active, span.year.active {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 38px;
-    height: 38px;
-    border-radius: 11px;
-    background: linear-gradient(180deg, #3bb4ff, #1c86e0);
-    color: #04121f;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--vortex-r-md);
+    background: var(--vortex-accent);
+    color: #06121e;
     cursor: pointer;
     flex: 0 0 auto;
-    box-shadow: 0 3px 10px rgba(40, 150, 240, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    transition: background 0.12s ease;
 }
-#vortexPlayBtn:hover { filter: brightness(1.08); }
+#vortexPlayBtn:hover { background: #4babf3; }
 #vortexPlayBtn:active { transform: translateY(1px); }
 #vortexPlayBtn .fa { font-size: 15px; }
 
@@ -2012,9 +2020,9 @@ td.day.active, span.month.active, span.year.active {
 #vortexTimeline {
     -webkit-appearance: none;
     appearance: none;
-    height: 6px;
-    border-radius: 6px;
-    background: linear-gradient(90deg, rgba(59, 180, 255, 0.55), rgba(59, 180, 255, 0.14));
+    height: 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.14);
     outline: none;
     cursor: pointer;
     flex: 0 1 240px;
@@ -2023,29 +2031,28 @@ td.day.active, span.month.active, span.year.active {
 #vortexTimeline::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 8px;
-    height: 20px;
-    border-radius: 4px;
-    background: #eaf6ff;
-    border: 1px solid #3bb4ff;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #eef3f9;
+    border: 3px solid var(--vortex-accent);
     cursor: pointer;
 }
 #vortexTimeline::-moz-range-thumb {
-    width: 8px;
-    height: 20px;
-    border-radius: 4px;
-    background: #eaf6ff;
-    border: 1px solid #3bb4ff;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #eef3f9;
+    border: 3px solid var(--vortex-accent);
     cursor: pointer;
 }
 
 /* speed dropdown */
 #vortexSpeed {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.04);
     color: var(--vortex-text);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 9px;
+    border: 1px solid var(--vortex-border);
+    border-radius: var(--vortex-r-md);
     padding: 6px 8px;
     font-size: 12px;
     cursor: pointer;
@@ -2057,12 +2064,12 @@ td.day.active, span.month.active, span.year.active {
 #vortexBarIcons {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 7px;
-    margin-left: 4px;
-    background: rgba(0, 0, 0, 0.28);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 10px;
+    gap: 5px;
+    padding: 3px 6px;
+    margin-left: 3px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--vortex-hairline);
+    border-radius: var(--vortex-r-md);
 }
 .vortexIconSpacer { display: none; }
 #vortexBarIcons .mapFooterMenuItem { display: flex; }
@@ -2071,19 +2078,18 @@ td.day.active, span.month.active, span.year.active {
     border: none;
     background: none;
     padding: 6px 7px;
-    border-radius: 8px;
+    border-radius: var(--vortex-r-sm);
     color: var(--vortex-subtext);
     transition: color 0.12s, background 0.12s;
 }
 #vortexBarIcons .menu_item_not_selected:hover { color: var(--vortex-text); background: rgba(255, 255, 255, 0.06); }
 #vortexBarIcons .menu_item_selected {
     border: none;
-    background: rgba(59, 180, 255, 0.16);
-    color: #7cceff;
+    background: var(--vortex-accent-soft);
+    color: #7cc4f2;
     padding: 6px 7px;
-    border-radius: 8px;
+    border-radius: var(--vortex-r-sm);
     min-width: auto;
-    box-shadow: inset 0 -2px 0 var(--vortex-accent);
 }
 
 /* ---- Bottom-left color legend ---- */
@@ -2096,7 +2102,7 @@ td.day.active, span.month.active, span.year.active {
     padding: 8px 10px 6px;
     background: var(--vortex-panel);
     border: 1px solid var(--vortex-border);
-    border-radius: 12px;
+    border-radius: var(--vortex-r-lg);
     box-shadow: var(--vortex-shadow);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
@@ -2148,15 +2154,15 @@ td.day.active, span.month.active, span.year.active {
         left: 12px; right: auto; top: 12px; bottom: 12px; margin: 0;
         width: 340px; max-width: 340px;
         overflow-y: auto; overflow-x: hidden;
-        border-radius: 14px;
-        border: 1px solid rgba(255, 255, 255, 0.10);
-        box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+        border-radius: var(--vortex-r-lg);
+        border: 1px solid var(--vortex-border);
+        box-shadow: var(--vortex-shadow);
         pointer-events: auto;
     }
     #atticRadarMenuBody { padding: 12px; }
 
     /* Tighter rows + section headers so more fits without scrolling. */
-    .atticRadarMenuRow { padding: 8px 10px; font-size: 13px; border-radius: 10px; }
+    .atticRadarMenuRow { padding: 8px 10px; font-size: 13px; border-radius: var(--vortex-r-md); }
     .armrIcon { margin-right: 8px; }
     .armrHeader { font-size: 11px; margin-bottom: 6px; }
 
