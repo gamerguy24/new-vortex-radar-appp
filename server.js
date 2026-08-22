@@ -295,6 +295,12 @@ function publicUser(u) {
         mustChangePassword: !!u.mustChangePassword,
         tier: u.tier || 'free',
         tierLevel: billing.billingState(u).tierLevel,
+        // Chase-stream access: admins can always stream; others need approval.
+        canStream: !!(u.isAdmin || u.streamApproved),
+        streamApproved: !!u.streamApproved,
+        streamRequest: u.streamRequest
+            ? { status: u.streamRequest.status || 'pending', requestedAt: u.streamRequest.requestedAt || null, note: u.streamRequest.note || '' }
+            : null,
         createdAt: u.createdAt,
         lastLoginAt: u.lastLoginAt || null,
     };
@@ -392,6 +398,15 @@ function requireAdmin(req, res, next) {
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
     if (req.user.isLocked) return res.status(403).json({ error: 'Account locked' });
     if (!req.user.isAdmin) return res.status(403).json({ error: 'Admin access required' });
+    next();
+}
+// Chase-stream go-live gate: admins always pass; everyone else needs an
+// admin-approved streamApproved flag on their account.
+function canStream(u) { return !!(u && (u.isAdmin || u.streamApproved)); }
+function requireStreamer(req, res, next) {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    if (req.user.isLocked) return res.status(403).json({ error: 'Account locked' });
+    if (!canStream(req.user)) return res.status(403).json({ error: 'Your account is not approved to go live yet.', code: 'not-approved' });
     next();
 }
 
@@ -1236,7 +1251,7 @@ app.post('/api/stream/config', requireAuth, (req, res) => {
 // Announce "I'm live" to the configured destinations. Discord is fully wired
 // (webhook). Facebook is acknowledged but requires the account OAuth token to
 // be connected first; until then it reports as skipped so the UI can prompt.
-app.post('/api/stream/announce', requireAuth, async (req, res) => {
+app.post('/api/stream/announce', requireStreamer, async (req, res) => {
     const cfg = streamConfigs[req.user.id] || {};
     const b = req.body || {};
     const title = clampStr(b.title, 300) || 'LIVE now';
@@ -1273,7 +1288,7 @@ app.post('/api/stream/announce', requireAuth, async (req, res) => {
 
 // Mark this user live (or update their moving position). Body: { lat, lng,
 // place, title, url }. Stored in memory so other chasers can render the marker.
-app.post('/api/stream/live', requireAuth, (req, res) => {
+app.post('/api/stream/live', requireStreamer, (req, res) => {
     const b = req.body || {};
     const lat = clampNum(b.lat), lng = clampNum(b.lng);
     liveSessions.set(req.user.id, {
@@ -1314,6 +1329,106 @@ app.get('/api/stream/live', requireAuth, (req, res) => {
     res.json({ live: list });
 });
 
+// ─── Chase-stream access: request + admin approval ───────────────────────────
+// Going live requires an admin-approved streamApproved flag. Non-approved users
+// can submit a request; admins approve/deny or grant/revoke directly.
+
+// Caller's own streaming-access state (drives the go-live UI gating).
+app.get('/api/stream/access', requireAuth, (req, res) => {
+    res.json({
+        canStream: canStream(req.user),
+        isAdmin: !!req.user.isAdmin,
+        request: req.user.streamRequest
+            ? { status: req.user.streamRequest.status || 'pending', requestedAt: req.user.streamRequest.requestedAt || null }
+            : null,
+    });
+});
+
+// Submit (or refresh) a request to be allowed to stream.
+app.post('/api/stream/request-access', requireAuth, (req, res) => {
+    const user = req.user;
+    if (canStream(user)) return res.json({ canStream: true, request: null });
+    const note = clampStr((req.body && req.body.note) || '', 500);
+    // Preserve the original request time if one is already pending.
+    const prev = user.streamRequest && user.streamRequest.status === 'pending' ? user.streamRequest : null;
+    user.streamRequest = {
+        status: 'pending',
+        note,
+        requestedAt: (prev && prev.requestedAt) || new Date().toISOString(),
+    };
+    saveUsers();
+    res.json({ canStream: false, request: { status: 'pending', requestedAt: user.streamRequest.requestedAt } });
+});
+
+// Admin: everyone approved to stream, plus everyone with a request on file.
+app.get('/admin/stream/requests', requireAdmin, (req, res) => {
+    const list = users
+        .filter((u) => u.streamRequest || u.streamApproved)
+        .map((u) => ({
+            id: u.id,
+            email: u.email,
+            approved: !!u.streamApproved,
+            status: u.streamRequest ? (u.streamRequest.status || 'pending') : (u.streamApproved ? 'approved' : 'none'),
+            note: (u.streamRequest && u.streamRequest.note) || '',
+            requestedAt: (u.streamRequest && u.streamRequest.requestedAt) || null,
+            decidedAt: (u.streamRequest && u.streamRequest.decidedAt) || null,
+        }))
+        .sort((a, b) => {
+            // pending first, then by most-recent request
+            const p = (x) => (x.status === 'pending' ? 0 : 1);
+            if (p(a) !== p(b)) return p(a) - p(b);
+            return String(b.requestedAt || '').localeCompare(String(a.requestedAt || ''));
+        });
+    res.json({ requests: list });
+});
+
+app.post('/admin/stream/requests/:id/approve', requireAdmin, (req, res) => {
+    const user = findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    user.streamApproved = true;
+    user.streamRequest = {
+        ...(user.streamRequest || {}),
+        status: 'approved',
+        decidedAt: new Date().toISOString(),
+        decidedBy: req.user.email,
+    };
+    saveUsers();
+    res.json({ user: publicUser(user) });
+});
+
+app.post('/admin/stream/requests/:id/deny', requireAdmin, (req, res) => {
+    const user = findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    user.streamApproved = false;
+    user.streamRequest = {
+        ...(user.streamRequest || {}),
+        status: 'denied',
+        decidedAt: new Date().toISOString(),
+        decidedBy: req.user.email,
+    };
+    // If they were live, drop them.
+    liveSessions.delete(user.id);
+    saveUsers();
+    res.json({ user: publicUser(user) });
+});
+
+// Direct grant/revoke (no request needed). Body: { approved: bool }.
+app.post('/admin/users/:id/stream', requireAdmin, (req, res) => {
+    const user = findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    const approved = !!(req.body && req.body.approved);
+    user.streamApproved = approved;
+    user.streamRequest = {
+        ...(user.streamRequest || {}),
+        status: approved ? 'approved' : 'revoked',
+        decidedAt: new Date().toISOString(),
+        decidedBy: req.user.email,
+    };
+    if (!approved) liveSessions.delete(user.id);
+    saveUsers();
+    res.json({ user: publicUser(user) });
+});
+
 // ─── Remote OBS control relay (operator dashboard → chaser agent) ────────────
 // Chasers who opt in keep Vortex open on their streaming PC; their browser holds
 // an SSE "agent" connection here and a local connection to their own OBS.
@@ -1327,7 +1442,7 @@ function sseSend(res, event, data) {
 }
 
 // Chaser agent connects here (Server-Sent Events). Being connected = opted in.
-app.get('/api/stream/agent', requireAuth, (req, res) => {
+app.get('/api/stream/agent', requireStreamer, (req, res) => {
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
@@ -1346,7 +1461,7 @@ app.get('/api/stream/agent', requireAuth, (req, res) => {
 });
 
 // Agent reports its OBS/stream state so operators see live status.
-app.post('/api/stream/agent/status', requireAuth, (req, res) => {
+app.post('/api/stream/agent/status', requireStreamer, (req, res) => {
     const a = agents.get(req.user.id);
     if (a) {
         const b = req.body || {};

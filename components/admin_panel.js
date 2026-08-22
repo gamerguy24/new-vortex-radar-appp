@@ -66,6 +66,8 @@ export const adminPanelStyles = `
 .admin-panel-badge.locked { background: rgba(248,113,113,0.2); color: #f87171; }
 .admin-panel-badge.must-change { background: rgba(250,204,21,0.18); color: #facc15; }
 .admin-panel-badge.tier { background: rgba(52,211,153,0.18); color: #34d399; }
+.admin-panel-badge.stream { background: rgba(255,59,48,0.18); color: #ff8f88; }
+.admin-panel-badge.stream-pending { background: rgba(250,204,21,0.16); color: #facc15; }
 .admin-panel-tier {
     background: rgba(255,255,255,0.06); color: #e8edf3;
     border: 1px solid rgba(255,255,255,0.14); border-radius: 6px;
@@ -163,6 +165,12 @@ export function createAdminPanelHTML() {
                     <button id="admin-panel-require-reset" class="danger" title="Invalidate every user's password (except the super admin) so returning users must reset via the approved-reset flow. Use after moving hosts.">Require ALL users to reset password</button>
                 </div>
                 <div id="admin-panel-pending-list">
+                    <div class="admin-panel-pending-empty">Loading…</div>
+                </div>
+            </div>
+            <div class="admin-panel-pending">
+                <h4><i class="ti ti-broadcast"></i> Streaming access (chase stream hub)</h4>
+                <div id="admin-panel-stream-list">
                     <div class="admin-panel-pending-empty">Loading…</div>
                 </div>
             </div>
@@ -283,6 +291,8 @@ export function initAdminPanel(root) {
             const TIER_LABELS = { free: 'Free', tier1: 'Tier One', tier2: 'Tier Two', tier3: 'Tier Three' };
             const curTier = (u.tier === 'pro' ? 'tier3' : (u.tier || 'free'));
             if (curTier !== 'free') badges.push(`<span class="admin-panel-badge tier">${TIER_LABELS[curTier] || curTier}</span>`);
+            if (u.streamApproved) badges.push('<span class="admin-panel-badge stream">can stream</span>');
+            else if (u.streamRequest && u.streamRequest.status === 'pending') badges.push('<span class="admin-panel-badge stream-pending">stream requested</span>');
             const tierSelect = `<select class="admin-panel-tier" data-id="${u.id}" data-email="${escapeHtml(u.email)}" title="Subscription tier">
                     ${['free', 'tier1', 'tier2', 'tier3'].map((t) => `<option value="${t}"${t === curTier ? ' selected' : ''}>${TIER_LABELS[t]}</option>`).join('')}
                 </select>`;
@@ -292,6 +302,7 @@ export function initAdminPanel(root) {
                     ${tierSelect}
                     <button data-action="reset-password" data-id="${u.id}" data-email="${escapeHtml(u.email)}">Reset password</button>
                     <button data-action="${u.isAdmin ? 'revoke-admin' : 'make-admin'}" data-id="${u.id}" data-email="${escapeHtml(u.email)}">${u.isAdmin ? 'Revoke admin' : 'Make admin'}</button>
+                    <button data-action="${u.streamApproved ? 'stream-revoke' : 'stream-approve'}" data-id="${u.id}" data-email="${escapeHtml(u.email)}">${u.streamApproved ? 'Revoke stream' : 'Allow stream'}</button>
                     <button data-action="${u.isLocked ? 'unlock' : 'lock'}" data-id="${u.id}" data-email="${escapeHtml(u.email)}">${u.isLocked ? 'Unlock' : 'Lock'}</button>
                     <button data-action="delete" data-id="${u.id}" data-email="${escapeHtml(u.email)}" class="danger">Delete</button>
                 `;
@@ -441,6 +452,17 @@ export function initAdminPanel(root) {
             } catch (err) {
                 flash(err.message, 'error');
             }
+        } else if (action === 'stream-approve' || action === 'stream-revoke') {
+            const approve = action === 'stream-approve';
+            if (!confirm(`${approve ? 'Allow' : 'Revoke'} streaming access for ${email}?`)) return;
+            try {
+                await api('POST', `/admin/users/${id}/stream`, { approved: approve });
+                flash(`${email} ${approve ? 'can now go live' : 'streaming access revoked'}.`, 'success');
+                loadUsers();
+                loadStreamRequests();
+            } catch (err) {
+                flash(err.message, 'error');
+            }
         } else if (action === 'lock' || action === 'unlock') {
             if (!confirm(`${action === 'lock' ? 'Lock' : 'Unlock'} ${email}?`)) return;
             try {
@@ -542,6 +564,77 @@ export function initAdminPanel(root) {
         }
     });
 
+    // --- Streaming access requests -----------------------------------------
+    async function loadStreamRequests() {
+        const list = $('#admin-panel-stream-list');
+        if (!list) return;
+        list.innerHTML = '<div class="admin-panel-pending-empty">Loading…</div>';
+        try {
+            const data = await api('GET', '/admin/stream/requests');
+            renderStreamRequests(data.requests || []);
+        } catch (err) {
+            list.innerHTML = `<div class="admin-panel-pending-empty">Error: ${escapeHtml(err.message)}</div>`;
+        }
+    }
+
+    function renderStreamRequests(requests) {
+        const list = $('#admin-panel-stream-list');
+        if (!requests.length) {
+            list.innerHTML = '<div class="admin-panel-pending-empty">No streaming requests or approved chasers yet.</div>';
+            return;
+        }
+        // pending first (already sorted server-side)
+        list.innerHTML = '';
+        requests.forEach((r) => {
+            const row = document.createElement('div');
+            row.className = 'admin-panel-pending-row';
+            const statusLabel = r.approved
+                ? '<span style="color:#34d399;font-size:.82em;">✓ approved</span>'
+                : (r.status === 'pending'
+                    ? '<span style="color:#facc15;font-size:.82em;">● pending</span>'
+                    : `<span style="color:rgba(255,255,255,.5);font-size:.82em;">${escapeHtml(r.status)}</span>`);
+            const when = r.status === 'pending'
+                ? `Requested ${fmtDate(r.requestedAt)}`
+                : (r.decidedAt ? `Decided ${fmtDate(r.decidedAt)}` : '');
+            const btns = r.approved
+                ? `<button data-stream-action="revoke" data-id="${r.id}" data-email="${escapeHtml(r.email)}" class="danger">Revoke</button>`
+                : `<button data-stream-action="approve" data-id="${r.id}" data-email="${escapeHtml(r.email)}" class="primary">Approve</button>
+                   <button data-stream-action="deny" data-id="${r.id}" data-email="${escapeHtml(r.email)}">Deny</button>`;
+            row.innerHTML = `
+                <div class="who">
+                    <div class="email">${escapeHtml(r.email)} ${statusLabel}</div>
+                    ${when ? `<div class="when">${when}</div>` : ''}
+                    ${r.note ? `<div class="when">“${escapeHtml(r.note)}”</div>` : ''}
+                </div>
+                ${btns}
+            `;
+            list.appendChild(row);
+        });
+    }
+
+    $('#admin-panel-stream-list').addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-stream-action]');
+        if (!btn) return;
+        const { id, email } = btn.dataset;
+        const action = btn.dataset.streamAction;
+        try {
+            if (action === 'approve') {
+                await api('POST', `/admin/stream/requests/${id}/approve`);
+                flash(`${email} approved to go live.`, 'success');
+            } else if (action === 'deny') {
+                if (!confirm(`Deny streaming access for ${email}?`)) return;
+                await api('POST', `/admin/stream/requests/${id}/deny`);
+                flash(`Denied streaming access for ${email}.`, 'success');
+            } else if (action === 'revoke') {
+                if (!confirm(`Revoke streaming access for ${email}?`)) return;
+                await api('POST', `/admin/users/${id}/stream`, { approved: false });
+                flash(`Revoked streaming access for ${email}.`, 'success');
+            }
+            loadStreamRequests();
+            loadUsers();
+        } catch (err) { flash(err.message, 'error'); }
+    });
+
     // --- Toolbar -----------------------------------------------------------
     let searchTimer = null;
     $('#admin-panel-search').addEventListener('input', () => {
@@ -551,6 +644,7 @@ export function initAdminPanel(root) {
     $('#admin-panel-refresh').addEventListener('click', () => {
         loadUsers();
         loadPending();
+        loadStreamRequests();
     });
 
     $('#admin-panel-new').addEventListener('click', () => {
@@ -607,6 +701,7 @@ export function initAdminPanel(root) {
     });
 
     loadPending();
+    loadStreamRequests();
     loadUsers();
 
     // Automatic Warning Posts (NWS → Bluesky) section.
