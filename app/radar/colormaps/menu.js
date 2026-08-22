@@ -89,13 +89,21 @@ $('#hidden_colortable_file_uploader').on('input', () => {
 })
 
 function change_colortable(product, new_ctable) {
-    const colors = product_colors[new_ctable].colors;
-    const values = product_colors[new_ctable].values;
+    const src = product_colors[new_ctable];
+    const colors = src.colors;
+    const values = src.values;
 
     const all_to_change = lookup[product];
     for (var cur_product of all_to_change) {
         product_colors[cur_product].colors = colors;
         product_colors[cur_product].values = values;
+        // Keep the range-fold in sync with the picked table so a stale one from
+        // a previous selection never leaks into the newly-chosen colortable.
+        if (Object.prototype.hasOwnProperty.call(src, 'range_fold')) {
+            product_colors[cur_product].range_fold = src.range_fold;
+        } else {
+            delete product_colors[cur_product].range_fold;
+        }
     }
 
     var a_d = window.atticData;

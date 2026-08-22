@@ -9,7 +9,6 @@ const reflectivity =
 `Product: BR
 Units: dBZ
 Step: 5
-RF: 64 64 64
 
 SolidColor4: 9.9 193 193 193 0
 SolidColor: 25 128 252 131

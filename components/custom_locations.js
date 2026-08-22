@@ -150,7 +150,9 @@ function buildList() {
 }
 
 function open() {
-  if (panel) { close(); return; }
+  // Toggle off the check against the live DOM (not just the module variable) so
+  // a stale reference can never leave the button unable to re-open the panel.
+  if (panel || document.getElementById('vlocPanel')) { close(); return; }
   panel = document.createElement('div');
   panel.id = 'vlocPanel';
   panel.innerHTML = `
@@ -176,6 +178,16 @@ function open() {
       <div class="vloc-status" id="vloc-status"></div>
     </div>`;
   document.body.appendChild(panel);
+
+  // Shield the panel from the map's gesture/keyboard handlers. Without this,
+  // pointer/touch/wheel events over the panel can be swallowed by Mapbox (which
+  // binds handlers to document/window during interactions), which is what makes
+  // the inputs intermittently refuse focus/typing — especially on touch. We only
+  // stop propagation (never preventDefault), so focus, selection, typing and
+  // list-scrolling all still work normally.
+  ['pointerdown', 'mousedown', 'touchstart', 'wheel', 'click', 'dblclick', 'keydown'].forEach((ev) => {
+    panel.addEventListener(ev, (e) => { e.stopPropagation(); }, false);
+  });
 
   document.getElementById('vloc-close').onclick = close;
   document.getElementById('vloc-toggle').onclick = () => {
@@ -213,8 +225,20 @@ function open() {
     } catch (e) { setStatus(e.message); }
   };
 
+  // Enter submits the relevant action from each field.
+  const onEnter = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fn(); } });
+  };
+  onEnter('vloc-q', () => document.getElementById('vloc-search').click());
+  onEnter('vloc-lat', () => document.getElementById('vloc-addll').click());
+  onEnter('vloc-lon', () => document.getElementById('vloc-addll').click());
+  onEnter('vloc-name', () => { const q = document.getElementById('vloc-q'); if (q) q.focus(); });
+
   buildList();
   syncToggleBtn();
+  // Put the cursor in the name field so the panel is immediately typeable.
+  setTimeout(() => { const n = document.getElementById('vloc-name'); if (n) n.focus(); }, 60);
 }
 function close() { cancelAdd(); if (panel) { panel.remove(); panel = null; } }
 
