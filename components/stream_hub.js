@@ -516,6 +516,7 @@ function launchButton() {
 }
 
 function openPanel() {
+    injectStyles(); // idempotent — ensures panel CSS exists even if init() didn't run
     let p = $('vrsh-panel');
     if (p) { p.style.display = 'flex'; syncForm(); updateLocationUI(); startOperatorView(); refreshAccess(); return; }
     p = document.createElement('div');
@@ -787,9 +788,6 @@ async function init() {
     injectStyles();
     launchButton();               // floating "Chase Stream Hub" button (fallback entry point)
     window.vortexOpenStreamHub = openPanel; // allow other UI to open it
-    // Wire the bottom-toolbar Chase Stream Hub icon (index.html #vortexBarIcons).
-    const footerBtn = $('streamHubMenuItemDiv');
-    if (footerBtn) footerBtn.addEventListener('click', openPanel);
     try { cfg = (await api('GET', '/config')).config; } catch { cfg = null; }
 
     // Am I an operator (admin)? And am I approved to stream? Controls the
@@ -931,6 +929,17 @@ function injectStyles() {
     .vrsh-player-fallback a{color:#27beff}`;
     document.head.appendChild(s);
 }
+
+// Open the Hub from the bottom-toolbar icon. Delegated at the document level so
+// it fires regardless of when the toolbar renders or whether init() ran — the
+// listener is attached the moment this module loads.
+document.addEventListener('click', (e) => {
+    const hit = e.target && e.target.closest && e.target.closest('#streamHubMenuItemDiv, #vrsh-launch');
+    if (!hit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try { openPanel(); } catch (err) { console.error('[stream-hub] openPanel failed', err); }
+});
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();
