@@ -28,8 +28,22 @@ Set a long random shared secret so only your gateway can push audio:
 SCANNER_INGEST_KEY=<a long random string>
 ```
 
-Restart the server. On boot you'll see:
-`[SCANNER] Global PTT streaming ready (1 channel(s), ingest ENABLED).`
+Install dependencies (`ws` is needed for the CDN-safe WebSocket ingest) and
+restart the server:
+
+```bash
+npm install
+```
+
+On boot you'll see both of these:
+
+```
+[SCANNER] Global PTT streaming ready (1 channel(s), ingest ENABLED).
+[SCANNER] WebSocket ingest ready at /scanner/ingest-ws[/:channel] (CDN-safe).
+```
+
+If the second line is missing, the gateway can still push over plain HTTP, but
+only if nothing buffers the upload (see **Why WebSocket** below).
 
 If `SCANNER_INGEST_KEY` is unset, ingest is **disabled** (no one can push a feed).
 
@@ -42,6 +56,39 @@ been committed or shared, generate a new one and update every gateway:
 ```bash
 openssl rand -hex 32
 ```
+
+## Why WebSocket — the "gateway is streaming but the app says offline" trap
+
+If the origin sits behind Cloudflare (or almost any CDN/reverse proxy), the
+gateway can look completely healthy — audio captured, MP3 encoded, `HTTP 200` —
+while the app still shows the channel **offline**. Nothing is wrong with the
+audio; the upload never reaches the origin.
+
+**The cause:** a CDN buffers the *request body* and forwards it to the origin
+only once the upload finishes. A live feed is an upload that never finishes, so
+the origin receives nothing. Measured against a Cloudflare-fronted origin:
+
+```
+t=0..20s   gateway uploading    origin sees: connection=offline, no bytes
+t=20s      upload ENDS          origin sees: all 81,920 bytes at once
+```
+
+`/scanner/status` gives it away: `connection` stays `offline` and
+`lastAudioAgeMs` keeps climbing while the gateway insists it is streaming.
+
+**The fix:** push over a WebSocket instead. CDNs proxy WebSocket frames through
+as they happen rather than buffering them, so the same bytes arrive in real
+time. That is what `/scanner/ingest-ws` is for, and it is the gateway's default
+transport. The plain `POST /scanner/ingest` is still there and is the right
+choice when nothing sits between the gateway and the origin — the Linux gateway
+pushing to `127.0.0.1`, for instance.
+
+| Path | Transport |
+|---|---|
+| gateway → CDN → origin | WebSocket (default) |
+| gateway → origin directly | either; `-Transport http` is fine |
+
+---
 
 ## 2. Capture the audio — pick ONE gateway
 
@@ -180,6 +227,13 @@ environment: `PTT_SERVER`, `PTT_KEY`, `PTT_INPUT`, `PTT_CHANNEL`, `PTT_BITRATE`,
   *all* system audio, so only use that on a PC that makes no other sound.
 - *401 / 503 / 404* - the key does not match `SCANNER_INGEST_KEY`, the server has
   no key set, or the channel does not exist. The script names which one it is.
+- *The gateway says it is streaming but the app says offline* - the upload is
+  being buffered somewhere in between. Use the default WebSocket transport, and
+  make sure the server has been redeployed with `/scanner/ingest-ws`. See
+  **Why WebSocket** above.
+- *"could not open a WebSocket"* - the server predates the WebSocket ingest.
+  Redeploy it (`git pull && npm install`, then restart), or run the gateway with
+  `-Transport http` if there is no CDN in the path.
 
 ---
 
@@ -260,7 +314,8 @@ restart on failure and run at logon.
 | `GET /scanner` or `/scanner/status[/:channel]` | JSON status: `online`, `listeners`, `lastAudioAt`, `bitrateKbps`, `connection`, `uptimeMs` |
 | `GET /scanner/stream[/:channel]` | The live `audio/mpeg` stream (private channels require login) |
 | `GET /scanner/channels` | List channels the caller may see |
-| `POST /scanner/ingest[/:channel]` | Source push (needs the ingest key) |
+| `POST /scanner/ingest[/:channel]` | Source push over HTTP (needs the ingest key) |
+| `WS /scanner/ingest-ws[/:channel]` | Source push over WebSocket — use this behind a CDN |
 | `GET /admin/scanner/channels` · `POST /admin/scanner/channels` · `DELETE /admin/scanner/channels/:id` | Admin channel management |
 
 ## Channels (add more later, no rebuild)

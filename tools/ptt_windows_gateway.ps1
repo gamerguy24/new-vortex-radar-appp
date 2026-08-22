@@ -31,6 +31,8 @@
     -NoBrowser       do not launch a browser (use if the PTT desktop app or an
                      already-open browser is producing the audio)
     -KeepBrowser     leave the browser running when the gateway stops
+    -Transport http  push with a plain HTTP POST instead of a WebSocket (only
+                     works when nothing buffers the upload -- no CDN in front)
     -InstallTask     run automatically at logon;  -UninstallTask removes it
 
   CONFIG  (command line beats environment beats tools\ptt.local.env beats .env)
@@ -56,6 +58,8 @@ param(
     [string] $BrowserProfile,
     [string] $Browser,
     [string] $FfmpegPath,
+    [ValidateSet('ws','http')]
+    [string] $Transport = 'ws',
     [int]    $BufferMs = 50,
     [int]    $ProbeSeconds = 5,
     [int]    $WaitForAudioSeconds = 180,
@@ -516,9 +520,45 @@ try {
         Warn 'Listeners will hear silence until the browser output is set to CABLE Input.'
     }
 
+
+    # Transport: 'ws' pushes over a WebSocket, which is what survives a CDN.
+    # A CDN in front of the origin (Cloudflare and most others) buffers a
+    # request body and only forwards it once the upload finishes -- and a live
+    # feed never finishes, so the plain POST below never reaches the origin.
+    # Use -Transport http only when pushing straight at the origin.
+    if ($Transport -eq 'ws') {
+        $node = Get-Command node.exe -ErrorAction SilentlyContinue
+        if (-not $node) {
+            Warn 'Node.js is needed for the WebSocket transport but was not found.'
+            Warn 'Install it from https://nodejs.org, or run with -Transport http.'
+            Fail 'node.exe is required for -Transport ws.'
+        }
+        $pusher = Join-Path $ToolsDir 'ptt_ws_source.js'
+        if (-not (Test-Path -LiteralPath $pusher)) { Fail "missing $pusher" }
+
+        $env:PTT_SERVER  = $Server
+        $env:PTT_KEY     = $Key
+        $env:PTT_INPUT   = $Device
+        $env:PTT_CHANNEL = $Channel
+        $env:PTT_BITRATE = $Bitrate
+        $env:PTT_FFMPEG  = $ffmpeg
+        $env:PTT_BUFFER_MS = "$BufferMs"
+
+        Say "streaming '$Device' -> $Server [$Channel] over WebSocket  [$Bitrate mono mp3]"
+        Say 'Ctrl+C stops the gateway.'
+        & $node.Source $pusher
+        $code = $LASTEXITCODE
+        if ($code -eq 3) {
+            Warn 'falling back to the plain HTTP POST transport for this run.'
+            Warn 'That only works if nothing buffers the upload between here and the origin.'
+            $Transport = 'http'
+        } else {
+            return
+        }
+    }
+
     Say "streaming '$Device' -> $ingestUrl  [$Bitrate mono mp3]"
     Say 'Ctrl+C stops the gateway.'
-
     # The server accepts the key as ?key= or as an x-ingest-key header; the URL
     # form is what the Linux gateway and ptt_source.js already use.
     $target = $ingestUrl + '?key=' + [uri]::EscapeDataString($Key)

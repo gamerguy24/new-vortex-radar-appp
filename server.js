@@ -1744,8 +1744,9 @@ try {
 // ─── Global PTT live audio streaming (our own comms, not a public scanner) ───
 // Relays the Windows radio-gateway feed to website/app listeners; channel
 // registry is extensible for future channels. Guarded so it never breaks boot.
+let scannerApi = null;
 try {
-    require('./scanner').attachScanner({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson });
+    scannerApi = require('./scanner').attachScanner({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson });
 } catch (e) {
     console.error('[SCANNER] failed to attach (feature disabled):', e.message);
 }
@@ -1800,7 +1801,7 @@ ensureSuperAdmin();
 // traffic to the service — binding to localhost only would refuse those
 // connections (ERR_CONNECTION_RESET).
 const HOST = process.env.HOST || '0.0.0.0';
-app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, () => {
     console.log(`Vortex Radar server running on ${HOST}:${PORT}`);
     if (mailReady()) {
         console.log(`[mail] smtp ${SMTP_HOST}:${SMTP_PORT} as ${SMTP_USER} — password resets are self-service.`);
@@ -1813,3 +1814,12 @@ app.listen(PORT, HOST, () => {
         console.warn('[mail] SMTP_HOST/SMTP_USER/SMTP_PASSWORD not fully set — password resets fall back to the admin approval queue.');
     }
 });
+
+// The WebSocket ingest shares this port. It exists because a CDN in front of the
+// origin buffers a long HTTP POST body and only forwards it when the upload
+// ends, which never happens for a live feed.
+if (scannerApi && typeof scannerApi.attachUpgrade === 'function') {
+    try { scannerApi.attachUpgrade(server); } catch (e) {
+        console.error('[SCANNER] WebSocket ingest failed to attach:', e.message);
+    }
+}
