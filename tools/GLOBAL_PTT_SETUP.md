@@ -38,6 +38,34 @@ If `SCANNER_INGEST_KEY` is unset, ingest is **disabled** (no one can push a feed
 Get the radio audio into the PC (a hardware line-in, or a virtual cable like
 **VB-Audio Virtual Cable** fed by your PTT app), then push it up.
 
+### Capturing a browser-based console (e.g. Global PTT `dispatch.global-ptt.com`)
+
+Global PTT has no API — the audio is played by the dispatch web page — so we
+capture what the browser plays and route only that into FFmpeg:
+
+1. Install **VB-Audio Virtual Cable** (free): https://vb-audio.com/Cable/ — it
+   adds a playback device **"CABLE Input"** and a matching recording device
+   **"CABLE Output"**.
+2. On the gateway PC, open the console in a browser, log in, and open
+   `#/intercom/map` so it's receiving audio. (Do the log-in yourself in the
+   browser — no credentials go anywhere else.)
+3. Send **only the browser's** sound to the cable so you don't capture other
+   system noise: Windows **Settings → System → Sound → Volume mixer**, find your
+   browser, and set its **Output device → "CABLE Input (VB-Audio Virtual Cable)"**.
+   (Do this per-app so alerts/other apps stay on your speakers.)
+4. Set `PTT_INPUT="CABLE Output (VB-Audio Virtual Cable)"` in the run command below.
+5. Keep the browser tab **open and not minimized** (browsers throttle/mute fully
+   backgrounded tabs), keep the PC awake, and make sure autoplay is allowed for
+   the site (click into the intercom once so audio is flowing).
+
+> Want to *also* hear it on the PC while capturing? Use **VoiceMeeter** (same
+> vendor) to split the browser audio to both the cable and your speakers, or set
+> the CABLE playback device's "Listen to this device" to your speakers.
+>
+> Simpler-but-blunter alternative: enable **"Stereo Mix"** on your sound card and
+> set `PTT_INPUT="Stereo Mix (…)"` — but that captures *all* system audio, so run
+> it on a machine that makes no other sound.
+
 Install **FFmpeg** (https://ffmpeg.org) and confirm it's on PATH: `ffmpeg -version`.
 
 Find your audio input device name:
