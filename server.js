@@ -1741,6 +1741,15 @@ try {
     console.error('[NWS-BSKY] failed to attach (feature disabled):', e.message);
 }
 
+// ─── Global PTT live audio streaming (our own comms, not a public scanner) ───
+// Relays the Windows radio-gateway feed to website/app listeners; channel
+// registry is extensible for future channels. Guarded so it never breaks boot.
+try {
+    require('./scanner').attachScanner({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson });
+} catch (e) {
+    console.error('[SCANNER] failed to attach (feature disabled):', e.message);
+}
+
 // ─── Static files ──────────────────────────────────────────────────────────────
 const sendFile = (file) => (req, res) => res.sendFile(path.join(ROOT, file));
 
