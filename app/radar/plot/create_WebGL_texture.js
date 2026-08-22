@@ -14,6 +14,26 @@ function chromaScaleToRgbString(scaleOutput) {
 }
 
 function create_WebGL_texture(colors, values) {
+    // Smoothing (default ON): collapse the stepped colortable's hard-step pairs
+    // into single stops so chroma renders a continuous gradient instead of hard
+    // dBZ bands — the radar reads as smooth like a modern weather app. When off,
+    // the stepped bands are kept exactly as authored.
+    const smooth = (window.vortexSmoothing !== false);
+    if (smooth && colors.length === values.length && values.length > 2) {
+        const nc = [], nv = [];
+        for (let i = 0; i < values.length; i++) {
+            const v = values[i];
+            if (nv.length && Math.abs(v - nv[nv.length - 1]) < 0.05) {
+                // duplicate/near-duplicate value = a hard step; keep the color
+                // that BEGINS the next band so the gradient flows into it.
+                nv[nv.length - 1] = v; nc[nc.length - 1] = colors[i];
+            } else {
+                nv.push(v); nc.push(colors[i]);
+            }
+        }
+        colors = nc; values = nv;
+    }
+
     const width = 1500;
     const height = 1;
     const cmin = values[0];

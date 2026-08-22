@@ -347,10 +347,17 @@
                         Colortables
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="atticRadarMenuRow armrBottom" id="armrGateFilterBtn">
+                    <div class="atticRadarMenuRow armrMiddle" id="armrGateFilterBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-filter"></i>
                         Reflectivity Gate Filter
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="atticRadarMenuRow armrBottom" id="armrSmoothingBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-wand-magic-sparkles"></i>
+                        Smoothing
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSmoothingSwitchElem">
+                        </div>
                     </div>
 
                     <br>
@@ -1509,6 +1516,7 @@
     <script type="module" src="./components/logo_overlay.js"></script>
     <!-- Reflectivity gate filter -->
     <script type="module" src="./components/gate_filter.js"></script>
+    <script type="module" src="./components/smoothing.js?v=smooth1"></script>
     <!-- 3D storm view launcher -->
     <script type="module" src="./components/storm3d_launch.js"></script>
     <!-- Vortex Graphics launcher (Studio / Dashboard / Overlay) -->
