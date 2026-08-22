@@ -33,7 +33,52 @@ Restart the server. On boot you'll see:
 
 If `SCANNER_INGEST_KEY` is unset, ingest is **disabled** (no one can push a feed).
 
-## 2. Windows PC (the radio gateway)
+## 2. Capture the audio — pick ONE gateway
+
+Global PTT has no API, so a browser must play the console somewhere and we capture
+its audio. You can run that browser **on the Linux server itself** (recommended —
+no second machine) or on a **Windows PC**.
+
+---
+
+### Option 1 (recommended): everything on the Linux server — no Windows PC
+
+Runs a virtual display + Chromium (logged into the console) + FFmpeg entirely on
+the server, pushing to its own local `/scanner/ingest`.
+
+```bash
+# install deps (Debian/Ubuntu; package may be 'chromium-browser' on some distros)
+sudo apt update && sudo apt install -y chromium xvfb pulseaudio ffmpeg x11vnc
+
+# run it (uses SCANNER_INGEST_KEY from the environment / .env)
+export SCANNER_INGEST_KEY=... # same as the server .env
+./tools/ptt_linux_gateway.sh
+```
+
+**One-time login** (no API = you sign in by hand once; it persists in the Chromium
+profile): with the gateway running, in another shell expose the virtual screen and
+VNC in to log into the console once —
+
+```bash
+x11vnc -display :99 -localhost -nopw          # on the server
+ssh -L 5900:localhost:5900 you@your-server    # from your laptop, then open a VNC viewer to localhost:5900
+```
+
+Log into `dispatch.global-ptt.com`, open the intercom, done — audio flows to
+listeners. To keep it running across reboots, install the systemd unit:
+
+```bash
+sudo cp tools/ptt-gateway.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now ptt-gateway
+journalctl -u ptt-gateway -f
+```
+
+(Edit `User=`, `WorkingDirectory=`, and `EnvironmentFile=` in the unit to match
+your box.)
+
+---
+
+### Option 2: a Windows PC as the gateway
 
 Get the radio audio into the PC (a hardware line-in, or a virtual cable like
 **VB-Audio Virtual Cable** fed by your PTT app), then push it up.

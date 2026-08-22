@@ -1,0 +1,31 @@
+# tools/ptt-gateway.service — run the Global PTT capture on the Linux server.
+#
+# Install:
+#   sudo cp tools/ptt-gateway.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ptt-gateway
+#   journalctl -u ptt-gateway -f      # watch logs
+#
+# Edit User=, WorkingDirectory=, and the EnvironmentFile path to match your box.
+# The EnvironmentFile should contain at least SCANNER_INGEST_KEY (the same value
+# as the server's .env). Do the ONE-TIME console login first (see
+# tools/ptt_linux_gateway.sh header) so the Chromium profile is signed in.
+
+[Unit]
+Description=Global PTT audio gateway (Chromium + FFmpeg -> /scanner/ingest)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vortex
+WorkingDirectory=/home/vortex/AtticRadar
+EnvironmentFile=/home/vortex/AtticRadar/.env
+# XDG_RUNTIME_DIR is needed for a user PulseAudio instance under systemd.
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/usr/bin/env bash tools/ptt_linux_gateway.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
