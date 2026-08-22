@@ -28,20 +28,86 @@ Set a long random shared secret so only your gateway can push audio:
 SCANNER_INGEST_KEY=<a long random string>
 ```
 
-Restart the server. On boot you'll see:
-`[SCANNER] Global PTT streaming ready (1 channel(s), ingest ENABLED).`
+Install dependencies (`ws` is needed for the CDN-safe WebSocket ingest) and
+restart the server:
+
+```bash
+npm install
+```
+
+On boot you'll see both of these:
+
+```
+[SCANNER] Global PTT streaming ready (1 channel(s), ingest ENABLED).
+[SCANNER] WebSocket ingest ready at /scanner/ingest-ws[/:channel] (CDN-safe).
+```
+
+If the second line is missing, the gateway can still push over plain HTTP, but
+only if nothing buffers the upload (see **Why WebSocket** below).
 
 If `SCANNER_INGEST_KEY` is unset, ingest is **disabled** (no one can push a feed).
+
+The key is a **secret**: it is the only thing stopping a stranger from
+publishing audio to your channel. Keep it in the server's `.env` and, on a
+gateway PC, in `tools/ptt.local.env` or `tools/ptt.key.txt` (both gitignored) or
+the `PTT_KEY` environment variable — never committed to the repo. If it has ever
+been committed or shared, generate a new one and update every gateway:
+
+```bash
+openssl rand -hex 32
+```
+
+## Why WebSocket — the "gateway is streaming but the app says offline" trap
+
+If the origin sits behind Cloudflare (or almost any CDN/reverse proxy), the
+gateway can look completely healthy — audio captured, MP3 encoded, `HTTP 200` —
+while the app still shows the channel **offline**. Nothing is wrong with the
+audio; the upload never reaches the origin.
+
+**The cause:** a CDN buffers the *request body* and forwards it to the origin
+only once the upload finishes. A live feed is an upload that never finishes, so
+the origin receives nothing. Measured against a Cloudflare-fronted origin:
+
+```
+t=0..20s   gateway uploading    origin sees: connection=offline, no bytes
+t=20s      upload ENDS          origin sees: all 81,920 bytes at once
+```
+
+`/scanner/status` gives it away: `connection` stays `offline` and
+`lastAudioAgeMs` keeps climbing while the gateway insists it is streaming.
+
+**The fix:** push over a WebSocket instead. CDNs proxy WebSocket frames through
+as they happen rather than buffering them, so the same bytes arrive in real
+time. That is what `/scanner/ingest-ws` is for, and it is the gateway's default
+transport. The plain `POST /scanner/ingest` is still there and is the right
+choice when nothing sits between the gateway and the origin — the Linux gateway
+pushing to `127.0.0.1`, for instance.
+
+| Path | Transport |
+|---|---|
+| gateway → CDN → origin | WebSocket (default) |
+| gateway → origin directly | either; `-Transport http` is fine |
+
+---
 
 ## 2. Capture the audio — pick ONE gateway
 
 Global PTT has no API, so a browser must play the console somewhere and we capture
-its audio. You can run that browser **on the Linux server itself** (recommended —
-no second machine) or on a **Windows PC**.
+its audio. Pick by where you can keep a machine running:
+
+| | Runs on | Use when |
+|---|---|---|
+| **Option 1** | Linux server | you have a server and want no second machine |
+| **Option 2** | Windows PC | there is no Linux box for the browser |
+| **Option 3** | Windows PC | something else already plays the console audio |
+
+Options 1 and 2 are the same design on two operating systems: a browser plays the
+console, a virtual audio device carries that sound, FFmpeg records it and pushes
+it to `/scanner/ingest`.
 
 ---
 
-### Option 1 (recommended): everything on the Linux server — no Windows PC
+### Option 1 (Linux): everything on the server — no Windows PC
 
 Runs a virtual display + Chromium (logged into the console) + FFmpeg entirely on
 the server, pushing to its own local `/scanner/ingest`.
@@ -77,53 +143,132 @@ journalctl -u ptt-gateway -f
 your box.)
 
 ---
+### Option 2 (Windows): the all-in-one gateway script
 
-### Option 2: a Windows PC as the gateway
+The Windows counterpart of Option 1. One command opens the console in its own
+browser, captures that audio, and pushes it to the server, reconnecting on its
+own. Use this if you have no Linux box to run the browser on.
 
-Get the radio audio into the PC (a hardware line-in, or a virtual cable like
-**VB-Audio Virtual Cable** fed by your PTT app), then push it up.
+Linux gets its virtual audio path from a PulseAudio null sink. Windows has no
+equivalent, so the browser plays into a **virtual audio cable** and FFmpeg
+records the other end of it:
 
-### Capturing a browser-based console (e.g. Global PTT `dispatch.global-ptt.com`)
+```
+Edge/Chrome (console) -> "CABLE Input" -> "CABLE Output" -> FFmpeg -> server
+```
 
-Global PTT has no API — the audio is played by the dispatch web page — so we
-capture what the browser plays and route only that into FFmpeg:
+**Prerequisites** (both free, installed once):
 
-1. Install **VB-Audio Virtual Cable** (free): https://vb-audio.com/Cable/ — it
-   adds a playback device **"CABLE Input"** and a matching recording device
-   **"CABLE Output"**.
-2. On the gateway PC, open the console in a browser, log in, and open
-   `#/intercom/map` so it's receiving audio. (Do the log-in yourself in the
-   browser — no credentials go anywhere else.)
-3. Send **only the browser's** sound to the cable so you don't capture other
-   system noise: Windows **Settings → System → Sound → Volume mixer**, find your
-   browser, and set its **Output device → "CABLE Input (VB-Audio Virtual Cable)"**.
-   (Do this per-app so alerts/other apps stay on your speakers.)
-4. Set `PTT_INPUT="CABLE Output (VB-Audio Virtual Cable)"` in the run command below.
-5. Keep the browser tab **open and not minimized** (browsers throttle/mute fully
-   backgrounded tabs), keep the PC awake, and make sure autoplay is allowed for
-   the site (click into the intercom once so audio is flowing).
+- **FFmpeg** - `winget install Gyan.FFmpeg`, then reopen the terminal
+- **VB-Audio Virtual Cable** - https://vb-audio.com/Cable/ (installer must be run
+  as administrator, then reboot)
 
-> Want to *also* hear it on the PC while capturing? Use **VoiceMeeter** (same
-> vendor) to split the browser audio to both the cable and your speakers, or set
-> the CABLE playback device's "Listen to this device" to your speakers.
->
-> Simpler-but-blunter alternative: enable **"Stereo Mix"** on your sound card and
-> set `PTT_INPUT="Stereo Mix (…)"` — but that captures *all* system audio, so run
-> it on a machine that makes no other sound.
+**First run:**
 
-Install **FFmpeg** (https://ffmpeg.org) and confirm it's on PATH: `ffmpeg -version`.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\ptt_windows_gateway.ps1 -Setup
+```
 
-Find your audio input device name:
+It checks that the cable is present, asks once for the ingest key (saved to
+`tools\ptt.local.env`, which is gitignored), and opens the per-app volume mixer
+so you can send the browser's audio to **CABLE Input**. Windows remembers that
+routing per app, so it really is a one-time step - the same spirit as the
+one-time console login on Linux.
+
+**Every run after that** - double-click `tools\Start-GlobalPTT-Windows.bat`, or:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\ptt_windows_gateway.ps1
+```
+
+What it does each time:
+
+1. Finds FFmpeg (PATH, winget, or a downloaded build) and picks the capture
+   device automatically - CABLE Output, then any VB-Audio/VoiceMeeter device,
+   then Stereo Mix.
+2. Opens the console at `dispatch.global-ptt.com` in a **dedicated browser
+   profile** (`%LOCALAPPDATA%\VortexPTT\browser-profile`), so your normal
+   browser is untouched and the console login persists. It also disables
+   Chromium's background/occlusion throttling, which is what silently kills a
+   minimized tab's audio on Windows.
+3. **Measures the audio** before streaming and warns you if the cable is silent,
+   instead of quietly sending nothing.
+4. Streams mono 32k MP3 to `/scanner/ingest/<channel>` and reconnects every time
+   the server recycles the long POST.
+
+Log into the console once in that browser window and open the intercom; audio
+flows from then on.
+
+Useful switches:
+
+| Switch | What it does |
+|---|---|
+| `-Probe` | record 5s from the capture device and report the level in dB |
+| `-ListDevices` | show every capture device FFmpeg can see |
+| `-NoBrowser` | don't launch a browser (the PTT desktop app is the source) |
+| `-Device "name"` | use a specific capture device |
+| `-Channel dispatch` | publish to another channel |
+| `-InstallTask` | run at logon automatically (`-UninstallTask` removes it) |
+
+Settings can also come from `tools\ptt.local.env`, the repo `.env`, or the
+environment: `PTT_SERVER`, `PTT_KEY`, `PTT_INPUT`, `PTT_CHANNEL`, `PTT_BITRATE`,
+`PTT_URL`, `PTT_PROFILE`, `PTT_BROWSER`, `PTT_FFMPEG`.
+
+**Troubleshooting**
+
+- *Listeners hear silence* - run `-Probe` while the console is talking. Silence
+  there means the browser's audio is not going to CABLE Input: Settings >
+  System > Sound > Volume mixer, find the browser, set its Output to
+  **CABLE Input**.
+- *Want to hear it on the PC too* - use **VoiceMeeter** to split the audio to
+  both the cable and your speakers, or turn on "Listen to this device" for CABLE
+  Output in Sound control panel.
+- *No virtual cable* - the script falls back to **Stereo Mix**, which captures
+  *all* system audio, so only use that on a PC that makes no other sound.
+- *401 / 503 / 404* - the key does not match `SCANNER_INGEST_KEY`, the server has
+  no key set, or the channel does not exist. The script names which one it is.
+- *The gateway says it is streaming but the app says offline* - the upload is
+  being buffered somewhere in between. Use the default WebSocket transport, and
+  make sure the server has been redeployed with `/scanner/ingest-ws`. See
+  **Why WebSocket** above.
+- *"could not open a WebSocket"* - the server predates the WebSocket ingest.
+  Redeploy it (`git pull && npm install`, then restart), or run the gateway with
+  `-Transport http` if there is no CDN in the path.
+
+---
+
+### Option 3 (Windows): push only, console already running
+
+Use this when something else is already playing the audio on the PC and routing
+it into the cable, and you only want the upload half.
+
+Get the radio audio into the PC (a hardware line-in, or a virtual cable fed by
+your PTT app), then push it up. To capture a browser-based console, route the
+browser's output to **CABLE Input** as described above.
+
+Install **FFmpeg** and confirm it's on PATH: `ffmpeg -version`. Find your audio
+input device name:
 
 ```powershell
 ffmpeg -list_devices true -f dshow -i dummy
 ```
 
-Copy the exact device name it prints (e.g. `CABLE Output (VB-Audio Virtual Cable)`).
+#### Option 3A - the standalone one-file gateway (recommended)
 
-### Option A — the bundled source client (recommended)
+`tools/GlobalPTT-Gateway.js` needs only Node and FFmpeg - copy that single file
+anywhere on the Windows PC. It auto-detects the capture device and auto-reconnects.
 
-Auto-reconnects if the network drops or the server restarts:
+Put the ingest key next to it in `ptt.key.txt` (just the key on one line), or set
+`PTT_KEY`, then:
+
+```powershell
+node GlobalPTT-Gateway.js          # or double-click Start-GlobalPTT.bat
+node GlobalPTT-Gateway.js --list   # show the capture devices
+```
+
+#### Option 3B - the project's source client
+
+Auto-reconnects too, and reads everything from the environment:
 
 ```powershell
 $env:PTT_SERVER  = "https://radar.twistcasterlivemedia.com"
@@ -133,10 +278,10 @@ $env:PTT_CHANNEL = "global-ptt"
 node tools/ptt_source.js
 ```
 
-(Optional: `PTT_BITRATE=48k`. Copy just `tools/ptt_source.js` to the Windows PC —
-it only needs Node, no other project files.)
+`tools/start_ptt.ps1` wraps that in a restart loop and reads `PTT_KEY` from
+`tools\ptt.local.env`.
 
-### Option B — FFmpeg pushing directly
+#### Option 3C - FFmpeg pushing directly
 
 ```powershell
 ffmpeg -f dshow -i audio="CABLE Output (VB-Audio Virtual Cable)" ^
@@ -145,8 +290,10 @@ ffmpeg -f dshow -i audio="CABLE Output (VB-Audio Virtual Cable)" ^
   "https://radar.twistcasterlivemedia.com/scanner/ingest/global-ptt?key=THE_KEY"
 ```
 
-To keep it running unattended, wrap Option A in a **Windows Scheduled Task** (or
-`nssm`) set to restart on failure and run at logon.
+To keep any of these running unattended, use `ptt_windows_gateway.ps1
+-InstallTask`, or wrap it in a **Windows Scheduled Task** (or `nssm`) set to
+restart on failure and run at logon.
+
 
 ## 3. Listen
 
@@ -167,7 +314,8 @@ To keep it running unattended, wrap Option A in a **Windows Scheduled Task** (or
 | `GET /scanner` or `/scanner/status[/:channel]` | JSON status: `online`, `listeners`, `lastAudioAt`, `bitrateKbps`, `connection`, `uptimeMs` |
 | `GET /scanner/stream[/:channel]` | The live `audio/mpeg` stream (private channels require login) |
 | `GET /scanner/channels` | List channels the caller may see |
-| `POST /scanner/ingest[/:channel]` | Source push (needs the ingest key) |
+| `POST /scanner/ingest[/:channel]` | Source push over HTTP (needs the ingest key) |
+| `WS /scanner/ingest-ws[/:channel]` | Source push over WebSocket — use this behind a CDN |
 | `GET /admin/scanner/channels` · `POST /admin/scanner/channels` · `DELETE /admin/scanner/channels/:id` | Admin channel management |
 
 ## Channels (add more later, no rebuild)

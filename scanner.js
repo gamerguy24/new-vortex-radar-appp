@@ -119,6 +119,32 @@ function attachScanner({ app, requireAuth, requireAdmin, DATA_DIR, readJson, wri
         }
     }
 
+    // A source is either a long HTTP POST (req) or a WebSocket. Close either.
+    function dropSource(src) {
+        if (!src) return;
+        try {
+            if (typeof src.destroy === 'function') src.destroy();
+            else if (typeof src.terminate === 'function') src.terminate();
+        } catch (e) {}
+    }
+
+    // Begin a new source on a channel, replacing whatever was there.
+    function beginSource(st, src, contentType) {
+        if (st.source && st.source !== src) dropSource(st.source);
+        if (contentType) st.contentType = contentType;
+        st.source = src;
+        st.sourceStartedAt = Date.now();
+        st.lastAudioAt = Date.now();
+        st.bytesIn = 0;
+        st.prime = []; st.primeBytes = 0;
+    }
+    function endSource(st, src, label) {
+        if (st.source !== src) return;
+        st.source = null;
+        st.sourceStartedAt = 0;
+        console.log(`[SCANNER] source disconnected ← ${label}`);
+    }
+
     // ── ingest (the Windows gateway posts a continuous chunked stream here) ───────
     function handleIngest(req, res) {
         const r = resolve(req.params.channel);
@@ -128,28 +154,83 @@ function attachScanner({ app, requireAuth, requireAdmin, DATA_DIR, readJson, wri
         if (key !== INGEST_KEY) return res.status(401).json({ error: 'Bad ingest key.' });
 
         const { def, st } = r;
-        // One source per channel — replace any previous (lets the gateway reconnect).
-        if (st.source && st.source !== req) { try { st.source.destroy(); } catch (e) {} }
         const ct = (req.get('content-type') || '').toLowerCase();
-        if (ct.includes('audio/') || ct.includes('application/octet-stream')) st.contentType = ct.includes('octet') ? 'audio/mpeg' : ct;
-        st.source = req;
-        st.sourceStartedAt = Date.now();
-        st.lastAudioAt = Date.now();
-        st.bytesIn = 0;
-        st.prime = []; st.primeBytes = 0;
+        const contentType = (ct.includes('audio/') || ct.includes('application/octet-stream'))
+            ? (ct.includes('octet') ? 'audio/mpeg' : ct)
+            : null;
+        // One source per channel — replace any previous (lets the gateway reconnect).
+        beginSource(st, req, contentType);
         try { req.setTimeout(0); } catch (e) {}          // no inactivity timeout on the long POST
-        console.log(`[SCANNER] source connected → ${def.id} (${st.contentType})`);
+        console.log(`[SCANNER] source connected → ${def.id} (${st.contentType}, http)`);
 
         req.on('data', (chunk) => fanout(st, chunk));
-        const done = () => {
-            if (st.source === req) { st.source = null; console.log(`[SCANNER] source disconnected ← ${def.id}`); }
-        };
+        const done = () => endSource(st, req, def.id);
         req.on('end', () => { done(); res.json({ ok: true, bytes: st.bytesIn }); });
         req.on('close', done);
         req.on('error', done);
     }
     app.post('/scanner/ingest', handleIngest);
     app.post('/scanner/ingest/:channel', handleIngest);
+
+    /*
+     * WebSocket ingest — /scanner/ingest-ws[/:channel]?key=...
+     *
+     * A CDN in front of the origin (Cloudflare, and most others) BUFFERS a
+     * request body and only forwards it once the upload finishes. A live feed
+     * is an upload that never finishes, so the HTTP POST above never reaches
+     * the origin through such a proxy. WebSockets are proxied frame-by-frame
+     * instead, so the same audio arrives in real time.
+     *
+     * Each binary frame is a chunk of the same MP3 byte stream the POST sends,
+     * and is fanned out to listeners identically.
+     */
+    function attachUpgrade(server) {
+        if (!server) return false;
+        let WebSocketServer;
+        try { WebSocketServer = require('ws').WebSocketServer || require('ws').Server; } catch (e) {
+            console.warn('[SCANNER] WebSocket ingest unavailable — run "npm install ws" to enable it.');
+            return false;
+        }
+
+        const wss = new WebSocketServer({ noServer: true });
+
+        server.on('upgrade', (req, socket, head) => {
+            let url;
+            try { url = new URL(req.url, 'http://localhost'); } catch (e) { return socket.destroy(); }
+            const m = url.pathname.match(/^\/scanner\/ingest-ws(?:\/([^/]+))?\/?$/);
+            if (!m) return;                       // not ours — leave it for anyone else
+
+            const reject = (code, why) => {
+                try { socket.write(`HTTP/1.1 ${code}\r\nConnection: close\r\n\r\n`); } catch (e) {}
+                try { socket.destroy(); } catch (e) {}
+                console.warn(`[SCANNER] ws ingest rejected (${code} ${why})`);
+            };
+
+            const r = resolve(m[1] ? decodeURIComponent(m[1]) : null);
+            if (!r) return reject('404 Not Found', 'unknown channel');
+            if (!INGEST_KEY) return reject('503 Service Unavailable', 'no SCANNER_INGEST_KEY');
+            const key = (req.headers['x-ingest-key'] || url.searchParams.get('key') || '').toString();
+            if (key !== INGEST_KEY) return reject('401 Unauthorized', 'bad key');
+
+            wss.handleUpgrade(req, socket, head, (ws) => {
+                const { def, st } = r;
+                beginSource(st, ws, 'audio/mpeg');
+                console.log(`[SCANNER] source connected → ${def.id} (${st.contentType}, websocket)`);
+
+                ws.on('message', (data, isBinary) => {
+                    if (st.source !== ws) return;                 // superseded by a newer source
+                    const chunk = Buffer.isBuffer(data) ? data : Buffer.from(data);
+                    if (!isBinary && chunk.length < 64) return;   // ignore tiny text keepalives
+                    if (chunk.length) fanout(st, chunk);
+                });
+                ws.on('close', () => endSource(st, ws, def.id));
+                ws.on('error', () => endSource(st, ws, def.id));
+            });
+        });
+
+        console.log('[SCANNER] WebSocket ingest ready at /scanner/ingest-ws[/:channel] (CDN-safe).');
+        return true;
+    }
 
     // ── listener stream (audio/mpeg) ─────────────────────────────────────────────
     // Auth: public channels are open; private channels require a signed-in user.
@@ -230,6 +311,10 @@ function attachScanner({ app, requireAuth, requireAdmin, DATA_DIR, readJson, wri
     });
 
     console.log(`[SCANNER] Global PTT streaming ready (${defs.length} channel(s), ingest ${INGEST_KEY ? 'ENABLED' : 'DISABLED — set SCANNER_INGEST_KEY'}).`);
+
+    // server.js calls this once it has the http.Server, so the WebSocket ingest
+    // can share the same port.
+    return { attachUpgrade };
 }
 
 module.exports = { attachScanner };
