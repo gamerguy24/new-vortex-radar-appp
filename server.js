@@ -295,11 +295,16 @@ function publicUser(u) {
         mustChangePassword: !!u.mustChangePassword,
         tier: u.tier || 'free',
         tierLevel: billing.billingState(u).tierLevel,
-        // Chase-stream access: admins can always stream; others need approval.
-        canStream: !!(u.isAdmin || u.streamApproved),
+        // Chase-stream access: only the super admin streams without approval.
+        canStream: !!(u.isSuperAdmin || u.streamApproved),
         streamApproved: !!u.streamApproved,
         streamRequest: u.streamRequest
-            ? { status: u.streamRequest.status || 'pending', requestedAt: u.streamRequest.requestedAt || null, note: u.streamRequest.note || '' }
+            ? {
+                status: u.streamRequest.status || 'pending',
+                requestedAt: u.streamRequest.requestedAt || null,
+                note: u.streamRequest.note || '',
+                links: Array.isArray(u.streamRequest.links) ? u.streamRequest.links : [],
+              }
             : null,
         createdAt: u.createdAt,
         lastLoginAt: u.lastLoginAt || null,
@@ -400,9 +405,9 @@ function requireAdmin(req, res, next) {
     if (!req.user.isAdmin) return res.status(403).json({ error: 'Admin access required' });
     next();
 }
-// Chase-stream go-live gate: admins always pass; everyone else needs an
-// admin-approved streamApproved flag on their account.
-function canStream(u) { return !!(u && (u.isAdmin || u.streamApproved)); }
+// Chase-stream go-live gate: only the super admin is auto-allowed; everyone
+// else (including regular admins) needs an admin-approved streamApproved flag.
+function canStream(u) { return !!(u && (u.isSuperAdmin || u.streamApproved)); }
 function requireStreamer(req, res, next) {
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
     if (req.user.isLocked) return res.status(403).json({ error: 'Account locked' });
@@ -1339,25 +1344,43 @@ app.get('/api/stream/access', requireAuth, (req, res) => {
         canStream: canStream(req.user),
         isAdmin: !!req.user.isAdmin,
         request: req.user.streamRequest
-            ? { status: req.user.streamRequest.status || 'pending', requestedAt: req.user.streamRequest.requestedAt || null }
+            ? {
+                status: req.user.streamRequest.status || 'pending',
+                requestedAt: req.user.streamRequest.requestedAt || null,
+                links: Array.isArray(req.user.streamRequest.links) ? req.user.streamRequest.links : [],
+                note: req.user.streamRequest.note || '',
+              }
             : null,
     });
 });
 
-// Submit (or refresh) a request to be allowed to stream.
+// Submit (or refresh) a request to be allowed to stream. The applicant provides
+// their stream link(s) (channel / broadcast URLs) so an admin can review them.
 app.post('/api/stream/request-access', requireAuth, (req, res) => {
     const user = req.user;
     if (canStream(user)) return res.json({ canStream: true, request: null });
-    const note = clampStr((req.body && req.body.note) || '', 500);
+    const b = req.body || {};
+    const note = clampStr(b.note || '', 500);
+    // Accept links as an array or a newline/comma-separated string; keep only
+    // things that look like http(s) URLs, cap the count + length.
+    let raw = b.links;
+    if (typeof raw === 'string') raw = raw.split(/[\n,]/);
+    if (!Array.isArray(raw)) raw = [];
+    const links = raw
+        .map((s) => clampStr(s, 400).trim())
+        .filter((s) => /^https?:\/\/\S+$/i.test(s))
+        .slice(0, 6);
+    if (!links.length) return res.status(400).json({ error: 'Add at least one valid stream link (must start with http:// or https://).' });
     // Preserve the original request time if one is already pending.
     const prev = user.streamRequest && user.streamRequest.status === 'pending' ? user.streamRequest : null;
     user.streamRequest = {
         status: 'pending',
         note,
+        links,
         requestedAt: (prev && prev.requestedAt) || new Date().toISOString(),
     };
     saveUsers();
-    res.json({ canStream: false, request: { status: 'pending', requestedAt: user.streamRequest.requestedAt } });
+    res.json({ canStream: false, request: { status: 'pending', requestedAt: user.streamRequest.requestedAt, links, note } });
 });
 
 // Admin: everyone approved to stream, plus everyone with a request on file.
@@ -1370,6 +1393,7 @@ app.get('/admin/stream/requests', requireAdmin, (req, res) => {
             approved: !!u.streamApproved,
             status: u.streamRequest ? (u.streamRequest.status || 'pending') : (u.streamApproved ? 'approved' : 'none'),
             note: (u.streamRequest && u.streamRequest.note) || '',
+            links: (u.streamRequest && Array.isArray(u.streamRequest.links)) ? u.streamRequest.links : [],
             requestedAt: (u.streamRequest && u.streamRequest.requestedAt) || null,
             decidedAt: (u.streamRequest && u.streamRequest.decidedAt) || null,
         }))

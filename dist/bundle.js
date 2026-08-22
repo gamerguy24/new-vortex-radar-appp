@@ -9201,25 +9201,22 @@ ${u}° (${T.degToCompass(u)})
         font-family:'Onest',system-ui,sans-serif;box-shadow:0 14px 34px rgba(0,0,0,.5);
         -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);`,t=p.map(([,e,t])=>`<div style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:4px">
             <span style="width:14px;height:10px;border-radius:3px;background:${e};box-shadow:0 0 0 1px rgba(255,255,255,.2)"></span>${t}</div>`).join(""),e.innerHTML=`<div style="font-size:12px;font-weight:800;margin-bottom:2px">Power Outages</div>
-        <div style="font-size:10px;color:#8ea4bd;margin-bottom:4px">customers without power</div>`+t,document.body.appendChild(e)),a(),i&&clearInterval(i),i=setInterval(()=>{T&&a()},18e4)},disable:function(){var e;T=!1,i&&(clearInterval(i),i=null),(e=document.getElementById("outageLegend"))&&e.remove(),E&&(E.remove(),E=null),o.getLayer(u)&&o.removeLayer(u),o.getLayer(d)&&o.removeLayer(d),o.getSource(s)&&o.removeSource(s),f=!1,S=new Set}}},{"../core/map/map":24,"topojson-client":317}],72:[function(e,t,n){let r=e("../libnexrad/loaders_nexrad"),o=10,s=[],d=0,i=!1,a=!1,l=null,u=1,c=null;function A(){return $("#vortexPlayBtn")}function p(){return Math.round(750/u)}function T(e){A().find("i").toggleClass("fa-play",!e).toggleClass("fa-pause",e),A().toggleClass("vortexPlaying",e)}function f(e){a=e;var t=A().find("i");A().toggleClass("vortexLoading",e),e?t.removeClass("fa-play fa-pause").addClass("fa-spinner fa-spin"):t.removeClass("fa-spinner fa-spin")}function m(){s.length<=1||$("#vortexTimeline").val(Math.round(d/(s.length-1)*100))}function S(e){s[e]&&s[e].plot()}function E(){var e=window.atticData||{};return{station:e.currentStation,product:e.current_loop_product}}function R(){l&&(clearInterval(l),l=null),T(i=!1)}function h(){S(d=++d>=s.length?0:d),m()}function M(){if(0!==s.length){var e=window.atticData;if(e&&e.current_RadarUpdater)try{e.current_RadarUpdater.disable()}catch(e){}T(i=!0),l&&clearInterval(l),l=setInterval(h,p())}}function g(e){let{station:a,product:l}=E();if(a&&l){f(!0);let n=[],i=o-1;!function t(){i<0?(s=n,d=Math.max(0,s.length-1),c=a+":"+l,f(!1),m(),e(0<s.length)):r.get_latest_level_3_url(a,l,i,function(e){e?r.return_level_3_factory_from_url(e,function(e){n.push(e),i--,t()}):(i--,t())})}()}else e(!1)}function y(){var e;a||(i?R():(e=(e=E()).station&&e.product?e.station+":"+e.product:null)&&(0<s.length&&c===e?M():g(function(e){e?M():T(!1)})))}function N(){var e;0!==s.length&&(R(),e=parseInt($("#vortexTimeline").val(),10)||0,S(d=Math.round(e/100*(s.length-1))))}function L(){u=parseFloat($("#vortexSpeed").val())||1,i&&(clearInterval(l),l=setInterval(h,p()))}A().off("click.vortexLoop").on("click.vortexLoop",y),$("#vortexTimeline").off("input.vortexLoop").on("input.vortexLoop",N),$("#vortexSpeed").off("change.vortexLoop").on("change.vortexLoop",L),t.exports={reset:function(){R(),s=[],d=0,c=null,a||T(!1),$("#vortexTimeline").val(100)},togglePlay:y,step:function(e){return 0!==s.length&&(R(),S(d=(d+e+s.length)%s.length),m(),!0)}}},{"../libnexrad/loaders_nexrad":92}],73:[function(e,t,n){var e=e("./colortable_parser"),i=`product: BR
-units: dBZ
-step: 5
+        <div style="font-size:10px;color:#8ea4bd;margin-bottom:4px">customers without power</div>`+t,document.body.appendChild(e)),a(),i&&clearInterval(i),i=setInterval(()=>{T&&a()},18e4)},disable:function(){var e;T=!1,i&&(clearInterval(i),i=null),(e=document.getElementById("outageLegend"))&&e.remove(),E&&(E.remove(),E=null),o.getLayer(u)&&o.removeLayer(u),o.getLayer(d)&&o.removeLayer(d),o.getSource(s)&&o.removeSource(s),f=!1,S=new Set}}},{"../core/map/map":24,"topojson-client":317}],72:[function(e,t,n){let r=e("../libnexrad/loaders_nexrad"),o=10,s=[],d=0,i=!1,a=!1,l=null,u=1,c=null;function A(){return $("#vortexPlayBtn")}function p(){return Math.round(750/u)}function T(e){A().find("i").toggleClass("fa-play",!e).toggleClass("fa-pause",e),A().toggleClass("vortexPlaying",e)}function f(e){a=e;var t=A().find("i");A().toggleClass("vortexLoading",e),e?t.removeClass("fa-play fa-pause").addClass("fa-spinner fa-spin"):t.removeClass("fa-spinner fa-spin")}function m(){s.length<=1||$("#vortexTimeline").val(Math.round(d/(s.length-1)*100))}function S(e){s[e]&&s[e].plot()}function E(){var e=window.atticData||{};return{station:e.currentStation,product:e.current_loop_product}}function R(){l&&(clearInterval(l),l=null),T(i=!1)}function h(){S(d=++d>=s.length?0:d),m()}function M(){if(0!==s.length){var e=window.atticData;if(e&&e.current_RadarUpdater)try{e.current_RadarUpdater.disable()}catch(e){}T(i=!0),l&&clearInterval(l),l=setInterval(h,p())}}function g(e){let{station:a,product:l}=E();if(a&&l){f(!0);let n=[],i=o-1;!function t(){i<0?(s=n,d=Math.max(0,s.length-1),c=a+":"+l,f(!1),m(),e(0<s.length)):r.get_latest_level_3_url(a,l,i,function(e){e?r.return_level_3_factory_from_url(e,function(e){n.push(e),i--,t()}):(i--,t())})}()}else e(!1)}function y(){var e;a||(i?R():(e=(e=E()).station&&e.product?e.station+":"+e.product:null)&&(0<s.length&&c===e?M():g(function(e){e?M():T(!1)})))}function N(){var e;0!==s.length&&(R(),e=parseInt($("#vortexTimeline").val(),10)||0,S(d=Math.round(e/100*(s.length-1))))}function L(){u=parseFloat($("#vortexSpeed").val())||1,i&&(clearInterval(l),l=setInterval(h,p()))}A().off("click.vortexLoop").on("click.vortexLoop",y),$("#vortexTimeline").off("input.vortexLoop").on("input.vortexLoop",N),$("#vortexSpeed").off("change.vortexLoop").on("change.vortexLoop",L),t.exports={reset:function(){R(),s=[],d=0,c=null,a||T(!1),$("#vortexTimeline").val(100)},togglePlay:y,step:function(e){return 0!==s.length&&(R(),S(d=(d+e+s.length)%s.length),m(),!0)}}},{"../libnexrad/loaders_nexrad":92}],73:[function(e,t,n){var e=e("./colortable_parser"),i=`Product: BR
+Units: dBZ
+Step: 5
+RF: 64 64 64
 
-color4: -30 116 78 173 0 147 141 117 255
-color: -20 150 145 83 210 212 180
-color: -10 204 207 180 65 91 158
-color: 10 67 97 162 106 208 228
-color: 18 111 214 232 53 213 91
-color: 22 17 213 24 9 94 9
-color: 35 29 104 9 234 210 4
-color: 40 255 226 0 255 128 0
-color: 50 255 0 0 113 0 0
-color: 60 255 255 255 255 146 255
-color: 65 255 117 255 225 11 227
-color: 70 178 0 255 99 0 214
-color: 75 5 236 240 1 32 32
-color: 85 1 32 32
-color: 95 1 32 32`,a=`Product:bv
+SolidColor4: 9.9 193 193 193 0
+SolidColor: 25 128 252 131
+SolidColor: 30 1 63 0
+SolidColor: 35 251 249 10
+SolidColor: 40 247 128 1
+SolidColor: 45 249 6 0
+SolidColor: 50 128 0 4
+SolidColor: 55 248 8 245
+SolidColor: 60 255 81 248
+SolidColor: 65 255 255 255
+SolidColor: 70 255 255 255`,a=`Product:bv
 units: KTS
 step: 5
 scale: 1.9426

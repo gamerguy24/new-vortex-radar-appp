@@ -600,10 +600,17 @@ export function initAdminPanel(root) {
                 ? `<button data-stream-action="revoke" data-id="${r.id}" data-email="${escapeHtml(r.email)}" class="danger">Revoke</button>`
                 : `<button data-stream-action="approve" data-id="${r.id}" data-email="${escapeHtml(r.email)}" class="primary">Approve</button>
                    <button data-stream-action="deny" data-id="${r.id}" data-email="${escapeHtml(r.email)}">Deny</button>`;
+            const links = Array.isArray(r.links) ? r.links : [];
+            const linksHtml = links.length
+                ? `<div class="when" style="margin-top:3px;">Links: ${links.map((u) =>
+                    `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="color:#27beff;word-break:break-all;">${escapeHtml(u)}</a>`
+                  ).join(' · ')}</div>`
+                : '';
             row.innerHTML = `
                 <div class="who">
                     <div class="email">${escapeHtml(r.email)} ${statusLabel}</div>
                     ${when ? `<div class="when">${when}</div>` : ''}
+                    ${linksHtml}
                     ${r.note ? `<div class="when">“${escapeHtml(r.note)}”</div>` : ''}
                 </div>
                 ${btns}

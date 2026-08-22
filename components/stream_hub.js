@@ -444,46 +444,96 @@ window.__vrshOpenPlayer = openPlayer;
 function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function escapeAttr(s) { return escapeHtml(s); }
 
-// ─── streaming-access (request → admin approval) ───────────────────────────────
-async function requestStreamAccess() {
+// ─── streaming-access (apply with links → admin review) ────────────────────────
+async function submitStreamApplication() {
+    const linksEl = $('vrsh-apply-links');
+    const noteEl = $('vrsh-apply-note');
+    const btn = $('vrsh-apply-submit');
+    const links = (linksEl && linksEl.value || '')
+        .split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+    if (!links.length) { toast('Add at least one stream link (YouTube, Twitch, Facebook, etc.).', 'warn'); if (linksEl) linksEl.focus(); return; }
+    const bad = links.find((s) => !/^https?:\/\/\S+$/i.test(s));
+    if (bad) { toast('Each link must start with http:// or https:// — check: ' + bad, 'warn'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
     try {
-        const r = await api('POST', '/request-access');
-        streamRequestState = r.request || { status: 'pending' };
+        const r = await api('POST', '/request-access', { links, note: (noteEl && noteEl.value || '').trim() });
+        streamRequestState = r.request || { status: 'pending', links };
         canStreamState = !!r.canStream;
-        toast('Request sent — an admin will review it.', 'ok');
+        toast('Application submitted for review ✓', 'ok');
         applyAccessGating();
-    } catch (e) { toast('Could not send request: ' + e.message, 'error'); }
+    } catch (e) {
+        toast('Could not submit: ' + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Submit for review'; }
+    }
 }
 
-// Reflect approval state in the panel: gate the Go Live button + show the
-// request box for users who aren't approved yet.
+// Reflect approval state in the panel: approved users see the full go-live
+// config; everyone else sees the application / review-status card and the
+// go-live config is hidden.
 function applyAccessGating() {
     const box = $('vrsh-access');
+    const config = $('vrsh-config');
     const btn = $('vrsh-golive');
     if (btn) {
         btn.disabled = !canStreamState && !live;
         btn.title = canStreamState ? '' : 'Your account is not approved to go live yet.';
-        btn.style.opacity = (btn.disabled ? '0.5' : '');
-        btn.style.cursor = (btn.disabled ? 'not-allowed' : '');
     }
+    if (config) config.style.display = (canStreamState || live) ? '' : 'none';
     if (!box) return;
     if (canStreamState) { box.style.display = 'none'; return; }
     box.style.display = '';
+
     const st = streamRequestState && streamRequestState.status;
+    const submitted = (streamRequestState && Array.isArray(streamRequestState.links)) ? streamRequestState.links : [];
+    const linkList = submitted.length
+        ? `<ul class="vrsh-apply-links-list">${submitted.map((u) => `<li><a href="${escapeAttr(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a></li>`).join('')}</ul>`
+        : '';
+
     if (st === 'pending') {
-        box.innerHTML = `<div class="vrsh-access-title">Streaming access pending</div>
-            <div class="vrsh-hint">Your request is waiting for an admin to approve it. You'll be able to go live once approved.</div>`;
-    } else if (st === 'denied' || st === 'revoked') {
-        box.innerHTML = `<div class="vrsh-access-title">Streaming access ${st}</div>
-            <div class="vrsh-hint">An admin has ${st} your streaming access. You can request again.</div>
-            <button id="vrsh-req-access" class="vrsh-mini">Request access again</button>`;
-        const b = $('vrsh-req-access'); if (b) b.onclick = requestStreamAccess;
-    } else {
-        box.innerHTML = `<div class="vrsh-access-title">Streaming is approval-only</div>
-            <div class="vrsh-hint">Only admin-approved chasers can go live. Request access and an admin will review it.</div>
-            <button id="vrsh-req-access" class="vrsh-mini vrsh-req-btn">Request streaming access</button>`;
-        const b = $('vrsh-req-access'); if (b) b.onclick = requestStreamAccess;
+        box.innerHTML = `
+            <div class="vrsh-access-title">⏳ Application under review</div>
+            <div class="vrsh-hint">Thanks — your request to go live has been sent to the admins.
+              <b>Reviews take at least 24–48 hours.</b> You'll be able to stream here once you're approved.</div>
+            ${linkList ? `<div class="vrsh-apply-sub">You submitted:</div>${linkList}` : ''}
+            <button id="vrsh-apply-edit" class="vrsh-mini" style="margin-top:8px">Update my links</button>`;
+        const e = $('vrsh-apply-edit'); if (e) e.onclick = () => { streamRequestState = { ...streamRequestState, status: 'editing' }; applyAccessGating(); };
+        return;
     }
+    if (st === 'denied' || st === 'revoked') {
+        box.innerHTML = `
+            <div class="vrsh-access-title">Streaming access ${escapeHtml(st)}</div>
+            <div class="vrsh-hint">An admin has ${escapeHtml(st)} your streaming access. You can re-apply below — reviews take at least 24–48 hours.</div>
+            ${applicationFormHTML(submitted)}`;
+        wireApplicationForm();
+        return;
+    }
+    // no request yet (or editing) → show the application form
+    box.innerHTML = `
+        <div class="vrsh-access-title">📡 Apply to go live</div>
+        <div class="vrsh-hint">Streaming is approval-only. Paste your public stream link(s) below — your
+          YouTube / Twitch / Facebook / Kick channel or a live stream URL — and submit them for admin review.
+          <b>Reviews take at least 24–48 hours.</b> Only the site owner can stream without review.</div>
+        ${applicationFormHTML(submitted)}`;
+    wireApplicationForm();
+}
+
+function applicationFormHTML(prefill) {
+    const val = (prefill && prefill.length) ? escapeHtml(prefill.join('\n')) : '';
+    return `
+        <div class="vrsh-field" style="margin-top:10px">
+            <label>Your stream link(s) — one per line</label>
+            <textarea id="vrsh-apply-links" rows="3" placeholder="https://youtube.com/@yourchannel/live&#10;https://twitch.tv/yourname">${val}</textarea>
+        </div>
+        <div class="vrsh-field">
+            <label>Anything the reviewer should know (optional)</label>
+            <input id="vrsh-apply-note" type="text" placeholder="e.g. I chase the Southeast, SKYWARN #12345" />
+        </div>
+        <button id="vrsh-apply-submit" class="vrsh-mini vrsh-req-btn">Submit for review</button>`;
+}
+
+function wireApplicationForm() {
+    const b = $('vrsh-apply-submit');
+    if (b) b.onclick = submitStreamApplication;
 }
 
 // ─── UI: badge, panel, status ─────────────────────────────────────────────────
@@ -595,6 +645,7 @@ function panelHTML() {
 
       <div id="vrsh-access" class="vrsh-access" style="display:none"></div>
 
+      <div id="vrsh-config">
       <div class="vrsh-live-row">
         <button id="vrsh-golive" class="vrsh-golive">●  Go Live</button>
         <div class="vrsh-loc-box">
@@ -644,14 +695,15 @@ function panelHTML() {
       <label class="vrsh-check"><input id="vrsh-remote-enable" type="checkbox" /> Allow my team (operators) to start/stop my OBS remotely</label>
       <div class="vrsh-hint">Keep this tab open on your streaming PC with OBS running and <b>Control OBS</b> configured above. Operators can then run your stream from their dashboard — over the internet, no router setup.</div>
 
+      <div class="vrsh-actions">
+        <button id="vrsh-save" class="vrsh-save">Save settings</button>
+      </div>
+      </div><!-- /#vrsh-config -->
+
       <div id="vrsh-operator" style="display:none">
         <div class="vrsh-section">Operator — team OBS control</div>
         <div id="vrsh-agents"><div class="vrsh-hint">Loading…</div></div>
         <div class="vrsh-actions" style="margin-top:8px"><button id="vrsh-agents-refresh" class="vrsh-mini">Refresh</button></div>
-      </div>
-
-      <div class="vrsh-actions">
-        <button id="vrsh-save" class="vrsh-save">Save settings</button>
       </div>
     </div>`;
 }
@@ -815,7 +867,7 @@ async function init() {
             const d = await r.json();
             const u = d.user || {};
             isAdmin = !!u.isAdmin;
-            canStreamState = !!(u.canStream || u.isAdmin);
+            canStreamState = !!u.canStream; // super admin or approved only
             streamRequestState = u.streamRequest || null;
         }
     } catch {}
@@ -894,8 +946,9 @@ function injectStyles() {
     .vrsh-loc{font-size:15px;font-weight:700;margin-top:2px}
     .vrsh-field{margin-bottom:12px;display:flex;flex-direction:column}
     .vrsh-field label{font-size:12px;color:#9db0d0;margin-bottom:4px}
-    .vrsh-field input,.vrsh-field select{background:#0f1830;border:1px solid #26324c;border-radius:9px;color:#fff;padding:9px 11px;font-size:14px;font-family:inherit}
-    .vrsh-field input:focus,.vrsh-field select:focus{outline:none;border-color:#27beff}
+    .vrsh-field input,.vrsh-field select,.vrsh-field textarea{background:#0f1830;border:1px solid #26324c;border-radius:9px;color:#fff;padding:9px 11px;font-size:14px;font-family:inherit;width:100%;box-sizing:border-box}
+    .vrsh-field textarea{resize:vertical;line-height:1.4}
+    .vrsh-field input:focus,.vrsh-field select:focus,.vrsh-field textarea:focus{outline:none;border-color:#27beff}
     .vrsh-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .vrsh-section{margin:16px 0 8px;font-weight:800;font-size:13px;color:#7fdcff;text-transform:uppercase;letter-spacing:.06em;border-top:1px solid #1a2540;padding-top:12px}
     .vrsh-check{display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0}
@@ -919,8 +972,12 @@ function injectStyles() {
     /* approval-gate box */
     .vrsh-access{background:#141d33;border:1px solid #2a3a5c;border-radius:12px;padding:12px 14px;margin-bottom:14px}
     .vrsh-access-title{font-weight:800;font-size:14px;color:#ffd27a;margin-bottom:2px}
-    .vrsh-req-btn{margin-top:9px;background:#27beff;color:#04121f;border-color:transparent}
+    .vrsh-req-btn{margin-top:4px;background:#27beff;color:#04121f;border-color:transparent;font-size:13px;padding:8px 16px}
     .vrsh-req-btn:hover{background:#59cfff}
+    .vrsh-apply-sub{font-size:11.5px;color:#9db0d0;margin-top:8px}
+    .vrsh-apply-links-list{margin:4px 0 0;padding-left:18px;font-size:12.5px}
+    .vrsh-apply-links-list li{margin:2px 0}
+    .vrsh-apply-links-list a{color:#7fdcff;word-break:break-all}
     .vrsh-golive:disabled{background:#334155;cursor:not-allowed}
     .vrsh-golive:disabled:hover{background:#334155}
     /* map-popup "watch here" button */
