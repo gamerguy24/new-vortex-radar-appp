@@ -624,22 +624,32 @@ export function initAdminPanel(root) {
         if (!btn) return;
         const { id, email } = btn.dataset;
         const action = btn.dataset.streamAction;
+        console.log('[stream-access] click', { action, id, email });
+        if (!id) { alert('This request row has no user id — reload the admin panel and try again.'); return; }
+        // brief in-place feedback so it never looks like "nothing happened"
+        const orig = btn.textContent; btn.disabled = true; btn.textContent = '…';
+        const restore = () => { btn.disabled = false; btn.textContent = orig; };
         try {
             if (action === 'approve') {
                 await api('POST', `/admin/stream/requests/${id}/approve`);
                 flash(`${email} approved to go live.`, 'success');
             } else if (action === 'deny') {
-                if (!confirm(`Deny streaming access for ${email}?`)) return;
+                if (!confirm(`Deny streaming access for ${email}?`)) { restore(); return; }
                 await api('POST', `/admin/stream/requests/${id}/deny`);
                 flash(`Denied streaming access for ${email}.`, 'success');
             } else if (action === 'revoke') {
-                if (!confirm(`Revoke streaming access for ${email}?`)) return;
+                if (!confirm(`Revoke streaming access for ${email}?`)) { restore(); return; }
                 await api('POST', `/admin/users/${id}/stream`, { approved: false });
                 flash(`Revoked streaming access for ${email}.`, 'success');
             }
             loadStreamRequests();
             loadUsers();
-        } catch (err) { flash(err.message, 'error'); }
+        } catch (err) {
+            restore();
+            console.error('[stream-access] failed', { action, id, status: err.status, message: err.message });
+            // unmissable so we can see exactly what the server said
+            alert(`Could not ${action} ${email}.\n\nHTTP ${err.status || '?'}: ${err.message || err}\n\n(If this says 404 the server needs the latest server.js; 401/403 means your admin session — sign out and back in.)`);
+        }
     });
 
     // --- Toolbar -----------------------------------------------------------

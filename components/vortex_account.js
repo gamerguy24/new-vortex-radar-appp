@@ -7,7 +7,7 @@
  *   - reveals the "Admin Panel" menu row for admins and wires "Sign Out"
  */
 
-import { adminPanelStyles, createAdminPanelHTML, initAdminPanel } from './admin_panel.js';
+import { adminPanelStyles, createAdminPanelHTML, initAdminPanel } from './admin_panel.js?v=streamacc2';
 
 // --- styles ------------------------------------------------------------------
 const style = document.createElement('style');
