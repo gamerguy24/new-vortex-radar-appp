@@ -18,25 +18,46 @@
  * It auto-reconnects if the network drops or the server restarts. Leave it running.
  */
 
-// ═══════════════════════════ EDIT THESE ═════════════════════════════════════
-// Your Linux streaming server. Use the public domain if the Windows PC can reach
-// it, OR the Linux VM's address, e.g. "http://192.168.1.50:3333"
-const SERVER  = 'https://radar.twistcasterlivemedia.com';
-// The capture device (must match one from `node GlobalPTT-Gateway.js --list`).
-const INPUT   = 'CABLE Output (VB-Audio Virtual Cable)';
-// ════════════════════════════════════════════════════════════════════════════
-
-// These are already correct — no need to change:
-const KEY     = '46f05bbe5c877b9b2d61f95bcab1ba4fcd8d40cca6d25d4b50b95cb4ec06b6f2'; // = SCANNER_INGEST_KEY
-const CHANNEL = 'global-ptt';
-const BITRATE = '32k';
-const FFMPEG  = 'ffmpeg';
-const RECONNECT_MS = 3000;
-
 const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
+
+// ═══════════════════════════ EDIT THESE ═════════════════════════════════════
+// Your streaming server. Use the public domain if this PC can reach it, OR the
+// server's address on your network, e.g. "http://192.168.1.50:3333"
+const SERVER  = process.env.PTT_SERVER || 'https://radar.twistcasterlivemedia.com';
+// The capture device. Leave as 'auto' to find the VB-Cable by itself; override
+// with a name from `node GlobalPTT-Gateway.js --list` if you have several.
+let INPUT     = process.env.PTT_INPUT || 'auto';
+// ════════════════════════════════════════════════════════════════════════════
+
+const CHANNEL = process.env.PTT_CHANNEL || 'global-ptt';
+const BITRATE = process.env.PTT_BITRATE || '32k';
+const FFMPEG  = process.env.PTT_FFMPEG || 'ffmpeg';
+const RECONNECT_MS = 3000;
+
+/*
+ * The ingest key (= SCANNER_INGEST_KEY on the server) is a secret, so it lives
+ * outside this file: either in the PTT_KEY environment variable, or in a plain
+ * text file named ptt.key.txt / ptt.local.env sitting next to this script.
+ */
+function resolveKey() {
+    if (process.env.PTT_KEY) return process.env.PTT_KEY.trim();
+    for (const name of ['ptt.key.txt', 'ptt.local.env']) {
+        const file = path.join(__dirname, name);
+        if (!fs.existsSync(file)) continue;
+        const text = fs.readFileSync(file, 'utf8');
+        const m = text.match(/^\s*(?:PTT_KEY|SCANNER_INGEST_KEY)\s*=\s*(.+)$/m);
+        if (m) return m[1].trim().replace(/^["']|["']$/g, '');
+        const bare = text.trim();
+        if (bare && !bare.includes('=')) return bare;          // ptt.key.txt holding just the key
+    }
+    return '';
+}
+const KEY = resolveKey();
 
 // `--list` → print the audio devices FFmpeg can see, then exit.
 if (process.argv.includes('--list')) {
@@ -95,5 +116,69 @@ function start() {
 }
 process.on('SIGINT', () => { stopping = true; cleanup(); console.log('\n[GlobalPTT] stopped.'); process.exit(0); });
 
-console.log('Global PTT gateway starting… (Ctrl+C to stop). Leave this window open.');
-start();
+// Ask FFmpeg what it can record from, so nobody has to type a device name.
+function listAudioDevices(cb) {
+  const p = spawn(FFMPEG, ['-hide_banner', '-list_devices', 'true', '-f', 'dshow', '-i', 'dummy']);
+  let text = '';
+  p.stderr.on('data', (d) => { text += d; });
+  p.on('error', () => cb([]));
+  p.on('close', () => {
+    const names = [];
+    let section = '';
+    for (const line of text.split(/\r?\n/)) {
+      const head = line.match(/DirectShow (video|audio) devices/);
+      if (head) { section = head[1]; continue; }
+      if (/Alternative name/.test(line)) continue;
+      const withKind = line.match(/"([^"]+)"\s*\((audio|video)\)/);
+      if (withKind) { if (withKind[2] === 'audio') names.push(withKind[1]); continue; }
+      const bare = line.match(/^\s*\[[^\]]+\]\s+"([^"]+)"\s*$/);
+      if (bare && section === 'audio') names.push(bare[1]);
+    }
+    cb(names);
+  });
+}
+
+function pickDevice(names) {
+  const patterns = [/^CABLE Output/i, /VB-Audio/i, /VoiceMeeter Out/i, /^Stereo Mix/i];
+  for (const re of patterns) {
+    const hit = names.find((n) => re.test(n));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function launch() {
+  console.log('Global PTT gateway starting… (Ctrl+C to stop). Leave this window open.');
+  start();
+}
+
+if (!KEY) {
+  console.error('No ingest key found.');
+  console.error('It must match SCANNER_INGEST_KEY on the server. Provide it either way:');
+  console.error('  - set the PTT_KEY environment variable, or');
+  console.error(`  - save it in ${path.join(__dirname, 'ptt.key.txt')}`);
+  process.exit(1);
+}
+
+if (INPUT === 'auto') {
+  listAudioDevices((names) => {
+    if (!names.length) {
+      console.error('[GlobalPTT] FFmpeg found no audio capture devices. Install FFmpeg');
+      console.error('  (winget install Gyan.FFmpeg) and VB-Audio Virtual Cable, then retry.');
+      process.exit(1);
+    }
+    const picked = pickDevice(names);
+    if (!picked) {
+      console.error('[GlobalPTT] No virtual cable among the capture devices:');
+      names.forEach((n) => console.error('    ' + n));
+      console.error('Install VB-Audio Virtual Cable (https://vb-audio.com/Cable/), or set');
+      console.error('PTT_INPUT to one of the names above.');
+      process.exit(1);
+    }
+    INPUT = picked;
+    console.log(`[GlobalPTT] auto-detected capture device: "${INPUT}"`);
+    launch();
+  });
+} else {
+  launch();
+}

@@ -11,3 +11,7 @@ server_data/
 # Large sample NEXRAD files (not used at runtime; app fetches live data).
 # Anchored so bundled app/**/data/ modules are still tracked.
 /data/
+
+# Local Global PTT gateway settings (holds the ingest key).
+tools/ptt.local.env
+tools/ptt.key.txt
