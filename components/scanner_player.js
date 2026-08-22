@@ -48,8 +48,8 @@ function injectStyles() {
   .gptt-listeners{display:inline-flex;align-items:center;gap:5px}
   .gptt-status{font-size:11.5px}
   .gptt-status.err{color:#ff8f88}
-  /* footer panel wrapper */
-  #gpttPanel{position:fixed;left:12px;bottom:78px;z-index:100060}
+  /* floating panel wrapper — top-right (where the radar info card used to sit) */
+  #gpttPanel{position:fixed;top:12px;right:12px;left:auto;bottom:auto;z-index:100060}
   /* footer button uses the shared .mapFooterMenuItem styling from index.css */
   `;
   document.head.appendChild(s);

@@ -1789,6 +1789,9 @@ td.day.active, span.month.active, span.year.active {
     -webkit-backdrop-filter: none !important;
 }
 
+/* Radar info card hidden per request (product/station also shown in the footer). */
+#radarHeader, .radarHeader { display: none !important; }
+
 /* ---- Top-right product panel (was the full-width header) ---- */
 .radarHeader {
     top: 12px !important;
