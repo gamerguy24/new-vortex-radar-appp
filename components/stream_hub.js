@@ -785,8 +785,11 @@ async function sendAgentCmd(targetUserId, action) {
 // ─── boot ──────────────────────────────────────────────────────────────────────
 async function init() {
     injectStyles();
-    launchButton();               // floating "Chase Stream Hub" button (entry point)
-    window.vortexOpenStreamHub = openPanel; // allow other UI (e.g. footer) to open it
+    launchButton();               // floating "Chase Stream Hub" button (fallback entry point)
+    window.vortexOpenStreamHub = openPanel; // allow other UI to open it
+    // Wire the bottom-toolbar Chase Stream Hub icon (index.html #vortexBarIcons).
+    const footerBtn = $('streamHubMenuItemDiv');
+    if (footerBtn) footerBtn.addEventListener('click', openPanel);
     try { cfg = (await api('GET', '/config')).config; } catch { cfg = null; }
 
     // Am I an operator (admin)? And am I approved to stream? Controls the
