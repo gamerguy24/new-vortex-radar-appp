@@ -52,6 +52,23 @@ const $ = (id) => document.getElementById(id);
 function mapObj() { return window.vortexMap && window.vortexMap.map; }
 function GL() { return window.mapboxgl || window.maplibregl; }
 
+// Open the Chase Stream Hub when its bottom-toolbar icon (or the floating
+// button) is clicked. Registered in the CAPTURE phase on document so it fires
+// BEFORE any toolbar handler that might stopPropagation, and attached the moment
+// this module loads — independent of init() succeeding or the toolbar's render
+// timing. openPanel is a hoisted function declaration, so this is safe here.
+document.addEventListener('click', function vrshHubOpen(e) {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    if (t.closest('#streamHubMenuItemDiv') || t.closest('#vrsh-launch')) {
+        e.preventDefault();
+        e.stopPropagation();
+        try { openPanel(); } catch (err) { console.error('[stream-hub] openPanel failed', err); }
+    }
+}, true); // <-- capture phase
+// Expose immediately (not only from init) so it's always callable.
+window.vortexOpenStreamHub = function () { try { openPanel(); } catch (e) { console.error(e); } };
+
 async function api(method, endpoint, body) {
     const opts = { method, headers: { Accept: 'application/json' }, credentials: 'same-origin' };
     if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
@@ -929,17 +946,6 @@ function injectStyles() {
     .vrsh-player-fallback a{color:#27beff}`;
     document.head.appendChild(s);
 }
-
-// Open the Hub from the bottom-toolbar icon. Delegated at the document level so
-// it fires regardless of when the toolbar renders or whether init() ran — the
-// listener is attached the moment this module loads.
-document.addEventListener('click', (e) => {
-    const hit = e.target && e.target.closest && e.target.closest('#streamHubMenuItemDiv, #vrsh-launch');
-    if (!hit) return;
-    e.preventDefault();
-    e.stopPropagation();
-    try { openPanel(); } catch (err) { console.error('[stream-hub] openPanel failed', err); }
-});
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();
