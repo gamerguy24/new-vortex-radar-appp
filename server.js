@@ -1424,12 +1424,9 @@ app.post('/admin/stream/requests/:id/deny', requireAdmin, (req, res) => {
     const user = findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found.' });
     user.streamApproved = false;
-    user.streamRequest = {
-        ...(user.streamRequest || {}),
-        status: 'denied',
-        decidedAt: new Date().toISOString(),
-        decidedBy: req.user.email,
-    };
+    // Remove the request entirely so the denied application leaves the admin
+    // review list — another admin can't then approve an already-denied request.
+    delete user.streamRequest;
     // If they were live, drop them.
     liveSessions.delete(user.id);
     saveUsers();
