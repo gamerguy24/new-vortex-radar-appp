@@ -33,6 +33,33 @@ const ctables = [
     'DVL1',
 ];
 
+// ── persistence: remember each viewer's colortable picks + uploads ───────────
+// Stored per-browser in localStorage so a chosen colortable (and any uploaded
+// ones) survive a refresh instead of snapping back to Default.
+const CHOICE_KEY = 'vortexColortableChoice';   // { REF:'REF2', VEL:'VEL1', … }
+const CUSTOM_KEY = 'vortexCustomColortables';   // [{ id, text }]
+function _loadChoices() { try { return JSON.parse(localStorage.getItem(CHOICE_KEY)) || {}; } catch (e) { return {}; } }
+function _saveChoice(group, id) { try { const c = _loadChoices(); c[group] = id; localStorage.setItem(CHOICE_KEY, JSON.stringify(c)); } catch (e) {} }
+function _loadCustom() { try { return JSON.parse(localStorage.getItem(CUSTOM_KEY)) || []; } catch (e) { return []; } }
+function _saveCustom(list) { try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(list)); } catch (e) {} }
+function _rememberCustom(id, text) { const l = _loadCustom(); if (!l.some((e) => e.id === id)) { l.push({ id, text }); _saveCustom(l); } }
+
+// Register an uploaded colortable: add its menu row (if missing), parse it, and
+// list it so previews + selection work. Shared by upload and restore-on-load.
+function registerUploaded(id, colortable_string, label) {
+    const group = id.slice(0, 3);
+    const section = document.getElementById(`${group}_ctable_options`);
+    if (section && !document.getElementById(`armr${id}ColortableBtn`)) {
+        section.insertAdjacentHTML('beforeend',
+`<div class="atticRadarMenuRow colortableRow armrWide armrBottom" id="armr${id}ColortableBtn" name="${id}">
+<span class="colortable_menu_text">${label || 'User Upload'}</span>
+<div class="colortable_menu_image_preview" id="${id}_colortable_preview"></div>
+</div>`);
+    }
+    product_colors[id] = colortable_parser(colortable_string, false);
+    if (!ctables.includes(id)) ctables.push(id);
+}
+
 function _generate_images() {
     for (var product of ctables) {
         const css_gradient = create_css_gradient(product_colors[product].colors, product_colors[product].values);
@@ -70,19 +97,10 @@ $('#hidden_colortable_file_uploader').on('input', () => {
 
     const reader = new FileReader();
     reader.addEventListener('load', function () {
-        const buffer = Buffer.from(this.result);
-        const colortable_string = buffer.toString('utf-8');
-        const next_ctable_id = window.atticData.next_ctable_id;
-
-        const options_section_id = `${next_ctable_id.slice(0, 3)}_ctable_options`;
-        document.getElementById(options_section_id).innerHTML +=
-`<div class="atticRadarMenuRow colortableRow armrWide armrBottom" id="armr${next_ctable_id}ColortableBtn" name="${next_ctable_id}">
-<span class="colortable_menu_text">User Upload</span>
-<div class="colortable_menu_image_preview" id="${next_ctable_id}_colortable_preview"></div>
-</div>`
-
-        product_colors[next_ctable_id] = colortable_parser(colortable_string, true);
-        ctables.push(next_ctable_id);
+        const colortable_string = Buffer.from(this.result).toString('utf-8');
+        const id = window.atticData.next_ctable_id;
+        registerUploaded(id, colortable_string, 'User Upload');
+        _rememberCustom(id, colortable_string);   // persist so it survives refresh
         _generate_images();
     }, false);
     reader.readAsArrayBuffer(uploaded_file);
@@ -106,6 +124,8 @@ function change_colortable(product, new_ctable) {
         }
     }
 
+    _saveChoice(product, new_ctable);   // remember this pick across refreshes
+
     var a_d = window.atticData;
     if (a_d?.nexrad_factory != undefined) {
         if (a_d.nexrad_factory.nexrad_level == 3) {
@@ -115,3 +135,27 @@ function change_colortable(product, new_ctable) {
         }
     }
 }
+
+// ── restore each viewer's saved uploads + picks on load ──────────────────────
+// Runs once at startup (before radar is plotted, so no redraw needed): re-adds
+// uploaded colortables, then applies each saved per-product choice and moves the
+// checkmark to it. Wrapped so a bad/stale entry can never break the menu.
+(function restoreSavedColortables() {
+    try {
+        for (const e of _loadCustom()) {
+            try { registerUploaded(e.id, e.text, 'User Upload'); } catch (err) {}
+        }
+        _generate_images();
+        const choices = _loadChoices();
+        for (const group of Object.keys(choices)) {
+            const id = choices[group];
+            if (!lookup[group] || !product_colors[id]) continue;   // skip stale/unknown
+            change_colortable(group, id);
+            const row = document.querySelector(`.colortableRow[name="${id}"]`);
+            if (row && row.parentElement) {
+                row.parentElement.querySelectorAll('.colortable_menu_check').forEach((el) => el.remove());
+                row.insertAdjacentHTML('afterbegin', check);
+            }
+        }
+    } catch (e) { /* never let restore break the menu */ }
+})();
