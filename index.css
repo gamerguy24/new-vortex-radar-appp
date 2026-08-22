@@ -1753,19 +1753,23 @@ td.day.active, span.month.active, span.year.active {
    Vortex Radar mockup). Overrides the legacy full-width bar layout.
    ========================================================================= */
 :root {
-    --vortex-panel: rgba(16, 18, 23, 0.94);
-    --vortex-panel-2: rgba(26, 29, 36, 0.96);
-    --vortex-border: rgba(255, 255, 255, 0.08);
-    --vortex-hairline: rgba(255, 255, 255, 0.06);
-    --vortex-accent: #3a9be8;
-    --vortex-accent-soft: rgba(58, 155, 232, 0.14);
-    --vortex-text: #eef1f6;
-    --vortex-subtext: #93a0b1;
-    --vortex-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    /* Instrument-panel palette: near-black flat surfaces + hairline borders so
+       the chrome recedes and the radar is the focus. One restrained accent. */
+    --vortex-panel: rgba(15, 17, 21, 0.96);
+    --vortex-panel-2: rgba(22, 25, 31, 0.97);
+    --vortex-border: rgba(255, 255, 255, 0.07);
+    --vortex-hairline: rgba(255, 255, 255, 0.05);
+    --vortex-accent: #4c93cf;          /* muted azure, not neon */
+    --vortex-accent-soft: rgba(76, 147, 207, 0.16);
+    --vortex-text: #d6dbe2;            /* soft off-white, never pure #fff */
+    --vortex-subtext: #7f8a99;
+    --vortex-icon: #808a98;            /* resting icon color */
+    --vortex-icon-hover: #d6dbe2;
+    --vortex-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
     /* one consistent radius scale — no more one-off corner sizes */
-    --vortex-r-lg: 12px;
-    --vortex-r-md: 9px;
-    --vortex-r-sm: 7px;
+    --vortex-r-lg: 10px;
+    --vortex-r-md: 8px;
+    --vortex-r-sm: 6px;
 }
 
 /* Full-bleed map: ignore the inline top/bottom offsets the old bar layout writes. */
@@ -1923,7 +1927,7 @@ td.day.active, span.month.active, span.year.active {
    Bottom playback bar — "Vortex console" (distinct redesign)
    ============================================================ */
 .mapFooter {
-    bottom: 16px !important;
+    bottom: 14px !important;
     left: 50% !important;
     transform: translateX(-50%);
     width: auto !important;
@@ -1932,12 +1936,12 @@ td.day.active, span.month.active, span.year.active {
     background: var(--vortex-panel) !important;
     border: 1px solid var(--vortex-border);
     border-radius: var(--vortex-r-lg);
-    padding: 7px 9px;
-    gap: 9px;
+    padding: 5px 6px;
+    gap: 7px;
     color: var(--vortex-text);
     box-shadow: var(--vortex-shadow);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(18px) saturate(1.1);
+    -webkit-backdrop-filter: blur(18px) saturate(1.1);
 }
 .mapFooter span { font-size: 14px; }
 
@@ -2003,18 +2007,19 @@ td.day.active, span.month.active, span.year.active {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: var(--vortex-r-md);
-    background: var(--vortex-accent);
-    color: #06121e;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--vortex-r-sm);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--vortex-border);
+    color: var(--vortex-text);
     cursor: pointer;
     flex: 0 0 auto;
-    transition: background 0.12s ease;
+    transition: background 0.12s ease, color 0.12s ease;
 }
-#vortexPlayBtn:hover { background: #4babf3; }
+#vortexPlayBtn:hover { background: var(--vortex-accent-soft); color: var(--vortex-icon-hover); border-color: rgba(76,147,207,0.4); }
 #vortexPlayBtn:active { transform: translateY(1px); }
-#vortexPlayBtn .fa { font-size: 15px; }
+#vortexPlayBtn .fa { font-size: 13px; }
 
 /* timeline — accent track + vertical scrubber handle */
 #vortexTimeline {
@@ -2064,30 +2069,29 @@ td.day.active, span.month.active, span.year.active {
 #vortexBarIcons {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 3px 6px;
-    margin-left: 3px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--vortex-hairline);
-    border-radius: var(--vortex-r-md);
+    gap: 1px;
+    padding: 0;
+    margin-left: 5px;
+    padding-left: 7px;
+    border-left: 1px solid var(--vortex-border); /* quiet divider, not a boxed group */
 }
 .vortexIconSpacer { display: none; }
 #vortexBarIcons .mapFooterMenuItem { display: flex; }
-#vortexBarIcons .fa { font-size: 17px !important; }
+#vortexBarIcons .fa { font-size: 15px !important; }
 #vortexBarIcons .menu_item_not_selected {
     border: none;
     background: none;
-    padding: 6px 7px;
+    padding: 6px;
     border-radius: var(--vortex-r-sm);
-    color: var(--vortex-subtext);
+    color: var(--vortex-icon);
     transition: color 0.12s, background 0.12s;
 }
-#vortexBarIcons .menu_item_not_selected:hover { color: var(--vortex-text); background: rgba(255, 255, 255, 0.06); }
+#vortexBarIcons .menu_item_not_selected:hover { color: var(--vortex-icon-hover); background: rgba(255, 255, 255, 0.05); }
 #vortexBarIcons .menu_item_selected {
     border: none;
     background: var(--vortex-accent-soft);
-    color: #7cc4f2;
-    padding: 6px 7px;
+    color: var(--vortex-accent);
+    padding: 6px;
     border-radius: var(--vortex-r-sm);
     min-width: auto;
 }
