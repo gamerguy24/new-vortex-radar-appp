@@ -62,6 +62,10 @@ function calculate_coordinates(nexrad_factory, options) {
     var chroma_scale = chroma.scale(color_data.colors).domain(values).mode('lab');
     window.atticData.webgl_chroma_scale = chroma_scale;
 
+    // Smoothing (default ON): interpolate values across neighbouring gates so the
+    // radar reads as smooth blobs instead of raw stepped gates / radial streaks.
+    var smooth = (window.vortexSmoothing !== false);
+
     var total = 0;
     var data_copy = [...data];
     for (var i in data_copy) {
@@ -125,22 +129,25 @@ function calculate_coordinates(nexrad_factory, options) {
                     ]);
 
                     var color = data[i][n];
-                    push_color([
-                        color,
-                        color,
-                        color,
-                        color,
-                        color,
-                        color
-                    ]);
-                    // push_color([
-                    //     data[i][n],
-                    //     data[i][n + 1],
-                    //     data[i + 1][n],
-                    //     data[i + 1][n],
-                    //     data[i][n + 1],
-                    //     data[i + 1][n + 1],
-                    // ]);
+                    if (smooth) {
+                        // Smoothing ON: give each quad corner its NEIGHBOUR gate's
+                        // value so the shader bilinearly interpolates across gates
+                        // and radials — removes the blocky/streaky raw-gate look.
+                        // Fall back to the base value where a neighbour is missing.
+                        var c01 = (data[i] && data[i][n + 1] != null) ? data[i][n + 1] : color;         // range +1
+                        var c10 = (data[i + 1] && data[i + 1][n] != null) ? data[i + 1][n] : color;     // azimuth +1
+                        var c11 = (data[i + 1] && data[i + 1][n + 1] != null) ? data[i + 1][n + 1] : color; // diagonal
+                        push_color([
+                            color, c01, c10,
+                            c10, c01, c11
+                        ]);
+                    } else {
+                        // Smoothing OFF: flat value per gate → crisp stepped gates.
+                        push_color([
+                            color, color, color,
+                            color, color, color
+                        ]);
+                    }
                 }
             } catch (e) {
                 // console.warn(e)
