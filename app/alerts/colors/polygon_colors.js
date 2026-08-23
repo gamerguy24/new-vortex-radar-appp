@@ -2,8 +2,12 @@ var noaa_colors = require('./noaa_colors');
 
 // these are custom colors that override noaa's colors
 const my_polygon_colors = {
-    'Tornado Watch': 'rgb(117, 20, 12)',
-    'Severe Thunderstorm Watch': 'rgb(128, 128, 38)'
+    // Watch boxes — bright, distinct outlines (used by the SPC watch boxes and
+    // the alerts feed): Tornado = red, Severe T-storm = yellow, Flood = green.
+    'Tornado Watch': 'rgb(255, 0, 0)',
+    'Severe Thunderstorm Watch': 'rgb(255, 214, 0)',
+    'Flash Flood Watch': 'rgb(0, 200, 83)',
+    'Flood Watch': 'rgb(0, 200, 83)'
 
 
     // 'Tornado Warning': 'rgb(233, 51, 35)',
