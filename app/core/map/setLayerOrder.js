@@ -39,9 +39,15 @@ function setLayerOrder() {
     move_layer_to_top('watches_layer_fill');
 
     // alerts layers
+    // The watch SHADING (fill) sits UNDER the radar so reflectivity reads cleanly
+    // on top of it; the alert OUTLINES stay above everything.
+    if (map.getLayer('alertsLayerFill') && map.getLayer('baseReflectivity')) {
+        map.moveLayer('alertsLayerFill', 'baseReflectivity'); // just below the radar
+    } else {
+        move_layer_to_top('alertsLayerFill', before_layer);
+    }
     move_layer_to_top('alertsLayerOutline');
     move_layer_to_top('alertsLayer');
-    move_layer_to_top('alertsLayerFill');
 
     // storm tracks layers
     const storm_track_layers = window.atticData.storm_track_layers;
