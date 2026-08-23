@@ -20,10 +20,17 @@ function create_WebGL_texture(colors, values) {
     // the stepped bands are kept exactly as authored.
     const smooth = (window.vortexSmoothing !== false);
     if (smooth && colors.length === values.length && values.length > 2) {
+        // Collapse ONLY the stepped colortable's hard-step pairs — the two stops a
+        // SolidColor emits at (nearly) the same value, separated by scaleValues'
+        // 0.00001 nudge — so chroma renders a continuous gradient. The threshold
+        // must be tiny: products like CC (0–1.05) and KDP have real stops far
+        // closer than 0.05, so a coarse threshold would merge distinct colors and
+        // wreck the colormap. 0.0005 catches the 0.00001 pairs and nothing else.
+        const EPS = 0.0005;
         const nc = [], nv = [];
         for (let i = 0; i < values.length; i++) {
             const v = values[i];
-            if (nv.length && Math.abs(v - nv[nv.length - 1]) < 0.05) {
+            if (nv.length && Math.abs(v - nv[nv.length - 1]) < EPS) {
                 // duplicate/near-duplicate value = a hard step; keep the color
                 // that BEGINS the next band so the gradient flows into it.
                 nv[nv.length - 1] = v; nc[nc.length - 1] = colors[i];
