@@ -2,6 +2,7 @@ const get_polygon_colors = require('./colors/polygon_colors');
 const set_layer_order = require('../core/map/setLayerOrder');
 const click_listener = require('./click_listener');
 const filter_alerts = require('./filter_alerts');
+const combine_dictionary_data = require('./combine_dictionary_data');
 const map = require('../core/map/map');
 const AlertUpdater = require('./updater/AlertUpdater');
 
@@ -79,12 +80,20 @@ function plot_alerts(alerts_data) {
     // }
 
     for (var item in alerts_data.features) {
-        var event = alerts_data.features[item].properties.event;
+        var feat = alerts_data.features[item];
+        var event = feat.properties.event;
         var gpc = get_polygon_colors(event); // gpc = get polygon colors
-        alerts_data.features[item].properties.color = gpc.color;
-        alerts_data.features[item].properties.priority = parseInt(gpc.priority);
-        // Watches get a translucent fill (shaded area); warnings stay outline-only.
-        alerts_data.features[item].properties.is_watch = /\bwatch\b/i.test(String(event));
+        feat.properties.color = gpc.color;
+        feat.properties.priority = parseInt(gpc.priority);
+        // Watches get a translucent fill (shaded counties); warnings stay outline-only.
+        feat.properties.is_watch = /\bwatch\b/i.test(String(event));
+        // For watches, shade the individual counties they cover: drop any inline
+        // (SPC box) geometry when we have the affected counties, so the county
+        // path in combine_dictionary_data draws the actual county shapes instead.
+        if (feat.properties.is_watch && feat.geometry &&
+            Array.isArray(feat.properties.affectedZones) && feat.properties.affectedZones.length) {
+            feat.geometry = null;
+        }
     }
     alerts_data = _sort_by_priority(alerts_data);
     alerts_data = filter_alerts(alerts_data);
@@ -99,9 +108,20 @@ function plot_alerts(alerts_data) {
         }
     }
     alerts_data.features = duplicate_features;
-    console.log(alerts_data);
 
-    _add_alert_layers(alerts_data);
+    // Attach the county/zone geometry now if the zone dictionaries are loaded, so
+    // zone-based alerts (watches) render as their actual shaded counties — this
+    // path also runs on the 15s refresh. On the very first load the dictionaries
+    // aren't ready yet, so we plot the raw data and _fetch_data attaches geometry
+    // once they finish loading.
+    var to_plot = alerts_data;
+    try {
+        if (window.loaded_zones && typeof county_zones !== 'undefined') {
+            to_plot = combine_dictionary_data(alerts_data);
+        }
+    } catch (e) { to_plot = alerts_data; }
+
+    _add_alert_layers(to_plot);
 
     set_layer_order();
 

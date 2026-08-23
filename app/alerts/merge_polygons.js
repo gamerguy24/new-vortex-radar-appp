@@ -1,7 +1,17 @@
 const turf = require('@turf/turf');
 const hash_string = require('./hash_string');
 
+// Shade the ACTUAL counties/zones each alert covers — a watch fills the individual
+// counties inside it (county lines show through), rather than a convex hull drawn
+// over them. Each incoming polygon already carries the alert's properties (color,
+// is_watch, and the border/outline `type`) from combine_dictionary_data, so we
+// just return them as-is. (This also avoids turf.convex() returning null for
+// small/collinear zone sets, which previously made watches vanish.)
 function merge_polygons(polygons) {
+    return turf.featureCollection((polygons || []).filter((p) => p && p.geometry));
+}
+
+function merge_polygons_convex_UNUSED(polygons) {
     // // const zs = ['MSZ001', 'MSZ007', 'MSZ008', 'MSZ010', 'MSZ011', 'MSZ012', 'MSZ020'];
     // const zs = ['PZZ252', 'PZZ253', 'PZZ272', 'PZZ273'];
 
