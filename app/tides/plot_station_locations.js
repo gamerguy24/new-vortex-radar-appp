@@ -3,7 +3,7 @@ const turf = require('@turf/turf');
 
 const get_individual_data = require('./get_individual_data');
 const show_chart = require('./show_chart');
-const display_attic_dialog = require('../core/menu/attic_dialog');
+const display_vortex_dialog = require('../core/menu/vortex_dialog');
 const set_layer_order = require('../core/map/setLayerOrder');
 
 function _click_listener(e) {
@@ -13,7 +13,7 @@ function _click_listener(e) {
     const alt_name = e.features[0].properties.station_alt_name;
     const id = e.features[0].properties.station_id;
 
-    display_attic_dialog({
+    display_vortex_dialog({
         'title': 'Tide Station',
 
         'body':

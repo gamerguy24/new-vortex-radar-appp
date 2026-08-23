@@ -101,7 +101,7 @@ function isWarningish(event) {
 // Choose the featured alert: prefer a polygon under the map center, else the most
 // prominent warning currently loaded.
 function pickAlert() {
-    const data = window.atticData && window.atticData.alerts_data;
+    const data = window.vortexData && window.vortexData.alerts_data;
     const feats = ((data && data.features) || []).filter((f) => f && f.geometry && isWarningish(f.properties && f.properties.event));
     if (!feats.length) return null;
     const c = map.getCenter();
@@ -181,7 +181,7 @@ function statesFromArea(areaDesc) {
 
 // A selectable list of the active warnings currently loaded.
 function listWarnings() {
-    const data = window.atticData && window.atticData.alerts_data;
+    const data = window.vortexData && window.vortexData.alerts_data;
     const feats = ((data && data.features) || []).filter((f) => f && f.geometry && isWarningish(f.properties && f.properties.event));
     const rank = (e) => (/tornado/i.test(e) ? 0 : /severe|extreme/i.test(e) ? 1 : /flood/i.test(e) ? 2 : 3);
     return feats

@@ -1,4 +1,4 @@
-const armFunctions = require('../../../core/menu/atticRadarMenu');
+const armFunctions = require('../../../core/menu/vortexRadarMenu');
 
 function _generateBtnTemplate(angle, number) {
     return `<div class="col">
@@ -46,7 +46,7 @@ function _generateElevationProductLookup(lEAP) {
 function _enable_correct_buttons(lEAP) {
     // make sure the correct product selection rows are available
     $('.psmRowDisabled').removeClass('psmRowDisabled'); // reset all of the rows
-    const moments = lEAP[window.atticData.currentScanNumber - 1][2]; // scan number indices start at 1, lEAP indices start at 0
+    const moments = lEAP[window.vortexData.currentScanNumber - 1][2]; // scan number indices start at 1, lEAP indices start at 0
     ['REF', 'VEL', 'RHO', 'PHI', 'ZDR', 'SW'].forEach(prop => { // loop through all possible moments
         const formatted_moment = `l2-${prop.toLowerCase()}`; // convert to the psmRow's abbreviation convention
         if (!moments.includes(prop)) { // if the current elevation doesn't contain the moment
@@ -58,7 +58,7 @@ function _enable_correct_buttons(lEAP) {
     for (var i = 0; i < lEAP.length; i++) { // loop through the lEAP
         const scan_number = i + 1; // scan number indices start at 1, lEAP indices start at 0
         const moments = lEAP[i][2]; // all the moments in the elevation number
-        if (!moments.includes(window.atticData.currentProduct)) { // if the elevation number does not contain the current product
+        if (!moments.includes(window.vortexData.currentProduct)) { // if the elevation number does not contain the current product
             $(`.l2ElevationBtn[number="${scan_number}"]`).addClass('l2ElevationBtnDisabled'); // disable the corresponding elevation button
         }
     }
@@ -66,13 +66,13 @@ function _enable_correct_buttons(lEAP) {
 
 function initEventListeners(L2Factory, lEAP, elevationProductLookup) {
     // we start with reflectivity
-    window.atticData.currentProduct = 'REF';
+    window.vortexData.currentProduct = 'REF';
     // we start at 1
-    window.atticData.currentScanNumber = 1;
+    window.vortexData.currentScanNumber = 1;
     // sorts all the full elevations from least to greatest, and picks the lowest one
-    window.atticData.fullAngle = Object.keys(elevationProductLookup).map(n => parseFloat(n)).sort(function(a, b) { return a - b })[0];
+    window.vortexData.fullAngle = Object.keys(elevationProductLookup).map(n => parseFloat(n)).sort(function(a, b) { return a - b })[0];
     // turn green the button that references the starting elevation
-    $(`.l2ElevationBtn${dbs}[number="${window.atticData.currentScanNumber}"]`).addClass('l2ElevationBtnSelected');
+    $(`.l2ElevationBtn${dbs}[number="${window.vortexData.currentScanNumber}"]`).addClass('l2ElevationBtnSelected');
 
     // make sure the correct buttons are available
     _enable_correct_buttons(lEAP);
@@ -83,13 +83,13 @@ function initEventListeners(L2Factory, lEAP, elevationProductLookup) {
         // turn the current button green
         $(this).addClass('l2ElevationBtnSelected');
 
-        var product = window.atticData.currentProduct; // e.g. 'VEL';
+        var product = window.vortexData.currentProduct; // e.g. 'VEL';
 
         var fullAngle = $(this).attr('value'); // e.g. 0.4833984375
-        window.atticData.fullAngle = fullAngle; // store it globally
+        window.vortexData.fullAngle = fullAngle; // store it globally
 
         var scanNumber = parseInt($(this).attr('number')); // e.g. 7
-        window.atticData.currentScanNumber = scanNumber; // store it globally
+        window.vortexData.currentScanNumber = scanNumber; // store it globally
 
         // make sure the correct buttons are available
         _enable_correct_buttons(lEAP);
@@ -109,9 +109,9 @@ function initEventListeners(L2Factory, lEAP, elevationProductLookup) {
         $('#productsDropdownTriggerText').text($(this).text()); // e.g. "Velocity"
         var product = $(this).attr('value'); // e.g. l2-vel
         product = product.replace('l2-', '').toUpperCase(); // l2-vel --> VEL
-        window.atticData.currentProduct = product; // store it globally
+        window.vortexData.currentProduct = product; // store it globally
 
-        var scanNumber = window.atticData.currentScanNumber; // e.g. 7
+        var scanNumber = window.vortexData.currentScanNumber; // e.g. 7
 
         // make sure the correct buttons are available
         _enable_correct_buttons(lEAP);
@@ -128,18 +128,18 @@ function initEventListeners(L2Factory, lEAP, elevationProductLookup) {
     $('#dealiasBtn').click(function() {
         if ($(this).hasClass('dealiasBtnDeSelected')) {
             // we're turning dealias mode ON
-            window.atticData.should_plot_dealiased = true;
+            window.vortexData.should_plot_dealiased = true;
             $(this).removeClass('dealiasBtnDeSelected').addClass('dealiasBtnSelected');
             $(this).find('i').removeClass('fa-xmark').addClass('fa-check');
         } else if ($(this).hasClass('dealiasBtnSelected')) {
             // we're turning dealias mode OFF
-            window.atticData.should_plot_dealiased = false;
+            window.vortexData.should_plot_dealiased = false;
             $(this).removeClass('dealiasBtnSelected').addClass('dealiasBtnDeSelected');
             $(this).find('i').removeClass('fa-check').addClass('fa-xmark');
         }
 
-        if (window.atticData.currentProduct == 'VEL') {
-            L2Factory.plot(window.atticData.currentProduct, window.atticData.currentScanNumber);
+        if (window.vortexData.currentProduct == 'VEL') {
+            L2Factory.plot(window.vortexData.currentProduct, window.vortexData.currentScanNumber);
         }
     })
 }

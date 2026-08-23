@@ -99,7 +99,7 @@ function loadTiltBtns(numOfTiltsArr) {
 
 $('.psmRow').click(function(e) {
     if ($(e.target).is($(this)) && !$(this).hasClass('l2prodSel')) {
-        const currentStation = window.atticData.currentStation; // 'KAKQ';
+        const currentStation = window.vortexData.currentStation; // 'KAKQ';
 
         var innerText = $(this).text(); // the long product name, e.g. "Base Reflectivity"
         var value = $(this).attr('value'); // the abbreviated product name, e.g. "ref", "vel", "hyc"
@@ -110,10 +110,10 @@ $('.psmRow').click(function(e) {
         var resultProduct = productLookup[selectedTiltNum][value];
 
         // track the active product so the playback loop can fetch historical scans
-        window.atticData.current_loop_product = resultProduct;
+        window.vortexData.current_loop_product = resultProduct;
         require('../../radar/animation/radar_loop').reset();
 
-        window.atticData.from_file_upload = false;
+        window.vortexData.from_file_upload = false;
         if (value == 'srvel') {
             loaders_nexrad.quick_storm_relative_velocity_plot(currentStation, resultProduct, (L3Factory) => { });
         } else {

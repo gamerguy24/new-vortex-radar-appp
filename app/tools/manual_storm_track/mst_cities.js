@@ -4,7 +4,7 @@
  * Times" panel. Each record is [name, lat, lon, population].
  *
  * Source priority:
- *   1. window.atticData.mstCities, if an app supplies its own array.
+ *   1. window.vortexData.mstCities, if an app supplies its own array.
  *   2. ./mst_cities_data.js — ~17k US populated places (pop >= 1000) generated
  *      from GeoNames (CC-BY 4.0). This is the normal path.
  *   3. The small CURATED list below, only as a fallback if (2) is missing.
@@ -118,10 +118,10 @@ function baseList() {
 let _cache = null;
 
 // Returns [{ name, lat, lon, population }]. A caller can override the whole set
-// by assigning window.atticData.mstCities before first use.
+// by assigning window.vortexData.mstCities before first use.
 function getCities() {
     if (_cache) return _cache;
-    const override = (typeof window !== 'undefined' && window.atticData && window.atticData.mstCities);
+    const override = (typeof window !== 'undefined' && window.vortexData && window.vortexData.mstCities);
     const source = Array.isArray(override) ? override : baseList();
     _cache = source
         .filter((c) => Array.isArray(c) && c.length >= 3)

@@ -3,7 +3,7 @@ const turf = require('@turf/turf');
 const ut = require('../../../../core/utils');
 const setLayerOrder = require('../../../../core/map/setLayerOrder');
 const icons = require('../../../../core/map/icons/icons');
-const AtticPopup = require('../../../../core/popup/AtticPopup');
+const VortexPopup = require('../../../../core/popup/VortexPopup');
 
 function findTerminalCoordinates(startLat, startLng, distanceNM, bearingDEG) {
     var metersInNauticalMiles = 1852;
@@ -57,10 +57,10 @@ function plot_tornado_vortex_signature(L3Factory) {
                 'icon-ignore-placement': true,
             },
         })
-        window.atticData.tvs_layers = tvs_layers;
+        window.vortexData.tvs_layers = tvs_layers;
 
         function cellClick(e) {
-            // if (window.atticData.currentStation == L3Factory.station) {
+            // if (window.vortexData.currentStation == L3Factory.station) {
                 const properties = e.features[0].properties;
                 const cellID = properties.cellID;
                 const cellProperties = JSON.parse(properties.cellProperties);
@@ -95,7 +95,7 @@ function plot_tornado_vortex_signature(L3Factory) {
                 //     .setLngLat(JSON.parse(properties.coords))
                 //     .setHTML(popupHTML)
                 //     .addTo(map);
-                new AtticPopup(JSON.parse(properties.coords), popupHTML).add_to_map();
+                new VortexPopup(JSON.parse(properties.coords), popupHTML).add_to_map();
             // }
         }
         map.on('click', 'tvsInitialPoint', cellClick);

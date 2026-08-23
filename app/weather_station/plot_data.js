@@ -1,7 +1,7 @@
 const ut = require('../core/utils');
 const getTempColor = require('../core/misc/temp_colors');
 const chroma = require('chroma-js');
-const display_attic_dialog = require('../core/menu/attic_dialog');
+const display_vortex_dialog = require('../core/menu/vortex_dialog');
 var map = require('../core/map/map');
 window.map = map;
 
@@ -56,8 +56,8 @@ ${windDirection}° (${ut.degToCompass(windDirection)})
 
     var dialogColor = chroma(tempColor[0]).alpha(0.8).css();
     var dialogTextColor = chroma(dialogColor).luminance() > 0.4 ? 'black' : 'white';
-    display_attic_dialog({
-        'title': `AtticStation (<u style="cursor: pointer" class="icon-selected" onclick="$('#atcDlgClose').click(); window.map.flyTo({ center: [-77.0369, 38.9072], zoom: 8, speed: 2, essential: true })">DC Metro Area</u>)`,
+    display_vortex_dialog({
+        'title': `VortexStation (<u style="cursor: pointer" class="icon-selected" onclick="$('#atcDlgClose').click(); window.map.flyTo({ center: [-77.0369, 38.9072], zoom: 8, speed: 2, essential: true })">DC Metro Area</u>)`,
         'body': dialogContent, //JSON.stringify(data, null, 4),
         'color': 'rgb(19, 19, 19)',
         'textColor': 'white'

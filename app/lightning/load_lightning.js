@@ -42,7 +42,7 @@ function load_lightning(callback) {
                 }
             }
             var collection = turf.featureCollection(points);
-            window.atticData.original_lightning_points = collection;
+            window.vortexData.original_lightning_points = collection;
             // collection = filter_lightning(collection);
 
             map.addSource('lightningSource', {
@@ -106,7 +106,7 @@ function load_lightning(callback) {
                 // }
 
                 // map.on('zoomstart', () => {
-                //     if (window.atticData.station_lightning.features.length != 0) {
+                //     if (window.vortexData.station_lightning.features.length != 0) {
                 //         _show_only_visible();
                 //         setTimeout(() => {
                 //             map.setLayoutProperty('lightningLayer', 'icon-allow-overlap', true);
@@ -114,9 +114,9 @@ function load_lightning(callback) {
                 //     }
                 // })
                 // map.on('zoomend', () => {
-                //     if (window.atticData.station_lightning.features.length != 0) {
+                //     if (window.vortexData.station_lightning.features.length != 0) {
                 //         map.setLayoutProperty('lightningLayer', 'icon-allow-overlap', false);
-                //         map.getSource('lightningSource').setData(window.atticData.station_lightning);
+                //         map.getSource('lightningSource').setData(window.vortexData.station_lightning);
                 //     }
                 // })
 

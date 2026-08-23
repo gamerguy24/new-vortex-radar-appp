@@ -7,7 +7,7 @@ const get_station_status = require('../station_markers/get_station_status');
 
 function showRadarStatus(station) {
     if (station == 'No Station Selected') {
-        ut.displayAtticDialog({
+        ut.displayVortexDialog({
             'title': 'Error',
             'body': '<div>Please <b>select a radar station</b> before attempting to view station info.</div',
             'color': 'rgb(186, 48, 67)',
@@ -50,7 +50,7 @@ function showRadarStatus(station) {
             const date_diff = get_date_diff(message_date_obj, 'radar_message');
             var message_age = `<b class='${date_diff.class}'>${date_diff.formatted} old</b>`;
 
-            const radar_station_status = window.atticData.radar_station_status;
+            const radar_station_status = window.vortexData.radar_station_status;
             const current_station_status = radar_station_status[station].status;
             var radar_station_status_div;
             if (radar_station_status == undefined) {
@@ -72,7 +72,7 @@ function showRadarStatus(station) {
 <b>Message Send Time: </b>${message_date_string}
 <div style="white-space: pre-wrap;"><b>Message (${message_age}):</b><div class="code">${text}</div></div>`
 
-            ut.displayAtticDialog({
+            ut.displayVortexDialog({
                 'title': `${station} Info`,
                 'body': html_content,
                 'color': 'rgb(37, 94, 151)',

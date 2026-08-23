@@ -8,7 +8,7 @@
  *      AHONT1). Each 30-second ob has a position, flight-level wind and, when
  *      the SFMR is working, a surface wind estimate.
  *
- * One menu toggle controls both. Layers live on window.atticData.hunter_layers.
+ * One menu toggle controls both. Layers live on window.vortexData.hunter_layers.
  */
 
 const ut = require('../../core/utils');
@@ -138,7 +138,7 @@ function setReconData(lineFeats, ptFeats) {
 
 // ── map layers ───────────────────────────────────────────────────────────────
 function ensureLayers(done) {
-    window.atticData.hunter_layers = [
+    window.vortexData.hunter_layers = [
         PLANE_SRC, PLANE_LAYER, PLANE_LABEL,
         RECON_SRC + '_line', RECON_LINE, RECON_PTS + '_src', RECON_PTS,
     ];

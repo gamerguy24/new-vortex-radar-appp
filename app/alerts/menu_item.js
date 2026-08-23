@@ -61,8 +61,8 @@ function _hide_layer(layer) { if (map.getLayer(layer)) { map.setLayoutProperty(l
 
 $('.alert_options_btn').click(function() {
     var filtered;
-    if (window.atticData?.alerts_data != undefined) {
-        filtered = filter_alerts(JSON.parse(JSON.stringify(window.atticData.alerts_data)));
+    if (window.vortexData?.alerts_data != undefined) {
+        filtered = filter_alerts(JSON.parse(JSON.stringify(window.vortexData.alerts_data)));
         plot_alerts(filtered);
     }
 })

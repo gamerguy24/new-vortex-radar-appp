@@ -4,7 +4,7 @@
  * threshold (clears out weak returns / ground clutter). The threshold is read
  * by the radar WebGL shader (window.vortexGateFilter); changes re-render live.
  *
- * State lives on window.vortexGateFilter (NOT window.atticData, which the app
+ * State lives on window.vortexGateFilter (NOT window.vortexData, which the app
  * resets on load) and is cached in localStorage so it persists.
  */
 
@@ -65,7 +65,7 @@ function openGateFilter() {
 }
 
 function init() {
-    // restore saved setting (kept off window.atticData so the app's reset won't wipe it)
+    // restore saved setting (kept off window.vortexData so the app's reset won't wipe it)
     try {
         const saved = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
         if (saved && typeof saved.value === 'number') window.vortexGateFilter = { enabled: !!saved.enabled, value: saved.value };
@@ -74,7 +74,7 @@ function init() {
 
     const btn = document.getElementById('armrGateFilterBtn');
     if (btn) btn.addEventListener('click', () => {
-        const m = document.getElementById('atticRadarMenu');
+        const m = document.getElementById('vortexRadarMenu');
         if (m) m.style.display = 'none';
         openGateFilter();
     });

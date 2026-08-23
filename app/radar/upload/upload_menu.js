@@ -1,5 +1,5 @@
 const ut = require('../../core/utils');
-const arm_functions = require('../../core/menu/atticRadarMenu');
+const arm_functions = require('../../core/menu/vortexRadarMenu');
 const init_event_listeners = require('./file_upload');
 
 const upload_dialog_content = 
@@ -9,7 +9,7 @@ const upload_dialog_content =
 $('#armrUploadFileBtn').click(() => {
     arm_functions.hideARMwindow();
 
-    ut.displayAtticDialog({
+    ut.displayVortexDialog({
         'title': 'UPLOAD',
         'body': upload_dialog_content,
         'color': 'rgb(76, 143, 195)',

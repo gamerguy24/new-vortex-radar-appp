@@ -275,17 +275,17 @@ class Level2Factory {
 
         // we don't want to load the elevation menu multiple times for the same radar file
         const file_id = this.generate_unique_id();
-        if (window.atticData.L2_file_id != file_id) { // if we're on a new file
-            window.atticData.L2_file_id = file_id; // set the new id globally
+        if (window.vortexData.L2_file_id != file_id) { // if we're on a new file
+            window.vortexData.L2_file_id = file_id; // set the new id globally
             elevation_menu.apply(this, [this.list_elevations_and_products()]); // load the elevation menu
         }
 
         this.display_file_info();
         const options = {'product': moment, 'elevation': elevation_number};
 
-        window.atticData.nexrad_factory_moment = moment
-        window.atticData.nexrad_factory_elevation_number = elevation_number;
-        window.atticData.nexrad_factory = this;
+        window.vortexData.nexrad_factory_moment = moment
+        window.vortexData.nexrad_factory_elevation_number = elevation_number;
+        window.vortexData.nexrad_factory = this;
 
         calculate_coordinates(this, options);
     }

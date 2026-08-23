@@ -34,9 +34,9 @@ function passes_filter(feature) {
 }
 
 function filter_alerts(alerts_data) {
-    window.atticData.show_warnings = $('#armrWarningsBtnSwitchElem').is(':checked');
-    window.atticData.show_watches = $('#armrWatchesBtnSwitchElem').is(':checked');
-    window.atticData.show_statements = $('#armrStatementsBtnSwitchElem').is(':checked');
+    window.vortexData.show_warnings = $('#armrWarningsBtnSwitchElem').is(':checked');
+    window.vortexData.show_watches = $('#armrWatchesBtnSwitchElem').is(':checked');
+    window.vortexData.show_statements = $('#armrStatementsBtnSwitchElem').is(':checked');
 
     alerts_data.features = alerts_data.features.filter(passes_filter);
     return alerts_data;

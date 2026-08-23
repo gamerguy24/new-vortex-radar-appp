@@ -3,7 +3,7 @@
  * Toggle for the Wind Particles velocity-flow overlay.
  */
 
-const armFunctions = require('../../core/menu/atticRadarMenu');
+const armFunctions = require('../../core/menu/vortexRadarMenu');
 const wind_particles = require('./wind_particles');
 
 armFunctions.toggleswitchFunctions(

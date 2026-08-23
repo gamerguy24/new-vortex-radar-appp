@@ -1751,6 +1751,15 @@ try {
     console.error('[SCANNER] failed to attach (feature disabled):', e.message);
 }
 
+// ─── Critical Weather Alerts (saved locations → NWS warning → notifications) ──
+// Free-first, self-hosted. Phase 2: data model + saved locations + preferences +
+// admin config. Later phases add the NWS worker, polygon matcher, and channels.
+try {
+    require('./critical_alerts').attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson });
+} catch (e) {
+    console.error('[CRITICAL] failed to attach (feature disabled):', e.message);
+}
+
 // ─── Static files ──────────────────────────────────────────────────────────────
 const sendFile = (file) => (req, res) => res.sendFile(path.join(ROOT, file));
 

@@ -7,12 +7,12 @@
 let _viewer = null;
 
 async function open3D() {
-    const station = window.atticData && window.atticData.currentStation;
+    const station = window.vortexData && window.vortexData.currentStation;
     if (!station) {
         alert('Open a radar site first (click a station on the map), then launch the 3D view.');
         return;
     }
-    const menu = document.getElementById('atticRadarMenu');
+    const menu = document.getElementById('vortexRadarMenu');
     if (menu) menu.style.display = 'none';
     try {
         const { default: Storm3D } = await import('./3d/storm3d.js');

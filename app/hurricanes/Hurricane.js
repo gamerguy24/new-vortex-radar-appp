@@ -1,7 +1,7 @@
 const map = require('../core/map/map');
 const ut = require('../core/utils');
 const icons = require('../core/map/icons/icons');
-const AtticPopup = require('../core/popup/AtticPopup');
+const VortexPopup = require('../core/popup/VortexPopup');
 
 const turf = require('@turf/turf');
 const chroma = require('chroma-js');
@@ -40,7 +40,7 @@ ${date_second_line}
     //     .setLngLat([properties.lon, properties.lat])
     //     .setHTML(html_contents)
     //     .addTo(map);
-    new AtticPopup([properties.lon, properties.lat], html_contents).add_to_map();
+    new VortexPopup([properties.lon, properties.lat], html_contents).add_to_map();
 }
 
 class Hurricane {
@@ -62,7 +62,7 @@ class Hurricane {
             const cone_source_name = `hurricane_cone_${this.storm_id}_source`;
             const cone_layer_name = `hurricane_cone_${this.storm_id}_layer`;
             const cone_outline_name = `hurricane_cone_${this.storm_id}_outline`;
-            window.atticData.hurricane_layers.push(cone_source_name, cone_layer_name, cone_outline_name);
+            window.vortexData.hurricane_layers.push(cone_source_name, cone_layer_name, cone_outline_name);
             map.addSource(cone_source_name, {
                 'type': 'geojson',
                 'data': this.cone_geojson
@@ -87,7 +87,7 @@ class Hurricane {
             });
 
             const forecast_line_layer_name = `hurricane_forecast_track_${this.storm_id}_layer`;
-            window.atticData.hurricane_layers.push(forecast_line_layer_name);
+            window.vortexData.hurricane_layers.push(forecast_line_layer_name);
             map.addLayer({
                 'id': forecast_line_layer_name,
                 'type': 'line',
@@ -107,7 +107,7 @@ class Hurricane {
 
             const forecast_points_source_name = `hurricane_forecast_points_${this.storm_id}_source`;
             const forecast_points_layer_name = `hurricane_forecast_points_${this.storm_id}_layer`;
-            window.atticData.hurricane_layers.push(forecast_points_source_name, forecast_points_layer_name);
+            window.vortexData.hurricane_layers.push(forecast_points_source_name, forecast_points_layer_name);
             map.addSource(forecast_points_source_name, {
                 'type': 'geojson',
                 'data': this.forecast_points
@@ -130,7 +130,7 @@ class Hurricane {
             map.on('click', forecast_points_layer_name, _click_listener);
 
             // const current_point_layer_name = `hurricane_current_point_${this.storm_id}_layer`;
-            // window.atticData.hurricane_layers.push(current_point_layer_name);
+            // window.vortexData.hurricane_layers.push(current_point_layer_name);
             // icons.add_icon_svg([
             //     [icons.icons.hurricane_TD, 'hurricane_TD'],
             //     [icons.icons.hurricane_TS, 'hurricane_TS'],

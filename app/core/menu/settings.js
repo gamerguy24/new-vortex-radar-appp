@@ -1,7 +1,7 @@
 const ut = require('../utils');
 const map = require('../map/map');
 const terminator = require('../map/terminator/terminator');
-const armFunctions = require('./atticRadarMenu');
+const armFunctions = require('./vortexRadarMenu');
 const setLayerOrder = require('../map/setLayerOrder');
 const fetchMETARData = require('../../metars/fetch_data');
 const fetch_alerts_data = require('../../alerts/fetch_data');
@@ -15,17 +15,17 @@ $(iconElem).on('click', function() {
     //$('#settingsModalTrigger').click();
     armFunctions.showARMwindow();
 
-    $('#atticRadarMenuSettingsScreen').hide();
-    $('#atticRadarMenuSPCScreen').hide();
-    $('#atticRadarMenuMainScreen').show();
+    $('#vortexRadarMenuSettingsScreen').hide();
+    $('#vortexRadarMenuSPCScreen').hide();
+    $('#vortexRadarMenuMainScreen').show();
 })
 
 $('#armrSTVisBtnSwitchElem').on('click', function() {
     var isChecked = $(this).is(':checked');
     $('#dataDiv').data('stormTracksVisibility', isChecked);
 
-    var st_layers = window.atticData.storm_track_layers;
-    var tvs_layers = window.atticData.tvs_layers;
+    var st_layers = window.vortexData.storm_track_layers;
+    var tvs_layers = window.vortexData.tvs_layers;
     if (!isChecked) {
         for (var item in st_layers) {
             map.setLayoutProperty(st_layers[item], 'visibility', 'none');
@@ -70,7 +70,7 @@ armFunctions.toggleswitchFunctions($('#armrLightningVisBtnSwitchElem'), function
 })
 
 armFunctions.toggleswitchFunctions($('#armrSTVisBtnSwitchElem'), function() {
-    var stormTrackLayers = window.atticData.stormTrackLayers;
+    var stormTrackLayers = window.vortexData.stormTrackLayers;
     if (stormTrackLayers != undefined) {
         for (var i in stormTrackLayers) {
             if (map.getLayer(stormTrackLayers[i])) {
@@ -79,7 +79,7 @@ armFunctions.toggleswitchFunctions($('#armrSTVisBtnSwitchElem'), function() {
         }
     }
 }, function() {
-    var stormTrackLayers = window.atticData.stormTrackLayers;
+    var stormTrackLayers = window.vortexData.stormTrackLayers;
     if (stormTrackLayers != undefined) {
         for (var i in stormTrackLayers) {
             if (map.getLayer(stormTrackLayers[i])) {

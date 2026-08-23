@@ -16,7 +16,7 @@ function isOn() { return window.vortexSmoothing !== false; }
 
 // Rebuild + redraw the current radar with the new smoothing setting.
 function rePlot() {
-    const a = window.atticData;
+    const a = window.vortexData;
     if (a && a.nexrad_factory) {
         try {
             if (a.nexrad_factory.nexrad_level == 3) a.nexrad_factory.plot();
@@ -34,7 +34,7 @@ function setSmoothing(on) {
 }
 
 function init() {
-    // Restore saved setting (default ON). Kept off window.atticData, which the
+    // Restore saved setting (default ON). Kept off window.vortexData, which the
     // app resets on load.
     let saved = null;
     try { saved = localStorage.getItem(CACHE_KEY); } catch (e) {}

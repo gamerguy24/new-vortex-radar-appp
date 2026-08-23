@@ -83,7 +83,7 @@ class Hurricane {
         const source_name = `hurricane_forecast_points_${this._storm_id}_source`;
         const layer_name = `hurricane_forecast_points_${this._storm_id}_layer`;
         // const label_layer_name = `hurricane_forecast_points_label_${this._storm_id}_layer`;
-        window.atticData.hurricane_layers.push(source_name, layer_name);
+        window.vortexData.hurricane_layers.push(source_name, layer_name);
 
         map.addSource(source_name, {
             'type': 'geojson',
@@ -115,7 +115,7 @@ class Hurricane {
 
     _plot_forecast_track() {
         const layer_name = `hurricane_forecast_track_${this._storm_id}_layer`;
-        window.atticData.hurricane_layers.push(layer_name);
+        window.vortexData.hurricane_layers.push(layer_name);
 
         map.addLayer({
             'id': layer_name,
@@ -139,7 +139,7 @@ class Hurricane {
         const source_name = `hurricane_cone_${this._storm_id}_source`;
         const layer_name = `hurricane_cone_${this._storm_id}_layer`;
         const outline_name = `hurricane_cone_${this._storm_id}_outline`;
-        window.atticData.hurricane_layers.push(source_name, layer_name, outline_name);
+        window.vortexData.hurricane_layers.push(source_name, layer_name, outline_name);
 
         map.addSource(source_name, {
             'type': 'geojson',

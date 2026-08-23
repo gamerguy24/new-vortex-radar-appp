@@ -4,7 +4,7 @@
  * overlay. Loads on first enable, then just shows/hides.
  */
 
-const armFunctions = require('../../core/menu/atticRadarMenu');
+const armFunctions = require('../../core/menu/vortexRadarMenu');
 const spaghetti = require('./nhc_spaghetti');
 
 armFunctions.toggleswitchFunctions(

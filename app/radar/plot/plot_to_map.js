@@ -25,7 +25,7 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
     const pane = get_pane(target);
     const map = pane.getMap();
     if (!map) return;
-    // Per-pane radar state. For 'main' this IS window.atticData (back-compat).
+    // Per-pane radar state. For 'main' this IS window.vortexData (back-compat).
     const S = pane_state(target);
 
     // The reflectivity gate filter only applies to reflectivity products. The
@@ -269,7 +269,7 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
     map.addLayer(layer, map_funcs.get_base_layer());
 
     // File-upload mode is a main-pane concept; the dual pane is always live.
-    var isInFileUploadMode = is_main && window.atticData.from_file_upload; /* $('#armrModeBtnSwitchElem').is(':checked'); */
+    var isInFileUploadMode = is_main && window.vortexData.from_file_upload; /* $('#armrModeBtnSwitchElem').is(':checked'); */
     // Storm tracks + lightning are wired to the main map only (per-pane support
     // is a later stage); skip them for the dual pane.
     if (!isInFileUploadMode && is_main) {
@@ -334,8 +334,8 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
     if (isInFileUploadMode) {
         if (nexrad_factory.nexrad_level == 2) {
             const file_id = nexrad_factory.generate_unique_id();
-            if (window.atticData.L2_file_id_zoomed_yet != file_id) { // if we're on a new file
-                window.atticData.L2_file_id_zoomed_yet = file_id; // set the new id globally
+            if (window.vortexData.L2_file_id_zoomed_yet != file_id) { // if we're on a new file
+                window.vortexData.L2_file_id_zoomed_yet = file_id; // set the new id globally
                 nexrad_factory.fly_to_location();
             }
         } else {

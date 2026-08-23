@@ -6,7 +6,7 @@
  * The class expects a map wrapper with .map/.dualMap, isSplit(), and
  * currentMainStation/currentSplitStation. This app exposes the map as
  * window.vortexMap = { map, dualMap } and the open radar site as
- * window.atticData.currentStation, so we pass a thin adapter that bridges them.
+ * window.vortexData.currentStation, so we pass a thin adapter that bridges them.
  * Storm attributes update per volume scan, so we refresh on an interval while on.
  */
 import StormCentersLayer from '../js/nexrad_signatures.js';
@@ -26,8 +26,8 @@ function adapter() {
         get dualMap() { return w.dualMap; },
         get layers() { return w.layers; },
         // The currently open radar site drives which storm cells are shown.
-        get currentMainStation() { return window.atticData?.currentStation; },
-        get currentSplitStation() { return window.atticData?.currentStation; },
+        get currentMainStation() { return window.vortexData?.currentStation; },
+        get currentSplitStation() { return window.vortexData?.currentStation; },
         isSplit() { return typeof w.isSplit === 'function' ? w.isSplit() : !!w.dualMap; },
     };
 }

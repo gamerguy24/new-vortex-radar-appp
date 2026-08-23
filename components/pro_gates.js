@@ -87,7 +87,7 @@ function init() {
       if (isLocked(f.tier)) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        const menu = document.getElementById('atticRadarMenu');
+        const menu = document.getElementById('vortexRadarMenu');
         if (menu) menu.style.display = 'none';
         upgradeToast(f.name, f.tier);
       }

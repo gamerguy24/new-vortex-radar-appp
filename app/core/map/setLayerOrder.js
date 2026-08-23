@@ -50,13 +50,13 @@ function setLayerOrder() {
     move_layer_to_top('alertsLayer');
 
     // storm tracks layers
-    const storm_track_layers = window.atticData.storm_track_layers;
+    const storm_track_layers = window.vortexData.storm_track_layers;
     if (storm_track_layers != undefined) {
         for (var i = 0; i < storm_track_layers.length; i++) {
             move_layer_to_top(storm_track_layers[i]);
         }
     }
-    const tvs_layers = window.atticData.tvs_layers;
+    const tvs_layers = window.vortexData.tvs_layers;
     if (tvs_layers != undefined) {
         for (var i = 0; i < tvs_layers.length; i++) {
             move_layer_to_top(tvs_layers[i]);
@@ -73,7 +73,7 @@ function setLayerOrder() {
     move_layer_to_top('stationSymbolLayer');
 
     // hurricane layers
-    const hurricane_layers = window.atticData.hurricane_layers;
+    const hurricane_layers = window.vortexData.hurricane_layers;
     if (hurricane_layers != undefined) {
         for (var i = 0; i < hurricane_layers.length; i++) {
             move_layer_to_top(hurricane_layers[i]);
@@ -91,7 +91,7 @@ function setLayerOrder() {
     }
 
     // surface fronts layers
-    const surface_fronts_layers = window.atticData.surface_fronts_layers;
+    const surface_fronts_layers = window.vortexData.surface_fronts_layers;
     if (surface_fronts_layers != undefined) {
         for (var i = 0; i < surface_fronts_layers.length; i++) {
             move_layer_to_top(surface_fronts_layers[i]);

@@ -1,6 +1,6 @@
 node_modules
 .DS_Store
-AtticRadar*/
+VortexRadar*/
 server_data/
 
 # Secrets — never commit. Real Stripe/DB values live in .env (untracked).

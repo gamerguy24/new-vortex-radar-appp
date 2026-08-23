@@ -4,7 +4,7 @@ const turf = require('@turf/turf');
 const setLayerOrder = require('../core/map/setLayerOrder');
 const ut = require('../core/utils');
 var map = require('../core/map/map');
-const AtticPopup = require('../core/popup/AtticPopup');
+const VortexPopup = require('../core/popup/VortexPopup');
 
 const radioBtnGreen = 'rgb(57, 161, 53)';
 const radioBtnRed = 'rgb(200, 44, 44)';
@@ -88,7 +88,7 @@ function plotToMap() {
         document.body.appendChild(sound);
 
         function displayErrorModal(content) {
-            ut.displayAtticDialog({
+            ut.displayVortexDialog({
                 'title': 'Error',
                 'body': content,
                 'color': '#ba3043',
@@ -147,7 +147,7 @@ ${radioPlayBtn}`
             //     .setLngLat([properties.LON, properties.LAT])
             //     .setHTML(popupContents)
             //     .addTo(map);
-            new AtticPopup([properties.LON, properties.LAT], popupContents).add_to_map();
+            new VortexPopup([properties.LON, properties.LAT], popupContents).add_to_map();
 
             $('#radioPlayBtn').click((e) => {
                 const radioPlayBtnIcon = document.getElementById('radioPlayBtnIcon');

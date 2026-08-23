@@ -8,7 +8,7 @@
  * rows use inline display:none) by only restoring display it previously hid.
  */
 
-const SCREEN_ID = 'atticRadarMenuMainScreen';
+const SCREEN_ID = 'vortexRadarMenuMainScreen';
 const KEY = 'vortexMenuAccordion';
 
 // Groups collapsed by default (the bulk of the length). Everything else stays open.

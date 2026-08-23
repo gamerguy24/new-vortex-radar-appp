@@ -75,7 +75,7 @@ function display_file_info() {
     // display the elevation angle
     $('#extraProductInfo').show().html(`Elevation: ${this.elevation_angle.toFixed(1)}°`);
 
-    if (window.atticData.from_file_upload && this.nexrad_level == 3) {
+    if (window.vortexData.from_file_upload && this.nexrad_level == 3) {
         $('#productsDropdownTriggerText').hide();
     } else {
         $('#productsDropdownTriggerText').show();

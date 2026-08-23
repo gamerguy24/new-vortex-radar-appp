@@ -6,7 +6,7 @@ const combine_dictionary_data = require('./combine_dictionary_data');
 const fetch_watches = require('./watches/watches');
 const fetch_discussions = require('./discussions/discussions');
 
-const url_prefix = 'https://atticradar.steepatticstairs.net/';
+const url_prefix = '/';   // serve the alert zone dictionaries from our own server
 
 const new_alerts_url = `https://preview.weather.gov/edd/resource/edd/hazards/getShortFusedHazards.php?all=true`;
 const sws_alerts_url = `https://preview.weather.gov/edd/resource/edd/hazards/getSps.php`;
@@ -37,7 +37,7 @@ function _fetch_alerts_data(callback) {
         /* fetch_watches(); disabled — watches now render as filled areas from the NWS feed, not SPC boxes */
         fetch_discussions();
 
-        window.atticData.alerts_data = alerts_data;
+        window.vortexData.alerts_data = alerts_data;
         callback(alerts_data);
     })
 }
@@ -94,7 +94,7 @@ function return_data(callback) {
         /* fetch_watches(); disabled — watches now render as filled areas from the NWS feed, not SPC boxes */
         fetch_discussions();
 
-        window.atticData.alerts_data = alerts_data;
+        window.vortexData.alerts_data = alerts_data;
         callback(alerts_data);
     })
 }

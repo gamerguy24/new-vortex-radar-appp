@@ -125,19 +125,19 @@ function plot_alerts(alerts_data) {
 
     set_layer_order();
 
-    // if (window?.atticData?.current_RadarUpdater != undefined) {
-    //     window.atticData.current_RadarUpdater.disable();
+    // if (window?.vortexData?.current_RadarUpdater != undefined) {
+    //     window.vortexData.current_RadarUpdater.disable();
     // }
     // if (!isInFileUploadMode) {
     //     const current_RadarUpdater = new RadarUpdater(nexrad_factory);
-    //     window.atticData.current_RadarUpdater = current_RadarUpdater;
+    //     window.vortexData.current_RadarUpdater = current_RadarUpdater;
     //     current_RadarUpdater.enable();
     // }
     if (!window.location.hash.includes('dev')) {
-        if (window.atticData.current_AlertUpdater == undefined) {
+        if (window.vortexData.current_AlertUpdater == undefined) {
             const current_AlertUpdater = new AlertUpdater();
             current_AlertUpdater.enable();
-            window.atticData.current_AlertUpdater = current_AlertUpdater;
+            window.vortexData.current_AlertUpdater = current_AlertUpdater;
         }
     }
 }

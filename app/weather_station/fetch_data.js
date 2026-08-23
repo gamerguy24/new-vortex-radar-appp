@@ -57,7 +57,7 @@ function fetchData() {
     //     $.getJSON(latestObservationsUrl, function(loData) { plotData(loData, loData.obs[0]) })
     // })
 
-    $.getJSON('https://attic-server.herokuapp.com/weather-station/index.php', function(data) {
+    $.getJSON('https://vortex-server.herokuapp.com/weather-station/index.php', function(data) {
         // if ($(iconElem).hasClass('icon-blue')) {
         //     $(iconElem).removeClass('icon-blue');
         //     $(iconElem).addClass('icon-grey');

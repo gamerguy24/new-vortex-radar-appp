@@ -1,5 +1,5 @@
 const map = require('../core/map/map');
-const armFunctions = require('../core/menu/atticRadarMenu');
+const armFunctions = require('../core/menu/vortexRadarMenu');
 const fetch_spc_data = require('./fetch_data');
 
 function _hide_layers() {

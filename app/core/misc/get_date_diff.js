@@ -78,7 +78,7 @@ function get_date_diff(date_obj, usage) {
     }
 
     // we don't want a color if we're in file upload mode
-    if (usage == 'radar_plot' && window.atticData.from_file_upload) {
+    if (usage == 'radar_plot' && window.vortexData.from_file_upload) {
         age_class = '';
     }
 

@@ -23,8 +23,8 @@ function chipColor(name, cat) {
 
 // Re-filter + re-plot with current preferences (mirrors menu_item's handler).
 function replot() {
-    if (window.atticData && window.atticData.alerts_data) {
-        try { plot_alerts(filter_alerts(JSON.parse(JSON.stringify(window.atticData.alerts_data)))); }
+    if (window.vortexData && window.vortexData.alerts_data) {
+        try { plot_alerts(filter_alerts(JSON.parse(JSON.stringify(window.vortexData.alerts_data)))); }
         catch (e) { console.warn('[alert filters] replot failed:', e); }
     }
 }

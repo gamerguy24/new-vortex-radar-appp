@@ -11,8 +11,8 @@ function change_map_style(style) {
     //     id: key,
     //     ...original_sources[key],
     // }));
-    // const user_added_layers = current_map_layers.slice(1).slice(-(current_map_layers.length - window.atticData.original_map_layers));
-    // const user_added_sources = current_map_sources.slice(1).slice(-(current_map_sources.length - window.atticData.original_map_sources));
+    // const user_added_layers = current_map_layers.slice(1).slice(-(current_map_layers.length - window.vortexData.original_map_layers));
+    // const user_added_sources = current_map_sources.slice(1).slice(-(current_map_sources.length - window.vortexData.original_map_sources));
 
     // if (style == 'satellite') {
     //     map.setStyle(base_url + 'satellite-streets-v12');
@@ -30,8 +30,8 @@ function change_map_style(style) {
     //     set_layer_order();
     // })
 
-    if (window.atticData.default_styles == undefined) {
-        window.atticData.default_styles = {
+    if (window.vortexData.default_styles == undefined) {
+        window.vortexData.default_styles = {
             'land': map.getPaintProperty('land', 'background-color'),
             'national_park': map.getPaintProperty('national-park', 'fill-color'),
             'landuse': map.getPaintProperty('landuse', 'fill-color'),
@@ -55,14 +55,14 @@ function change_map_style(style) {
     }
 
     if (style == 'satellite') {
-        window.atticData.map_type = 'satellite';
+        window.vortexData.map_type = 'satellite';
 
         set_dark();
 
         map.addSource('mapbox-satellite', { 'type': 'raster', 'url': 'mapbox://mapbox.satellite', 'tileSize': 256 });
         map.addLayer({ 'type': 'raster', 'id': 'satellite-map', 'source': 'mapbox-satellite' }, map_funcs.get_base_layer());
     } else if (style == 'dark') {
-        window.atticData.map_type = 'dark';
+        window.vortexData.map_type = 'dark';
 
         set_dark();
 
@@ -71,7 +71,7 @@ function change_map_style(style) {
             map.removeSource('mapbox-satellite');
         }
     } else if (style == 'light') {
-        window.atticData.map_type = 'light';
+        window.vortexData.map_type = 'light';
 
         set_light();
 

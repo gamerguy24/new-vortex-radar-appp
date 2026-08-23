@@ -2,7 +2,7 @@ const map = require('../core/map/map');
 const set_layer_order = require('../core/map/setLayerOrder');
 const turf = require('@turf/turf');
 const luxon = require('luxon');
-const AtticPopup = require('../core/popup/AtticPopup');
+const VortexPopup = require('../core/popup/VortexPopup');
 const ut = require('../core/utils');
 
 function _return_time_range(json) {
@@ -70,7 +70,7 @@ function _click_listener(e) {
     // .setLngLat(e.lngLat)
     // .setHTML(popup_html)
     // .addTo(map);
-    new AtticPopup(e.lngLat, popup_html).add_to_map();
+    new VortexPopup(e.lngLat, popup_html).add_to_map();
 }
 
 function plot_data(geojson, formatted_day, formatted_category) {

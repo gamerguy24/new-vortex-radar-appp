@@ -41,8 +41,8 @@ function decode_and_format(color, cmin, cmax) {
 }
 
 function format_value(value) {
-    // const product = window.atticData.product;
-    const product_code = window.atticData.product_code;
+    // const product = window.vortexData.product;
+    const product_code = window.vortexData.product_code;
 
     if (value != null) {
         if (Math.round(value) == product_colors.range_folded_val) {

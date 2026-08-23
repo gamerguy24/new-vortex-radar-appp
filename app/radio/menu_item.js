@@ -1,5 +1,5 @@
 const plotToMap = require('./plot_to_map');
-const armFunctions = require('../core/menu/atticRadarMenu');
+const armFunctions = require('../core/menu/vortexRadarMenu');
 var map = require('../core/map/map');
 
 armFunctions.toggleswitchFunctions($('#armrWeatherRadioBtnSwitchElem'), function() {

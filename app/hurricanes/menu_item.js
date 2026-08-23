@@ -1,4 +1,4 @@
-const armFunctions = require('../core/menu/atticRadarMenu');
+const armFunctions = require('../core/menu/vortexRadarMenu');
 const map = require('../core/map/map');
 const init = require('./init');
 
@@ -20,7 +20,7 @@ function _legend(show_hide) {
 }
 
 armFunctions.toggleswitchFunctions($('#armrHurricanesBtnSwitchElem'), function() {
-    const hurricane_layers = window.atticData.hurricane_layers;
+    const hurricane_layers = window.vortexData.hurricane_layers;
 
     if (map.getLayer(hurricane_layers?.[0]) || map.getSource(hurricane_layers?.[0])) {
         for (var i = 0; i < hurricane_layers.length; i++) {
@@ -34,7 +34,7 @@ armFunctions.toggleswitchFunctions($('#armrHurricanesBtnSwitchElem'), function()
         init();
     }
 }, function() {
-    const hurricane_layers = window.atticData.hurricane_layers;
+    const hurricane_layers = window.vortexData.hurricane_layers;
 
     for (var i = 0; i < hurricane_layers.length; i++) {
         if (map.getLayer(hurricane_layers[i])) {

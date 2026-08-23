@@ -12,13 +12,13 @@ function enable_drawing() {
     canvas.freeDrawingBrush.width = 7;
     canvas.freeDrawingBrush.color = 'rgb(92, 157, 255)';
 
-    window.atticData.fabricjs_canvas = canvas;
+    window.vortexData.fabricjs_canvas = canvas;
 }
 
 function disable_drawing() {
     // $('#draw_canvas').off().remove();
-    if (window.atticData.fabricjs_canvas != undefined) {
-        window.atticData.fabricjs_canvas.dispose();
+    if (window.vortexData.fabricjs_canvas != undefined) {
+        window.vortexData.fabricjs_canvas.dispose();
     }
     // https://stackoverflow.com/a/10463219/18758797
     $('body > canvas').remove();

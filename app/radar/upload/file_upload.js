@@ -31,7 +31,7 @@ function load_file(files_obj) {
 
         if (detected_radar_level == 3) {
             loaders_nexrad.return_level_3_factory_from_buffer(buffer, (L3Factory) => {
-                window.atticData.from_file_upload = true;
+                window.vortexData.from_file_upload = true;
                 console.log(L3Factory);
 
                 map_funcs.removeMapLayer('baseReflectivity');
@@ -45,7 +45,7 @@ function load_file(files_obj) {
             })
         } else if (detected_radar_level == 2) {
             loaders_nexrad.return_level_2_factory_from_buffer(buffer, (L2Factory) => {
-                window.atticData.from_file_upload = true;
+                window.vortexData.from_file_upload = true;
                 console.log(L2Factory);
                 // console.log(L2Factory.list_elevations_and_products())
 
@@ -84,7 +84,7 @@ function dragLeave(thisObj) {
 function init_event_listeners() {
     $('#hidden_radar_file_uploader').on('input', () => {
         var files = document.getElementById('hidden_radar_file_uploader').files;
-        window.atticData.uploaded_file_name = files[0].name;
+        window.vortexData.uploaded_file_name = files[0].name;
 
         load_file(files);
     })
@@ -100,7 +100,7 @@ function init_event_listeners() {
         e.preventDefault();
 
         const files = e.dataTransfer.files;
-        window.atticData.uploaded_file_name = files[0].name;
+        window.vortexData.uploaded_file_name = files[0].name;
         load_file(files);
     }, false);
 
@@ -125,9 +125,9 @@ function init_event_listeners() {
     })
 
     // // $('#dataDiv').data('currentLevelInput', '2');
-    // window.atticData.current_level_input = 3;
+    // window.vortexData.current_level_input = 3;
     // $('.levelRadioInputs').on('click', function () {
-    //     window.atticData.current_level_input = parseInt(this.value);
+    //     window.vortexData.current_level_input = parseInt(this.value);
     //     // $('#dataDiv').data('currentLevelInput', this.value);
     //     $('#drop_zone').text(`Drop Level ${this.value} file here`);
     // })

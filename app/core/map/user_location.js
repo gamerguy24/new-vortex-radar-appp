@@ -2,18 +2,18 @@
  * app/core/map/user_location.js
  * One shared source of the user's live GPS position for bundled (CommonJS)
  * code — e.g. the storm-cell impact calc. Caches the last fix on
- * window.atticData.userLocation and keeps it fresh with a single watchPosition.
+ * window.vortexData.userLocation and keeps it fresh with a single watchPosition.
  */
 
 let watching = false;
 
 function get() {
-    return (window.atticData && window.atticData.userLocation) || null;
+    return (window.vortexData && window.vortexData.userLocation) || null;
 }
 function set(lng, lat) {
-    window.atticData = window.atticData || {};
-    window.atticData.userLocation = { lng, lat, ts: Date.now() };
-    return window.atticData.userLocation;
+    window.vortexData = window.vortexData || {};
+    window.vortexData.userLocation = { lng, lat, ts: Date.now() };
+    return window.vortexData.userLocation;
 }
 function startWatch() {
     if (watching || !navigator.geolocation) return;

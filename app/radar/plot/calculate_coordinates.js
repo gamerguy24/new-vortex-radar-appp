@@ -14,19 +14,19 @@ function calculate_coordinates(nexrad_factory, options) {
     if (nexrad_factory.nexrad_level == 2) {
         product = options.product;
         elevation = options.elevation;
-        window.atticData.product_code = product;
+        window.vortexData.product_code = product;
     } else if (nexrad_factory.nexrad_level == 3) {
         product = nexrad_factory.product_abbv;
-        window.atticData.product_code = nexrad_factory.product_code;
+        window.vortexData.product_code = nexrad_factory.product_code;
     }
-    window.atticData.product = product;
+    window.vortexData.product = product;
 
     const dealias_mode_region_based = $('#armrDealiasRegionBasedBtnSwitchElem').is(':checked');
     const dealias_mode_tornadic = $('#armrDealiasTornadicBtnSwitchElem').is(':checked');
 
     var should_plot_dealiased;
     if (nexrad_factory.nexrad_level == 2 && product == 'VEL') {
-        should_plot_dealiased = window.atticData.should_plot_dealiased;
+        should_plot_dealiased = window.vortexData.should_plot_dealiased;
 
         if (dealias_mode_tornadic) {
             if (should_plot_dealiased) {
@@ -60,7 +60,7 @@ function calculate_coordinates(nexrad_factory, options) {
     var values = [...color_data.values];
     values = ut.scaleValues(values, product);
     var chroma_scale = chroma.scale(color_data.colors).domain(values).mode('lab');
-    window.atticData.webgl_chroma_scale = chroma_scale;
+    window.vortexData.webgl_chroma_scale = chroma_scale;
 
     // Smoothing (default ON): interpolate values across neighbouring gates so the
     // radar reads as smooth blobs instead of raw stepped gates / radial streaks.

@@ -8,7 +8,7 @@ const nhc_plot_outlook = require('./nhc/nhc_plot_outlook');
 const Hurricane = require('./Hurricane');
 
 function init_hurricane_loading() {
-    window.atticData.hurricane_layers = [];
+    window.vortexData.hurricane_layers = [];
 
     nhc_fetch_data((nhc_storage) => {
         const outlook_keys = Object.keys(nhc_storage.outlooks);

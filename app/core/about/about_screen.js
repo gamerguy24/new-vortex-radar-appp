@@ -1,4 +1,4 @@
-const display_attic_dialog = require('../menu/attic_dialog');
+const display_vortex_dialog = require('../menu/vortex_dialog');
 
 $('#armrAboutBtn').click(function() {
     const accent = '#27beff';
@@ -36,7 +36,7 @@ ${heading('Contact')}
 <p style="margin: 18px 0 0; font-size: 12px; color: ${muted};">© 2026 Twistcaster Live Media LLC. All rights reserved.</p>
 </div>`;
 
-    display_attic_dialog({
+    display_vortex_dialog({
         'title': 'Our Team',
         'body': html_content,
         'color': 'rgb(230, 230, 230)',

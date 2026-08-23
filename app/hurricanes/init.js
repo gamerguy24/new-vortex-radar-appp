@@ -3,7 +3,7 @@ const nhc_process_outlooks = require('./nhc/nhc_process_outlooks');
 const nhc_active_overlay = require('./nhc/nhc_active_overlay');
 
 function init_hurricane_loading() {
-    window.atticData.hurricane_layers = [];
+    window.vortexData.hurricane_layers = [];
 
     nhc_process_data();
     nhc_process_outlooks();

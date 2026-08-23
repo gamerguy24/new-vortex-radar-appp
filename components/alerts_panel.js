@@ -1,7 +1,7 @@
 /*
  * components/alerts_panel.js
  * Active-alerts overlay. Lists every active NWS alert currently loaded
- * (window.atticData.alerts_data), color-matched to the map polygons, with
+ * (window.vortexData.alerts_data), color-matched to the map polygons, with
  * search, severity sorting, expandable details, and zoom-to-alert.
  *
  * Opened via window.openVortexAlerts() (wired to the top-left alert pill).
@@ -56,7 +56,7 @@ function bboxOf(geometry) {
 }
 
 function getFeatures() {
-    const data = window.atticData && window.atticData.alerts_data;
+    const data = window.vortexData && window.vortexData.alerts_data;
     let feats = (data && Array.isArray(data.features)) ? data.features : [];
     // Respect the same warnings/watches/statements filter the map uses, so the
     // list only shows the alerts the user has chosen to see (no scrolling past

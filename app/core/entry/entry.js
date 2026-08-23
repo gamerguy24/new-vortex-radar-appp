@@ -3,10 +3,10 @@
 */
 
 function load() {
-    // initialize the "atticData" global variable,
+    // initialize the "vortexData" global variable,
     // which will store data that can be accessed globally
-    window.atticData = {};
-    window.atticData.map_type = 'dark';
+    window.vortexData = {};
+    window.vortexData.map_type = 'dark';
 
     // apply the Vortex Radar basemap theme (distinct deep-navy palette)
     require('../map/vortex_basemap').apply_vortex_basemap();
@@ -33,8 +33,8 @@ function load() {
     // add file upload MENU listeners
     require('../../radar/upload/upload_menu');
 
-    // load the atticRadarMenu helper file
-    require('../menu/atticRadarMenu');
+    // load the vortexRadarMenu helper file
+    require('../menu/vortexRadarMenu');
 
     // make the menu's section headers collapsible (keeps the menu short)
     require('../menu/menu_accordion');
@@ -94,7 +94,7 @@ function load() {
     // load the "What's New" changelog screen
     require('../changelog/changelog');
 
-    // // detect if AtticRadar is being loaded in an iframe
+    // // detect if VortexRadar is being loaded in an iframe
     // require('../misc/detect_iframe');
     // require('../misc/message');
 
@@ -139,7 +139,7 @@ function load() {
     //             original = $('#mapFooter').html();
     //             const productMapFooter = $('#productMapFooter');
 
-    //             $('#mapFooter').html(`<div style="color: #a0a0a0; font-size: 20px"><b style="font-weight: 900">AtticRadar</b> - steepatticstairs.net</div>`);
+    //             $('#mapFooter').html(`<div style="color: #a0a0a0; font-size: 20px"><b style="font-weight: 900">VortexRadar</b> - steepatticstairs.net</div>`);
     //             $('#mapFooter').append(productMapFooter);
     //         }
 
@@ -168,8 +168,8 @@ function load() {
 
 //     const get_individual_data = require('../../tides/get_individual_data');
 //     const show_chart = require('../../tides/show_chart');
-//     const display_attic_dialog = require('../menu/attic_dialog');
-//     display_attic_dialog({
+//     const display_vortex_dialog = require('../menu/vortex_dialog');
+//     display_vortex_dialog({
 //         'title': 'Tide Station',
 
 //         'body':

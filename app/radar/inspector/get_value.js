@@ -64,11 +64,11 @@ function getValue(e) {
         const bufferX = (gl.drawingBufferWidth / canvasWidth * canvasX).toFixed(0);
         const bufferY = (gl.drawingBufferHeight / canvasHeight * (canvasHeight - canvasY)).toFixed(0);
 
-        gl.bindFramebuffer(gl.FRAMEBUFFER, window.atticData.fb);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, window.vortexData.fb);
         var data = readPixels(gl, bufferX, bufferY);
 
-        const cmin = window.atticData.cmin;
-        const cmax = window.atticData.cmax;
+        const cmin = window.vortexData.cmin;
+        const cmax = window.vortexData.cmax;
         var value, orig_value;
         if (cmin != undefined) {
             [value, orig_value] = format_value.decode_and_format(data, cmin, cmax);
@@ -85,8 +85,8 @@ function getValue(e) {
         var color = `rgba(${r}, ${g}, ${b}, ${a})`;
         if (color != 'rgba(0, 0, 0, 0)') {
             var color_to_show;
-            if (window.atticData.webgl_chroma_scale != undefined) {
-                const [r2, g2, b2, a2] = window.atticData.webgl_chroma_scale(parseFloat(orig_value)).rgba();
+            if (window.vortexData.webgl_chroma_scale != undefined) {
+                const [r2, g2, b2, a2] = window.vortexData.webgl_chroma_scale(parseFloat(orig_value)).rgba();
                 color_to_show = `rgba(${r2}, ${g2}, ${b2}, ${a2})`;
             } else {
                 color_to_show = color;
@@ -100,7 +100,7 @@ function getValue(e) {
             $('#colorPicker').css('background-color', color_to_show);
         }
 
-        const radar_location = window.atticData.current_nexrad_location;
+        const radar_location = window.vortexData.current_nexrad_location;
         if (radar_location != undefined) {
             const map_center_formatted = turf.point([map_center.lng, map_center.lat]);
             const radar_location_formatted = turf.point([radar_location[1], radar_location[0]]);
@@ -112,7 +112,7 @@ function getValue(e) {
                 'transform': `rotate(${bearing}deg)` /* For modern browsers(CSS3)  */
             });
 
-            const current_elevation_angle = window.atticData.current_elevation_angle;
+            const current_elevation_angle = window.vortexData.current_elevation_angle;
             const distance_from_radar = turf.distance(map_center_formatted, radar_location_formatted, { units: 'kilometers' });
             const beam_height_calculated = beam_height(distance_from_radar, radar_location[2], current_elevation_angle);
             $('#colorPickerTextBeamHeight').text(`${beam_height_calculated.toFixed(0)} ft ARL`);

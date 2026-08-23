@@ -121,7 +121,7 @@ function _add_stations_layer(radar_stations_geojson, callback) {
         });
 
         get_station_status((data) => {
-            window.atticData.radar_station_status = data;
+            window.vortexData.radar_station_status = data;
             const statusified_geojson = _generate_stations_geojson(data);
             map.getSource('stationSymbolLayer').setData(statusified_geojson);
         });
@@ -188,11 +188,11 @@ function _init_click_listener() {
     map.on('click', 'stationSymbolLayer', (e) => {
         const base = e.features[0].properties;
         const clickedStation = base.station_id;
-        window.atticData.currentStation = clickedStation;
+        window.vortexData.currentStation = clickedStation;
         $('#radarStation').html(clickedStation);
         $('#radarLocation').html(nexrad_locations[clickedStation].name);
         const stationType = base.type;
-        window.atticData.L2_file_id = '';
+        window.vortexData.L2_file_id = '';
 
         var productToLoad;
         var abbvProductToLoad;
@@ -219,10 +219,10 @@ function _init_click_listener() {
         $('#radarInfoSpan').show();
 
         // track the active product so the playback loop can fetch historical scans
-        window.atticData.current_loop_product = productToLoad;
+        window.vortexData.current_loop_product = productToLoad;
         require('../animation/radar_loop').reset();
 
-        window.atticData.from_file_upload = false;
+        window.vortexData.from_file_upload = false;
         loaders_nexrad.quick_level_3_plot(clickedStation, productToLoad, (L3Factory) => {});
     });
 }

@@ -4,8 +4,8 @@ const get_polygon_colors = require('../colors/polygon_colors');
 const turf = require('@turf/turf');
 const map = require('../../core/map/map');
 const set_layer_order = require('../../core/map/setLayerOrder');
-const AtticPopup = require('../../core/popup/AtticPopup');
-const display_attic_dialog = require('../../core/menu/attic_dialog');
+const VortexPopup = require('../../core/popup/VortexPopup');
+const display_vortex_dialog = require('../../core/menu/vortex_dialog');
 
 const all_discussions_url = `https://www.spc.noaa.gov/products/md/ActiveMD.kmz`; // https://www.spc.noaa.gov/products/md/ActiveMD.kmz
 // const all_discussions_url = `http://localhost:3333/ActiveMD.kmz`
@@ -21,13 +21,13 @@ function click_listener(e) {
 `<div style="font-weight: bold; font-size: 13px;">Mesoscale Discussion ${properties.id}</div>
 <i id="${divid}" class="alert_popup_info icon-blue fa fa-circle-info" style="color: rgb(255, 255, 255);"></i>`;
 
-    const popup = new AtticPopup(e.lngLat, popup_html);
+    const popup = new VortexPopup(e.lngLat, popup_html);
     popup.add_to_map();
-    popup.attic_popup_div.width(`+=${$('.alert_popup_info').outerWidth() + parseInt($('.alert_popup_info').css('paddingRight'))}`);
+    popup.vortex_popup_div.width(`+=${$('.alert_popup_info').outerWidth() + parseInt($('.alert_popup_info').css('paddingRight'))}`);
     popup.update_popup_pos();
 
     $(`#${divid}`).on('click', function() {
-        display_attic_dialog({
+        display_vortex_dialog({
             'title': `Mesoscale Discussion ${properties.id}`,
             'body': properties.full_desc,
             'color': properties.color,

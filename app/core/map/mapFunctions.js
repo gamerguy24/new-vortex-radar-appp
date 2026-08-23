@@ -74,7 +74,7 @@ function moveMapLayer(lay) {
 }
 
 function get_base_layer() {
-    const current_style_name = window.atticData.map_type; // map.getStyle().name;
+    const current_style_name = window.vortexData.map_type; // map.getStyle().name;
 
     if (current_style_name == 'satellite') {
         return 'tunnel-path-trail';

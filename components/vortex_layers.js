@@ -43,7 +43,7 @@ function withMap(fn, label) {
 }
 
 function closeMenu() {
-    const m = document.getElementById('atticRadarMenu');
+    const m = document.getElementById('vortexRadarMenu');
     if (m) m.style.display = 'none';
 }
 

@@ -5,7 +5,7 @@
  * first); each item is a { title, desc } feature line.
  */
 
-const display_attic_dialog = require('../menu/attic_dialog');
+const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
@@ -57,7 +57,7 @@ ${releases}
 <p style="margin: 14px 0 0; font-size: 12px; color: ${muted};">© 2026 Twistcaster Live Media LLC.</p>
 </div>`;
 
-    display_attic_dialog({
+    display_vortex_dialog({
         'title': "What's New",
         'body': html_content,
         'color': 'rgb(230, 230, 230)',

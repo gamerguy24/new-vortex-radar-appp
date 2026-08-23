@@ -2,7 +2,7 @@ const ut = require('../../core/utils');
 const kmz_to_geojson = require('../kmz_to_geojson');
 const set_layer_order = require('../../core/map/setLayerOrder');
 const map = require('../../core/map/map');
-const AtticPopup = require('../../core/popup/AtticPopup');
+const VortexPopup = require('../../core/popup/VortexPopup');
 
 function _click_listener(e) {
     const features = map.queryRenderedFeatures(e.point);
@@ -32,8 +32,8 @@ function _click_listener(e) {
             <div class="code">${properties.Discussion}</div>
         </div>`
 
-    const popup = new AtticPopup([lng, lat], popup_content);
-    popup.attic_popup_div.css({ 'maxWidth': '200px', 'minWidth': '200px' });
+    const popup = new VortexPopup([lng, lat], popup_content);
+    popup.vortex_popup_div.css({ 'maxWidth': '200px', 'minWidth': '200px' });
     popup.add_to_map();
     // new mapboxgl.Popup({ className: 'alertPopup'})
     //     .setLngLat([lng, lat])
@@ -126,7 +126,7 @@ function nhc_plot_outlook(kmz_blob, id) {
                             'line-width': border_width
                         }
                     });
-                    window.atticData.hurricane_layers.push(source_name, layer_name, layer_outline_name);
+                    window.vortexData.hurricane_layers.push(source_name, layer_name, layer_outline_name);
 
                     map.on('mouseenter', layer_name, function (e) {
                         map.getCanvas().style.cursor = 'pointer';
@@ -191,7 +191,7 @@ function nhc_plot_outlook(kmz_blob, id) {
                                 'text-halo-blur': 1
                             }
                         });
-                        window.atticData.hurricane_layers.push(source_name, layer_name);
+                        window.vortexData.hurricane_layers.push(source_name, layer_name);
                     }
                 }
             }

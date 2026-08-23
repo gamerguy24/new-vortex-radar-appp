@@ -97,7 +97,7 @@ function respawn(p) { p.x = Math.random() * _canvas.width; p.y = Math.random() *
 // Returns { az, rg, data, loc } (azimuths deg, ranges km, data[radial][gate] m/s,
 // radar [lat,lng,alt]) or null.
 function currentVelInfo() {
-    const A = window.atticData || {};
+    const A = window.vortexData || {};
     const cur = A.nexrad_factory;
     _diag.level = cur ? cur.nexrad_level : '-';
     _diag.code = cur ? cur.product_code : '-';
@@ -143,7 +143,7 @@ function currentVelInfo() {
 // If we're on a non-velocity Level 3 product, pull the L3 base velocity in the
 // background so particles still work over reflectivity etc.
 function maybeFetchVelocity() {
-    const A = window.atticData || {};
+    const A = window.vortexData || {};
     const cur = A.nexrad_factory;
     if (!cur || cur.nexrad_level !== 3) return;
     if (VELOCITY_L3_CODES.includes(cur.product_code)) return; // already velocity
@@ -321,7 +321,7 @@ function enable() {
     if (_raf) cancelAnimationFrame(_raf);
     _raf = requestAnimationFrame(frame);
 
-    if (!(window.atticData || {}).nexrad_factory) {
+    if (!(window.vortexData || {}).nexrad_factory) {
         toast('Wind particles need a radar loaded — pick a station/product first.');
     }
 }

@@ -51,7 +51,7 @@ function registerUploaded(id, colortable_string, label) {
     const section = document.getElementById(`${group}_ctable_options`);
     if (section && !document.getElementById(`armr${id}ColortableBtn`)) {
         section.insertAdjacentHTML('beforeend',
-`<div class="atticRadarMenuRow colortableRow armrWide armrBottom" id="armr${id}ColortableBtn" name="${id}">
+`<div class="vortexRadarMenuRow colortableRow armrWide armrBottom" id="armr${id}ColortableBtn" name="${id}">
 <span class="colortable_menu_text">${label || 'User Upload'}</span>
 <div class="colortable_menu_image_preview" id="${id}_colortable_preview"></div>
 </div>`);
@@ -87,7 +87,7 @@ $('.colortable_upload_btn').click(function() {
     const name = $(this).attr('name');
     const matches = ctables.filter(item => item.startsWith(name)).map(item => parseInt(item.slice(-1)));
     const next_num = matches[matches.length - 1] + 1;
-    window.atticData.next_ctable_id = `${name}${next_num}`;
+    window.vortexData.next_ctable_id = `${name}${next_num}`;
 
     $('#hidden_colortable_file_uploader').click();
 })
@@ -98,7 +98,7 @@ $('#hidden_colortable_file_uploader').on('input', () => {
     const reader = new FileReader();
     reader.addEventListener('load', function () {
         const colortable_string = Buffer.from(this.result).toString('utf-8');
-        const id = window.atticData.next_ctable_id;
+        const id = window.vortexData.next_ctable_id;
         registerUploaded(id, colortable_string, 'User Upload');
         _rememberCustom(id, colortable_string);   // persist so it survives refresh
         _generate_images();
@@ -126,7 +126,7 @@ function change_colortable(product, new_ctable) {
 
     _saveChoice(product, new_ctable);   // remember this pick across refreshes
 
-    var a_d = window.atticData;
+    var a_d = window.vortexData;
     if (a_d?.nexrad_factory != undefined) {
         if (a_d.nexrad_factory.nexrad_level == 3) {
             a_d.nexrad_factory.plot();

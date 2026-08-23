@@ -1,11 +1,11 @@
 var map = require('../core/map/map');
 const ut = require('../core/utils');
 const get_polygon_colors = require('./colors/polygon_colors');
-const display_attic_dialog = require('../core/menu/attic_dialog');
+const display_vortex_dialog = require('../core/menu/vortex_dialog');
 const chroma = require('chroma-js')
 const { DateTime } = require('luxon');
 const hash_string = require('./hash_string');
-const AtticPopup = require('../core/popup/AtticPopup');
+const VortexPopup = require('../core/popup/VortexPopup');
 
 // https://www.geeksforgeeks.org/how-to-change-the-height-of-br-tag
 const break_small = `<span style="display: block; margin-bottom: -.4em;"></span>`;
@@ -148,9 +148,9 @@ ${parameters_html}
         }
     }
 
-    const popup = new AtticPopup(e.lngLat, popup_html);
+    const popup = new VortexPopup(e.lngLat, popup_html);
     popup.add_to_map();
-    popup.attic_popup_div.width(`+=${$('.alert_popup_info').outerWidth() + parseInt($('.alert_popup_info').css('paddingRight'))}`);
+    popup.vortex_popup_div.width(`+=${$('.alert_popup_info').outerWidth() + parseInt($('.alert_popup_info').css('paddingRight'))}`);
     popup.update_popup_pos();
     // const popup = new mapboxgl.Popup({ className: 'alertPopup', maxWidth: '1000' })
     //     .setLngLat(e.lngLat)
@@ -166,7 +166,7 @@ ${parameters_html}
         //     'body': alertContentObj[id].body
         // })
         // console.log(alertContentObj[id])
-        display_attic_dialog({
+        display_vortex_dialog({
             'title': alertContentObj[id].title,
             'body': alertContentObj[id].body,
             'color': alertContentObj[id].color,

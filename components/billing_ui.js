@@ -180,7 +180,7 @@ function init() {
   const rw = row();
   if (rw) {
     rw.addEventListener('click', () => {
-      const menu = $('atticRadarMenu');
+      const menu = $('vortexRadarMenu');
       if (menu) menu.style.display = 'none';
       const action = rw.dataset.action || 'checkout';
       if (action === 'checkout') openTierPicker();  // free user -> pick a plan

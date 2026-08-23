@@ -69,7 +69,7 @@ function fetchMETARData() {
                         }
                     }
                 } else {
-                    // deletes all unknown metar stations not in atticradar's database
+                    // deletes all unknown metar stations not in vortexradar's database
                     delete parsedXMLData.response.data.METAR[item];
                 }
             }

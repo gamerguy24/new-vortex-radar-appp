@@ -4,7 +4,7 @@ const turf = require('@turf/turf');
 const map = require('../../../../core/map/map');
 const setLayerOrder = require('../../../../core/map/setLayerOrder');
 const ut = require('../../../../core/utils');
-const AtticPopup = require('../../../../core/popup/AtticPopup');
+const VortexPopup = require('../../../../core/popup/VortexPopup');
 const render_storm_impact = require('./render_storm_impact');
 const storm_alerts = require('./storm_alerts');
 
@@ -162,13 +162,13 @@ function plot_storm_tracks(L3Factory) {
             'circle-stroke-color': 'black',
         }
     })
-    window.atticData.storm_track_layers = storm_track_layers;
+    window.vortexData.storm_track_layers = storm_track_layers;
 
     function cellClick(e) {
         const renderedFeatures = map.queryRenderedFeatures(e.point);
         if (renderedFeatures[0] && renderedFeatures[0].layer.id == 'stationSymbolLayer') return;
 
-        // if (window.atticData.currentStation == L3Factory.station) {
+        // if (window.vortexData.currentStation == L3Factory.station) {
             const properties = e.features[0].properties;
             const cellID = properties.cellID;
             const cellProperties = JSON.parse(properties.cellProperties);
@@ -203,7 +203,7 @@ function plot_storm_tracks(L3Factory) {
             // Placeholder the "My Location Impact" section fills in async.
             popupHTML += `<div id="stormImpactSection"></div>`;
 
-            const popup = new AtticPopup(JSON.parse(properties.coords), popupHTML);
+            const popup = new VortexPopup(JSON.parse(properties.coords), popupHTML);
             popup.add_to_map();
             try {
                 const track = buildCellTrack(cellID, cellProperties);

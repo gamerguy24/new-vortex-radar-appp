@@ -10,7 +10,7 @@
  * line per model.
  *
  * Controlled by its own menu toggle (see spaghetti_menu_item.js). Layers are
- * tracked on window.atticData.spaghetti_layers.
+ * tracked on window.vortexData.spaghetti_layers.
  */
 
 const ut = require('../../core/utils');
@@ -105,7 +105,7 @@ function fetchADeckText(atcfId) {
 
 // ── render ───────────────────────────────────────────────────────────────────
 function addLayers(features) {
-    window.atticData.spaghetti_layers = [SRC, LINE_LAYER, LABEL_LAYER];
+    window.vortexData.spaghetti_layers = [SRC, LINE_LAYER, LABEL_LAYER];
     map.addSource(SRC, { type: 'geojson', data: { type: 'FeatureCollection', features } });
     map.addLayer({
         id: LINE_LAYER, type: 'line', source: SRC,
@@ -150,7 +150,7 @@ function load() {
 }
 
 function enable() {
-    window.atticData.spaghetti_layers = window.atticData.spaghetti_layers || [];
+    window.vortexData.spaghetti_layers = window.vortexData.spaghetti_layers || [];
     if (_state === 'loaded' && map.getSource(SRC)) { setVisible(true); return; }
     if (_state !== 'loading') load();
 }

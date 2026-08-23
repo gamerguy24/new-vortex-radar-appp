@@ -16,7 +16,7 @@ A clean, simple, but powerful weather toolkit for the web browser. Includes NEXR
 ## Setup
 ```
 git clone <your-repo-url>
-cd AtticRadar
+cd VortexRadar
 npm install
 npm run build
 npm run start

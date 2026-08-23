@@ -52,7 +52,7 @@ function showFrame(i) {
 }
 
 function currentTarget() {
-    const a = window.atticData || {};
+    const a = window.vortexData || {};
     return { station: a.currentStation, product: a.current_loop_product };
 }
 
@@ -90,7 +90,7 @@ function tick() {
 function play() {
     if (frames.length === 0) { return; }
     // stop the live auto-updater so it doesn't fight the loop
-    const a = window.atticData;
+    const a = window.vortexData;
     if (a && a.current_RadarUpdater) { try { a.current_RadarUpdater.disable(); } catch (e) {} }
     playing = true;
     setIcon(true);

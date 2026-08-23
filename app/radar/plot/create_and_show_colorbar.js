@@ -139,10 +139,10 @@ function create_and_show_colorbar(colors, values) {
             tooltip.css('left', new_x);
         }
 
-        const now_cmin = window.atticData.colorscale_cmin;
-        const now_cmax = window.atticData.colorscale_cmax;
+        const now_cmin = window.vortexData.colorscale_cmin;
+        const now_cmax = window.vortexData.colorscale_cmax;
         const scaled = ut.scale(x, 0, width, now_cmin, now_cmax);
-        const color = window.atticData.webgl_chroma_scale(scaled);
+        const color = window.vortexData.webgl_chroma_scale(scaled);
         const formatted_value = format_value.format_value(scaled);
 
         tooltip.html(formatted_value);

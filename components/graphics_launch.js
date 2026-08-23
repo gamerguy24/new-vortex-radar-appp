@@ -21,7 +21,7 @@ function open(url) {
 }
 
 function closeMenu() {
-    const m = document.getElementById('atticRadarMenu');
+    const m = document.getElementById('vortexRadarMenu');
     if (m) m.style.display = 'none';
 }
 

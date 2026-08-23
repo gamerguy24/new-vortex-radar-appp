@@ -13,7 +13,7 @@
  *   - Initial Wind Field (34 / 50 / 64-kt wind extent polygons)
  *   - a labeled storm-center marker with the full advisory stats in a popup
  *
- * Everything is registered in window.atticData.hurricane_layers so the existing
+ * Everything is registered in window.vortexData.hurricane_layers so the existing
  * Hurricanes toggle shows/hides it with the rest.
  */
 
@@ -127,7 +127,7 @@ const IDS = {
 function fc(features) { return { type: 'FeatureCollection', features: features || [] }; }
 
 function registerLayer(id) {
-    if (!window.atticData.hurricane_layers.includes(id)) window.atticData.hurricane_layers.push(id);
+    if (!window.vortexData.hurricane_layers.includes(id)) window.vortexData.hurricane_layers.push(id);
 }
 
 function addOrSet(srcId, features) {
@@ -241,7 +241,7 @@ function esc(s) {
 
 // ── entry ────────────────────────────────────────────────────────────────────
 function nhc_active_overlay() {
-    window.atticData.hurricane_layers = window.atticData.hurricane_layers || [];
+    window.vortexData.hurricane_layers = window.vortexData.hurricane_layers || [];
 
     fetchBlob(NHC_KMZ_URL)
         .then(blobToDom)

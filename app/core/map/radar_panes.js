@@ -3,11 +3,11 @@
  * Pane registry for dual-radar support. Each pane owns its own map, its own
  * radar WebGL layer + range-ring layer ids, and its own slice of radar state.
  *
- * The app historically kept a single radar's state on window.atticData (cmin,
+ * The app historically kept a single radar's state on window.vortexData (cmin,
  * cmax, fb, current_RadarUpdater, current_nexrad_location, current_elevation_angle,
  * ...), read from many modules. To stay backward-compatible, the 'main' pane's
- * state IS window.atticData; the 'dual' pane gets its own namespace under
- * window.atticData.panes.dual. New code should read/write radar state via
+ * state IS window.vortexData; the 'dual' pane gets its own namespace under
+ * window.vortexData.panes.dual. New code should read/write radar state via
  * pane_state(target) so both panes stay independent.
  *
  * The dual map is created lazily by components/split_screen.js and published as
@@ -52,14 +52,14 @@ function get_pane(target) {
 }
 
 // Return the mutable radar-state object for a pane. 'main' aliases
-// window.atticData for backward compatibility with existing readers.
+// window.vortexData for backward compatibility with existing readers.
 function pane_state(target) {
     if (typeof window === 'undefined') return {};
-    if (!window.atticData) window.atticData = {};
-    if (normalize(target) === 'main') return window.atticData;
-    if (!window.atticData.panes) window.atticData.panes = {};
-    if (!window.atticData.panes.dual) window.atticData.panes.dual = {};
-    return window.atticData.panes.dual;
+    if (!window.vortexData) window.vortexData = {};
+    if (normalize(target) === 'main') return window.vortexData;
+    if (!window.vortexData.panes) window.vortexData.panes = {};
+    if (!window.vortexData.panes.dual) window.vortexData.panes.dual = {};
+    return window.vortexData.panes.dual;
 }
 
 module.exports = { get_pane, pane_state };

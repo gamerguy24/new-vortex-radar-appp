@@ -21,7 +21,7 @@ function isTyping() {
 // Close the topmost piece of open UI. Returns true if it closed something.
 function closeTopUI() {
     if (helpEl) { toggleHelp(); return true; }
-    const menu = document.getElementById('atticRadarMenu');
+    const menu = document.getElementById('vortexRadarMenu');
     if (menu && menu.style.display !== 'none') { menu.style.display = 'none'; return true; }
     const modelsClose = document.getElementById('vmpClose');
     if (modelsClose && document.getElementById('vortexModelsPanel')) { modelsClose.click(); return true; }

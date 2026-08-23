@@ -2,12 +2,12 @@
 * https://nordicapis.com/10-free-to-use-cors-proxies/
 * https://allorigins.win/
 */
-// https://attic-server.herokuapp.com/proxy/index.php/?
-// http://server.steepatticstairs.net/AtticServer/proxy/index.php/?
+// https://vortex-server.herokuapp.com/proxy/index.php/?
+// http://server.steepatticstairs.net/VortexServer/proxy/index.php/?
 
 // https://php-cors-proxy.herokuapp.com/?
 const phpProxy = '/api/proxy?url='; // Vortex Radar server-side proxy (see server.js)
-// const phpProxy2 = 'https://attic-server.herokuapp.com/proxy/index.php/?'; // http://127.0.0.1:3333/server/AtticServer/proxy/?
+// const phpProxy2 = 'https://vortex-server.herokuapp.com/proxy/index.php/?'; // http://127.0.0.1:3333/server/VortexServer/proxy/?
 //const phpProxy  = 'https://salty-citadel-44916.herokuapp.com/';
 //const phpProxy  = 'https://secret-retreat-45871.herokuapp.com/'
 //const phpProxy  = 'https://circumvent-cors.herokuapp.com/';
@@ -783,7 +783,7 @@ function setMapMargin(topOrBottom, value, map_obj = undefined) {
     // })
 }
 
-function displayAtticDialog(options) {
+function displayVortexDialog(options) {
     var title = options.title;
     var body = options.body;
     var color = options.color;
@@ -793,20 +793,20 @@ function displayAtticDialog(options) {
 
     $('#atcDlgHeaderText').html(title);
     $('#atcDlgHeader').css('background-color', color);
-    //$('#atticDialogHeaderContainer').css('background-color', color);
+    //$('#vortexDialogHeaderContainer').css('background-color', color);
     $('#atcDlgHeader').css('color', textColor);
     $('#atcDlgClose').css('color', textColor);
 
     $('#atcDlgBody').scrollTop(0);
     $('#atcDlgBody').html(body);
 
-    // const headerHeight = $('#atticDialogHeaderContainer').height();
+    // const headerHeight = $('#vortexDialogHeaderContainer').height();
     // var contentHeight = 0;
-    // $('#atticDialogBody').children().each(function() { contentHeight = contentHeight + $(this).height() })
-    //$('#atticDialogContainer').height(headerHeight + contentHeight);
-    // var bodyHeight = $('#atticDialogBody').outerHeight();
+    // $('#vortexDialogBody').children().each(function() { contentHeight = contentHeight + $(this).height() })
+    //$('#vortexDialogContainer').height(headerHeight + contentHeight);
+    // var bodyHeight = $('#vortexDialogBody').outerHeight();
     // console.log(bodyHeight)
-    // $('#atticDialogContainer').height(bodyHeight);
+    // $('#vortexDialogContainer').height(bodyHeight);
 }
 
 function scaleValues(values, product) {
@@ -910,7 +910,7 @@ module.exports = {
     haMapControlActions,
     zeroPad,
     setMapMargin,
-    displayAtticDialog,
+    displayVortexDialog,
     scaleValues,
     loadingSpinner
 }

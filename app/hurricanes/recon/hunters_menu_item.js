@@ -4,7 +4,7 @@
  * overlay. Loads/refreshes on enable, hides on disable.
  */
 
-const armFunctions = require('../../core/menu/atticRadarMenu');
+const armFunctions = require('../../core/menu/vortexRadarMenu');
 const hunters = require('./hurricane_hunters');
 
 armFunctions.toggleswitchFunctions(

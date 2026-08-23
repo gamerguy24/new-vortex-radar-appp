@@ -389,7 +389,7 @@ function wireMenu() {
         if (chevron) btn.insertBefore(b, chevron); else btn.appendChild(b);
     }
     btn.addEventListener('click', () => {
-        const menu = document.getElementById('atticRadarMenu');
+        const menu = document.getElementById('vortexRadarMenu');
         if (menu) menu.style.display = 'none';
         openSupport();
     });

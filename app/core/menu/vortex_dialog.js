@@ -1,4 +1,4 @@
-function display_attic_dialog(options) {
+function display_vortex_dialog(options) {
     var title = options.title;
     var body = options.body;
     var color = options.color;
@@ -8,20 +8,20 @@ function display_attic_dialog(options) {
 
     $('#atcDlgHeaderText').html(title);
     $('#atcDlgHeader').css('background-color', color);
-    //$('#atticDialogHeaderContainer').css('background-color', color);
+    //$('#vortexDialogHeaderContainer').css('background-color', color);
     $('#atcDlgHeader').css('color', textColor);
     $('#atcDlgClose').css('color', textColor);
 
     $('#atcDlgBody').scrollTop(0);
     $('#atcDlgBody').html(body);
 
-    // const headerHeight = $('#atticDialogHeaderContainer').height();
+    // const headerHeight = $('#vortexDialogHeaderContainer').height();
     // var contentHeight = 0;
-    // $('#atticDialogBody').children().each(function() { contentHeight = contentHeight + $(this).height() })
-    //$('#atticDialogContainer').height(headerHeight + contentHeight);
-    // var bodyHeight = $('#atticDialogBody').outerHeight();
+    // $('#vortexDialogBody').children().each(function() { contentHeight = contentHeight + $(this).height() })
+    //$('#vortexDialogContainer').height(headerHeight + contentHeight);
+    // var bodyHeight = $('#vortexDialogBody').outerHeight();
     // console.log(bodyHeight)
-    // $('#atticDialogContainer').height(bodyHeight);
+    // $('#vortexDialogContainer').height(bodyHeight);
 }
 
 $('#atcDlg').on('click', function(e) {
@@ -31,4 +31,4 @@ $('#atcDlg').on('click', function(e) {
     }
 })
 
-module.exports = display_attic_dialog;
+module.exports = display_vortex_dialog;

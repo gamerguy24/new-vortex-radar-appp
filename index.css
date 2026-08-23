@@ -723,7 +723,7 @@ https://tobiasahlin.com/spinkit/
 .alertPopup.mapboxgl-popup-anchor-bottom-left .mapboxgl-popup-tip { border-top-color: black; }
 .alertPopup.mapboxgl-popup-anchor-bottom-right .mapboxgl-popup-tip { border-top-color: black; }
 
-#atticDialog {
+#vortexDialog {
     position: absolute;
     top: 0;
     bottom: 0;
@@ -732,7 +732,7 @@ https://tobiasahlin.com/spinkit/
 
     background-color: rgba(0, 0, 0, 0.4);
 }
-#atticDialogContainer {
+#vortexDialogContainer {
     position: absolute;
     z-index: 1001;
     left: 0;
@@ -755,7 +755,7 @@ https://tobiasahlin.com/spinkit/
     background-color: rgb(19, 19, 19);
     color: rgb(172, 172, 172);
 }
-#atticDialogHeaderContainer {
+#vortexDialogHeaderContainer {
     position: absolute;
     top: 0;
     left: 0;
@@ -769,7 +769,7 @@ https://tobiasahlin.com/spinkit/
     justify-content: center;
     align-items: center;
 }
-#atticDialogClose {
+#vortexDialogClose {
     position: absolute;
     z-index: 1002;
     margin: 0 auto;
@@ -777,7 +777,7 @@ https://tobiasahlin.com/spinkit/
     transform: scale(1.5);
     cursor: pointer;
 }
-#atticDialogBody {
+#vortexDialogBody {
     position: absolute;
     bottom: 0;
     top: 50px;
@@ -957,7 +957,7 @@ https://tobiasahlin.com/spinkit/
     color: rgb(255, 255, 255);
 }
 
-#atticRadarMenu {
+#vortexRadarMenu {
     position: absolute;
     top: 0;
     bottom: 0;
@@ -966,7 +966,7 @@ https://tobiasahlin.com/spinkit/
 
     background-color: rgba(0, 0, 0, 0.4);
 }
-#atticRadarMenuContainer {
+#vortexRadarMenuContainer {
     position: absolute;
     left: 0;
     right: 0;
@@ -988,11 +988,11 @@ https://tobiasahlin.com/spinkit/
     border-top: 1px solid black;
     border-right: 1px solid black;
 }
-#atticRadarMenuBody {
+#vortexRadarMenuBody {
     color: #cdd9e6;
     padding: 15px;
 }
-.atticRadarMenuRow {
+.vortexRadarMenuRow {
     display: flex;
     justify-content: flex-start;
     align-items: center;
@@ -1004,15 +1004,15 @@ https://tobiasahlin.com/spinkit/
     font-size: 14.5px;
     transition: background-color 0.12s ease;
 }
-.atticRadarMenuRowDisabled {
+.vortexRadarMenuRowDisabled {
     opacity: 0.45;
     pointer-events: none;
 }
-.atticRadarMenuRow:hover {
+.vortexRadarMenuRow:hover {
     background-color: rgba(39, 190, 255, 0.12);
     cursor: pointer;
 }
-.atticRadarMenuRow:active {
+.vortexRadarMenuRow:active {
     background-color: rgba(39, 190, 255, 0.20);
 }
 .armrSlideDown {
@@ -1021,7 +1021,7 @@ https://tobiasahlin.com/spinkit/
     /* border-top: 0.25px solid rgb(70, 70, 70); */
     background-color: rgb(60, 60, 60);
 }
-/* armr = atticRadarMenuRow */
+/* armr = vortexRadarMenuRow */
 .armrTop {
     border-bottom-left-radius: 0px;
     border-bottom-right-radius: 0px;
@@ -1039,7 +1039,7 @@ https://tobiasahlin.com/spinkit/
 }
 .armrWide {
     border-radius: 0px;
-    /* 15px is the padding for #atticRadarMenuContainer */
+    /* 15px is the padding for #vortexRadarMenuContainer */
     margin-left: -15px;
     margin-right: -15px;
     padding-left: 15px;
@@ -1072,7 +1072,7 @@ https://tobiasahlin.com/spinkit/
     color: rgb(111, 111, 111);
 }
 
-/* arms = atticRadarMenuScreen */
+/* arms = vortexRadarMenuScreen */
 .armsHeader {
     display: flex;
     justify-content: center;
@@ -1589,7 +1589,7 @@ td.day.active, span.month.active, span.year.active {
 }
 
 
-.attic_popup {
+.vortex_popup {
     position: absolute;
     z-index: 1;
 
@@ -1604,7 +1604,7 @@ td.day.active, span.month.active, span.year.active {
     border: 0.75px solid rgb(100, 100, 100);
 }
 /* https://cssarrowplease.com/ */
-.attic_popup:after, .attic_popup:before {
+.vortex_popup:after, .vortex_popup:before {
 	top: 100%;
 	left: 50%;
 	border: solid transparent;
@@ -1614,20 +1614,20 @@ td.day.active, span.month.active, span.year.active {
 	position: absolute;
 	/* pointer-events: none; */
 }
-.attic_popup:after {
+.vortex_popup:after {
 	border-color: rgba(50, 50, 50, 0);
 	border-top-color: #323232;
 	border-width: 10px;
 	margin-left: -10px;
 }
-.attic_popup:before {
+.vortex_popup:before {
 	border-color: rgba(100, 100, 100, 0);
 	border-top-color: #646464;
 	border-width: 11px;
 	margin-left: -11px;
 }
 /* https://stackoverflow.com/a/19719176/18758797 */
-/* .attic_popup:after {
+/* .vortex_popup:after {
     content:'';
     position: absolute;
     top: 100%;
@@ -2156,8 +2156,8 @@ td.day.active, span.month.active, span.year.active {
 @media (min-width: 900px) and (hover: hover) and (pointer: fine) {
     /* Layers/settings menu becomes a compact LEFT side-dock: the map stays
        visible (uses the width), full height with internal scroll (no overflow). */
-    #atticRadarMenu { background-color: transparent; pointer-events: none; }
-    #atticRadarMenuContainer {
+    #vortexRadarMenu { background-color: transparent; pointer-events: none; }
+    #vortexRadarMenuContainer {
         left: 12px; right: auto; top: 12px; bottom: 12px; margin: 0;
         width: 340px; max-width: 340px;
         overflow-y: auto; overflow-x: hidden;
@@ -2166,10 +2166,10 @@ td.day.active, span.month.active, span.year.active {
         box-shadow: var(--vortex-shadow);
         pointer-events: auto;
     }
-    #atticRadarMenuBody { padding: 12px; }
+    #vortexRadarMenuBody { padding: 12px; }
 
     /* Tighter rows + section headers so more fits without scrolling. */
-    .atticRadarMenuRow { padding: 8px 10px; font-size: 13px; border-radius: var(--vortex-r-md); }
+    .vortexRadarMenuRow { padding: 8px 10px; font-size: 13px; border-radius: var(--vortex-r-md); }
     .armrIcon { margin-right: 8px; }
     .armrHeader { font-size: 11px; margin-bottom: 6px; }
 

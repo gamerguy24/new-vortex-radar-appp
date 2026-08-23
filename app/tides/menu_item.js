@@ -1,5 +1,5 @@
 const fetch_data = require('./fetch_data');
-const armFunctions = require('../core/menu/atticRadarMenu');
+const armFunctions = require('../core/menu/vortexRadarMenu');
 const map = require('../core/map/map');
 
 armFunctions.toggleswitchFunctions($('#armrTideStationsBtnSwitchElem'), function() {

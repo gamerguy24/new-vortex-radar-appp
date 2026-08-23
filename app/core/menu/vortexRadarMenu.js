@@ -3,16 +3,16 @@ const createMenuOption = require('./createMenuOption');
 
 const showHideDuration = 250;
 function showARMwindow() {
-    $('#atticRadarMenu').fadeIn(showHideDuration);
-    $('#atticRadarMenuContainer').hide().show('slide', { direction: 'down' }, showHideDuration);
+    $('#vortexRadarMenu').fadeIn(showHideDuration);
+    $('#vortexRadarMenuContainer').hide().show('slide', { direction: 'down' }, showHideDuration);
 }
 function hideARMwindow() {
-    $('#atticRadarMenu').fadeOut(showHideDuration);
-    $('#atticRadarMenuContainer').hide('slide', { direction: 'down' }, showHideDuration, function() {
-        $('#atticRadarMenu').hide();
+    $('#vortexRadarMenu').fadeOut(showHideDuration);
+    $('#vortexRadarMenuContainer').hide('slide', { direction: 'down' }, showHideDuration, function() {
+        $('#vortexRadarMenu').hide();
 
         $('.armScreen').hide();
-        $('#atticRadarMenuMainScreen').show();
+        $('#vortexRadarMenuMainScreen').show();
     });
 }
 
@@ -32,8 +32,8 @@ function hideARMwindow() {
 // }, function(divElem, iconElem) {
 //     showARMwindow();
 
-//     $('#atticRadarMenuSettingsScreen').hide();
-//     $('#atticRadarMenuMainScreen').show();
+//     $('#vortexRadarMenuSettingsScreen').hide();
+//     $('#vortexRadarMenuMainScreen').show();
 // })
 
 // provided by ChatGPT
@@ -70,16 +70,16 @@ function getRotationDegrees(el) {
     return (angle < 0 ? angle + 360 : angle);
 }
 
-$('#atticRadarMenu').on('click', function(e) {
+$('#vortexRadarMenu').on('click', function(e) {
     var clickedTarget = $(e.target).attr('id');
-    if (clickedTarget == 'atticRadarMenu'/* || clickedTarget == 'atcDlgClose'*/) {
+    if (clickedTarget == 'vortexRadarMenu'/* || clickedTarget == 'atcDlgClose'*/) {
         hideARMwindow();
         //$(this).hide();
     }
 })
 $('.armsHeaderExitBtn').click(function() {
     hideARMwindow();
-    //$('#atticRadarMenu').hide();
+    //$('#vortexRadarMenu').hide();
 })
 
 function slideDownToggle(armrElem, armrSlideDownElem) {
@@ -123,11 +123,11 @@ $('.armrSlideDown').hover(function() {
 
 const fadeDuration = 150;
 
-var mainMenuScreen = '#atticRadarMenuMainScreen';
-var settingsScreen = '#atticRadarMenuSettingsScreen';
-var spcScreen = '#atticRadarMenuSPCScreen';
-var dealiasScreen = '#atticRadarMenuDealiasScreen';
-var colortablesScreen = '#atticRadarMenuColortablesScreen';
+var mainMenuScreen = '#vortexRadarMenuMainScreen';
+var settingsScreen = '#vortexRadarMenuSettingsScreen';
+var spcScreen = '#vortexRadarMenuSPCScreen';
+var dealiasScreen = '#vortexRadarMenuDealiasScreen';
+var colortablesScreen = '#vortexRadarMenuColortablesScreen';
 
 $('#armrSettingsBtn').click(function() {
     $(mainMenuScreen).fadeOut(fadeDuration, function() {

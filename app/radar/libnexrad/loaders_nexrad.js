@@ -9,7 +9,7 @@ const Level3Factory = require('../libnexrad/level3/level3_factory');
 const { pane_state } = require('../../core/map/radar_panes');
 
 // Disable the radar auto-updater currently running on a given pane before a new
-// plot replaces it. 'main' aliases window.atticData for backward compatibility.
+// plot replaces it. 'main' aliases window.vortexData for backward compatibility.
 function _disable_pane_updater(target) {
     const S = pane_state(target);
     if (S && S.current_RadarUpdater != undefined) {

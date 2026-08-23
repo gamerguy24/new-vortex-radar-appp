@@ -110,7 +110,7 @@ function nhc_plot_outlook(kmz_blob, id) {
                         'line-width': border_width
                     }
                 });
-                window.atticData.hurricane_layers.push(source_name, layer_name, layer_outline_name);
+                window.vortexData.hurricane_layers.push(source_name, layer_name, layer_outline_name);
 
                 map.on('mouseenter', layer_name, function (e) {
                     map.getCanvas().style.cursor = 'pointer';
@@ -175,7 +175,7 @@ function nhc_plot_outlook(kmz_blob, id) {
                             'text-halo-blur': 1
                         }
                     });
-                    window.atticData.hurricane_layers.push(source_name, layer_name);
+                    window.vortexData.hurricane_layers.push(source_name, layer_name);
                 }
             }
         }

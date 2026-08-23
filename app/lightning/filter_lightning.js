@@ -11,10 +11,10 @@ function filter_lightning(total_hide = false) {
         return fc;
     }
 
-    var data = JSON.parse(JSON.stringify(window.atticData.original_lightning_points));
+    var data = JSON.parse(JSON.stringify(window.vortexData.original_lightning_points));
     const points = [];
 
-    const current_station = window.atticData.currentStation;
+    const current_station = window.vortexData.currentStation;
     if (current_station != undefined) {
         const current_station_point = turf.point([NEXRAD_LOCATIONS[current_station].lon, NEXRAD_LOCATIONS[current_station].lat]);
 
@@ -30,7 +30,7 @@ function filter_lightning(total_hide = false) {
         }
 
         const fc = turf.featureCollection(points);
-        window.atticData.station_lightning = JSON.parse(JSON.stringify(fc));
+        window.vortexData.station_lightning = JSON.parse(JSON.stringify(fc));
 
         if (map.getSource('lightningSource')) {
             map.getSource('lightningSource').setData(fc);

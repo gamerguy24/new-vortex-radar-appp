@@ -74,7 +74,7 @@ function when_style_ready(map, cb) {
 
 function load_dual() {
     const station = normalize_station(document.getElementById('drcStation').value)
-        || (window.atticData && window.atticData.currentStation);
+        || (window.vortexData && window.vortexData.currentStation);
     if (!station) { set_status('Enter a station (e.g. KTLX).'); return; }
 
     const idx = Number(document.getElementById('drcProduct').value) || 0;
@@ -124,8 +124,8 @@ function init() {
         const panel = document.getElementById('dualRadarControls');
         if (active) {
             const stEl = document.getElementById('drcStation');
-            if (stEl && !stEl.value && window.atticData && window.atticData.currentStation) {
-                stEl.value = window.atticData.currentStation;
+            if (stEl && !stEl.value && window.vortexData && window.vortexData.currentStation) {
+                stEl.value = window.vortexData.currentStation;
             }
             if (panel) panel.style.display = 'block';
         } else {

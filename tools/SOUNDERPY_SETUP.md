@@ -17,7 +17,7 @@ sudo apt update
 sudo apt install -y python3 python3-venv python3-pip
 
 # Create an isolated venv next to the app (recommended)
-cd /path/to/AtticRadar
+cd /path/to/VortexRadar
 python3 -m venv .venv-sounderpy
 . .venv-sounderpy/bin/activate
 pip install --upgrade pip
@@ -34,7 +34,7 @@ env var to that interpreter so the app uses the environment with SounderPy:
 
 ```bash
 # in the app's .env (or the service's environment)
-SOUNDERPY_PYTHON=/path/to/AtticRadar/.venv-sounderpy/bin/python
+SOUNDERPY_PYTHON=/path/to/VortexRadar/.venv-sounderpy/bin/python
 # optional: raise the per-render timeout (ms) on slow boxes
 # SOUNDERPY_TIMEOUT_MS=90000
 ```

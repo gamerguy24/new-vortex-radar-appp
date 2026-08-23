@@ -101,7 +101,7 @@ function wireMenu(user) {
     if (adminBtn && user && user.isAdmin) {
         adminBtn.style.display = '';
         adminBtn.addEventListener('click', () => {
-            const menu = document.getElementById('atticRadarMenu');
+            const menu = document.getElementById('vortexRadarMenu');
             if (menu) menu.style.display = 'none';
             openAdmin();
         });

@@ -1,5 +1,5 @@
 const fetch_data = require('./fetch_data');
-const armFunctions = require('../core/menu/atticRadarMenu');
+const armFunctions = require('../core/menu/vortexRadarMenu');
 const map = require('../core/map/map');
 
 const div_elem = '#surfaceFrontsMenuItemDiv';
@@ -10,7 +10,7 @@ const surface_fronts_layers = [
     'pressure_points_layer',
     'front_symbols_layer',
 ];
-window.atticData.surface_fronts_layers = surface_fronts_layers;
+window.vortexData.surface_fronts_layers = surface_fronts_layers;
 
 armFunctions.toggleswitchFunctions($('#armrSurfaceFrontsBtnSwitchElem'), function() {
     if (map.getLayer(surface_fronts_layers[0])) {
