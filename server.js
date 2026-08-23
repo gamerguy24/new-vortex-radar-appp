@@ -1677,7 +1677,7 @@ app.get('/api/level2/latest', requireAuth, async (req, res) => {
 // The app prepends this to external URLs (lightning, storm tracks, SPC, surface
 // fronts, METARs, hurricanes). Server-side fetch avoids browser CORS. Restricted
 // to trusted weather-data hosts to limit SSRF.
-const PROXY_ALLOWED = ['noaa.gov', 'weather.gov', 'aviationweather.gov', 'saratoga-weather.org', 'placefilenation.com', 'navy.mil', 'adsb.lol'];
+const PROXY_ALLOWED = ['noaa.gov', 'weather.gov', 'aviationweather.gov', 'saratoga-weather.org', 'placefilenation.com', 'navy.mil', 'adsb.lol', 'youtube.com', 'youtu.be'];
 function proxyHostAllowed(host) {
     host = String(host || '').toLowerCase();
     return PROXY_ALLOWED.some((h) => host === h || host.endsWith('.' + h));
