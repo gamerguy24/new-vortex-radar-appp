@@ -44,7 +44,15 @@ function _add_alert_layers(geojson) {
                 //#0080ff blue
                 //#ff7d7d red
                 'fill-color': ['get', 'color'],
-                'fill-opacity': 0
+                // Watches render as a translucent SHADED AREA (county lines show
+                // through); warnings stay outline-only. Only the 'outline' copy of
+                // each feature is filled so the duplicated features don't stack.
+                'fill-opacity': [
+                    'case',
+                    ['all', ['==', ['get', 'type'], 'outline'], ['==', ['get', 'is_watch'], true]],
+                    0.28,
+                    0
+                ]
             }
         });
 
@@ -71,9 +79,12 @@ function plot_alerts(alerts_data) {
     // }
 
     for (var item in alerts_data.features) {
-        var gpc = get_polygon_colors(alerts_data.features[item].properties.event); // gpc = get polygon colors
+        var event = alerts_data.features[item].properties.event;
+        var gpc = get_polygon_colors(event); // gpc = get polygon colors
         alerts_data.features[item].properties.color = gpc.color;
         alerts_data.features[item].properties.priority = parseInt(gpc.priority);
+        // Watches get a translucent fill (shaded area); warnings stay outline-only.
+        alerts_data.features[item].properties.is_watch = /\bwatch\b/i.test(String(event));
     }
     alerts_data = _sort_by_priority(alerts_data);
     alerts_data = filter_alerts(alerts_data);

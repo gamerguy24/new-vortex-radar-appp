@@ -34,7 +34,7 @@ function _fetch_alerts_data(callback) {
     })
     .then(response => response.json())
     .then(alerts_data => {
-        fetch_watches();
+        /* fetch_watches(); disabled — watches now render as filled areas from the NWS feed, not SPC boxes */
         fetch_discussions();
 
         window.atticData.alerts_data = alerts_data;
@@ -91,7 +91,7 @@ function return_data(callback) {
     })
     .then(response => response.json())
     .then(alerts_data => {
-        fetch_watches();
+        /* fetch_watches(); disabled — watches now render as filled areas from the NWS feed, not SPC boxes */
         fetch_discussions();
 
         window.atticData.alerts_data = alerts_data;

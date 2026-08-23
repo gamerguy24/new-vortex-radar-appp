@@ -30,9 +30,9 @@ module.exports = [
     { name: 'Hard Freeze Warning', category: 'warning', def: false },
 
     // ── Watches ───────────────────────────────────────────────────────────────
-    { name: 'Tornado Watch', category: 'watch', def: false },
-    { name: 'Severe Thunderstorm Watch', category: 'watch', def: false },
-    { name: 'Flash Flood Watch', category: 'watch', def: false },
+    { name: 'Tornado Watch', category: 'watch', def: true },
+    { name: 'Severe Thunderstorm Watch', category: 'watch', def: true },
+    { name: 'Flash Flood Watch', category: 'watch', def: true },
     { name: 'Flood Watch', category: 'watch', def: false },
     { name: 'Winter Storm Watch', category: 'watch', def: false },
     { name: 'Hurricane Watch', category: 'watch', def: false },
