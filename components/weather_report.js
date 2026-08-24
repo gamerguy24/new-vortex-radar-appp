@@ -86,6 +86,7 @@ let _reports = [];
 let _pollTimer = null;
 let _lastSig = '';
 let _enabled = false;
+let _stream = null;   // EventSource for live report push
 
 async function fetchReports() {
     try {
@@ -196,10 +197,69 @@ async function refreshMarkers({ force = false } = {}) {
     renderMarkers();
 }
 
+/* ── live push ────────────────────────────────────────────────────────────────
+ * Reports arrive over Server-Sent Events the moment they are filed, so a
+ * spotter's report is on everyone's map immediately instead of up to a minute
+ * later. The poll below is kept purely as a safety net: if the stream drops and
+ * the browser is slow to reconnect, the next poll still reconciles. EventSource
+ * reconnects on its own, so there is no retry logic to get wrong here.
+ */
+function openStream() {
+    if (_stream || typeof EventSource === 'undefined') return;
+    try {
+        _stream = new EventSource(API + '/stream', { withCredentials: true });
+    } catch (e) {
+        console.warn('[WeatherReport] live stream unavailable:', e.message);
+        return;
+    }
+
+    _stream.addEventListener('report', (ev) => {
+        if (!_enabled) return;
+        let incoming;
+        try { incoming = JSON.parse(ev.data).report; } catch { return; }
+        if (!incoming || !incoming.id) return;
+        // The server builds one shared frame for every viewer, so it cannot know
+        // whose report this is. Preserve "mine" if we already know, otherwise
+        // leave it false — the next poll corrects it and only affects whether a
+        // delete button shows.
+        const existing = _reports.find((r) => r.id === incoming.id);
+        if (existing) Object.assign(existing, incoming, { mine: existing.mine });
+        else _reports.unshift(incoming);
+        _lastSig = signatureOf(_reports);
+        renderMarkers();
+    });
+
+    _stream.addEventListener('report-removed', (ev) => {
+        if (!_enabled) return;
+        let id;
+        try { id = JSON.parse(ev.data).id; } catch { return; }
+        if (!id) return;
+        const before = _reports.length;
+        _reports = _reports.filter((r) => r.id !== id);
+        if (_reports.length !== before) {
+            _lastSig = signatureOf(_reports);
+            renderMarkers();
+        }
+    });
+
+    _stream.onerror = () => {
+        // EventSource retries by itself; nothing to do but note it once.
+        if (_stream && _stream.readyState === EventSource.CLOSED) {
+            console.warn('[WeatherReport] live stream closed; falling back to polling');
+            _stream = null;
+        }
+    };
+}
+
+function closeStream() {
+    if (_stream) { try { _stream.close(); } catch { /* already gone */ } _stream = null; }
+}
+
 export async function addWeatherReportMarkers(mapInstance) {
     _mlMap = mapInstance?.map || mapInstance;
     _enabled = true;
     await refreshMarkers({ force: true });
+    openStream();
     if (_pollTimer) clearInterval(_pollTimer);
     _pollTimer = setInterval(() => refreshMarkers(), POLL_MS);
 }
@@ -207,6 +267,7 @@ export async function addWeatherReportMarkers(mapInstance) {
 export function removeWeatherReportMarkers() {
     _enabled = false;
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    closeStream();
     clearMarkers();
 }
 

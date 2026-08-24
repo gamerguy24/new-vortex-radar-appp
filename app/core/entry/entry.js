@@ -11,6 +11,11 @@ function load() {
     // apply the Vortex Radar basemap theme (distinct deep-navy palette)
     require('../map/vortex_basemap').apply_vortex_basemap();
 
+    // Live rotation detection on the displayed volume (experimental Tornado
+    // Potential). Registers window.VortexLiveRotation; stays idle until the
+    // Tornado Potential layer is switched on.
+    require('../../radar/tornado/live_rotation');
+
     // load the weather station menu item
     require('../../weather_station/menu_item');
 

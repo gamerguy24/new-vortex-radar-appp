@@ -129,6 +129,18 @@ function injectStyles() {
       font-size:8.5px;font-weight:700;letter-spacing:.07em;padding:1px 4px;border-radius:var(--vx-r-1);white-space:nowrap}
     .vtp-arrow{position:absolute;top:50%;left:50%;width:2px;background:currentColor;transform-origin:top center}
 
+    /* live (client-side) circulation marker */
+    .vtp-live-marker{cursor:pointer;display:flex;align-items:center;justify-content:center}
+    .vtp-live-ring{width:30px;height:30px;border-radius:50%;border:2px solid currentColor;
+      display:flex;align-items:center;justify-content:center;background:rgba(10,11,13,.55);
+      font-family:var(--vx-font);font-size:10.5px;font-weight:800;font-variant-numeric:tabular-nums;
+      animation:vtp-live-spin 3s linear infinite}
+    .vtp-live-ring span{color:var(--vx-text)}
+    @keyframes vtp-live-spin{
+      0%{box-shadow:0 0 0 0 currentColor}
+      70%{box-shadow:0 0 0 12px transparent}
+      100%{box-shadow:0 0 0 0 transparent}}
+
     /* alert toast */
     .vtp-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:100085;
       width:min(360px,92vw);background:var(--vx-surface);border:1px solid var(--vx-line-2);
@@ -256,23 +268,40 @@ function renderPanel(err) {
         body.innerHTML = `<div class="vtp-none">Could not reach the analysis service.<br>${esc(err.message)}</div>`;
         return;
     }
-    const storms = (lastData && lastData.storms) || [];
+    const serverStorms = (lastData && lastData.storms) || [];
+    // Prefer live client-side detections — they describe the volume actually on
+    // screen. Server-tracked storms (with trend + persistence) win when present.
+    const storms = serverStorms.length ? serverStorms : liveResults.map((r) => ({
+        stormId: r.id,
+        site: r.site,
+        score: r.score,
+        category: r.category,
+        confidence: r.scoreConfidence,
+        rotation: r.strength,
+        trend: 'THIS SCAN',
+        maxVelocityDifferentialMs: Number(r.deltaV.toFixed(1)),
+        official: { hasOfficialWarning: false },
+        __live: r,
+    }));
+    const isLive = !serverStorms.length && storms.length > 0;
     const withRotation = storms.filter((s) => s.rotation && s.rotation !== 'NONE');
     const top = storms[0];
     const strongest = withRotation.slice().sort((a, b) => b.maxVelocityDifferentialMs - a.maxVelocityDifferentialMs)[0];
 
     if (!storms.length) {
-        body.innerHTML = '<div class="vtp-none">No storms are being tracked right now.'
-            + '<br><br>The engine analyses radar sites near active warnings and your saved locations. '
-            + 'If it is disabled on the server, nothing will appear here.</div>';
+        body.innerHTML = '<div class="vtp-none">No rotation detected in the displayed volume.'
+            + '<br><br>This analyses the super-res base velocity of the radar you are viewing, '
+            + 'each time a new volume loads. Switch to a storm to check it.</div>';
         return;
     }
 
     const trendArrow = top && top.trend === 'INCREASING' ? '↑' : top && top.trend === 'DECREASING' ? '↓' : '→';
     body.innerHTML = `
       <div class="vtp-stat">
-        <div class="vtp-lbl">Active circulations</div>
-        <div class="vtp-val">${withRotation.length} of ${storms.length} tracked storms</div>
+        <div class="vtp-lbl">${isLive ? 'Rotation in this volume' : 'Active circulations'}</div>
+        <div class="vtp-val">${isLive
+            ? withRotation.length + ' detected on the displayed scan'
+            : withRotation.length + ' of ' + storms.length + ' tracked storms'}</div>
       </div>
       ${top ? `
       <div class="vtp-stat">
@@ -301,7 +330,11 @@ function renderPanel(err) {
         </div>`).join('')}
     `;
     body.querySelectorAll('[data-storm]').forEach((row) => {
-        row.onclick = () => openDetail(row.getAttribute('data-storm'));
+        row.onclick = () => {
+            const id = row.getAttribute('data-storm');
+            const live = liveResults.find((r) => r.id === id);
+            if (live) showLive(live); else openDetail(id);
+        };
     });
 }
 
@@ -533,9 +566,128 @@ function openPrefs() {
     d.querySelectorAll('input,select').forEach((i) => i.addEventListener('change', save));
 }
 
+
+/* ── live (client-side) detections ────────────────────────────────────────────
+ * These come from app/radar/tornado/live_rotation.js, which runs the detector
+ * on the super-res velocity already decoded in the browser for the volume on
+ * screen. No server, no tracking, no waiting: switch to a storm and you get the
+ * answer for that storm. The server engine (when enabled) adds multi-scan trend
+ * and persistence on top, but is not required for any of this.
+ */
+let liveResults = [];
+
+function fmtLive(r) {
+    return {
+        score: r.score,
+        category: r.category,
+        confidence: r.scoreConfidence,
+    };
+}
+
+/** Called by the live detector when rotation appears in the current view. */
+function liveAlert(r) {
+    injectStyles();
+    const p = prefs();
+    if (!p.inAppNotifications && !p.sound && !p.browserNotifications) return;
+
+    if (p.inAppNotifications) {
+        const el = document.createElement('div');
+        el.className = 'vtp-toast';
+        el.style.borderLeftColor = catColor(r.category);
+        el.innerHTML = `
+          <div class="h">Vortex Radar Experimental — radar-derived rotation</div>
+          <div class="t">Possible rotation in view</div>
+          <div class="b">
+            <b style="color:${catColor(r.category)}">${r.score}/100 ${esc(r.category)}</b>
+            · confidence ${esc(r.scoreConfidence)}<br>
+            ${esc(r.site)} · ΔV ${r.deltaV.toFixed(1)} m/s · ${r.diameterKm.toFixed(1)} km wide<br>
+            Beam ${r.beamHeightKm.toFixed(2)} km AGL at ${r.rangeKm.toFixed(0)} km range
+            ${r.dealiased ? '<br><span style="color:var(--vx-text-3)">dealiased velocity</span>' : ''}
+          </div>
+          <div class="a"><button data-act="view">Show details</button><button data-act="close">Dismiss</button></div>`;
+        el.querySelector('[data-act="view"]').onclick = () => { el.remove(); showLive(r); };
+        el.querySelector('[data-act="close"]').onclick = () => el.remove();
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 30000);
+    }
+
+    if (p.browserNotifications && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+            new Notification('Vortex Radar — possible rotation (experimental)', {
+                body: `${r.site}: potential ${r.score}/100 (${r.category}).\n`
+                    + 'Experimental radar analysis — not an official NWS warning.',
+                tag: 'vtp-live-' + r.id,
+            });
+        } catch (e) { /* blocked */ }
+    }
+    if (p.sound) beep();
+}
+
+/** Detail panel for one live detection. */
+function showLive(r) {
+    injectStyles();
+    const old = document.getElementById('vtpDetail');
+    if (old) old.remove();
+    const kv = (k, v) => `<div class="vtp-kv"><span>${esc(k)}</span><span>${v}</span></div>`;
+
+    const d = document.createElement('div');
+    d.id = 'vtpDetail';
+    d.innerHTML = `<div class="vtp-head"><b>Radar-derived rotation</b><button class="vtp-x" aria-label="Close">×</button></div>
+      <div class="vtp-exp">Vortex Radar Experimental — this scan only</div>
+      <div class="vtp-body">
+        <div class="vtp-big" style="color:${catColor(r.category)}">${r.score}<span>${esc(r.category)} · CONFIDENCE ${esc(r.scoreConfidence)}</span></div>
+        <div class="vtp-bar"><i style="width:${r.score}%;background:${catColor(r.category)}"></i></div>
+
+        <div class="vtp-sec">Measured on this volume</div>
+        ${kv('Velocity differential (ΔV)', r.deltaV.toFixed(1) + ' m/s')}
+        ${kv('Rotational velocity', r.vrot.toFixed(1) + ' m/s')}
+        ${kv('Azimuthal shear', r.shear.toFixed(5) + ' s⁻¹')}
+        ${kv('Couplet diameter', r.diameterKm.toFixed(2) + ' km')}
+        ${kv('Direction', r.cyclonic ? 'Cyclonic' : 'Anticyclonic')}
+        ${kv('Strength', esc(r.strength))}
+        ${kv('Reflectivity here', (r.dbz != null ? r.dbz.toFixed(0) : '—') + ' dBZ')}
+
+        <div class="vtp-sec">How well the radar sees it</div>
+        ${kv('Radar', esc(r.site))}
+        ${kv('Range', r.rangeKm.toFixed(0) + ' km')}
+        ${kv('Beam height', r.beamHeightKm.toFixed(2) + ' km AGL')}
+        ${kv('Sweep', r.tiltDeg.toFixed(2) + '°')}
+        ${kv('Velocity data', r.dealiased ? 'Dealiased' : 'Raw (may fold)')}
+        ${r.aliasSuspect ? kv('Note', '<span style="color:var(--vx-warn)">near Nyquist — may be folded</span>') : ''}
+        ${kv('Detection confidence', (r.confidence.value * 100).toFixed(0) + '% (' + esc(r.confidence.label) + ')')}
+
+        <div class="vtp-sec">What this scan cannot tell you</div>
+        <div style="font-size:11.5px;color:var(--vx-text-2);line-height:1.55">
+          This is a single volume, so trend, persistence and tightening are unknown and their
+          weight was redistributed. Rotation that holds and tightens across several scans is far
+          more significant than a couplet in one scan. Enable the server engine for multi-scan
+          tracking.
+        </div>
+
+        <div class="vtp-foot" style="padding:10px 0 0;border-top:1px solid var(--vx-line);margin-top:12px">${esc(DISCLAIMER)}</div>
+      </div>`;
+    document.body.appendChild(d);
+    d.querySelector('.vtp-x').onclick = () => d.remove();
+
+    const m = mapObj();
+    if (m) { try { m.easeTo({ center: [r.lon, r.lat], duration: 700 }); } catch (e) { /* ignore */ } }
+}
+
+// Keep the summary panel in step with the live detector.
+window.addEventListener('vortexliverotation', (ev) => {
+    liveResults = (ev.detail && ev.detail.results) || [];
+    renderPanel();
+});
+
 /* ── layer on/off ─────────────────────────────────────────────────────────── */
 function setActive(on) {
     active = on;
+    // The live detector is the primary source: it analyses the super-res
+    // velocity already decoded in the browser for the volume on screen, so it
+    // works the moment the layer is switched on with no server dependency.
+    if (window.VortexLiveRotation) {
+        try { window.VortexLiveRotation.setEnabled(on); } catch (e) { console.warn('[tornado] live detector:', e.message); }
+    }
     if (on) {
         injectStyles();
         refresh();
@@ -561,7 +713,7 @@ function init() {
         if (s) { s.checked = !s.checked; setActive(s.checked); }
         else { setActive(!active); }
     });
-    window.VortexTornado = { open: togglePanel, refresh, setActive, detail: openDetail, prefs: openPrefs };
+    window.VortexTornado = { open: togglePanel, refresh, setActive, detail: openDetail, prefs: openPrefs, liveAlert, showLive };
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

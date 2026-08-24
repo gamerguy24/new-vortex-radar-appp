@@ -822,6 +822,50 @@ function publicReport(r, userId) {
     };
 }
 
+// ─── Live report push (Server-Sent Events) ───────────────────────────────────
+// Reports used to appear only on the next 60-second poll. These clients are
+// notified the moment one is filed or removed, so a spotter's report shows up
+// on everyone's map immediately. SSE (not WebSocket) because it is one-way,
+// reconnects on its own, and needs no extra dependency.
+const reportClients = new Set();
+
+function broadcastReport(event, payload) {
+    const frame = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+    for (const client of [...reportClients]) {
+        try {
+            client.res.write(frame);
+        } catch (e) {
+            reportClients.delete(client);
+        }
+    }
+}
+
+app.get('/api/reports/stream', requireAuth, (req, res) => {
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no', // don't let a proxy buffer the stream
+    });
+    res.write('retry: 5000\n\n');
+    res.write(': connected\n\n');
+
+    const client = { res, userId: req.user.id };
+    reportClients.add(client);
+
+    // Keep-alive comment; proxies and phones drop idle connections otherwise.
+    const ping = setInterval(() => {
+        try { res.write(': ping\n\n'); } catch { /* cleaned up below */ }
+    }, 25000);
+
+    const close = () => {
+        clearInterval(ping);
+        reportClients.delete(client);
+    };
+    req.on('close', close);
+    req.on('error', close);
+});
+
 app.get('/api/reports', requireAuth, (req, res) => {
     const list = [...reports].sort((a, b) => new Date(b.time) - new Date(a.time));
     res.json({ reports: list.map((r) => publicReport(r, req.user.id)) });
@@ -849,6 +893,9 @@ app.post('/api/reports', requireAuth, (req, res) => {
     reports.push(report);
     saveReports();
     res.json({ report: publicReport(report, req.user.id) });
+    // Push to everyone watching. publicReport() stamps "mine" per viewer, so the
+    // shared frame is built without one and each client decides ownership itself.
+    broadcastReport('report', { report: publicReport(report, null) });
 });
 
 app.delete('/api/reports/:id', requireAuth, (req, res) => {
@@ -860,12 +907,15 @@ app.delete('/api/reports/:id', requireAuth, (req, res) => {
     reports = reports.filter((r) => r.id !== report.id);
     saveReports();
     res.json({ ok: true });
+    broadcastReport('report-removed', { id: report.id });
 });
 
 app.delete('/api/reports', requireAuth, (req, res) => {
+    const removedIds = reports.filter((r) => r.userId === req.user.id).map((r) => r.id);
     reports = reports.filter((r) => r.userId !== req.user.id);
     saveReports();
     res.json({ ok: true });
+    for (const id of removedIds) broadcastReport('report-removed', { id });
 });
 
 // ─── Per-user brand logo overlay ─────────────────────────────────────────────
