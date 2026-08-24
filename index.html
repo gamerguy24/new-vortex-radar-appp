@@ -377,7 +377,14 @@
                     <br>
 
                     <div class="armrHeader">IMAGERY & RADAR</div>
-                    <div class="vortexRadarMenuRow armrTop" id="armrGoesIRBtn">
+                    <div class="vortexRadarMenuRow armrTop" id="armrTornadoPotentialBtn" title="Experimental radar-derived rotation analysis — not an official warning">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-tornado"></i>
+                        Tornado Potential
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrTornadoPotentialSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrGoesIRBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-satellite"></i>
                         GOES-19 Clean IR
                         <div class="form-check form-switch">
@@ -1523,6 +1530,8 @@
     <script type="module" src="./components/gate_filter.js"></script>
     <script type="module" src="./components/smoothing.js?v=smooth1"></script>
     <script type="module" src="./components/warning_search.js?v=wsearch1"></script>
+    <!-- Experimental Tornado Potential (radar-derived rotation analysis) -->
+    <script type="module" src="./components/tornado_potential.js?v=tp1"></script>
     <script type="module" src="./components/featured_streams.js?v=feat2"></script>
     <!-- 3D storm view launcher -->
     <script type="module" src="./components/storm3d_launch.js"></script>

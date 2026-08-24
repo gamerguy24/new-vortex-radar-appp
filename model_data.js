@@ -416,4 +416,7 @@ function attachModels(app, requireAuth) {
   });
 }
 
-module.exports = { attachModels, MODELS };
+// latestRun/fetchIdx/s3KeyUrl are exported so other server features can build
+// point soundings from the same model data the Models browser serves
+// (backend/tornado/environment.js). Additive only — no behaviour change here.
+module.exports = { attachModels, MODELS, latestRun, fetchIdx, s3KeyUrl, availableHours };

@@ -1832,6 +1832,15 @@ try {
     console.error('[CRITICAL] failed to attach (feature disabled):', e.message);
 }
 
+// ─── Tornado Potential (experimental radar-derived rotation analysis) ─────────
+// Dormant unless config/tornado.json sets enabled:true (or TORNADO_ENABLED=1).
+// Wrapped so that a failure here can never stop the radar app from serving.
+try {
+    require('./backend/tornado').attachTornado({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson });
+} catch (e) {
+    console.error('[TORNADO] failed to attach (feature disabled):', e.message);
+}
+
 // ─── Static files ──────────────────────────────────────────────────────────────
 const sendFile = (file) => (req, res) => res.sendFile(path.join(ROOT, file));
 
