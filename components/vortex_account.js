@@ -15,23 +15,23 @@ style.textContent = `
 .vr-admin-overlay {
     position: fixed; inset: 0; z-index: 100000;
     background: rgba(4, 8, 16, 0.72);
-    backdrop-filter: blur(6px);
+    
     display: none; align-items: flex-start; justify-content: center;
     overflow: auto; padding: 32px 16px;
     /* CSS vars the admin panel styles rely on */
-    --primary-color: #27beff;
+    --primary-color: var(--vx-accent);
     --border-color: rgba(255,255,255,0.12);
     font-family: 'Onest', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .vr-admin-overlay.show { display: flex; }
 .vr-admin-card {
     width: min(900px, 96vw);
-    background: rgba(11, 18, 32, 0.96);
+    background: var(--vx-surface);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius:var(--vx-r-3);
     padding: 22px;
-    box-shadow: 0 24px 70px rgba(0,0,0,0.55);
-    color: #e7eef7;
+    box-shadow:var(--vx-shadow-lg);
+    color: var(--vx-text);
 }
 .vr-admin-card-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -41,7 +41,7 @@ style.textContent = `
 .vr-admin-card-header h2 .ti { color: var(--primary-color); }
 .vr-admin-close {
     background: rgba(0,0,0,0.4); color: #fff; cursor: pointer;
-    border: 1px solid var(--border-color); border-radius: 8px;
+    border: 1px solid var(--border-color); border-radius:var(--vx-r-2);
     width: 34px; height: 34px; font-size: 1.1em; line-height: 1;
 }
 .vr-admin-close:hover { background: rgba(255,255,255,0.08); }

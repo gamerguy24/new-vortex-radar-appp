@@ -255,44 +255,53 @@ function injectStyles() {
     const s = document.createElement('style');
     s.id = 'vsp-styles';
     s.textContent = `
-    #vsp-mini{position:fixed;z-index:100070;width:360px;background:#0b1220;border:1px solid #1e2a44;
-      border-radius:14px;box-shadow:0 22px 60px rgba(0,0,0,.65);font-family:'Onest',system-ui,sans-serif;
+    #vsp-mini{position:fixed;z-index:100070;width:360px;background:var(--vx-surface);border:1px solid var(--vx-line);
+      border-radius:var(--vx-r-3);box-shadow:var(--vx-shadow-lg);font-family:var(--vx-font);
       overflow:hidden;touch-action:none}
     #vsp-mini.vsp-dragging{opacity:.94}
-    .vsp-head{display:flex;align-items:center;gap:7px;padding:8px 9px 8px 11px;cursor:grab;
-      background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,0));border-bottom:1px solid #16213a}
+    .vsp-head{display:flex;align-items:center;gap:7px;padding:7px 8px 7px 10px;cursor:grab;
+      background:var(--vx-surface-2);border-bottom:1px solid var(--vx-line)}
     .vsp-head:active{cursor:grabbing}
-    .vsp-dot{width:8px;height:8px;border-radius:50%;background:#ff3b30;flex:0 0 auto;animation:vsp-blink 1.8s ease-in-out infinite}
-    @keyframes vsp-blink{0%,100%{opacity:1}50%{opacity:.35}}
-    .vsp-name{flex:1;min-width:0;font-size:13px;font-weight:800;color:#eaf1fb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .vsp-btn{display:flex;align-items:center;justify-content:center;gap:5px;background:rgba(255,255,255,.07);
-      border:1px solid rgba(255,255,255,.10);color:#b7c6da;border-radius:8px;height:26px;min-width:26px;padding:0 7px;
-      font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:none;flex:0 0 auto;line-height:1}
-    .vsp-btn:hover{background:rgba(255,255,255,.14);color:#fff}
+    .vsp-dot{width:6px;height:6px;background:var(--vx-live);flex:0 0 auto}
+    .vsp-name{flex:1;min-width:0;font-size:12px;font-weight:700;letter-spacing:.01em;color:var(--vx-text);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .vsp-btn{display:flex;align-items:center;justify-content:center;gap:5px;background:transparent;
+      border:1px solid var(--vx-line-2);color:var(--vx-text-2);border-radius:var(--vx-r-1);height:24px;min-width:24px;padding:0 6px;
+      font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;cursor:pointer;
+      text-decoration:none;flex:0 0 auto;line-height:1}
+    .vsp-btn:hover{background:var(--vx-surface-3);color:var(--vx-text)}
     .vsp-btn svg{width:13px;height:13px;display:block}
-    .vsp-btn.on{background:#27beff;border-color:#27beff;color:#04121e}
+    .vsp-btn.on{background:var(--vx-accent);border-color:var(--vx-accent);color:var(--vx-accent-ink)}
     .vsp-stage{position:relative;width:100%;aspect-ratio:16/9;background:#000}
     .vsp-stage>iframe,.vsp-stage>video{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
     .vsp-msg{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;
-      text-align:center;color:#cbd5e1;font-size:13px;padding:16px}
-    .vsp-msg a{background:#27beff;color:#04121e;font-weight:800;text-decoration:none;padding:9px 15px;border-radius:9px}
+      text-align:center;color:var(--vx-text-2);font-size:13px;padding:16px}
+    .vsp-msg a{background:var(--vx-accent);color:var(--vx-accent-ink);font-weight:800;text-decoration:none;padding:9px 15px;border-radius:var(--vx-r-2)}
     .vsp-hint{position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;gap:8px;
-      background:rgba(6,11,22,.92);border:1px solid #24324e;border-radius:9px;padding:7px 9px;color:#cbd5e1;font-size:11.5px}
-    .vsp-hint a{color:#27beff;font-weight:700;text-decoration:none;white-space:nowrap}
-    .vsp-hint button{margin-left:auto;background:none;border:none;color:#7b8ca3;font-size:15px;cursor:pointer;line-height:1}
-    .vsp-foot{display:flex;align-items:center;gap:6px;padding:7px 11px;border-top:1px solid #16213a;
-      color:#93a3b8;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .vsp-foot b{color:#cfe0f5;font-weight:700}
-    .vsp-grip{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;
-      background:linear-gradient(135deg,transparent 50%,rgba(255,255,255,.22) 50%,rgba(255,255,255,.22) 62%,transparent 62%)}
+      background:var(--vx-surface);border:1px solid var(--vx-line);border-radius:var(--vx-r-2);padding:7px 9px;color:var(--vx-text-2);font-size:11.5px}
+    .vsp-hint a{color:var(--vx-accent);font-weight:700;text-decoration:none;white-space:nowrap}
+    .vsp-hint button{margin-left:auto;background:none;border:none;color:var(--vx-text-3);font-size:15px;cursor:pointer;line-height:1}
+    .vsp-foot{display:flex;align-items:center;gap:6px;padding:6px 10px;border-top:1px solid var(--vx-line);
+      color:var(--vx-text-2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      font-variant-numeric:tabular-nums}
+    .vsp-foot b{color:var(--vx-text);font-weight:600}
+    /* state word ("TRACKING" / "FOLLOWING") — a label, not an icon */
+    .vsp-state{font-style:normal;font-size:9.5px;font-weight:700;letter-spacing:.1em;color:var(--vx-text-3);
+      border:1px solid var(--vx-line-2);border-radius:var(--vx-r-1);padding:1px 5px;margin-right:2px}
+    .vsp-state.on{color:var(--vx-accent);border-color:var(--vx-accent-line)}
+    .vsp-grip{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;
+      background:linear-gradient(135deg,transparent 52%,var(--vx-line-2) 52%,var(--vx-line-2) 64%,transparent 64%)}
     #vsp-mini.vsp-collapsed .vsp-stage,#vsp-mini.vsp-collapsed .vsp-foot,#vsp-mini.vsp-collapsed .vsp-grip{display:none}
     /* the followed streamer's marker */
     .vsp-track-marker{position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer}
-    .vsp-track-ring{width:16px;height:16px;border-radius:50%;background:#ff3b30;border:2px solid #fff;
-      box-shadow:0 0 0 0 rgba(255,59,48,.65);animation:vsp-ring 2s infinite}
-    @keyframes vsp-ring{0%{box-shadow:0 0 0 0 rgba(255,59,48,.6)}70%{box-shadow:0 0 0 16px rgba(255,59,48,0)}100%{box-shadow:0 0 0 0 rgba(255,59,48,0)}}
-    .vsp-track-tag{margin-top:4px;background:rgba(6,11,22,.9);border:1px solid #2a3a58;color:#fff;font-size:10.5px;
-      font-weight:800;padding:2px 6px;border-radius:6px;font-family:'Onest',system-ui,sans-serif;white-space:nowrap}
+    /* a sighted target, not a map pin: hairline ring + center mark */
+    .vsp-track-ring{position:relative;width:15px;height:15px;border-radius:50%;
+      border:1.5px solid var(--vx-live);background:rgba(209,64,47,.16);animation:vsp-ring 2.4s ease-out infinite}
+    .vsp-track-ring::after{content:'';position:absolute;inset:4.5px;border-radius:50%;background:var(--vx-live)}
+    @keyframes vsp-ring{0%{box-shadow:0 0 0 0 rgba(209,64,47,.5)}70%{box-shadow:0 0 0 13px rgba(209,64,47,0)}100%{box-shadow:0 0 0 0 rgba(209,64,47,0)}}
+    .vsp-track-tag{margin-top:5px;background:var(--vx-surface);border:1px solid var(--vx-line-2);color:var(--vx-text);
+      font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:2px 5px;
+      border-radius:var(--vx-r-1);font-family:var(--vx-font);white-space:nowrap}
     @media (max-width:640px){#vsp-mini{width:calc(100vw - 16px)!important}}
     `;
     document.head.appendChild(s);
@@ -465,10 +474,10 @@ function renderStatus() {
     }
     const mins = Math.max(0, Math.round((Date.now() - cur.lastFix.at) / 60000));
     const when = mins < 1 ? 'just now' : mins + ' min ago';
-    foot.innerHTML = '<span>' + (cur.following ? '🎯 Following' : '📍 Tracking')
+    foot.innerHTML = '<span>' + (cur.following ? '<i class="vsp-state on">FOLLOWING</i>' : '<i class="vsp-state">TRACKING</i>')
         + (cur.placeLabel ? ' · <b>' + esc(cur.placeLabel) + '</b>' : '')
         + ' · ' + esc(when)
-        + (cur.following ? '' : ' · <a href="#" id="vsp-refollow" style="color:#27beff;text-decoration:none;font-weight:700">follow</a>')
+        + (cur.following ? '' : ' · <a href="#" id="vsp-refollow" style="color:var(--vx-accent);text-decoration:none;font-weight:700">follow</a>')
         + '</span>';
     const re = foot.querySelector('#vsp-refollow');
     if (re) re.onclick = (e) => { e.preventDefault(); setFollow(true); };

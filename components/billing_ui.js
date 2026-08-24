@@ -15,14 +15,14 @@ function row() { return $('armrUpgradeProBtn'); }
 function label() { return $('armrUpgradeProLabel'); }
 
 function toast(msg, kind) {
-  const colors = { info: '#27beff', warn: '#facc15', good: '#34d399' };
+  const colors = { info: 'var(--vx-accent)', warn: 'var(--vx-warn)', good: 'var(--vx-ok)' };
   const el = document.createElement('div');
   el.textContent = msg;
   el.style.cssText = `position:fixed; bottom:78px; left:50%; transform:translateX(-50%);
-    background:rgba(11,18,32,0.97); color:${colors[kind] || colors.info};
-    border:1px solid ${colors[kind] || colors.info}; padding:10px 16px; border-radius:10px;
-    font-family:'Onest',system-ui,sans-serif; font-size:13px; z-index:100060;
-    box-shadow:0 10px 30px rgba(0,0,0,0.5);`;
+    background:var(--vx-surface); color:${colors[kind] || colors.info};
+    border:1px solid ${colors[kind] || colors.info}; padding:10px 16px; border-radius:var(--vx-r-3);
+    font-family:var(--vx-font); font-size:13px; z-index:100060;
+    box-shadow:var(--vx-shadow);`;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 4000);
 }
@@ -58,19 +58,19 @@ function ensurePickerStyles() {
   const s = document.createElement('style');
   s.id = 'vtpStyles';
   s.textContent = `
-    #vortexTierPicker{position:fixed;inset:0;background:rgba(3,7,14,0.72);backdrop-filter:blur(4px);z-index:100070;display:flex;align-items:center;justify-content:center;padding:20px;}
-    .vtp-panel{background:#0b1220;border:1px solid rgba(255,255,255,0.12);border-radius:16px;max-width:760px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,0.6);font-family:'Onest',system-ui,sans-serif;color:#e8edf3;}
+    #vortexTierPicker{position:fixed;inset:0;background:var(--vx-scrim);z-index:100070;display:flex;align-items:center;justify-content:center;padding:20px;}
+    .vtp-panel{background:var(--vx-surface);border:1px solid rgba(255,255,255,0.12);border-radius:var(--vx-r-3);max-width:760px;width:100%;max-height:88vh;overflow:auto;box-shadow:var(--vx-shadow-lg);font-family:var(--vx-font);color:var(--vx-text);}
     .vtp-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.08);font-weight:700;font-size:16px;}
-    .vtp-x{background:none;border:none;color:#9fb0c3;font-size:26px;line-height:1;cursor:pointer;padding:0 4px;}
+    .vtp-x{background:none;border:none;color:var(--vx-text-2);font-size:26px;line-height:1;cursor:pointer;padding:0 4px;}
     .vtp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;padding:18px;}
-    .vtp-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;display:flex;flex-direction:column;}
-    .vtp-card-hl{border-color:#27beff;box-shadow:0 0 0 1px #27beff inset;}
+    .vtp-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:var(--vx-r-3);padding:16px;display:flex;flex-direction:column;}
+    .vtp-card-hl{border-color:var(--vx-accent);box-shadow:0 0 0 1px var(--vx-accent) inset;}
     .vtp-name{font-weight:800;font-size:15px;}
-    .vtp-price{color:#27beff;font-weight:700;margin:6px 0 10px;min-height:20px;}
-    .vtp-feats{list-style:none;margin:0 0 14px;padding:0;flex:1;font-size:13px;color:#c3cedb;}
+    .vtp-price{color:var(--vx-accent);font-weight:700;margin:6px 0 10px;min-height:20px;}
+    .vtp-feats{list-style:none;margin:0 0 14px;padding:0;flex:1;font-size:13px;color:var(--vx-text-2);}
     .vtp-feats li{padding:3px 0 3px 18px;position:relative;}
-    .vtp-feats li:before{content:'\\2713';position:absolute;left:0;color:#34d399;}
-    .vtp-choose{margin-top:auto;background:#27beff;color:#04121c;border:none;border-radius:9px;padding:9px;font-weight:700;cursor:pointer;font-family:inherit;}
+    .vtp-feats li:before{content:'\\2713';position:absolute;left:0;color:var(--vx-ok);}
+    .vtp-choose{margin-top:auto;background:var(--vx-accent);color:var(--vx-accent-ink);border:none;border-radius:var(--vx-r-2);padding:9px;font-weight:700;cursor:pointer;font-family:inherit;}
     .vtp-choose:hover{filter:brightness(1.08);}`;
   document.head.appendChild(s);
 }

@@ -17,13 +17,13 @@ const HAZARDS = [
     { id: 'tornado',    label: 'Tornado',       icon: 'tornado',         color: '#e02424' },
     { id: 'funnel',     label: 'Funnel Cloud',  icon: 'tornado',         color: '#f59e0b' },
     { id: 'wall-cloud', label: 'Wall Cloud',    icon: 'cloud',           color: '#a855f7' },
-    { id: 'hail',       label: 'Hail',          icon: 'cloud-storm',     color: '#38bdf8', measure: { label: 'Hail size (in)', placeholder: 'e.g. 1.5', unit: 'in' } },
+    { id: 'hail',       label: 'Hail',          icon: 'cloud-storm',     color: 'var(--vx-accent-hi)', measure: { label: 'Hail size (in)', placeholder: 'e.g. 1.5', unit: 'in' } },
     { id: 'wind',       label: 'Damaging Wind', icon: 'wind',            color: '#2dd4bf', measure: { label: 'Est. gust (mph)', placeholder: 'e.g. 60', unit: 'mph' } },
     { id: 'flood',      label: 'Flooding',      icon: 'droplet',         color: '#3b82f6' },
     { id: 'heavy-rain', label: 'Heavy Rain',    icon: 'cloud-rain',      color: '#60a5fa' },
-    { id: 'lightning',  label: 'Lightning',     icon: 'bolt',            color: '#facc15' },
+    { id: 'lightning',  label: 'Lightning',     icon: 'bolt',            color: 'var(--vx-warn)' },
     { id: 'snow',       label: 'Snow / Ice',    icon: 'snowflake',       color: '#bae6fd' },
-    { id: 'other',      label: 'Other',         icon: 'alert-triangle',  color: '#94a3b8' },
+    { id: 'other',      label: 'Other',         icon: 'alert-triangle',  color: 'var(--vx-text-2)' },
 ];
 
 const hazardById = (id) => HAZARDS.find((h) => h.id === id) || HAZARDS[HAZARDS.length - 1];
@@ -58,25 +58,25 @@ function injectExtraStyles() {
     _wrExtraStyles = true;
     const s = document.createElement('style');
     s.textContent = `
-    .wr-loc-tip { font-size: 12px; color: var(--text-muted, #9ca3af); margin: 8px 0 0; line-height: 1.45; }
-    .wr-loc-tip b { color: #e7eef7; }
-    .wr-btn-primary { background: #ff2121 !important; border-color: #ff2121 !important; color: #fff !important; }
+    .wr-loc-tip { font-size: 12px; color: var(--text-muted, var(--vx-text-2)); margin: 8px 0 0; line-height: 1.45; }
+    .wr-loc-tip b { color: var(--vx-text); }
+    .wr-btn-primary { background: var(--vx-live) !important; border-color: var(--vx-live) !important; color: #fff !important; }
     .wr-btn-primary:hover { background: #e01818 !important; }
-    .wr-drag-pin { color: #ff2121; font-size: 40px; line-height: 1; cursor: grab;
+    .wr-drag-pin { color: var(--vx-live); font-size: 40px; line-height: 1; cursor: grab;
         filter: drop-shadow(0 3px 6px rgba(0,0,0,0.6)); -webkit-user-select: none; user-select: none; }
     .wr-drag-pin:active { cursor: grabbing; }
     .wr-pin-bar {
         position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
         z-index: 100001; width: min(560px, 94vw);
-        background: rgba(11, 18, 32, 0.98); border: 1px solid rgba(255,255,255,0.14);
-        border-radius: 14px; box-shadow: 0 16px 48px rgba(0,0,0,0.55);
-        color: #e7eef7; font-family: 'Onest', system-ui, sans-serif;
+        background: var(--vx-surface); border: 1px solid rgba(255,255,255,0.14);
+        border-radius:var(--vx-r-3); box-shadow:var(--vx-shadow-lg);
+        color: var(--vx-text); font-family: var(--vx-font);
         padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
         flex-wrap: wrap;
     }
     .wr-pin-bar-text { font-size: 13px; display: flex; align-items: center; gap: 6px; flex: 1; min-width: 200px; }
-    .wr-pin-bar-text .ti { color: #ff2121; }
-    .wr-pin-coords { color: var(--text-muted, #9ca3af); font-variant-numeric: tabular-nums; margin-left: 6px; }
+    .wr-pin-bar-text .ti { color: var(--vx-live); }
+    .wr-pin-coords { color: var(--text-muted, var(--vx-text-2)); font-variant-numeric: tabular-nums; margin-left: 6px; }
     .wr-pin-bar-btns { display: flex; gap: 8px; flex-shrink: 0; }
     .wr-pin-bar .wr-btn { white-space: nowrap; }`;
     document.head.appendChild(s);

@@ -80,14 +80,14 @@ async function api(method, endpoint, body) {
 }
 
 function toast(msg, kind) {
-    const colors = { info: '#27beff', ok: '#34d399', warn: '#facc15', error: '#f87171' };
+    const colors = { info: 'var(--vx-accent)', ok: 'var(--vx-ok)', warn: 'var(--vx-warn)', error: 'var(--vx-bad)' };
     const el = document.createElement('div');
     el.textContent = msg;
     el.style.cssText = `position:fixed; bottom:96px; left:50%; transform:translateX(-50%);
-        background:rgba(11,18,32,0.97); color:${colors[kind] || colors.info};
-        border:1px solid ${colors[kind] || colors.info}; padding:10px 15px; border-radius:10px;
-        font-family:'Onest',system-ui,sans-serif; font-size:13px; z-index:100060;
-        box-shadow:0 10px 30px rgba(0,0,0,0.5); max-width:82vw; text-align:center;`;
+        background:var(--vx-surface); color:${colors[kind] || colors.info};
+        border:1px solid ${colors[kind] || colors.info}; padding:10px 15px; border-radius:var(--vx-r-3);
+        font-family:var(--vx-font); font-size:13px; z-index:100060;
+        box-shadow:var(--vx-shadow); max-width:82vw; text-align:center;`;
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 4000);
 }
@@ -157,12 +157,12 @@ async function refreshOtherChasers() {
             el.innerHTML = '<span class="vr-live-pulse"></span><span class="vr-live-tag">LIVE</span>';
             el.title = s.name || 'Live chaser';
             const popup = new g.Popup({ offset: 18, closeButton: false }).setHTML(
-                `<div style="font-family:'Onest',sans-serif;color:#fff;font-size:13px;min-width:160px">
-                    <div style="font-weight:700;color:#ff3b30">🔴 ${escapeHtml(s.name || 'Live chaser')}</div>
-                    ${s.place ? `<div style="margin-top:2px">📍 ${escapeHtml(s.place)}</div>` : ''}
+                `<div style="font-family:var(--vx-font);color:#fff;font-size:13px;min-width:160px">
+                    <div style="font-weight:700;color:var(--vx-live)"><span class="vrsh-live-dot"></span>${escapeHtml(s.name || 'Live chaser')}</div>
+                    ${s.place ? `<div style="margin-top:3px;color:var(--vx-text-2)">${escapeHtml(s.place)}</div>` : ''}
                     ${s.url ? `<div style="margin-top:7px;display:flex;gap:8px;align-items:center">
-                        <button class="vrsh-watch-btn" data-vrsh-watch="${escapeAttr(s.url)}" data-vrsh-name="${escapeAttr(s.name || 'Live chaser')}" data-vrsh-id="${escapeAttr(s.id)}">▶ Watch here</button>
-                        <a href="${escapeAttr(s.url)}" target="_blank" rel="noopener" style="color:#27beff">Open ↗</a>
+                        <button class="vrsh-watch-btn" data-vrsh-watch="${escapeAttr(s.url)}" data-vrsh-name="${escapeAttr(s.name || 'Live chaser')}" data-vrsh-id="${escapeAttr(s.id)}">Watch here</button>
+                        <a href="${escapeAttr(s.url)}" target="_blank" rel="noopener" style="color:var(--vx-accent)">Open ↗</a>
                     </div>` : ''}
                 </div>`);
             mk = new g.Marker({ element: el }).setLngLat([s.lng, s.lat]).setPopup(popup).addTo(m);
@@ -281,7 +281,7 @@ async function goLive() {
         clearInterval(livePingTimer);
         livePingTimer = setInterval(pingLive, LIVE_PING_MS);
 
-        toast('You are LIVE 🔴', 'ok');
+        toast('You are live.', 'ok');
     } catch (e) {
         toast('Could not go live: ' + e.message, 'error');
         await stopLive(true); // roll back partial state
@@ -464,8 +464,8 @@ function showBadge(on) {
 function setObsStatus(s) {
     const el = $('vrsh-obs-status');
     if (!el) return;
-    const map = { connecting: ['Connecting…', '#facc15'], connected: ['Connected', '#34d399'], disconnected: ['Disconnected', '#94a3b8'], error: ['Error', '#f87171'] };
-    const [txt, col] = map[s] || ['—', '#94a3b8'];
+    const map = { connecting: ['Connecting…', 'var(--vx-warn)'], connected: ['Connected', 'var(--vx-ok)'], disconnected: ['Disconnected', 'var(--vx-text-2)'], error: ['Error', 'var(--vx-bad)'] };
+    const [txt, col] = map[s] || ['—', 'var(--vx-text-2)'];
     el.textContent = txt; el.style.color = col;
 }
 function updateLocationUI() {
@@ -635,7 +635,7 @@ function syncForm() {
     chk('vrsh-remote-enable', cfg.remoteControl);
     chk('vrsh-ap-discord', cfg.autoPost.discord);
     chk('vrsh-ap-facebook', cfg.autoPost.facebook);
-    const ds = $('vrsh-discord-state'); if (ds) { ds.textContent = cfg.discordConfigured ? 'webhook saved' : 'no webhook yet'; ds.style.color = cfg.discordConfigured ? '#34d399' : '#94a3b8'; }
+    const ds = $('vrsh-discord-state'); if (ds) { ds.textContent = cfg.discordConfigured ? 'webhook saved' : 'no webhook yet'; ds.style.color = cfg.discordConfigured ? 'var(--vx-ok)' : 'var(--vx-text-2)'; }
     // live title preview reacts to typing
     $('vrsh-title').oninput = () => { cfg.titleTemplate = $('vrsh-title').value; updateLocationUI(); };
 }
@@ -729,7 +729,7 @@ function stopAgent() {
 function cssId(id) { return String(id).replace(/[^a-zA-Z0-9_-]/g, ''); }
 function agentRowHTML(a) {
     const st = a.status || {};
-    const dot = st.streaming ? '#ff3b30' : (st.obsConnected ? '#34d399' : '#94a3b8');
+    const dot = st.streaming ? 'var(--vx-live)' : (st.obsConnected ? 'var(--vx-ok)' : 'var(--vx-text-2)');
     const label = st.streaming ? 'LIVE' : (st.obsConnected ? 'OBS ready' : 'OBS offline');
     return `<div class="vrsh-agent">
       <div class="vrsh-agent-info">
@@ -823,76 +823,77 @@ function injectStyles() {
     s.id = 'vrsh-styles';
     s.textContent = `
     #vrsh-launch{position:fixed;right:14px;bottom:150px;width:46px;height:46px;border-radius:50%;
-      border:1px solid #27324a;background:#0b1220;color:#27beff;font-size:18px;cursor:pointer;z-index:100040;
-      box-shadow:0 6px 18px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
-    #vrsh-launch:hover{background:#111a2e;color:#7fdcff}
+      border:1px solid #27324a;background:var(--vx-surface);color:var(--vx-accent);font-size:18px;cursor:pointer;z-index:100040;
+      box-shadow:var(--vx-shadow);display:flex;align-items:center;justify-content:center}
+    #vrsh-launch:hover{background:var(--vx-surface-2);color:var(--vx-accent-hi)}
     #vrsh-live-badge{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:100055;display:none;
-      align-items:center;gap:7px;background:#ff3b30;color:#fff;font:700 13px 'Onest',system-ui,sans-serif;
-      padding:6px 12px;border-radius:20px;cursor:pointer;box-shadow:0 6px 18px rgba(255,59,48,.5)}
+      align-items:center;gap:7px;background:var(--vx-live);color:#fff;font:700 13px var(--vx-font);
+      padding:6px 12px;border-radius:var(--vx-r-3);cursor:pointer;box-shadow:0 6px 18px rgba(255,59,48,.5)}
     .vr-live-pulse{width:9px;height:9px;border-radius:50%;background:#fff;display:inline-block;
       box-shadow:0 0 0 0 rgba(255,255,255,.7);animation:vrshPulse 1.6s infinite}
     #vrsh-live-badge .vr-live-pulse{background:#fff}
     @keyframes vrshPulse{0%{box-shadow:0 0 0 0 rgba(255,59,48,.7)}70%{box-shadow:0 0 0 10px rgba(255,59,48,0)}100%{box-shadow:0 0 0 0 rgba(255,59,48,0)}}
     .vr-live-marker{position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer}
-    .vr-live-marker .vr-live-pulse{background:#ff3b30;width:14px;height:14px;border:2px solid #fff}
+    .vr-live-marker .vr-live-pulse{background:var(--vx-live);width:14px;height:14px;border:2px solid #fff}
     .vr-live-marker-other .vr-live-pulse{background:#ff8c00}
-    .vr-live-tag{margin-top:2px;font:700 9px 'Onest',sans-serif;color:#fff;background:#ff3b30;padding:1px 5px;border-radius:6px}
+    .vr-live-tag{margin-top:2px;font:700 9px var(--vx-font);color:#fff;background:var(--vx-live);padding:1px 5px;border-radius:var(--vx-r-2)}
     .vr-live-marker-other .vr-live-tag{background:#ff8c00}
     #vrsh-panel{position:fixed;inset:0;background:rgba(4,8,16,.6);z-index:100050;display:flex;
-      align-items:center;justify-content:center;font-family:'Onest',system-ui,sans-serif}
-    .vrsh-card{width:min(560px,94vw);max-height:90vh;overflow:auto;background:#0b1220;border:1px solid #1e2a44;
-      border-radius:16px;padding:18px 20px;color:#e5edff;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+      align-items:center;justify-content:center;font-family:var(--vx-font)}
+    .vrsh-card{width:min(560px,94vw);max-height:90vh;overflow:auto;background:var(--vx-surface);border:1px solid var(--vx-line);
+      border-radius:var(--vx-r-3);padding:18px 20px;color:#e5edff;box-shadow:var(--vx-shadow-lg)}
     .vrsh-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
     .vrsh-title{font-weight:800;font-size:18px;display:flex;align-items:center;gap:8px}
-    .vrsh-x{background:none;border:none;color:#94a3b8;font-size:26px;line-height:1;cursor:pointer}
+    .vrsh-x{background:none;border:none;color:var(--vx-text-2);font-size:26px;line-height:1;cursor:pointer}
     .vrsh-x:hover{color:#fff}
     .vrsh-live-row{display:flex;gap:12px;align-items:stretch;margin-bottom:14px}
-    .vrsh-golive{flex:0 0 auto;min-width:150px;border:none;border-radius:12px;background:#ff3b30;color:#fff;
+    .vrsh-golive{flex:0 0 auto;min-width:150px;border:none;border-radius:var(--vx-r-3);background:var(--vx-live);color:#fff;
       font-weight:800;font-size:15px;padding:14px 18px;cursor:pointer}
-    .vrsh-golive:hover{background:#ff5546}
-    .vrsh-golive-active{background:#334155}.vrsh-golive-active:hover{background:#475569}
-    .vrsh-loc-box{flex:1;background:#0f1830;border:1px solid #1e2a44;border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;justify-content:center}
-    .vrsh-loc-label{font-size:11px;color:#7c8aa5;text-transform:uppercase;letter-spacing:.05em}
+    .vrsh-golive:hover{background:var(--vx-live)}
+    .vrsh-golive-active{background:var(--vx-line)}.vrsh-golive-active:hover{background:#475569}
+    .vrsh-loc-box{flex:1;background:var(--vx-surface);border:1px solid var(--vx-line);border-radius:var(--vx-r-3);padding:8px 12px;display:flex;flex-direction:column;justify-content:center}
+    .vrsh-loc-label{font-size:11px;color:var(--vx-text-2);text-transform:uppercase;letter-spacing:.05em}
     .vrsh-loc{font-size:15px;font-weight:700;margin-top:2px}
     .vrsh-field{margin-bottom:12px;display:flex;flex-direction:column}
-    .vrsh-field label{font-size:12px;color:#9db0d0;margin-bottom:4px}
-    .vrsh-field input,.vrsh-field select,.vrsh-field textarea{background:#0f1830;border:1px solid #26324c;border-radius:9px;color:#fff;padding:9px 11px;font-size:14px;font-family:inherit;width:100%;box-sizing:border-box}
+    .vrsh-field label{font-size:12px;color:var(--vx-text-2);margin-bottom:4px}
+    .vrsh-field input,.vrsh-field select,.vrsh-field textarea{background:var(--vx-surface);border:1px solid var(--vx-line);border-radius:var(--vx-r-2);color:#fff;padding:9px 11px;font-size:14px;font-family:inherit;width:100%;box-sizing:border-box}
     .vrsh-field textarea{resize:vertical;line-height:1.4}
-    .vrsh-field input:focus,.vrsh-field select:focus,.vrsh-field textarea:focus{outline:none;border-color:#27beff}
+    .vrsh-field input:focus,.vrsh-field select:focus,.vrsh-field textarea:focus{outline:none;border-color:var(--vx-accent)}
     .vrsh-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .vrsh-section{margin:16px 0 8px;font-weight:800;font-size:13px;color:#7fdcff;text-transform:uppercase;letter-spacing:.06em;border-top:1px solid #1a2540;padding-top:12px}
+    .vrsh-section{margin:16px 0 8px;font-weight:800;font-size:13px;color:var(--vx-accent-hi);text-transform:uppercase;letter-spacing:.06em;border-top:1px solid var(--vx-line);padding-top:12px}
     .vrsh-check{display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0}
-    .vrsh-hint{font-size:11.5px;color:#7c8aa5;margin-top:5px;line-height:1.4}
-    .vrsh-preview{font-size:12px;color:#cbd5e1;margin-top:6px}
-    .vrsh-preview span{color:#7fdcff}
+    .vrsh-hint{font-size:11.5px;color:var(--vx-text-2);margin-top:5px;line-height:1.4}
+    .vrsh-preview{font-size:12px;color:var(--vx-text-2);margin-top:6px}
+    .vrsh-preview span{color:var(--vx-accent-hi)}
     .vrsh-status{font-size:11px;font-weight:600}
-    .vrsh-soon{color:#facc15}
-    .vrsh-mini{border:1px solid #26324c;background:#0f1830;color:#7fdcff;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+    .vrsh-soon{color:var(--vx-warn)}
+    .vrsh-mini{border:1px solid var(--vx-line);background:var(--vx-surface);color:var(--vx-accent-hi);border-radius:var(--vx-r-2);padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
     .vrsh-mini:hover{background:#16223c}
     .vrsh-mini-danger{color:#f7a4a4;border-color:#4a2630}
     .vrsh-mini:disabled{opacity:.5;cursor:default}
-    .vrsh-agent{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#0f1830;border:1px solid #1e2a44;border-radius:10px;padding:9px 12px;margin:6px 0}
+    .vrsh-agent{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--vx-surface);border:1px solid var(--vx-line);border-radius:var(--vx-r-3);padding:9px 12px;margin:6px 0}
     .vrsh-agent-name{font-weight:700;font-size:14px;display:flex;align-items:center;gap:7px}
-    .vrsh-agent-sub{font-size:11.5px;color:#94a3b8;margin-top:2px}
+    .vrsh-agent-sub{font-size:11.5px;color:var(--vx-text-2);margin-top:2px}
     .vrsh-agent-btns{display:flex;gap:6px}
     .vrsh-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
     .vrsh-actions{display:flex;justify-content:flex-end;margin-top:16px}
-    .vrsh-save{background:#27beff;color:#04121f;border:none;border-radius:10px;font-weight:800;padding:10px 20px;cursor:pointer;font-size:14px}
-    .vrsh-save:hover{background:#59cfff}
+    .vrsh-save{background:var(--vx-accent);color:var(--vx-accent-ink);border:none;border-radius:var(--vx-r-3);font-weight:800;padding:10px 20px;cursor:pointer;font-size:14px}
+    .vrsh-save:hover{background:var(--vx-accent-hi)}
     /* approval-gate box */
-    .vrsh-access{background:#141d33;border:1px solid #2a3a5c;border-radius:12px;padding:12px 14px;margin-bottom:14px}
+    .vrsh-access{background:var(--vx-surface-2);border:1px solid #2a3a5c;border-radius:var(--vx-r-3);padding:12px 14px;margin-bottom:14px}
     .vrsh-access-title{font-weight:800;font-size:14px;color:#ffd27a;margin-bottom:2px}
-    .vrsh-req-btn{margin-top:4px;background:#27beff;color:#04121f;border-color:transparent;font-size:13px;padding:8px 16px}
-    .vrsh-req-btn:hover{background:#59cfff}
-    .vrsh-apply-sub{font-size:11.5px;color:#9db0d0;margin-top:8px}
+    .vrsh-req-btn{margin-top:4px;background:var(--vx-accent);color:var(--vx-accent-ink);border-color:transparent;font-size:13px;padding:8px 16px}
+    .vrsh-req-btn:hover{background:var(--vx-accent-hi)}
+    .vrsh-apply-sub{font-size:11.5px;color:var(--vx-text-2);margin-top:8px}
     .vrsh-apply-links-list{margin:4px 0 0;padding-left:18px;font-size:12.5px}
     .vrsh-apply-links-list li{margin:2px 0}
-    .vrsh-apply-links-list a{color:#7fdcff;word-break:break-all}
-    .vrsh-golive:disabled{background:#334155;cursor:not-allowed}
-    .vrsh-golive:disabled:hover{background:#334155}
+    .vrsh-apply-links-list a{color:var(--vx-accent-hi);word-break:break-all}
+    .vrsh-golive:disabled{background:var(--vx-line);cursor:not-allowed}
+    .vrsh-golive:disabled:hover{background:var(--vx-line)}
     /* map-popup "watch here" button */
-    .vrsh-watch-btn{background:#ff3b30;color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Onest',system-ui,sans-serif}
-    .vrsh-watch-btn:hover{background:#ff5546}`;
+    .vrsh-live-dot{display:inline-block;width:6px;height:6px;background:var(--vx-live);margin-right:6px;vertical-align:middle}
+    .vrsh-watch-btn{background:var(--vx-live);color:#fff;border:none;border-radius:var(--vx-r-2);padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--vx-font)}
+    .vrsh-watch-btn:hover{background:var(--vx-live)}`;
     document.head.appendChild(s);
 }
 

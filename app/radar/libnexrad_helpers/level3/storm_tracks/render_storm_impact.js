@@ -21,7 +21,7 @@ function injectStyles() {
     .si-phases{margin-top:6px;padding-top:5px;border-top:1px dashed rgba(255,255,255,.18)}
     .si-phases-title{font-size:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:2px}
     .si-msg{margin-top:6px;font-size:12px;opacity:.9;font-style:italic}
-    .si-conf-high{color:#34d399}.si-conf-medium{color:#facc15}.si-conf-low{color:#f8a4a4}`;
+    .si-conf-high{color:var(--vx-ok)}.si-conf-medium{color:var(--vx-warn)}.si-conf-low{color:var(--vx-bad)}`;
     document.head.appendChild(s);
 }
 

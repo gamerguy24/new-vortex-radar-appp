@@ -70,7 +70,7 @@ function upgradeToast(name, requiredTier) {
   const el = document.createElement('div');
   el.id = 'proGateToast';
   el.className = 'pro-toast';
-  el.innerHTML = `<span>🔒 <b>${name}</b> needs <b>${tierName}</b>.</span><button class="pro-toast-btn">Upgrade</button>`;
+  el.innerHTML = `<span><b>${name}</b> requires ${tierName}.</span><button class="pro-toast-btn">Upgrade</button>`;
   el.querySelector('.pro-toast-btn').onclick = () => {
     el.remove();
     // Open the plan picker with the tier this feature needs pre-highlighted.

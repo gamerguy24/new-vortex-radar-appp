@@ -30,7 +30,7 @@ const CATEGORY = {
   3: { color: '#ffd60a', label: 'Cat 1' },
   4: { color: '#ff9f0a', label: 'Cat 2' },
   5: { color: '#ff6b35', label: 'Cat 3' },
-  6: { color: '#ff3b30', label: 'Cat 4' },
+  6: { color: 'var(--vx-live)', label: 'Cat 4' },
   7: { color: '#d838ff', label: 'Cat 5' },
 };
 function cat(n) { return CATEGORY[n] || { color: '#c7d0dc', label: '' }; }

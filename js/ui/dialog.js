@@ -21,9 +21,9 @@ function injectStyles() {
     display: flex; align-items: flex-start; justify-content: center;
     overflow: auto; padding: 32px 16px;
     opacity: 0; transition: opacity 0.15s ease;
-    --primary-color: #27beff;
+    --primary-color: var(--vx-accent);
     --border-color: rgba(255,255,255,0.12);
-    --text-muted: #9ca3af;
+    --text-muted: var(--vx-text-2);
     font-family: 'Onest', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .vr-dialog-bg.show { opacity: 1; }
@@ -31,11 +31,11 @@ function injectStyles() {
     width: min(560px, 96vw);
     max-height: 86vh;
     display: flex; flex-direction: column;
-    background: rgba(11, 18, 32, 0.97);
+    background: var(--vx-surface);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius:var(--vx-r-3);
     box-shadow: 0 24px 70px rgba(0,0,0,0.55);
-    color: #e7eef7;
+    color: var(--vx-text);
     overflow: hidden;
 }
 .vr-dialog-header {
@@ -49,7 +49,7 @@ function injectStyles() {
 .vr-dialog-header h2 .ti { color: var(--primary-color); }
 .vr-dialog-close {
     background: rgba(0,0,0,0.4); color: #fff; cursor: pointer;
-    border: 1px solid var(--border-color); border-radius: 8px;
+    border: 1px solid var(--border-color); border-radius:var(--vx-r-2);
     width: 32px; height: 32px; font-size: 1.05em; line-height: 1;
     display: inline-flex; align-items: center; justify-content: center;
 }

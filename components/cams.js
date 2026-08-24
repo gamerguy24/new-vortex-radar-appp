@@ -26,12 +26,12 @@ export function addCamMarkers(mapInstance) {
         el.title = cam.name;
         el.style.cssText = `
             width: 32px; height: 32px;
-            background: #ff2121;
+            background: var(--vx-live);
             border: 2px solid white;
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
             cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            box-shadow:var(--vx-shadow);
             font-size: 15px;
             color: white;
         `;
@@ -73,7 +73,7 @@ function _openCamPopup(map, cam) {
     let playerHtml;
 
     const actionBtns = `<span style="display:flex;align-items:center;gap:6px;margin-left:8px;flex-shrink:0;">
-        <button id="cam-fullscreen-btn" title="Fullscreen (or double-click the video)" style="background:rgba(255,255,255,0.14);border:none;color:#fff;cursor:pointer;font-size:15px;padding:5px 9px;border-radius:7px;display:inline-flex;align-items:center;gap:5px;font-weight:700;"><i class="ti ti-arrows-maximize"></i> Full</button>
+        <button id="cam-fullscreen-btn" title="Fullscreen (or double-click the video)" style="background:rgba(255,255,255,0.14);border:none;color:#fff;cursor:pointer;font-size:15px;padding:5px 9px;border-radius:var(--vx-r-2);display:inline-flex;align-items:center;gap:5px;font-weight:700;"><i class="ti ti-arrows-maximize"></i> Full</button>
         <button id="cam-close-btn" title="Close" style="background:none;border:none;color:#fff;cursor:pointer;font-size:18px;padding:2px;display:inline-flex;align-items:center;"><i class="ti ti-x"></i></button>
     </span>`;
 
@@ -84,7 +84,7 @@ function _openCamPopup(map, cam) {
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cam.name}</span>
                 <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:8px;">
                     <a href="https://www.youtube.com/watch?v=${encodeURIComponent(ytId)}" target="_blank" rel="noopener noreferrer"
-                        style="font-size:11px;color:#ff4444;text-decoration:none;"
+                        style="font-size:11px;color:var(--vx-live);text-decoration:none;"
                         onclick="event.stopPropagation();">
                         <i class="ti ti-brand-youtube" style="vertical-align:middle;"></i> YouTube
                     </a>
@@ -242,25 +242,25 @@ export default function openCams(highlightName = null) {
     let listHtml = '';
 
     if (CAMERAS.length === 0) {
-        listHtml = '<p style="color: var(--text-muted, #9ca3af); font-size: 14px; text-align: center; padding: 20px 0;">No live cameras are available right now. Check back during active weather events.</p>';
+        listHtml = '<p style="color: var(--text-muted, var(--vx-text-2)); font-size: 14px; text-align: center; padding: 20px 0;">No live cameras are available right now. Check back during active weather events.</p>';
     } else {
         listHtml = CAMERAS.map((cam, idx) => {
             const ytId = getYouTubeId(cam.url);
             const isHighlighted = highlightName === cam.name;
-            const borderColor = isHighlighted ? '#ff2121' : 'var(--border-color, gray)';
+            const borderColor = isHighlighted ? 'var(--vx-live)' : 'var(--border-color, gray)';
 
             if (ytId) {
                 const thumbUrl = `https://img.youtube.com/vi/${encodeURIComponent(ytId)}/hqdefault.jpg`;
                 return `
-                    <div style="background: rgba(255,255,255,0.05); border: 1px solid ${borderColor}; border-radius: 10px; overflow: hidden; margin-bottom: 12px;">
+                    <div style="background: rgba(255,255,255,0.05); border: 1px solid ${borderColor}; border-radius:var(--vx-r-3); overflow: hidden; margin-bottom: 12px;">
                         <div style="padding: 8px 12px; font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                             <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cam.name}</span>
                             <span style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
-                                <button data-fs="${idx}" title="Fullscreen this cam" style="background: none; border: none; color: #cfe0f5; cursor: pointer; font-size: 20px; padding: 0; display: inline-flex; align-items: center;">
+                                <button data-fs="${idx}" title="Fullscreen this cam" style="background: none; border: none; color: var(--vx-text); cursor: pointer; font-size: 20px; padding: 0; display: inline-flex; align-items: center;">
                                     <i class="ti ti-maximize"></i>
                                 </button>
                                 <a href="https://www.youtube.com/watch?v=${encodeURIComponent(ytId)}" target="_blank" rel="noopener noreferrer"
-                                    style="font-size: 12px; color: #ff4444; text-decoration: none; white-space: nowrap;"
+                                    style="font-size: 12px; color: var(--vx-live); text-decoration: none; white-space: nowrap;"
                                     onclick="event.stopPropagation();">
                                     <i class="ti ti-brand-youtube" style="vertical-align: middle;"></i> YouTube
                                 </a>
@@ -279,10 +279,10 @@ export default function openCams(highlightName = null) {
                 `;
             } else {
                 return `
-                    <div style="background: rgba(255,255,255,0.05); border: 1px solid ${borderColor}; border-radius: 10px; overflow: hidden; margin-bottom: 12px;">
+                    <div style="background: rgba(255,255,255,0.05); border: 1px solid ${borderColor}; border-radius:var(--vx-r-3); overflow: hidden; margin-bottom: 12px;">
                         <div style="padding: 8px 12px; font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                             <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cam.name}</span>
-                            <button data-fs="${idx}" title="Fullscreen this cam" style="background: none; border: none; color: #cfe0f5; cursor: pointer; font-size: 20px; padding: 0; display: inline-flex; align-items: center; flex-shrink: 0;">
+                            <button data-fs="${idx}" title="Fullscreen this cam" style="background: none; border: none; color: var(--vx-text); cursor: pointer; font-size: 20px; padding: 0; display: inline-flex; align-items: center; flex-shrink: 0;">
                                 <i class="ti ti-maximize"></i>
                             </button>
                         </div>
@@ -302,7 +302,7 @@ export default function openCams(highlightName = null) {
     }
 
     const camsContent = `
-        <p style="margin-bottom: 16px; color: var(--text-muted, #9ca3af);">Live camera feeds from the Twistcaster Live Media team.</p>
+        <p style="margin-bottom: 16px; color: var(--text-muted, var(--vx-text-2));">Live camera feeds from the Twistcaster Live Media team.</p>
         <div id="cams-list">${listHtml}</div>
     `;
 

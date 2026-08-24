@@ -43,23 +43,23 @@ function injectStyles() {
   s.id = 'vfs-styles';
   s.textContent = `
   #vfsPanel{position:fixed;right:12px;top:64px;z-index:100060;width:min(300px,86vw);
-    background:rgba(15,17,21,.97);border:1px solid rgba(255,255,255,.10);border-radius:14px;
-    box-shadow:0 20px 60px rgba(0,0,0,.6);font-family:'Onest',system-ui,sans-serif;overflow:hidden}
+    background:var(--vx-surface);border:1px solid rgba(255,255,255,.10);border-radius:var(--vx-r-3);
+    box-shadow:var(--vx-shadow-lg);font-family:var(--vx-font);overflow:hidden}
   .vfs-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;
-    border-bottom:1px solid rgba(255,255,255,.07);font-weight:800;font-size:15px;color:#eaf1fb}
-  .vfs-x{background:none;border:none;color:#93a3b8;font-size:20px;cursor:pointer;line-height:1}
+    border-bottom:1px solid rgba(255,255,255,.07);font-weight:800;font-size:15px;color:var(--vx-text)}
+  .vfs-x{background:none;border:none;color:var(--vx-text-2);font-size:20px;cursor:pointer;line-height:1}
   .vfs-x:hover{color:#fff}
   .vfs-row{display:flex;align-items:center;gap:11px;padding:11px 14px;cursor:pointer;
     border-bottom:1px solid rgba(255,255,255,.05)}
   .vfs-row:last-child{border-bottom:none}
   .vfs-row:hover{background:rgba(255,255,255,.06)}
-  .vfs-ico{width:34px;height:34px;border-radius:9px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
-    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#cfe0f5;font-size:14px;font-weight:800}
+  .vfs-ico{width:34px;height:34px;border-radius:var(--vx-r-2);flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:var(--vx-text);font-size:14px;font-weight:800}
   .vfs-info{min-width:0;flex:1}
-  .vfs-nm{font-size:14px;font-weight:700;color:#eaf1fb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .vfs-plat{font-size:11.5px;color:#93a3b8;text-transform:capitalize;display:flex;align-items:center;gap:6px}
-  .vfs-gps{color:#34d399;font-weight:700;text-transform:none}
-  .vfs-watch{font-size:11px;font-weight:800;color:#04121e;background:#27beff;border-radius:7px;padding:5px 10px;flex:0 0 auto}
+  .vfs-nm{font-size:14px;font-weight:700;color:var(--vx-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .vfs-plat{font-size:11.5px;color:var(--vx-text-2);text-transform:capitalize;display:flex;align-items:center;gap:6px}
+  .vfs-gps{color:var(--vx-ok);font-weight:700;text-transform:none}
+  .vfs-watch{font-size:11px;font-weight:800;color:var(--vx-accent-ink);background:var(--vx-accent);border-radius:var(--vx-r-2);padding:5px 10px;flex:0 0 auto}
   `;
   document.head.appendChild(s);
 }
@@ -88,7 +88,7 @@ async function markGpsRows(panel) {
     if (el && !el.querySelector('.vfs-gps')) {
       const tag = document.createElement('span');
       tag.className = 'vfs-gps';
-      tag.textContent = '· 📍 GPS';
+      tag.textContent = '· GPS';
       tag.title = 'Live position available — the map will follow this streamer';
       el.appendChild(tag);
     }

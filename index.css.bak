@@ -76,20 +76,20 @@ body.vortex-split #mapDual {
     border-radius: 10px;
     padding: 8px 10px;
     font-family: 'Onest', system-ui, sans-serif;
-    color: var(--vx-text);
+    color: #e7eef7;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 #dualRadarControls .drc-title {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--vx-text-2);
+    color: #7f93b0;
     margin-bottom: 6px;
 }
 #dualRadarControls .drc-row { display: flex; gap: 6px; align-items: center; }
 #dualRadarControls .drc-input {
     background: #0e1626;
-    color: var(--vx-text);
+    color: #e7eef7;
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 6px;
     padding: 5px 7px;
@@ -97,7 +97,7 @@ body.vortex-split #mapDual {
 }
 #dualRadarControls #drcStation { width: 70px; text-transform: uppercase; }
 #dualRadarControls .drc-btn {
-    background: var(--vx-accent);
+    background: #27beff;
     color: #04121e;
     border: none;
     border-radius: 6px;
@@ -998,7 +998,7 @@ https://tobiasahlin.com/spinkit/
     align-items: center;
 
     background-color: rgba(255, 255, 255, 0.045);
-    color: var(--vx-text);
+    color: #e7eef7;
     border-radius: 12px;
     padding: 11px 12px;
     font-size: 14.5px;
@@ -1057,7 +1057,7 @@ https://tobiasahlin.com/spinkit/
     color: rgb(187, 64, 53);
 }
 .armrIcon-Blue {
-    color: var(--vx-icon); /* icons rest quiet; the accent marks state, not decoration */
+    color: #27beff;
 }
 .armrIcon-Green {
     color: rgb(79, 183, 94);
@@ -1111,7 +1111,7 @@ https://tobiasahlin.com/spinkit/
     font-weight: 800;
     letter-spacing: 0.09em;
     text-transform: uppercase;
-    color: var(--vx-text-2);
+    color: #7f93b0;
 }
 .armrHeaderWide {
     margin-left: 0px;
@@ -1238,8 +1238,8 @@ https://tobiasahlin.com/spinkit/
     margin-bottom: 0.125rem;
 }
 .form-check-input:checked {
-    background-color: var(--vx-accent);
-    border-color: var(--vx-accent);
+    background-color: #4BD763;
+    border-color: #4BD763;
     background-position: right center;
 }
 
@@ -1752,9 +1752,94 @@ td.day.active, span.month.active, span.year.active {
    Floating, rounded dark panels over a full-bleed map (matches the
    Vortex Radar mockup). Overrides the legacy full-width bar layout.
    ========================================================================= */
-/* Design tokens live in components/tokens.css — one palette shared by
-   index.html and login.html. Edit them there, not here. */
+/* =========================================================================
+   VORTEX DESIGN TOKENS — the single source of truth for the interface.
+   Every panel in the app (index.css chrome and the styles injected by
+   components/*.js) reads these. Change a value here, the whole app follows.
 
+   The look is "field instrument": flat near-black surfaces, hairline rules,
+   tight corners, no blur or glow, tabular numerals. The chrome is deliberately
+   quiet so the only saturated color on screen is weather data.
+
+   COLOR RULE — the one that keeps this readable in a warning:
+     Amber (--vx-accent, taken from the RADAR wordmark in the logo) means
+     INTERFACE STATE ONLY: active toggle, selection, focus, brand mark.
+     It is NEVER used for alert severity. Alert/data color lives in the radar
+     palettes, the NWS event colors, and the --vx-sev-* set below, and the
+     interface never borrows from them.
+   ========================================================================= */
+:root {
+    /* ---- surfaces (flat, opaque; panels sit ON the map, not frosted into it) */
+    --vx-bg: #0a0b0d;             /* app ground */
+    --vx-surface: #101215;        /* panel body */
+    --vx-surface-2: #16181d;      /* rows, inputs, wells */
+    --vx-surface-3: #1e2126;      /* hover / pressed */
+    --vx-scrim: rgba(6, 7, 9, 0.72); /* behind modals */
+
+    /* ---- rules: hairlines, never a heavy stroke */
+    --vx-line: rgba(255, 255, 255, 0.075);
+    --vx-line-2: rgba(255, 255, 255, 0.14);
+
+    /* ---- ink: off-white, three steps, no pure #fff anywhere */
+    --vx-text: #dfe3e8;
+    --vx-text-2: #98a1ac;
+    --vx-text-3: #6b747f;
+
+    /* ---- brand accent: amber, UI STATE ONLY (see COLOR RULE above) */
+    --vx-accent: #e8862b;
+    --vx-accent-hi: #f59b48;
+    --vx-accent-ink: #140f08;              /* text/icon on an amber fill */
+    --vx-accent-soft: rgba(232, 134, 43, 0.13);
+    --vx-accent-line: rgba(232, 134, 43, 0.42);
+
+    /* ---- steel, from the VORTEX wordmark: quiet links + secondary marks */
+    --vx-steel: #7fa8d4;
+
+    /* ---- interface feedback. Deliberately desaturated and off the framework
+       defaults so a toast never competes with a warning polygon. */
+    --vx-ok: #5f9e7a;
+    --vx-warn: #c19a2e;
+    --vx-bad: #cc5a4c;
+    --vx-live: #d1402f;           /* on-air / recording status */
+
+    /* ---- severity, for the few chrome spots that must show alert level.
+       Separate from the accent on purpose. */
+    --vx-sev-extreme: #c2352b;
+    --vx-sev-severe: #d4652a;
+    --vx-sev-moderate: #b99228;
+    --vx-sev-minor: #6d8ba8;
+
+    /* ---- geometry: tight, machined corners; one shadow, used sparingly */
+    --vx-r-1: 3px;
+    --vx-r-2: 4px;
+    --vx-r-3: 6px;
+    --vx-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    --vx-shadow-lg: 0 14px 38px rgba(0, 0, 0, 0.62);
+
+    /* ---- type */
+    --vx-font: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --vx-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+    /* -------------------------------------------------------------------
+       Legacy alias layer. The chrome below was written against --vortex-*;
+       pointing those at the tokens above re-skins it without a rewrite.
+       New code should use --vx-* directly.
+       ------------------------------------------------------------------- */
+    --vortex-panel: var(--vx-surface);
+    --vortex-panel-2: var(--vx-surface-2);
+    --vortex-border: var(--vx-line);
+    --vortex-hairline: rgba(255, 255, 255, 0.05);
+    --vortex-accent: var(--vx-accent);
+    --vortex-accent-soft: var(--vx-accent-soft);
+    --vortex-text: var(--vx-text);
+    --vortex-subtext: var(--vx-text-2);
+    --vortex-icon: var(--vx-text-3);
+    --vortex-icon-hover: var(--vx-text);
+    --vortex-shadow: var(--vx-shadow);
+    --vortex-r-lg: var(--vx-r-3);
+    --vortex-r-md: var(--vx-r-2);
+    --vortex-r-sm: var(--vx-r-1);
+}
 
 /* Data readouts (times, station ids, counts) use lining tabular figures so
    numbers stop shifting width as they tick. */
@@ -1772,7 +1857,7 @@ td.day.active, span.month.active, span.year.active {
 
 /* ---- Loading screen: show the logo crisply on a dark backdrop ---- */
 #loadingLibrariesDiv {
-    background-color: var(--vx-bg) !important;
+    background-color: #0e1014 !important;
     background-size: min(58%, 520px) auto !important;
 }
 #loadingLibrariesDivContent {
@@ -1803,8 +1888,8 @@ td.day.active, span.month.active, span.year.active {
     gap: 8px;
     color: var(--vortex-text);
     box-shadow: var(--vortex-shadow);
-    /* flat, not frosted: the panel sits on the map, it does not blur it */
-
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
 }
 #headerTextCol { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; gap: 1px; }
 .radarHeader div { text-align: left !important; }
@@ -1882,28 +1967,34 @@ td.day.active, span.month.active, span.year.active {
     display: flex;
     align-items: center;
     gap: 6px;
-    background: var(--vx-sev-extreme);
-    color: #f4e9e6;
+    background: #d93b3b;
+    color: #fff;
     font-weight: 700;
-    font-size: 12.5px;
-    letter-spacing: 0.02em;
-    padding: 6px 11px;
-    border-radius: var(--vx-r-2);
+    font-size: 13.5px;
+    letter-spacing: 0.2px;
+    padding: 7px 12px;
+    border-radius: var(--vortex-r-md);
     cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    box-shadow: var(--vx-shadow);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: var(--vortex-shadow);
     transition: background 0.12s ease;
-    font-variant-numeric: tabular-nums;
 }
-#vortexAlertPill:hover { background: #d24438; }
-#vortexAlertPill.vortexAlertActive { border-color: rgba(255, 255, 255, 0.34); }
+#vortexAlertPill:hover { background: #e5504f; }
+#vortexAlertPill.vortexAlertActive { box-shadow: 0 0 0 1.5px rgba(255,255,255,0.35), var(--vortex-shadow); }
 
-/* New alert just arrived (class added for 30s by syncAlerts). A flat two-tone
-   blink — no glow, no gradient, no scaling. It has to read as an instrument
-   annunciator, not a notification bubble. */
+/* Flash the alert pill when a brand-new alert arrives (added for 30s by
+   syncAlerts, then removed). */
 @keyframes vortexAlertFlashAnim {
-    0%, 49% { background: var(--vx-sev-extreme); border-color: rgba(255, 255, 255, 0.10); }
-    50%, 100% { background: #8f231b; border-color: rgba(255, 255, 255, 0.42); }
+    0%, 100% {
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.85), 0 0 22px 6px rgba(255,210,60,0.95);
+        background: linear-gradient(180deg, #ffd23c, #ff8a00);
+        transform: scale(1.06);
+    }
+    50% {
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.35), 0 6px 20px rgba(224,43,43,0.45);
+        background: linear-gradient(180deg, #ff5252, #e02b2b);
+        transform: scale(1);
+    }
 }
 #vortexAlertPill.vortexAlertFlash {
     animation: vortexAlertFlashAnim 0.7s ease-in-out infinite;
@@ -1929,8 +2020,8 @@ td.day.active, span.month.active, span.year.active {
     gap: 7px;
     color: var(--vortex-text);
     box-shadow: var(--vortex-shadow);
-
-
+    backdrop-filter: blur(18px) saturate(1.1);
+    -webkit-backdrop-filter: blur(18px) saturate(1.1);
 }
 .mapFooter span { font-size: 14px; }
 
@@ -1977,8 +2068,8 @@ td.day.active, span.month.active, span.year.active {
     display: none; /* shown by components/billing_ui.js only for actual Pro members */
     align-items: center;
     gap: 5px;
-    background: var(--vx-accent-soft);
-    color: var(--vx-accent);
+    background: rgba(230, 178, 76, 0.14);
+    color: #e6b24c;
     font-weight: 700;
     font-size: 11px;
     letter-spacing: 0.6px;
@@ -1987,7 +2078,7 @@ td.day.active, span.month.active, span.year.active {
     border-radius: var(--vortex-r-sm);
     white-space: nowrap;
     flex: 0 0 auto;
-    border: 1px solid var(--vx-accent-line);
+    border: 1px solid rgba(230, 178, 76, 0.32);
 }
 #vortexProBadge .fa { font-size: 10px; }
 
@@ -2006,7 +2097,7 @@ td.day.active, span.month.active, span.year.active {
     flex: 0 0 auto;
     transition: background 0.12s ease, color 0.12s ease;
 }
-#vortexPlayBtn:hover { background: var(--vortex-accent-soft); color: var(--vortex-icon-hover); border-color: var(--vx-accent-line); }
+#vortexPlayBtn:hover { background: var(--vortex-accent-soft); color: var(--vortex-icon-hover); border-color: rgba(76,147,207,0.4); }
 #vortexPlayBtn:active { transform: translateY(1px); }
 #vortexPlayBtn .fa { font-size: 13px; }
 
@@ -2028,7 +2119,7 @@ td.day.active, span.month.active, span.year.active {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: var(--vx-text);
+    background: #eef3f9;
     border: 3px solid var(--vortex-accent);
     cursor: pointer;
 }
@@ -2036,7 +2127,7 @@ td.day.active, span.month.active, span.year.active {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: var(--vx-text);
+    background: #eef3f9;
     border: 3px solid var(--vortex-accent);
     cursor: pointer;
 }
@@ -2097,8 +2188,8 @@ td.day.active, span.month.active, span.year.active {
     border: 1px solid var(--vortex-border);
     border-radius: var(--vortex-r-lg);
     box-shadow: var(--vortex-shadow);
-
-
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     display: none;
 }
 #vortexLegendTitle {

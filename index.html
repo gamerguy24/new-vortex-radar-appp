@@ -9,6 +9,7 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./components/tokens.css">
     <link rel="stylesheet" href="./components/layers.css">
     <link rel="stylesheet" href="./components/storm3d.css">
     <!-- import map so the 3D storm view's ES modules can resolve Three.js -->
@@ -809,7 +810,7 @@
                         the velocity values will seem wrong. There is a process to correct this, and it's called dealiasing.
                         Vortex Radar implements two dealiasing algorithms.
                         <br><br>
-                        The <b>Region Based</b> algorithm was originally developed for use in the python package <a href="https://github.com/ARM-DOE/pyart" style="color: #53a2e0;">pyart</a>.
+                        The <b>Region Based</b> algorithm was originally developed for use in the python package <a href="https://github.com/ARM-DOE/pyart" style="color: var(--vx-steel);">pyart</a>.
                         I simply rewrote it in JavaScript, for use in Vortex Radar. This algorithm is very robust, and is great at dealing with gaps in data, e.g. hurricanes.
                         <br><br>
                         The <b>Tornadic</b> algorithm is much better suited for dealing with velocity scans with tornado signatures, or tight rotation in general.

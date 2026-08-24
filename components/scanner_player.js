@@ -23,28 +23,28 @@ function injectStyles() {
   const s = document.createElement('style');
   s.id = 'gptt-styles';
   s.textContent = `
-  .gptt{font-family:'Onest',system-ui,sans-serif;background:#0b1220;border:1px solid #1e2a44;
-    border-radius:14px;padding:12px 14px;color:#e7eef7;min-width:240px;max-width:420px}
+  .gptt{font-family:var(--vx-font);background:var(--vx-surface);border:1px solid var(--vx-line);
+    border-radius:var(--vx-r-3);padding:12px 14px;color:var(--vx-text);min-width:240px;max-width:420px}
   .gptt-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
   .gptt-name{font-weight:800;font-size:14px;letter-spacing:.02em;color:#eaf2fb;flex:1;min-width:0;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .gptt-live{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:11px;
-    letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:20px;
-    background:rgba(255,255,255,.06);color:#8ea4bd;border:1px solid rgba(255,255,255,.1)}
+    letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:var(--vx-r-3);
+    background:rgba(255,255,255,.06);color:var(--vx-text-2);border:1px solid rgba(255,255,255,.1)}
   .gptt-live .dot{width:8px;height:8px;border-radius:50%;background:#6b7a8d}
   .gptt-live.on{background:rgba(255,59,48,.16);color:#ff6a60;border-color:rgba(255,59,48,.4)}
-  .gptt-live.on .dot{background:#ff3b30;box-shadow:0 0 0 0 rgba(255,59,48,.6);animation:gpttPulse 1.6s infinite}
+  .gptt-live.on .dot{background:var(--vx-live);box-shadow:0 0 0 0 rgba(255,59,48,.6);animation:gpttPulse 1.6s infinite}
   @keyframes gpttPulse{0%{box-shadow:0 0 0 0 rgba(255,59,48,.6)}70%{box-shadow:0 0 0 7px rgba(255,59,48,0)}100%{box-shadow:0 0 0 0 rgba(255,59,48,0)}}
   .gptt-controls{display:flex;align-items:center;gap:12px}
   .gptt-play{flex:0 0 auto;width:42px;height:42px;border-radius:50%;border:none;cursor:pointer;
-    background:#27beff;color:#04121e;font-size:16px;display:flex;align-items:center;justify-content:center;
+    background:var(--vx-accent);color:var(--vx-accent-ink);font-size:16px;display:flex;align-items:center;justify-content:center;
     transition:background .12s}
   .gptt-play:hover{background:#4fcbff}
-  .gptt-play:disabled{background:#33425f;color:#7c8aa5;cursor:not-allowed}
-  .gptt-vol{flex:1;display:flex;align-items:center;gap:7px;color:#8ea4bd;min-width:0}
-  .gptt-vol input{flex:1;min-width:40px;accent-color:#27beff}
+  .gptt-play:disabled{background:#33425f;color:var(--vx-text-2);cursor:not-allowed}
+  .gptt-vol{flex:1;display:flex;align-items:center;gap:7px;color:var(--vx-text-2);min-width:0}
+  .gptt-vol input{flex:1;min-width:40px;accent-color:var(--vx-accent)}
   .gptt-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;
-    font-size:11.5px;color:#8ea4bd}
+    font-size:11.5px;color:var(--vx-text-2)}
   .gptt-listeners{display:inline-flex;align-items:center;gap:5px}
   .gptt-status{font-size:11.5px}
   .gptt-status.err{color:#ff8f88}

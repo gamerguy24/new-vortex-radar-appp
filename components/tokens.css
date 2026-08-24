@@ -1,0 +1,93 @@
+/* =========================================================================
+   VORTEX DESIGN TOKENS — the single source of truth for the interface.
+   Every panel in the app (index.css chrome and the styles injected by
+   components/*.js) reads these. Change a value here, the whole app follows.
+
+   The look is "field instrument": flat near-black surfaces, hairline rules,
+   tight corners, no blur or glow, tabular numerals. The chrome is deliberately
+   quiet so the only saturated color on screen is weather data.
+
+   COLOR RULE — the one that keeps this readable in a warning:
+     Amber (--vx-accent, taken from the RADAR wordmark in the logo) means
+     INTERFACE STATE ONLY: active toggle, selection, focus, brand mark.
+     It is NEVER used for alert severity. Alert/data color lives in the radar
+     palettes, the NWS event colors, and the --vx-sev-* set below, and the
+     interface never borrows from them.
+   ========================================================================= */
+:root {
+    /* ---- surfaces (flat, opaque; panels sit ON the map, not frosted into it) */
+    --vx-bg: #0a0b0d;             /* app ground */
+    --vx-surface: #101215;        /* panel body */
+    --vx-surface-2: #16181d;      /* rows, inputs, wells */
+    --vx-surface-3: #1e2126;      /* hover / pressed */
+    --vx-scrim: rgba(6, 7, 9, 0.72); /* behind modals */
+
+    /* ---- rules: hairlines, never a heavy stroke */
+    --vx-line: rgba(255, 255, 255, 0.075);
+    --vx-line-2: rgba(255, 255, 255, 0.14);
+
+    /* ---- ink: off-white, three steps, no pure #fff anywhere */
+    --vx-text: #dfe3e8;
+    --vx-text-2: #98a1ac;
+    --vx-text-3: #6b747f;
+
+    /* ---- brand accent: amber, UI STATE ONLY (see COLOR RULE above) */
+    --vx-accent: #e8862b;
+    --vx-accent-hi: #f59b48;
+    --vx-accent-ink: #140f08;              /* text/icon on an amber fill */
+    --vx-accent-soft: rgba(232, 134, 43, 0.13);
+    --vx-accent-line: rgba(232, 134, 43, 0.42);
+
+    /* ---- steel, from the VORTEX wordmark: quiet links + secondary marks */
+    --vx-steel: #7fa8d4;
+
+    /* ---- icons rest neutral. Color on an icon means state, never decoration,
+       which is why 46 menu icons are no longer all painted the accent. */
+    --vx-icon: #8b949f;
+    --vx-icon-hover: var(--vx-text);
+
+    /* ---- interface feedback. Deliberately desaturated and off the framework
+       defaults so a toast never competes with a warning polygon. */
+    --vx-ok: #5f9e7a;
+    --vx-warn: #c19a2e;
+    --vx-bad: #cc5a4c;
+    --vx-live: #d1402f;           /* on-air / recording status */
+
+    /* ---- severity, for the few chrome spots that must show alert level.
+       Separate from the accent on purpose. */
+    --vx-sev-extreme: #c2352b;
+    --vx-sev-severe: #d4652a;
+    --vx-sev-moderate: #b99228;
+    --vx-sev-minor: #6d8ba8;
+
+    /* ---- geometry: tight, machined corners; one shadow, used sparingly */
+    --vx-r-1: 3px;
+    --vx-r-2: 4px;
+    --vx-r-3: 6px;
+    --vx-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    --vx-shadow-lg: 0 14px 38px rgba(0, 0, 0, 0.62);
+
+    /* ---- type */
+    --vx-font: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --vx-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+    /* -------------------------------------------------------------------
+       Legacy alias layer. The chrome below was written against --vortex-*;
+       pointing those at the tokens above re-skins it without a rewrite.
+       New code should use --vx-* directly.
+       ------------------------------------------------------------------- */
+    --vortex-panel: var(--vx-surface);
+    --vortex-panel-2: var(--vx-surface-2);
+    --vortex-border: var(--vx-line);
+    --vortex-hairline: rgba(255, 255, 255, 0.05);
+    --vortex-accent: var(--vx-accent);
+    --vortex-accent-soft: var(--vx-accent-soft);
+    --vortex-text: var(--vx-text);
+    --vortex-subtext: var(--vx-text-2);
+    --vortex-icon: var(--vx-icon);
+    --vortex-icon-hover: var(--vx-icon-hover);
+    --vortex-shadow: var(--vx-shadow);
+    --vortex-r-lg: var(--vx-r-3);
+    --vortex-r-md: var(--vx-r-2);
+    --vortex-r-sm: var(--vx-r-1);
+}

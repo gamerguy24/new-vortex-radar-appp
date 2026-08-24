@@ -24,7 +24,7 @@ function toast(msg, kind) {
           max-width:88vw;background:rgba(11,18,32,.98);color:#e5edff;border-radius:12px;padding:11px 16px;
           font-family:'Onest',system-ui,sans-serif;font-size:13.5px;line-height:1.4;text-align:center;
           box-shadow:0 12px 34px rgba(0,0,0,.55);border:1px solid #27324a}
-        .storm-alert-toast.warn{border-color:#f59e0b}.storm-alert-toast.info{border-color:#27beff}`;
+        .storm-alert-toast.warn{border-color:var(--vx-warn)}.storm-alert-toast.info{border-color:var(--vx-accent)}`;
         document.head.appendChild(s);
     }
     const el = document.createElement('div');

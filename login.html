@@ -8,28 +8,29 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="./components/tokens.css" />
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
   <style>
     :root {
-      --primary: #27beff;
-      --bg: #0b1220;
+      --primary: var(--vx-accent);
+      --bg: var(--vx-surface);
       --panel: rgba(15, 23, 35, 0.72);
       --border: rgba(255,255,255,0.12);
-      --text: #e7eef7;
+      --text: var(--vx-text);
       --muted: rgba(231, 238, 247, 0.6);
-      --error: #f87171;
-      --success: #4ade80;
+      --error: var(--vx-bad);
+      --success: var(--vx-ok);
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
     body {
       background:
-        radial-gradient(circle at 20% 0%, rgba(39,190,255,0.18), transparent 50%),
+        radial-gradient(circle at 20% 0%, var(--vx-accent-soft), transparent 50%),
         radial-gradient(circle at 80% 100%, rgba(124,58,237,0.16), transparent 55%),
         var(--bg);
       color: var(--text);
-      font-family: 'Onest', system-ui, sans-serif;
+      font-family: var(--vx-font);
       min-height: 100vh;
       padding: 24px 16px;
       display: flex;
@@ -49,33 +50,33 @@
       background: var(--panel);
       backdrop-filter: blur(18px);
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius:var(--vx-r-3);
       padding: 28px;
       box-shadow: 0 20px 60px rgba(0,0,0,0.45);
     }
     h1 { margin: 0 0 4px; font-size: 1.6em; }
     .sub { color: var(--muted); margin-bottom: 22px; font-size: 0.95em; }
-    .tabs { display: flex; gap: 4px; padding: 4px; background: rgba(0,0,0,0.3); border-radius: 10px; margin-bottom: 18px; }
+    .tabs { display: flex; gap: 4px; padding: 4px; background: rgba(0,0,0,0.3); border-radius:var(--vx-r-3); margin-bottom: 18px; }
     .tab {
-      flex: 1; padding: 8px 10px; border-radius: 8px; text-align: center;
+      flex: 1; padding: 8px 10px; border-radius:var(--vx-r-2); text-align: center;
       cursor: pointer; color: var(--muted); font-weight: 600; font-size: 0.95em;
       user-select: none;
     }
-    .tab.active { background: var(--primary); color: #001022; }
+    .tab.active { background: var(--primary); color: var(--vx-accent-ink); }
     label { display: block; font-size: 0.85em; color: var(--muted); margin-top: 12px; margin-bottom: 6px; }
     input[type="email"], input[type="password"] {
-      width: 100%; padding: 11px 12px; border-radius: 8px;
+      width: 100%; padding: 11px 12px; border-radius:var(--vx-r-2);
       background: rgba(0,0,0,0.35); border: 1px solid var(--border);
       color: var(--text); font-size: 1em; font-family: inherit;
     }
     input:focus { outline: none; border-color: var(--primary); }
     button.primary {
       width: 100%; margin-top: 18px; padding: 12px;
-      background: var(--primary); color: #001022; border: none;
-      border-radius: 8px; font-weight: 700; font-size: 1em;
+      background: var(--primary); color: var(--vx-accent-ink); border: none;
+      border-radius:var(--vx-r-2); font-weight: 700; font-size: 1em;
       cursor: pointer;
     }
-    button.primary:hover { background: #4ad0ff; }
+    button.primary:hover { background: var(--vx-accent-hi); }
     button.primary:disabled { opacity: 0.6; cursor: wait; }
     .msg { margin-top: 14px; font-size: 0.9em; min-height: 1.2em; }
     .msg.error { color: var(--error); }
@@ -97,25 +98,25 @@
     .profile-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
     .profile {
       display: flex; align-items: center; gap: 12px; padding: 11px 12px;
-      background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px;
+      background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius:var(--vx-r-3);
     }
     .profile-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; cursor: pointer; }
-    .profile:hover { border-color: var(--primary); background: rgba(39,190,255,0.08); }
+    .profile:hover { border-color: var(--primary); background: var(--vx-accent-soft); }
     .profile-avatar {
       width: 38px; height: 38px; border-radius: 50%; flex: 0 0 auto;
       display: flex; align-items: center; justify-content: center;
-      background: linear-gradient(135deg, #27beff, #7c3aed); color: #001022;
+      background: linear-gradient(135deg, var(--vx-accent), #7c3aed); color: var(--vx-accent-ink);
       font-weight: 800; font-size: 1.1em;
     }
     .profile-info { min-width: 0; }
     .profile-email { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .profile-sub { font-size: 0.8em; color: var(--muted); }
-    .profile-remove { color: var(--muted); font-size: 1.2em; padding: 4px 8px; cursor: pointer; border-radius: 6px; flex: 0 0 auto; }
+    .profile-remove { color: var(--muted); font-size: 1.2em; padding: 4px 8px; cursor: pointer; border-radius:var(--vx-r-2); flex: 0 0 auto; }
     .profile-remove:hover { color: var(--error); background: rgba(248,113,113,0.12); }
     .chooser-actions { display: flex; flex-direction: column; gap: 8px; }
     .link-btn {
       background: none; border: 1px solid var(--border); color: var(--text);
-      border-radius: 8px; padding: 11px; font: inherit; font-weight: 600; cursor: pointer;
+      border-radius:var(--vx-r-2); padding: 11px; font: inherit; font-weight: 600; cursor: pointer;
     }
     .link-btn:hover { border-color: var(--primary); }
     .back-link { display: none; margin-bottom: 14px; }
@@ -182,7 +183,7 @@
       <label for="forgot-message">Add a note for support (optional)</label>
       <textarea id="forgot-message" name="message" rows="3" maxlength="2000"
         placeholder="Anything that helps us verify it's you or understand the issue."
-        style="width:100%; padding:11px 12px; border-radius:8px; background:rgba(0,0,0,0.35); border:1px solid var(--border); color:var(--text); font-size:1em; font-family:inherit; resize:vertical;"></textarea>
+        style="width:100%; padding:11px 12px; border-radius:var(--vx-r-2); background:rgba(0,0,0,0.35); border:1px solid var(--border); color:var(--text); font-size:1em; font-family:inherit; resize:vertical;"></textarea>
       <button class="primary" type="submit">Open support ticket</button>
       <div class="msg" id="forgot-msg" role="alert"></div>
     </form>

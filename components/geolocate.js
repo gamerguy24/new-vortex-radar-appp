@@ -24,15 +24,15 @@ function turnOff() {
 }
 
 function toast(msg, kind) {
-    const colors = { info: '#27beff', warn: '#facc15', error: '#f87171' };
+    const colors = { info: 'var(--vx-accent)', warn: 'var(--vx-warn)', error: 'var(--vx-bad)' };
     const el = document.createElement('div');
     el.textContent = msg;
     el.style.cssText = `
         position: fixed; bottom: 78px; left: 50%; transform: translateX(-50%);
-        background: rgba(11,18,32,0.96); color: ${colors[kind] || colors.info};
+        background: var(--vx-surface); color: ${colors[kind] || colors.info};
         border: 1px solid ${colors[kind] || colors.info};
-        padding: 9px 14px; border-radius: 10px; font-family: 'Onest', system-ui, sans-serif;
-        font-size: 13px; z-index: 100050; box-shadow: 0 10px 30px rgba(0,0,0,0.5);`;
+        padding: 9px 14px; border-radius:var(--vx-r-3); font-family: var(--vx-font);
+        font-size: 13px; z-index: 100050; box-shadow:var(--vx-shadow);`;
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 3500);
 }

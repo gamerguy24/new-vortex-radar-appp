@@ -11,17 +11,17 @@ function injectStyles() {
     const s = document.createElement('style');
     s.id = 'mst-styles';
     s.textContent = `
-    .mst-card{position:absolute;z-index:100060;background:rgba(11,18,32,.97);color:#e5edff;
-      border-radius:12px;border:1px solid #2b3c5e;box-shadow:0 12px 34px rgba(0,0,0,.55);
-      font-family:'Onest',system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+    .mst-card{position:absolute;z-index:100060;background:var(--vx-surface);color:#e5edff;
+      border-radius:var(--vx-r-3);border:1px solid #2b3c5e;box-shadow:0 12px 34px rgba(0,0,0,.55);
+      font-family:var(--vx-font);-webkit-user-select:none;user-select:none}
     .mst-speed{width:190px;padding:12px 13px}
     .mst-speed .mst-title{font-weight:800;font-size:14px;margin-bottom:9px}
     .mst-speed-row{display:flex;gap:7px;align-items:center;margin-bottom:10px}
     .mst-speed input{flex:1;min-width:0;background:#0a1220;border:1px solid #33456a;color:#fff;
-      border-radius:8px;padding:8px 10px;font-size:15px;font-weight:700;outline:none}
-    .mst-speed input:focus{border-color:#27beff}
+      border-radius:var(--vx-r-2);padding:8px 10px;font-size:15px;font-weight:700;outline:none}
+    .mst-speed input:focus{border-color:var(--vx-accent)}
     .mst-speed .mst-unit{font-size:12px;opacity:.75;font-weight:700}
-    .mst-btn{width:100%;border:none;border-radius:8px;padding:9px;font-size:14px;font-weight:800;
+    .mst-btn{width:100%;border:none;border-radius:var(--vx-r-2);padding:9px;font-size:14px;font-weight:800;
       cursor:pointer;background:#1f7ae0;color:#fff}
     .mst-btn:hover{background:#2a8bf5}
     .mst-btn:disabled{opacity:.5;cursor:default}
@@ -48,11 +48,11 @@ function injectStyles() {
 
     .mst-mode{top:64px;left:50%;transform:translateX(-50%);padding:5px;display:flex;gap:4px}
     .mst-mode button{border:none;background:transparent;color:#cdd9f0;font-weight:700;font-size:12.5px;
-      padding:6px 14px;border-radius:8px;cursor:pointer;font-family:inherit}
+      padding:6px 14px;border-radius:var(--vx-r-2);cursor:pointer;font-family:inherit}
     .mst-mode button.on{background:#1f7ae0;color:#fff}
     .mst-hint{position:absolute;bottom:auto;top:108px;left:50%;transform:translateX(-50%);
-      z-index:100060;background:rgba(11,18,32,.92);color:#cdd9f0;border:1px solid #22344f;
-      border-radius:20px;padding:6px 14px;font-size:12px;font-family:'Onest',system-ui,sans-serif;
+      z-index:100060;background:var(--vx-surface);color:#cdd9f0;border:1px solid #22344f;
+      border-radius:var(--vx-r-3);padding:6px 14px;font-size:12px;font-family:var(--vx-font);
       pointer-events:none;white-space:nowrap}`;
     document.head.appendChild(s);
 }

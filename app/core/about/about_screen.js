@@ -1,7 +1,7 @@
 const display_vortex_dialog = require('../menu/vortex_dialog');
 
 $('#armrAboutBtn').click(function() {
-    const accent = '#27beff';
+    const accent = 'var(--vx-accent)';
     const text = 'rgb(225, 230, 237)';
     const muted = 'rgb(150, 158, 168)';
     function person(name, role) {

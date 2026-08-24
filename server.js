@@ -1840,6 +1840,9 @@ app.get('/login.html', sendFile('login.html'));
 app.get('/admin.html', sendFile('admin.html'));
 app.get('/manifest.json', sendFile('manifest.json'));
 app.get('/logo.png', sendFile('logo.png'));
+// The design tokens are needed by the signed-out login page too, so they sit
+// with the other public assets rather than behind the session gate.
+app.get('/components/tokens.css', sendFile(path.join('components', 'tokens.css')));
 app.use('/icons', express.static(path.join(ROOT, 'icons')));
 // Bundled US geo (county/state/nation TopoJSON) served un-gated for map layers
 // like Power Outages. Mounted before the /graphics Pro gate below.

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vortex Radar — interface specimen</title>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap" rel="stylesheet" />
+<!-- the real token file, so this page is never out of date -->
+<link rel="stylesheet" href="../components/tokens.css" />
+<style>
+  body { margin: 0; background: var(--vx-bg); color: var(--vx-text); font-family: var(--vx-font);
+         font-size: 14px; line-height: 1.5; padding: 32px clamp(16px, 5vw, 56px) 80px; }
+  h1 { font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; margin: 0 0 4px; }
+  .sub { color: var(--vx-text-2); font-size: 12.5px; margin: 0 0 34px; max-width: 70ch; }
+  h2 { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em;
+       color: var(--vx-text-3); margin: 38px 0 12px; padding-bottom: 7px; border-bottom: 1px solid var(--vx-line); }
+  .note { color: var(--vx-text-2); font-size: 12.5px; max-width: 76ch; margin: 0 0 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+  .sw { border: 1px solid var(--vx-line); border-radius: var(--vx-r-2); overflow: hidden; background: var(--vx-surface); }
+  .sw i { display: block; height: 46px; }
+  .sw b { display: block; font-size: 11px; font-weight: 700; padding: 7px 9px 1px; }
+  .sw span { display: block; font-size: 10.5px; color: var(--vx-text-3); padding: 0 9px 8px; font-family: var(--vx-mono); }
+  .panel { background: var(--vx-surface); border: 1px solid var(--vx-line); border-radius: var(--vx-r-3);
+           box-shadow: var(--vx-shadow); max-width: 380px; }
+  .panel-head { display: flex; align-items: center; gap: 8px; padding: 8px 11px;
+                background: var(--vx-surface-2); border-bottom: 1px solid var(--vx-line); }
+  .panel-head b { flex: 1; font-size: 12px; font-weight: 700; }
+  .dot { width: 6px; height: 6px; background: var(--vx-live); }
+  .row { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-bottom: 1px solid var(--vx-line); }
+  .row:last-child { border-bottom: none; }
+  .row .ico { width: 15px; color: var(--vx-icon); text-align: center; font-family: var(--vx-mono); }
+  .row.on .ico { color: var(--vx-accent); }
+  .row .lbl { flex: 1; font-size: 13px; }
+  .readout { font-family: var(--vx-font); font-variant-numeric: tabular-nums; font-size: 11px;
+             color: var(--vx-text-2); letter-spacing: .02em; }
+  .btn { background: transparent; border: 1px solid var(--vx-line-2); color: var(--vx-text-2);
+         border-radius: var(--vx-r-1); padding: 5px 9px; font: 700 10.5px/1 var(--vx-font);
+         letter-spacing: .07em; text-transform: uppercase; cursor: pointer; }
+  .btn:hover { background: var(--vx-surface-3); color: var(--vx-text); }
+  .btn.primary { background: var(--vx-accent); border-color: var(--vx-accent); color: var(--vx-accent-ink); }
+  .chip { display: inline-flex; align-items: center; font: 700 9.5px/1 var(--vx-font); letter-spacing: .1em;
+          text-transform: uppercase; padding: 4px 7px; border-radius: var(--vx-r-1);
+          border: 1px solid var(--vx-line-2); color: var(--vx-text-3); }
+  .chip.on { color: var(--vx-accent); border-color: var(--vx-accent-line); }
+  .chip.pro { background: var(--vx-accent-soft); color: var(--vx-accent); border-color: var(--vx-accent-line); }
+  .stack { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .bad { color: var(--vx-bad); } .ok { color: var(--vx-ok); } .warn { color: var(--vx-warn); }
+  code { font-family: var(--vx-mono); font-size: 12px; color: var(--vx-accent); }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; align-items: start; }
+</style>
+</head>
+<body>
+
+<h1>Vortex Radar — interface specimen</h1>
+<p class="sub">Live view of <code>components/tokens.css</code>. Every panel in the app reads these values, so
+this page shows what the interface actually looks like right now — change a token, reload, see it here.</p>
+
+<h2>Surfaces &amp; rules</h2>
+<div class="grid">
+  <div class="sw"><i style="background:var(--vx-bg)"></i><b>Ground</b><span>--vx-bg</span></div>
+  <div class="sw"><i style="background:var(--vx-surface)"></i><b>Panel</b><span>--vx-surface</span></div>
+  <div class="sw"><i style="background:var(--vx-surface-2)"></i><b>Row / input</b><span>--vx-surface-2</span></div>
+  <div class="sw"><i style="background:var(--vx-surface-3)"></i><b>Hover</b><span>--vx-surface-3</span></div>
+  <div class="sw"><i style="background:var(--vx-line)"></i><b>Hairline</b><span>--vx-line</span></div>
+  <div class="sw"><i style="background:var(--vx-line-2)"></i><b>Rule</b><span>--vx-line-2</span></div>
+</div>
+
+<h2>Ink</h2>
+<div class="grid">
+  <div class="sw"><i style="background:var(--vx-text)"></i><b>Primary</b><span>--vx-text</span></div>
+  <div class="sw"><i style="background:var(--vx-text-2)"></i><b>Secondary</b><span>--vx-text-2</span></div>
+  <div class="sw"><i style="background:var(--vx-text-3)"></i><b>Tertiary</b><span>--vx-text-3</span></div>
+  <div class="sw"><i style="background:var(--vx-icon)"></i><b>Icon (resting)</b><span>--vx-icon</span></div>
+</div>
+
+<h2>Accent — interface state only</h2>
+<p class="note">Amber comes off the RADAR wordmark in the logo. It marks <em>state</em>: what is on, selected, or
+focused. It is never used for alert severity, so an amber control can never be misread as a warning.</p>
+<div class="grid">
+  <div class="sw"><i style="background:var(--vx-accent)"></i><b>Accent</b><span>--vx-accent</span></div>
+  <div class="sw"><i style="background:var(--vx-accent-hi)"></i><b>Accent hover</b><span>--vx-accent-hi</span></div>
+  <div class="sw"><i style="background:var(--vx-accent-soft)"></i><b>Accent wash</b><span>--vx-accent-soft</span></div>
+  <div class="sw"><i style="background:var(--vx-accent-ink)"></i><b>Ink on accent</b><span>--vx-accent-ink</span></div>
+  <div class="sw"><i style="background:var(--vx-steel)"></i><b>Steel (links)</b><span>--vx-steel</span></div>
+</div>
+
+<h2>Feedback &amp; severity</h2>
+<p class="note">The left three are interface feedback (a toast, a connection state). The right four are the only
+chrome spots allowed to speak in alert language. Both sets are deliberately off the framework defaults so
+nothing on the interface competes with a warning polygon.</p>
+<div class="grid">
+  <div class="sw"><i style="background:var(--vx-ok)"></i><b>OK</b><span>--vx-ok</span></div>
+  <div class="sw"><i style="background:var(--vx-warn)"></i><b>Warn</b><span>--vx-warn</span></div>
+  <div class="sw"><i style="background:var(--vx-bad)"></i><b>Error</b><span>--vx-bad</span></div>
+  <div class="sw"><i style="background:var(--vx-live)"></i><b>On air</b><span>--vx-live</span></div>
+  <div class="sw"><i style="background:var(--vx-sev-extreme)"></i><b>Extreme</b><span>--vx-sev-extreme</span></div>
+  <div class="sw"><i style="background:var(--vx-sev-severe)"></i><b>Severe</b><span>--vx-sev-severe</span></div>
+  <div class="sw"><i style="background:var(--vx-sev-moderate)"></i><b>Moderate</b><span>--vx-sev-moderate</span></div>
+  <div class="sw"><i style="background:var(--vx-sev-minor)"></i><b>Minor</b><span>--vx-sev-minor</span></div>
+</div>
+
+<h2>Components</h2>
+<div class="two">
+  <div>
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><b>Featured stream</b>
+        <button class="btn">Follow</button><button class="btn">×</button></div>
+      <div class="row on"><span class="ico">▣</span><span class="lbl">Surface Fronts</span><span class="chip on">On</span></div>
+      <div class="row"><span class="ico">▢</span><span class="lbl">Tide Stations</span><span class="chip">Off</span></div>
+      <div class="row"><span class="ico">▢</span><span class="lbl">BuoyCAMs</span><span class="chip pro">Tier 1</span></div>
+      <div class="row"><span class="readout">KFFC · ATLANTA, GA &nbsp; 14:32:08Z &nbsp; VCP 212</span></div>
+    </div>
+  </div>
+  <div>
+    <p class="note"><b>Controls.</b> One button shape, one radius scale, uppercase micro-labels, no gradients
+    and no glow.</p>
+    <div class="stack">
+      <button class="btn">Secondary</button>
+      <button class="btn primary">Primary</button>
+      <span class="chip pro">Pro</span>
+      <span class="chip on">Following</span>
+      <span class="chip">Tracking</span>
+    </div>
+    <p class="note" style="margin-top:18px"><b>Numbers are tabular.</b> Times and counts hold their width
+    as they tick, so the footer never jitters:</p>
+    <div class="readout" style="font-size:13px">14:32:08Z → 14:32:11Z → 14:33:00Z</div>
+    <p class="note" style="margin-top:18px"><b>Feedback.</b>
+      <span class="ok">Saved</span> · <span class="warn">No webhook set</span> · <span class="bad">Upload failed</span></p>
+  </div>
+</div>
+
+<h2>What this palette deliberately excludes</h2>
+<p class="note">Radar reflectivity and velocity tables, NWS event colors, hurricane categories, outage buckets,
+spotter report types and sounding traces are <em>data</em>. They keep their own colors and are not themed by
+these tokens — the interface never borrows a color that means something on the map.</p>
+
+</body>
+</html>

@@ -56,7 +56,7 @@ function _showSpotterPopup(map, lngLat, props) {
     }
 
     const loadingHtml = `
-        <div style="min-width:160px; font-family:'Onest',sans-serif; color:#fff; font-size:13px;">
+        <div style="min-width:160px; font-family:var(--vx-font); color:#fff; font-size:13px;">
             <div style="font-weight:700; font-size:14px; margin-bottom:4px; color:#ff9800;">
                 <i class="ti ti-user" style="margin-right:4px;"></i>${callsign}
             </div>

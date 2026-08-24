@@ -47,23 +47,23 @@ function togglePopup() {
     pop.id = 'vortexGraphicsPopup';
     pop.style.cssText = `
         position: fixed; z-index: 100060; min-width: 230px;
-        background: rgba(11,18,32,0.98); border: 1px solid rgba(39,190,255,0.35);
-        border-radius: 12px; padding: 6px; box-shadow: 0 14px 40px rgba(0,0,0,0.55);
-        font-family: 'Onest', system-ui, sans-serif;`;
+        background: var(--vx-surface); border: 1px solid var(--vx-accent-soft);
+        border-radius:var(--vx-r-3); padding: 6px; box-shadow:var(--vx-shadow);
+        font-family: var(--vx-font);`;
 
-    pop.innerHTML = `<div style="padding:8px 10px 4px; color:#7f93b0; font-size:11px;
+    pop.innerHTML = `<div style="padding:8px 10px 4px; color:var(--vx-text-2); font-size:11px;
         letter-spacing:.08em; text-transform:uppercase;">Vortex Graphics</div>`;
 
     for (const t of TOOLS) {
         const row = document.createElement('div');
         row.style.cssText = `display:flex; align-items:center; gap:11px; padding:9px 10px;
-            border-radius:9px; cursor:pointer; color:#e6edf6; font-size:14px;`;
-        row.onmouseenter = () => { row.style.background = 'rgba(39,190,255,0.12)'; };
+            border-radius:var(--vx-r-2); cursor:pointer; color:#e6edf6; font-size:14px;`;
+        row.onmouseenter = () => { row.style.background = 'var(--vx-accent-soft)'; };
         row.onmouseleave = () => { row.style.background = 'transparent'; };
         row.innerHTML = `
-            <span class="fa ${t.icon}" style="color:#27beff; width:18px; text-align:center;"></span>
+            <span class="fa ${t.icon}" style="color:var(--vx-accent); width:18px; text-align:center;"></span>
             <span><div style="font-weight:600;">${t.label}</div>
-            <div style="color:#7f93b0; font-size:12px;">${t.sub}</div></span>`;
+            <div style="color:var(--vx-text-2); font-size:12px;">${t.sub}</div></span>`;
         row.addEventListener('click', () => { open(t.url); closePopup(); });
         pop.appendChild(row);
     }

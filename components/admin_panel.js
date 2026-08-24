@@ -16,17 +16,17 @@ export const adminPanelStyles = `
     padding: 8px 10px;
     background: rgba(0,0,0,0.35);
     border: 1px solid var(--border-color);
-    color: white; border-radius: 8px; font-family: inherit; font-size: 0.95em;
+    color: white; border-radius:var(--vx-r-2); font-family: inherit; font-size: 0.95em;
 }
 .admin-panel-toolbar button {
-    padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    padding: 8px 12px; border-radius:var(--vx-r-2); cursor: pointer;
     border: 1px solid var(--border-color);
     background: rgba(0,0,0,0.35); color: white;
     font-family: inherit; font-size: 0.9em;
     width: auto; height: auto;
 }
 .admin-panel-toolbar button.primary {
-    background: var(--primary-color); color: #001022;
+    background: var(--primary-color); color: var(--vx-accent-ink);
     border-color: transparent; font-weight: 700;
 }
 .admin-panel-whoami { font-size: 0.85em; color: rgba(255,255,255,0.6); }
@@ -36,7 +36,7 @@ export const adminPanelStyles = `
     width: 100%; border-collapse: collapse;
     background: rgba(0,0,0,0.25);
     border: 1px solid var(--border-color);
-    border-radius: 10px; overflow: hidden;
+    border-radius:var(--vx-r-3); overflow: hidden;
     font-size: 0.88em;
 }
 .admin-panel-table th, .admin-panel-table td {
@@ -49,42 +49,42 @@ export const adminPanelStyles = `
 .admin-panel-table .actions button {
     padding: 4px 8px; font-size: 0.78em;
     background: rgba(0,0,0,0.4); color: white;
-    border: 1px solid var(--border-color); border-radius: 6px;
+    border: 1px solid var(--border-color); border-radius:var(--vx-r-2);
     cursor: pointer; width: auto; height: auto;
 }
 .admin-panel-table .actions button:hover { background: rgba(255,255,255,0.08); }
 .admin-panel-table .actions button.danger:hover {
     background: rgba(248,113,113,0.18);
-    border-color: #f87171; color: #f87171;
+    border-color: var(--vx-bad); color: var(--vx-bad);
 }
 .admin-panel-badge {
-    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    display: inline-block; padding: 1px 7px; border-radius:var(--vx-r-3);
     font-size: 0.72em; font-weight: 700; margin-right: 4px;
 }
-.admin-panel-badge.admin { background: rgba(39,190,255,0.2); color: var(--primary-color); }
+.admin-panel-badge.admin { background: var(--vx-accent-soft); color: var(--primary-color); }
 .admin-panel-badge.super { background: rgba(124,58,237,0.28); color: #c4b5fd; }
-.admin-panel-badge.locked { background: rgba(248,113,113,0.2); color: #f87171; }
-.admin-panel-badge.must-change { background: rgba(250,204,21,0.18); color: #facc15; }
-.admin-panel-badge.tier { background: rgba(52,211,153,0.18); color: #34d399; }
+.admin-panel-badge.locked { background: rgba(248,113,113,0.2); color: var(--vx-bad); }
+.admin-panel-badge.must-change { background: rgba(250,204,21,0.18); color: var(--vx-warn); }
+.admin-panel-badge.tier { background: rgba(52,211,153,0.18); color: var(--vx-ok); }
 .admin-panel-badge.stream { background: rgba(255,59,48,0.18); color: #ff8f88; }
-.admin-panel-badge.stream-pending { background: rgba(250,204,21,0.16); color: #facc15; }
+.admin-panel-badge.stream-pending { background: rgba(250,204,21,0.16); color: var(--vx-warn); }
 .admin-panel-tier {
-    background: rgba(255,255,255,0.06); color: #e8edf3;
-    border: 1px solid rgba(255,255,255,0.14); border-radius: 6px;
+    background: rgba(255,255,255,0.06); color: var(--vx-text);
+    border: 1px solid rgba(255,255,255,0.14); border-radius:var(--vx-r-2);
     padding: 3px 6px; font-size: 0.85em; margin-right: 4px; cursor: pointer;
 }
-.admin-panel-tier option { background: #12151c; color: #e8edf3; }
+.admin-panel-tier option { background: #12151c; color: var(--vx-text); }
 .admin-panel-empty { text-align: center; padding: 30px; color: rgba(255,255,255,0.5); }
 
 .admin-panel-pending {
     border: 1px solid rgba(250,204,21,0.4);
     background: rgba(250,204,21,0.07);
-    border-radius: 10px;
+    border-radius:var(--vx-r-3);
     padding: 12px;
 }
 .admin-panel-pending h4 {
     margin: 0 0 8px;
-    color: #facc15;
+    color: var(--vx-warn);
     font-size: 0.95em;
     display: flex; align-items: center; gap: 6px;
 }
@@ -105,11 +105,11 @@ export const adminPanelStyles = `
 .admin-panel-pending-row button {
     padding: 5px 10px; font-size: 0.82em;
     background: rgba(0,0,0,0.4); color: white;
-    border: 1px solid var(--border-color); border-radius: 6px;
+    border: 1px solid var(--border-color); border-radius:var(--vx-r-2);
     cursor: pointer; width: auto; height: auto;
 }
 .admin-panel-pending-row button.primary {
-    background: #facc15; color: #1a1300;
+    background: var(--vx-warn); color: #1a1300;
     border-color: transparent; font-weight: 700;
 }
 .admin-panel-pending-row button.primary:hover { background: #fde047; }
@@ -122,9 +122,9 @@ export const adminPanelStyles = `
 .admin-panel-modal-bg.show { display: flex; }
 .admin-panel-modal {
     background: rgba(15,23,35,0.92);
-    backdrop-filter: blur(20px);
+    
     border: 1px solid var(--border-color);
-    border-radius: 12px; padding: 22px;
+    border-radius:var(--vx-r-3); padding: 22px;
     width: min(420px, 92vw); color: white;
 }
 .admin-panel-modal h3 { margin: 0 0 6px; font-size: 1.15em; }
@@ -132,7 +132,7 @@ export const adminPanelStyles = `
 .admin-panel-modal label { display: block; font-size: 0.82em; color: rgba(255,255,255,0.6); margin: 8px 0 4px; }
 .admin-panel-modal input[type="text"],
 .admin-panel-modal input[type="email"] {
-    width: 100%; padding: 9px 10px; border-radius: 8px;
+    width: 100%; padding: 9px 10px; border-radius:var(--vx-r-2);
     background: rgba(0,0,0,0.4); border: 1px solid var(--border-color);
     color: white; font-family: inherit; font-size: 1em;
 }
@@ -140,14 +140,14 @@ export const adminPanelStyles = `
     display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px;
 }
 .admin-panel-modal-actions button {
-    padding: 7px 13px; border-radius: 8px;
+    padding: 7px 13px; border-radius:var(--vx-r-2);
     border: 1px solid var(--border-color);
     background: rgba(0,0,0,0.4); color: white;
     cursor: pointer; font-family: inherit;
     width: auto; height: auto;
 }
 .admin-panel-modal-actions button.primary {
-    background: var(--primary-color); color: #001022;
+    background: var(--primary-color); color: var(--vx-accent-ink);
     border-color: transparent; font-weight: 700;
 }
 `;
@@ -244,14 +244,14 @@ export function initAdminPanel(root) {
     }
 
     function flash(msg, kind = 'info') {
-        const colors = { info: '#27beff', error: '#f87171', success: '#4ade80' };
+        const colors = { info: 'var(--vx-accent)', error: 'var(--vx-bad)', success: 'var(--vx-ok)' };
         const div = document.createElement('div');
         div.style.cssText = `
             position: fixed; bottom: 24px; right: 24px;
-            background: rgba(15,23,35,0.92); backdrop-filter: blur(12px);
+            background: rgba(15,23,35,0.92); 
             border: 1px solid ${colors[kind] || colors.info};
             color: ${colors[kind] || colors.info};
-            padding: 10px 14px; border-radius: 8px; font-family: inherit;
+            padding: 10px 14px; border-radius:var(--vx-r-2); font-family: inherit;
             font-size: 0.9em; z-index: 99999;
         `;
         div.textContent = msg;
@@ -339,11 +339,11 @@ export function initAdminPanel(root) {
         const bg = document.createElement('div');
         bg.style.cssText = `
             position: fixed; inset: 0; background: rgba(4,10,18,0.72);
-            backdrop-filter: blur(6px); z-index: 100000;
+             z-index: 100000;
             display: flex; align-items: center; justify-content: center; padding: 20px;
         `;
         bg.innerHTML = `
-            <div style="background:#0f1723;border:1px solid #27beff55;border-radius:12px;
+            <div style="background:#0f1723;border:1px solid var(--vx-accent)55;border-radius:var(--vx-r-3);
                         padding:20px;max-width:460px;width:100%;font-family:inherit;color:#e6edf5;">
                 <div style="font-weight:600;margin-bottom:6px;">Temporary password for ${email}</div>
                 <div style="font-size:.86em;opacity:.75;margin-bottom:14px;">
@@ -353,7 +353,7 @@ export function initAdminPanel(root) {
                     They must change it at next sign-in.
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
-                    <code style="flex:1;background:#060c14;border:1px solid #ffffff1a;border-radius:8px;
+                    <code style="flex:1;background:#060c14;border:1px solid #ffffff1a;border-radius:var(--vx-r-2);
                                  padding:10px 12px;font-size:1.1em;letter-spacing:.06em;">${pw}</code>
                     <button id="ap-copy-pw" class="primary" style="white-space:nowrap;">Copy</button>
                 </div>
@@ -510,7 +510,7 @@ export function initAdminPanel(root) {
             const approved = r.status === 'approved';
             row.innerHTML = `
                 <div class="who">
-                    <div class="email">${escapeHtml(r.email)}${approved ? ' <span style="color:#34d399;font-size:.82em;">✓ approved</span>' : ''}</div>
+                    <div class="email">${escapeHtml(r.email)}${approved ? ' <span style="color:var(--vx-ok);font-size:.82em;">✓ approved</span>' : ''}</div>
                     <div class="when">Requested ${fmtDate(r.requestedAt)}</div>
                 </div>
                 ${approved
@@ -589,9 +589,9 @@ export function initAdminPanel(root) {
             const row = document.createElement('div');
             row.className = 'admin-panel-pending-row';
             const statusLabel = r.approved
-                ? '<span style="color:#34d399;font-size:.82em;">✓ approved</span>'
+                ? '<span style="color:var(--vx-ok);font-size:.82em;">✓ approved</span>'
                 : (r.status === 'pending'
-                    ? '<span style="color:#facc15;font-size:.82em;">● pending</span>'
+                    ? '<span style="color:var(--vx-warn);font-size:.82em;">● pending</span>'
                     : `<span style="color:rgba(255,255,255,.5);font-size:.82em;">${escapeHtml(r.status)}</span>`);
             const when = r.status === 'pending'
                 ? `Requested ${fmtDate(r.requestedAt)}`
@@ -603,7 +603,7 @@ export function initAdminPanel(root) {
             const links = Array.isArray(r.links) ? r.links : [];
             const linksHtml = links.length
                 ? `<div class="when" style="margin-top:3px;">Links: ${links.map((u) =>
-                    `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="color:#27beff;word-break:break-all;">${escapeHtml(u)}</a>`
+                    `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="color:var(--vx-accent);word-break:break-all;">${escapeHtml(u)}</a>`
                   ).join(' · ')}</div>`
                 : '';
             row.innerHTML = `
