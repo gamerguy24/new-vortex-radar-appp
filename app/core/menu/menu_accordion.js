@@ -34,6 +34,51 @@ function apply(header, members, collapsed) {
     });
 }
 
+// ── section activity counts ───────────────────────────────────────────────────
+// Each section header shows how many of its layers are currently on, so a
+// collapsed group still tells you whether anything under it is running. The
+// count element is created here rather than in a separate module on purpose:
+// the accordion derives its saved-state key from the header's textContent, so
+// anything injected into a header before that read would corrupt the key.
+function countMembers(header) {
+    let on = 0, total = 0;
+    let n = header.nextElementSibling;
+    while (n && !n.classList.contains('armrHeader')) {
+        const boxes = n.querySelectorAll ? n.querySelectorAll('input[type="checkbox"]') : [];
+        boxes.forEach((b) => { total++; if (b.checked) on++; });
+        n = n.nextElementSibling;
+    }
+    return { on, total };
+}
+
+function refreshCounts(root) {
+    if (!root) return;
+    root.querySelectorAll('.armrHeader').forEach((h) => {
+        const { on, total } = countMembers(h);
+        let el = h.querySelector('.armr-acc-count');
+        if (!total) { if (el) el.textContent = ''; return; }
+        if (!el) {
+            el = document.createElement('span');
+            el.className = 'armr-acc-count';
+            const chev = h.querySelector('.armr-acc-chev');
+            if (chev) h.insertBefore(el, chev); else h.appendChild(el);
+        }
+        // Empty string collapses the chip (`:empty` in the stylesheet).
+        el.textContent = on ? on + ' ON' : '';
+    });
+}
+
+// Recount after anything the user does in the menu. A click covers the cases a
+// change event misses — a switch reset programmatically after a blocked click.
+function watchCounts(root) {
+    if (!root || root.dataset.countsWatched) return;
+    root.dataset.countsWatched = '1';
+    const run = () => refreshCounts(root);
+    root.addEventListener('change', run, true);
+    root.addEventListener('click', () => setTimeout(run, 0), true);
+    run();
+}
+
 function init() {
     const screen = document.getElementById(SCREEN_ID);
     if (!screen) return;
@@ -72,5 +117,9 @@ function init() {
 }
 
 init();
+// Counts run on the main menu (after the accordion has read its titles) and on
+// the Settings sub-screen, which has its own layer groups but no accordion.
+watchCounts(document.getElementById(SCREEN_ID));
+watchCounts(document.getElementById('vortexRadarMenuSettingsScreen'));
 
-module.exports = { init };
+module.exports = { init, refreshCounts };
