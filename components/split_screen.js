@@ -57,6 +57,12 @@ function ensureDual() {
         fadeDuration: 0,
     });
 
+    // Wear the same basemap theme as the primary map — otherwise the compare
+    // view shows Vortex's grey/blue map beside a stock Mapbox dark one.
+    dualMap.on('style.load', () => {
+        if (window.vortexBasemap) window.vortexBasemap.apply(dualMap);
+    });
+
     // Match the primary map's interaction restrictions.
     dualMap.touchZoomRotate.disableRotation();
     dualMap.dragRotate.disable();

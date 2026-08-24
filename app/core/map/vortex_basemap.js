@@ -1,68 +1,120 @@
 /*
  * Vortex Radar basemap theme.
  *
- * Re-tints the Mapbox basemap to a clean LIGHT-GREY palette (instead of the
- * default dark / RadarScope-like look) so the map has its own identity. Works by
- * setting paint properties on the existing style — it does NOT swap the whole
- * style, so all the radar / alert / marker layers stay intact.
+ * Re-tints the Mapbox basemap to Vortex Radar's own palette: a medium-light
+ * neutral grey landmass with a true blue ocean, dark boundaries, and dark
+ * labels on a light halo. This is what stops the map reading as the stock
+ * Mapbox dark style that every other radar app (this one's ancestor included)
+ * ships with.
  *
- * Only the basemap's own vector layers (source === 'composite') are retinted,
- * so app-added layers (station pills, alerts, reports, etc.) are untouched.
+ * It works by setting paint properties on the style that is already loaded — it
+ * never swaps the style — so every radar / alert / marker layer the app has
+ * added stays exactly where it is. Only the basemap's own vector layers are
+ * touched (source 'composite', plus the sourceless background layer).
+ *
+ * Land is deliberately lighter than the radar palette's low-reflectivity greens
+ * and blues so returns stay legible, and the ocean blue is desaturated well
+ * below anything in the reflectivity ramp so coastline never reads as echo.
+ *
+ * apply_vortex_basemap(targetMap) takes an optional map so the split-screen
+ * second map (components/split_screen.js) gets the identical treatment.
  */
 
 const map = require('./map');
 
-// Dark-grey (charcoal/slate) palette — not black, not light.
 const VORTEX_PALETTE = {
-    land:          'rgb(62, 66, 72)',     // dark grey (dominant background)
-    water:         'rgb(46, 50, 56)',     // slightly darker grey
-    national_park: 'rgb(58, 70, 60)',     // muted dark grey-green
-    landuse:       'rgb(68, 72, 78)',     // a touch lighter than land
-    road:          'rgb(120, 127, 138)',  // light-grey roads, visible on charcoal
-    boundary:      'rgb(150, 157, 168)',  // light-grey admin / county lines
-    label_text:    'rgb(233, 237, 243)',  // light labels (readable on dark grey)
-    label_halo:    'rgb(38, 41, 46)',     // dark halo for legibility
+    // ---- surfaces
+    land:          'rgb(156, 160, 165)',  // medium-light cool grey (dominant)
+    landuse:       'rgb(147, 151, 157)',  // urban/landuse, a step darker so cities read
+    national_park: 'rgb(144, 156, 142)',  // muted sage, not a saturated green
+    building:      'rgb(137, 141, 147)',
+    water:         'rgb(51, 92, 133)',    // marine blue — the ocean, clearly blue
+    waterway:      'rgb(68, 110, 150)',   // rivers/streams, a touch lighter than open water
+
+    // ---- lines
+    road:          'rgb(231, 234, 238)',  // near-white roads read cleanly on grey
+    road_major:    'rgb(245, 247, 249)',  // motorways slightly brighter
+    road_casing:   'rgb(118, 124, 132)',  // thin dark casing gives roads definition
+    boundary:      'rgb(82, 88, 97)',     // state / county lines, dark on light grey
+
+    // ---- type: dark text on a light halo (inverted from the old dark theme)
+    label_text:    'rgb(28, 32, 37)',
+    label_halo:    'rgba(255, 255, 255, 0.88)',
 };
 
 const BASE_SOURCE = 'composite'; // Mapbox vector basemap source
 
-function _set(layer, prop, value) {
-    try { if (map.getLayer(layer)) map.setPaintProperty(layer, prop, value); }
-    catch (e) { /* layer/prop not present in this style */ }
+function _set(m, layer, prop, value) {
+    try { if (m.getLayer(layer)) m.setPaintProperty(layer, prop, value); }
+    catch (e) { /* layer or property not present in this style — fine */ }
 }
 
-function apply_vortex_basemap() {
-    // Known base fills/background (these drive the overall color).
-    _set('land', 'background-color', VORTEX_PALETTE.land);
-    _set('national-park', 'fill-color', VORTEX_PALETTE.national_park);
-    _set('landuse', 'fill-color', VORTEX_PALETTE.landuse);
-    _set('water', 'fill-color', VORTEX_PALETTE.water);
+// Roads come as paired fill/casing layers; casing ids end in "-case".
+function _isCasing(id) { return /(^|[-_])case($|[-_])|casing/i.test(id); }
+function _isMajorRoad(id) { return /motorway|trunk|highway/i.test(id); }
+
+function apply_vortex_basemap(targetMap) {
+    const m = targetMap || map;
+    if (!m || typeof m.getStyle !== 'function') return;
+
+    // Called before the style finished loading (boot order, or a style swap)?
+    // There is nothing to paint yet — wait for the style and re-run once.
+    try {
+        if (typeof m.isStyleLoaded === 'function' && !m.isStyleLoaded()) {
+            m.once('style.load', () => apply_vortex_basemap(m));
+            return;
+        }
+    } catch (e) { /* older gl-js without isStyleLoaded — just carry on */ }
+
+    // The named base layers in the Mapbox standard styles. Set explicitly first
+    // so the map is right even if the layer walk below finds nothing.
+    _set(m, 'land', 'background-color', VORTEX_PALETTE.land);
+    _set(m, 'background', 'background-color', VORTEX_PALETTE.land);
+    _set(m, 'national-park', 'fill-color', VORTEX_PALETTE.national_park);
+    _set(m, 'landuse', 'fill-color', VORTEX_PALETTE.landuse);
+    _set(m, 'water', 'fill-color', VORTEX_PALETTE.water);
 
     let layers = [];
-    try { layers = (map.getStyle() && map.getStyle().layers) || []; } catch (e) { return; }
+    try { layers = (m.getStyle() && m.getStyle().layers) || []; } catch (e) { return; }
 
     for (const l of layers) {
-        // Only touch the basemap's own vector layers — never app layers.
-        if (l.source !== BASE_SOURCE) continue;
         const id = l.id || '';
-
+        // Background layers carry no source, so they must be allowed through
+        // before the source check below.
         if (l.type === 'background') {
-            _set(id, 'background-color', VORTEX_PALETTE.land);
-        } else if (l.type === 'fill') {
-            if (/water/i.test(id)) _set(id, 'fill-color', VORTEX_PALETTE.water);
-            else if (/park|grass|wood|forest|green/i.test(id)) _set(id, 'fill-color', VORTEX_PALETTE.national_park);
-            else if (/land|building/i.test(id)) _set(id, 'fill-color', VORTEX_PALETTE.landuse);
+            _set(m, id, 'background-color', VORTEX_PALETTE.land);
+            continue;
+        }
+        // Never touch layers the app added (radar, alerts, markers, tracks).
+        if (l.source !== BASE_SOURCE) continue;
+
+        if (l.type === 'fill') {
+            if (/water|ocean|sea|bathymetry/i.test(id)) _set(m, id, 'fill-color', VORTEX_PALETTE.water);
+            else if (/park|grass|wood|forest|green|pitch|cemetery/i.test(id)) _set(m, id, 'fill-color', VORTEX_PALETTE.national_park);
+            else if (/building/i.test(id)) _set(m, id, 'fill-color', VORTEX_PALETTE.building);
+            else if (/land|aeroway|sand|snow/i.test(id)) _set(m, id, 'fill-color', VORTEX_PALETTE.landuse);
+        } else if (l.type === 'fill-extrusion') {
+            _set(m, id, 'fill-extrusion-color', VORTEX_PALETTE.building);
         } else if (l.type === 'line') {
-            if (/admin|boundary|border/i.test(id)) _set(id, 'line-color', VORTEX_PALETTE.boundary);
-            else if (/water/i.test(id)) _set(id, 'line-color', VORTEX_PALETTE.water);
-            else if (/road|street|bridge|tunnel|motorway|highway|transit/i.test(id)) _set(id, 'line-color', VORTEX_PALETTE.road);
+            if (/admin|boundary|border/i.test(id)) _set(m, id, 'line-color', VORTEX_PALETTE.boundary);
+            else if (/water|river|stream|canal/i.test(id)) _set(m, id, 'line-color', VORTEX_PALETTE.waterway);
+            else if (/road|street|bridge|tunnel|motorway|highway|transit|rail|path/i.test(id)) {
+                _set(m, id, 'line-color', _isCasing(id) ? VORTEX_PALETTE.road_casing
+                    : _isMajorRoad(id) ? VORTEX_PALETTE.road_major
+                    : VORTEX_PALETTE.road);
+            }
         } else if (l.type === 'symbol') {
-            // Darken place / road labels so they read on the light grey map.
-            _set(id, 'text-color', VORTEX_PALETTE.label_text);
-            _set(id, 'text-halo-color', VORTEX_PALETTE.label_halo);
-            _set(id, 'text-halo-width', 1.2);
+            _set(m, id, 'text-color', VORTEX_PALETTE.label_text);
+            _set(m, id, 'text-halo-color', VORTEX_PALETTE.label_halo);
+            _set(m, id, 'text-halo-width', 1.3);
         }
     }
+}
+
+// Exposed globally as well, because the split-screen second map lives in an ES
+// module (components/split_screen.js) that can't require() into this bundle.
+if (typeof window !== 'undefined') {
+    window.vortexBasemap = { apply: apply_vortex_basemap, palette: VORTEX_PALETTE };
 }
 
 module.exports = { apply_vortex_basemap, VORTEX_PALETTE };

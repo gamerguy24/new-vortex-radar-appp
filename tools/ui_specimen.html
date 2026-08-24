@@ -129,6 +129,31 @@ nothing on the interface competes with a warning polygon.</p>
   </div>
 </div>
 
+<h2>Basemap</h2>
+<p class="note">The map's own palette, from <code>app/core/map/vortex_basemap.js</code> (mirrored here — that file
+is the source of truth). Medium-light grey land with a blue ocean, applied by re-tinting the loaded Mapbox
+style rather than swapping it, so no radar or alert layer moves.</p>
+<div class="grid">
+  <div class="sw"><i style="background:rgb(156,160,165)"></i><b>Land</b><span>rgb(156 160 165)</span></div>
+  <div class="sw"><i style="background:rgb(147,151,157)"></i><b>Landuse / urban</b><span>rgb(147 151 157)</span></div>
+  <div class="sw"><i style="background:rgb(144,156,142)"></i><b>Parks</b><span>rgb(144 156 142)</span></div>
+  <div class="sw"><i style="background:rgb(51,92,133)"></i><b>Ocean</b><span>rgb(51 92 133)</span></div>
+  <div class="sw"><i style="background:rgb(68,110,150)"></i><b>Rivers</b><span>rgb(68 110 150)</span></div>
+  <div class="sw"><i style="background:rgb(231,234,238)"></i><b>Roads</b><span>rgb(231 234 238)</span></div>
+  <div class="sw"><i style="background:rgb(82,88,97)"></i><b>Boundaries</b><span>rgb(82 88 97)</span></div>
+  <div class="sw"><i style="background:rgb(28,32,37)"></i><b>Labels</b><span>rgb(28 32 37)</span></div>
+</div>
+<div style="margin-top:12px;border:1px solid var(--vx-line);border-radius:var(--vx-r-3);overflow:hidden;max-width:520px">
+  <div style="background:rgb(51,92,133);padding:26px 14px">
+    <div style="background:rgb(156,160,165);border-radius:var(--vx-r-2);padding:16px 14px">
+      <div style="height:3px;background:rgb(231,234,238);margin-bottom:9px;border-radius:2px"></div>
+      <div style="height:1px;background:rgb(82,88,97);margin-bottom:11px"></div>
+      <span style="color:rgb(28,32,37);font-size:12px;font-weight:700;
+        text-shadow:0 0 3px rgba(255,255,255,.88),0 0 3px rgba(255,255,255,.88)">ATLANTA</span>
+    </div>
+  </div>
+</div>
+
 <h2>What this palette deliberately excludes</h2>
 <p class="note">Radar reflectivity and velocity tables, NWS event colors, hurricane categories, outage buckets,
 spotter report types and sounding traces are <em>data</em>. They keep their own colors and are not themed by
