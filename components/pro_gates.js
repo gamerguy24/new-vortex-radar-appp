@@ -3,7 +3,8 @@
  * Client-side subscription gating for the paid features, organized into three
  * cumulative tiers (a higher tier unlocks everything below it):
  *
- *   Tier One   (level 1) — Live Lightning
+ *   Tier One   (level 1) — Live Lightning, Surface Fronts, Tide Stations,
+ *                          Buoys, BuoyCAMs, Power Outages
  *   Tier Two   (level 2) — Manual Storm Track, Split Screen
  *   Tier Three (level 3) — Warning Graphic, Models & Forecast, My Locations,
  *                          Vortex Graphics
@@ -24,6 +25,11 @@ const TIER_NAMES = { 1: 'Tier One', 2: 'Tier Two', 3: 'Tier Three' };
 const FEATURES = [
   // Tier One
   { id: 'armrLightningVisBtn', name: 'Live Lightning', tier: 1 },
+  { id: 'armrSurfaceFrontsBtn', name: 'Surface Fronts', tier: 1 },
+  { id: 'armrTideStationsBtn', name: 'Tide Stations', tier: 1 },
+  { id: 'armrBuoysBtn', name: 'Buoys', tier: 1 },
+  { id: 'armrBuoyCamsBtn', name: 'BuoyCAMs', tier: 1 },
+  { id: 'armrPowerOutagesBtn', name: 'Power Outages', tier: 1 },
   // Tier Two
   { id: 'mstMenuItemDiv', name: 'Manual Storm Track', tier: 2 },
   { id: 'vortexSplitBtn', name: 'Split Screen', tier: 2 },
@@ -73,6 +79,23 @@ function upgradeToast(name, requiredTier) {
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 6000);
 }
+
+// The server enforces the same tiers on the paid data endpoints (see
+// PROXY_TIER_RULES and billing.requireTier in server.js), so a viewer who
+// bypasses the click gate in devtools gets a 402 instead of the data. Layers
+// funnel that response through here to show the same upgrade prompt and put
+// their menu switch back to off, rather than failing silently.
+window.vortexProGate = {
+  prompt: upgradeToast,
+  paywalled(res) { return !!res && res.status === 402; },
+  denied(name, requiredTier, switchId) {
+    upgradeToast(name, requiredTier || 1);
+    if (switchId) {
+      const el = document.getElementById(switchId);
+      if (el && el.checked) el.checked = false;
+    }
+  },
+};
 
 function init() {
   // ONE capture-phase listener on the document. Because the capture phase

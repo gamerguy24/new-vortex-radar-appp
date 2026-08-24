@@ -30,7 +30,7 @@ function toast(msg, kind) {
 // Feature summaries shown on the plan picker (cumulative — each tier includes
 // the ones below it). Mirrors the gating in components/pro_gates.js.
 const TIER_INFO = {
-  tier1: { name: 'Tier One', features: ['Live Lightning'] },
+  tier1: { name: 'Tier One', features: ['Live Lightning', 'Surface Fronts', 'Tide Stations', 'Buoys', 'BuoyCAMs', 'Power Outages'] },
   tier2: { name: 'Tier Two', features: ['Everything in Tier One', 'Manual Storm Track', 'Split Screen'] },
   tier3: { name: 'Tier Three', features: ['Everything in Tier Two', 'Warning Graphic', 'Models & Forecast', 'My Locations', 'Vortex Graphics'] },
 };

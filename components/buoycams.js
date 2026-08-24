@@ -165,6 +165,12 @@ async function load() {
   if (!_active) return;
   try {
     const res = await fetch(PROXY_URL, { cache: 'no-store' });
+    // 402 = the server's Tier One gate (see PROXY_TIER_RULES in server.js).
+    if (res.status === 402 && window.vortexProGate) {
+      window.vortexProGate.denied('BuoyCAMs', 1, 'armrBuoyCamsSwitchElem');
+      removeBuoyCams();
+      return;
+    }
     if (!res.ok || !_active) return;
     const text = await res.text();
     if (!_active) return;

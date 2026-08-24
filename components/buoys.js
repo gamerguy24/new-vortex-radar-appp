@@ -116,6 +116,12 @@ async function load() {
   const url = `${BASE}?version=1.5&lat=${c.lat.toFixed(3)}&lon=${c.lon.toFixed(3)}`;
   try {
     const res = await fetch(`/api/proxy?url=${url}`, { cache: 'no-store' });
+    // 402 = the server's Tier One gate (see PROXY_TIER_RULES in server.js).
+    if (res.status === 402 && window.vortexProGate) {
+      window.vortexProGate.denied('Buoys', 1, 'armrBuoysSwitchElem');
+      removeBuoys();
+      return;
+    }
     if (!res.ok || !_active) return;
     const text = await res.text();
     if (!_active) return;

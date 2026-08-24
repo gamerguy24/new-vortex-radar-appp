@@ -127,6 +127,32 @@ function createBilling({ store }) {
         return res.status(402).json({ error: 'Pro subscription required', upgrade: '/api/billing/checkout' });
     }
 
+    // True when this request's user is at or above `level` (1..3). Tiers are
+    // cumulative, and nothing is gated when billing isn't configured (dev).
+    // Use this to enforce a tier inside a handler that has other work to do;
+    // requireTier() below is the middleware form.
+    function hasTier(user, level) {
+        if (!isBillingConfigured) return true;
+        if (!user) return false;
+        return billingState(user).tierLevel >= level;
+    }
+
+    // Express middleware: gate a JSON API route behind a tier. This is what
+    // stops a signed-in free user from calling a paid feature's endpoint
+    // directly from devtools once the client-side gate is bypassed.
+    function requireTier(level) {
+        return function (req, res, next) {
+            if (!isBillingConfigured) return next();
+            if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+            if (hasTier(req.user, level)) return next();
+            return res.status(402).json({
+                error: 'Tier ' + level + ' subscription required',
+                requiredTier: level,
+                upgrade: '/api/billing/checkout',
+            });
+        };
+    }
+
     // Same gate for page/asset routes: redirect HTML navigations to an upgrade
     // prompt instead of returning raw 402 JSON.
     function requireProPage(req, res, next) {
@@ -279,7 +305,7 @@ function createBilling({ store }) {
         return router;
     }
 
-    return { webhookRouter, apiRouter, requirePro, requireProPage, billingState, isBillingConfigured };
+    return { webhookRouter, apiRouter, requirePro, requireProPage, requireTier, hasTier, billingState, isBillingConfigured };
 }
 
 module.exports = { createBilling };

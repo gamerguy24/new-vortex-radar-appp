@@ -19,8 +19,16 @@ function load_lightning(callback) {
             'User-Agent': 'GR2Analyst'
         }
     })
-        .then(response => response.text())
+        .then(response => {
+            // 402 = the server's Tier One gate (see PROXY_TIER_RULES in server.js).
+            if (response.status == 402) {
+                if (window.vortexProGate) window.vortexProGate.denied('Live Lightning', 1, 'armrLightningVisBtnSwitchElem');
+                return null;
+            }
+            return response.text();
+        })
         .then(data => {
+            if (data == null) return;
             // console.log(data);
             console.log(`Fetched lightning data with a byte length of ${ut.formatBytes(new Blob([data]).size)}.`);
             data = data.split('\n');

@@ -15,7 +15,9 @@ const SRC = 'power-outages-src';
 const FILL = 'power-outages-fill';
 const LINE = 'power-outages-line';
 const GEO_URL = '/geo/counties-10m.json';
-const API_URL = 'https://massoutage.com/api/v1/live/map';
+// Goes through the app's own endpoint (not MassOutage directly) so the server
+// can enforce the Tier One gate — see /api/outages/live in server.js.
+const API_URL = '/api/outages/live';
 const REFRESH_MS = 3 * 60 * 1000;
 
 // Severity buckets (customers out) → color. Shared by the paint step + legend.
@@ -87,7 +89,12 @@ function applyStates() {
 
 async function refresh() {
     try {
-        const res = await fetch(API_URL, { cache: 'no-store' });
+        const res = await fetch(API_URL, { cache: 'no-store', credentials: 'same-origin' });
+        if (res.status === 402) {
+            if (window.vortexProGate) window.vortexProGate.denied('Power Outages', 1, 'armrPowerOutagesBtnSwitchElem');
+            disable();
+            return;
+        }
         if (!res.ok) throw new Error('outages ' + res.status);
         const j = await res.json();
         _data = (j.data && j.data.counties) || {};

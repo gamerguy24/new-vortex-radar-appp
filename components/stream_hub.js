@@ -21,6 +21,7 @@
  */
 
 import OBSClient from './obs_websocket.js';
+import { openMiniPlayer } from './stream_player.js';
 
 const API = '/api/stream';
 const LIVE_PING_MS = 15000;   // how often we push our moving position while live
@@ -160,7 +161,7 @@ async function refreshOtherChasers() {
                     <div style="font-weight:700;color:#ff3b30">🔴 ${escapeHtml(s.name || 'Live chaser')}</div>
                     ${s.place ? `<div style="margin-top:2px">📍 ${escapeHtml(s.place)}</div>` : ''}
                     ${s.url ? `<div style="margin-top:7px;display:flex;gap:8px;align-items:center">
-                        <button class="vrsh-watch-btn" data-vrsh-watch="${escapeAttr(s.url)}" data-vrsh-name="${escapeAttr(s.name || 'Live chaser')}">▶ Watch here</button>
+                        <button class="vrsh-watch-btn" data-vrsh-watch="${escapeAttr(s.url)}" data-vrsh-name="${escapeAttr(s.name || 'Live chaser')}" data-vrsh-id="${escapeAttr(s.id)}">▶ Watch here</button>
                         <a href="${escapeAttr(s.url)}" target="_blank" rel="noopener" style="color:#27beff">Open ↗</a>
                     </div>` : ''}
                 </div>`);
@@ -333,109 +334,18 @@ function reportAnnounce(results) {
     if (results.discord) toast((map.discord[results.discord]) || ('Discord: ' + results.discord), results.discord === 'posted' ? 'ok' : 'warn');
     if (results.facebook === 'not-connected') toast('Facebook not connected yet — connect it in the Hub.', 'warn');
 }
-
-// ─── in-app video player (embeds a chaser's stream link) ───────────────────────
-// Turns a chaser's stream URL into a playable embed inside Vortex. Supports
-// YouTube, Twitch, Kick, Facebook, and direct HLS/MP4 links. Anything we can't
-// safely embed (most sites block being iframed) falls back to an external link.
-function buildEmbed(rawUrl) {
-    const url = String(rawUrl || '').trim();
-    if (!/^https?:\/\//i.test(url)) return null;
-    let u; try { u = new URL(url); } catch { return null; }
-    const host = u.hostname.replace(/^www\./, '').toLowerCase();
-    const parent = location.hostname || 'localhost';
-    const iframe = (src) => {
-        const f = document.createElement('iframe');
-        f.src = src;
-        f.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
-        f.setAttribute('allowfullscreen', '');
-        f.setAttribute('frameborder', '0');
-        f.style.cssText = 'width:100%;height:100%;border:0;display:block';
-        return f;
-    };
-
-    // YouTube — watch?v=, youtu.be/ID, /live/ID, /embed/ID
-    if (/(^|\.)youtube\.com$/.test(host) || host === 'youtu.be') {
-        let id = '';
-        if (host === 'youtu.be') id = u.pathname.slice(1);
-        else if (u.searchParams.get('v')) id = u.searchParams.get('v');
-        else { const m = u.pathname.match(/\/(?:live|embed|shorts)\/([\w-]{6,})/); if (m) id = m[1]; }
-        if (id) return iframe(`https://www.youtube.com/embed/${encodeURIComponent(id)}?autoplay=1&playsinline=1`);
-        // Channel live page (no video id we can parse) → external.
-        return null;
-    }
-    // Twitch — twitch.tv/CHANNEL  (parent domain required)
-    if (host === 'twitch.tv' || host === 'm.twitch.tv') {
-        const ch = (u.pathname.split('/').filter(Boolean)[0] || '').toLowerCase();
-        if (ch) return iframe(`https://player.twitch.tv/?channel=${encodeURIComponent(ch)}&parent=${encodeURIComponent(parent)}&autoplay=true`);
-        return null;
-    }
-    // Kick — kick.com/CHANNEL
-    if (host === 'kick.com') {
-        const ch = (u.pathname.split('/').filter(Boolean)[0] || '').toLowerCase();
-        if (ch) return iframe(`https://player.kick.com/${encodeURIComponent(ch)}?autoplay=true`);
-        return null;
-    }
-    // Facebook video/live → FB video plugin
-    if (/(^|\.)facebook\.com$/.test(host) || host === 'fb.watch') {
-        return iframe(`https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&autoplay=true`);
-    }
-    // Direct HLS / progressive video
-    if (/\.m3u8($|\?)/i.test(u.pathname + u.search) || /\.(mp4|webm|mov)($|\?)/i.test(u.pathname + u.search)) {
-        const v = document.createElement('video');
-        v.controls = true; v.autoplay = true; v.playsInline = true; v.muted = false;
-        v.style.cssText = 'width:100%;height:100%;background:#000;display:block';
-        const isHls = /\.m3u8($|\?)/i.test(u.pathname + u.search);
-        if (isHls && window.Hls && window.Hls.isSupported && window.Hls.isSupported()) {
-            const hls = new window.Hls(); hls.loadSource(url); hls.attachMedia(v);
-            v._vrshHls = hls; // keep ref so we can destroy on close
-        } else {
-            v.src = url; // Safari/iOS play HLS natively; others play mp4/webm
-        }
-        return v;
-    }
-    return null; // unknown host — don't iframe (likely X-Frame-Options blocked)
-}
-
-function closePlayer() {
-    const el = $('vrsh-player');
-    if (!el) return;
-    const v = el.querySelector('video');
-    if (v && v._vrshHls) { try { v._vrshHls.destroy(); } catch {} }
-    if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch {} }
-    el.remove();
-}
-
-function openPlayer(url, name) {
-    closePlayer();
-    const node = buildEmbed(url);
-    const wrap = document.createElement('div');
-    wrap.id = 'vrsh-player';
-    wrap.innerHTML = `
-      <div class="vrsh-player-card">
-        <div class="vrsh-player-head">
-          <div class="vrsh-player-title"><span class="vr-live-pulse"></span> ${escapeHtml(name || 'Live chaser')}</div>
-          <div class="vrsh-player-actions">
-            <a class="vrsh-player-ext" href="${escapeAttr(url)}" target="_blank" rel="noopener">Open ↗</a>
-            <button class="vrsh-player-x" id="vrsh-player-close" aria-label="Close">×</button>
-          </div>
-        </div>
-        <div class="vrsh-player-stage" id="vrsh-player-stage"></div>
-      </div>`;
-    document.body.appendChild(wrap);
-    const stage = wrap.querySelector('#vrsh-player-stage');
-    if (node) {
-        stage.appendChild(node);
-    } else {
-        stage.innerHTML = `<div class="vrsh-player-fallback">
-            This stream can't be embedded here.<br>
-            <a href="${escapeAttr(url)}" target="_blank" rel="noopener">Open the stream in a new tab ↗</a>
-          </div>`;
-    }
-    wrap.querySelector('#vrsh-player-close').onclick = closePlayer;
-    wrap.addEventListener('click', (e) => { if (e.target === wrap) closePlayer(); });
-    document.addEventListener('keydown', function esc(ev) {
-        if (ev.key === 'Escape') { closePlayer(); document.removeEventListener('keydown', esc); }
+// ─── in-app video player ──────────────────────────────────────────────────────
+// Watching a chaser opens the shared floating player (components/stream_player.js):
+// a small draggable card over the map rather than a full-screen modal, so the
+// radar stays usable while the stream plays. Because we know who we're watching,
+// the player also follows their live Hub position — the map keeps them centered
+// as they drive, until you pan the map yourself.
+function openPlayer(url, name, chaserId) {
+    openMiniPlayer({
+        url,
+        name: name || 'Live chaser',
+        platform: 'the stream',
+        track: chaserId ? { kind: 'hub', id: chaserId } : null,
     });
 }
 // Expose for the map-marker popup buttons (built as HTML strings).
@@ -877,7 +787,7 @@ async function init() {
         const btn = e.target && e.target.closest && e.target.closest('[data-vrsh-watch]');
         if (!btn) return;
         e.preventDefault();
-        openPlayer(btn.getAttribute('data-vrsh-watch'), btn.getAttribute('data-vrsh-name'));
+        openPlayer(btn.getAttribute('data-vrsh-watch'), btn.getAttribute('data-vrsh-name'), btn.getAttribute('data-vrsh-id'));
     });
 
     // If this PC opted into remote control, come up as an agent automatically.
@@ -982,25 +892,7 @@ function injectStyles() {
     .vrsh-golive:disabled:hover{background:#334155}
     /* map-popup "watch here" button */
     .vrsh-watch-btn{background:#ff3b30;color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Onest',system-ui,sans-serif}
-    .vrsh-watch-btn:hover{background:#ff5546}
-    /* in-app player */
-    #vrsh-player{position:fixed;inset:0;background:rgba(2,5,12,.82);z-index:100070;display:flex;
-      align-items:center;justify-content:center;font-family:'Onest',system-ui,sans-serif;padding:18px}
-    .vrsh-player-card{width:min(960px,96vw);background:#0b1220;border:1px solid #1e2a44;border-radius:14px;
-      overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.7)}
-    .vrsh-player-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #1a2540}
-    .vrsh-player-title{font-weight:800;font-size:15px;color:#fff;display:flex;align-items:center;gap:8px}
-    .vrsh-player-title .vr-live-pulse{background:#ff3b30;width:10px;height:10px}
-    .vrsh-player-actions{display:flex;align-items:center;gap:14px}
-    .vrsh-player-ext{color:#27beff;font-size:13px;font-weight:700;text-decoration:none}
-    .vrsh-player-ext:hover{color:#7fdcff}
-    .vrsh-player-x{background:none;border:none;color:#94a3b8;font-size:26px;line-height:1;cursor:pointer}
-    .vrsh-player-x:hover{color:#fff}
-    .vrsh-player-stage{position:relative;width:100%;aspect-ratio:16/9;background:#000}
-    .vrsh-player-stage>iframe,.vrsh-player-stage>video{position:absolute;inset:0;width:100%;height:100%}
-    .vrsh-player-fallback{position:absolute;inset:0;display:flex;flex-direction:column;gap:8px;align-items:center;
-      justify-content:center;text-align:center;color:#cbd5e1;font-size:14px;padding:20px}
-    .vrsh-player-fallback a{color:#27beff}`;
+    .vrsh-watch-btn:hover{background:#ff5546}`;
     document.head.appendChild(s);
 }
 

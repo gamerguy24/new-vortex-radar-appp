@@ -1682,6 +1682,28 @@ function proxyHostAllowed(host) {
     host = String(host || '').toLowerCase();
     return PROXY_ALLOWED.some((h) => host === h || host.endsWith('.' + h));
 }
+
+// Paid data sources reachable through the generic proxy. Matched on host AND
+// path, because the same hosts also serve free layers (placefilenation hosts
+// mPING/fire/hurricanes; tgftp hosts SPC and the radar files). Without this a
+// free user could bypass the client-side gate in components/pro_gates.js by
+// calling /api/proxy with the feature's URL straight from devtools.
+const PROXY_TIER_RULES = [
+    { tier: 1, name: 'Live Lightning', test: (h, p) => /(^|\.)placefilenation\.com$/.test(h) && /^\/placefiles\/20lightning\.php/.test(p) },
+    { tier: 1, name: 'Buoys',          test: (h, p) => /(^|\.)placefilenation\.com$/.test(h) && /^\/placefiles\/buoys\.php/.test(p) },
+    { tier: 1, name: 'BuoyCAMs',       test: (h) => /(^|\.)ndbc\.noaa\.gov$/.test(h) },
+    { tier: 1, name: 'Surface Fronts', test: (h, p) => /(^|\.)tgftp\.nws\.noaa\.gov$/.test(h) && /^\/data\/raw\/as\/asus0\d\.kwbc\.cod\.sus\.txt/.test(p) },
+];
+// → { tier, name } when this target needs a tier the user doesn't have, else null.
+function proxyTierBlock(user, host, pathname) {
+    const h = String(host || '').toLowerCase();
+    const p = String(pathname || '').toLowerCase();
+    for (const rule of PROXY_TIER_RULES) {
+        if (!rule.test(h, p)) continue;
+        return billing.hasTier(user, rule.tier) ? null : rule;
+    }
+    return null;
+}
 app.get('/api/proxy', requireAuth, async (req, res) => {
     // The app concatenates the target URL unencoded after `url=`, so read it
     // straight from the raw query rather than via req.query (which stops at &).
@@ -1690,9 +1712,19 @@ app.get('/api/proxy', requireAuth, async (req, res) => {
     let target = idx >= 0 ? raw.slice(idx + 4) : '';
     if (/^https?%3a/i.test(target)) { try { target = decodeURIComponent(target); } catch {} }
     if (!target) return res.status(400).json({ error: 'A url is required.' });
-    let host;
-    try { host = new URL(target).hostname; } catch { return res.status(400).json({ error: 'Invalid url.' }); }
+    let host, pathname;
+    try { const u = new URL(target); host = u.hostname; pathname = u.pathname; }
+    catch { return res.status(400).json({ error: 'Invalid url.' }); }
     if (!proxyHostAllowed(host)) return res.status(403).json({ error: 'Host not allowed: ' + host });
+    const blocked = proxyTierBlock(req.user, host, pathname);
+    if (blocked) {
+        return res.status(402).json({
+            error: blocked.name + ' requires Tier ' + blocked.tier + '.',
+            requiredTier: blocked.tier,
+            feature: blocked.name,
+            upgrade: '/api/billing/checkout',
+        });
+    }
     try {
         const upstream = await fetch(target, { headers: { 'User-Agent': 'Mozilla/5.0 (VortexRadar)', 'Accept': '*/*' } });
         const buf = Buffer.from(await upstream.arrayBuffer());
@@ -1723,6 +1755,46 @@ async function spotterProxy(endpoint, req, res) {
 }
 app.post('/api/spotters/positions', requireAuth, (req, res) => spotterProxy('positions', req, res));
 app.post('/api/spotters/reports', requireAuth, (req, res) => spotterProxy('reports', req, res));
+
+// ─── Tier One feature data (server-enforced) ─────────────────────────────────
+// Tide predictions and power outages are fetched from third-party APIs that the
+// browser could reach on its own, so the client used to call them directly.
+// Routing them through these gated endpoints is what makes the Tier One paywall
+// real: flipping the menu switch in devtools now yields a 402, not the layer.
+
+// Tide predictions for one station. Params: station (digits), begin/end (YYYYMMDD).
+app.get('/api/tides/predictions', requireAuth, billing.requireTier(1), async (req, res) => {
+    const station = String(req.query.station || '').replace(/[^0-9]/g, '').slice(0, 12);
+    const begin = String(req.query.begin || '').replace(/[^0-9]/g, '').slice(0, 8);
+    const end = String(req.query.end || '').replace(/[^0-9]/g, '').slice(0, 8);
+    if (!station || begin.length !== 8 || end.length !== 8) {
+        return res.status(400).json({ error: 'station, begin (YYYYMMDD) and end (YYYYMMDD) are required.' });
+    }
+    const url = 'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter'
+        + '?product=predictions&application=NOS.COOPS.TAC.WL'
+        + `&begin_date=${begin}&end_date=${end}&datum=MLLW&station=${station}`
+        + '&time_zone=lst_ldt&units=english&interval=hilo&format=json';
+    try {
+        const upstream = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (VortexRadar)' } });
+        const text = await upstream.text();
+        res.status(upstream.status).type('application/json').set('Cache-Control', 'no-store').send(text);
+    } catch (err) {
+        res.status(502).json({ error: 'Tide data is unavailable.' });
+    }
+});
+
+// Live county power-outage counts (MassOutage: fips -> [out, fraction, incidents]).
+app.get('/api/outages/live', requireAuth, billing.requireTier(1), async (req, res) => {
+    try {
+        const upstream = await fetch('https://massoutage.com/api/v1/live/map', {
+            headers: { 'User-Agent': 'Mozilla/5.0 (VortexRadar)', Accept: 'application/json' },
+        });
+        const text = await upstream.text();
+        res.status(upstream.status).type('application/json').set('Cache-Control', 'no-store').send(text);
+    } catch (err) {
+        res.status(502).json({ error: 'Outage data is unavailable.' });
+    }
+});
 
 // ─── NOAA model data access layer (GFS/HRRR/NAM/GEFS/NDFD on public S3) ──────
 // Pro-gated: models & forecasts require a Pro subscription (no-op if billing
