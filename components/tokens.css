@@ -68,13 +68,16 @@
     --vx-shadow-lg: 0 14px 38px rgba(0, 0, 0, 0.62);
 
     /* ---- device safe areas (notch, status bar, gesture bar).
-       env() resolves to 0 everywhere that has no inset, so these are safe to
-       use unconditionally. viewport-fit=cover in index.html is what makes the
-       insets non-zero on a phone. */
-    --vx-safe-top: env(safe-area-inset-top, 0px);
-    --vx-safe-right: env(safe-area-inset-right, 0px);
-    --vx-safe-bottom: env(safe-area-inset-bottom, 0px);
-    --vx-safe-left: env(safe-area-inset-left, 0px);
+       ALWAYS plain lengths here. They are only upgraded to env() inside the
+       @supports block below, because a custom property that fails to parse
+       does NOT get ignored — it resolves to 'unset', and for bottom/left/right
+       that means 'auto'. Building positions on an unsupported env() therefore
+       un-anchors the element and drops it at the top-left of the page. That is
+       exactly how the mobile chrome broke once; do not reintroduce it. */
+    --vx-safe-top: 0px;
+    --vx-safe-right: 0px;
+    --vx-safe-bottom: 0px;
+    --vx-safe-left: 0px;
 
     /* ---- type */
     --vx-font: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -99,4 +102,14 @@
     --vortex-r-lg: var(--vx-r-3);
     --vortex-r-md: var(--vx-r-2);
     --vortex-r-sm: var(--vx-r-1);
+}
+
+/* Only where env() genuinely works does the app pick up real device insets. */
+@supports (padding-top: env(safe-area-inset-top)) {
+    :root {
+        --vx-safe-top: env(safe-area-inset-top, 0px);
+        --vx-safe-right: env(safe-area-inset-right, 0px);
+        --vx-safe-bottom: env(safe-area-inset-bottom, 0px);
+        --vx-safe-left: env(safe-area-inset-left, 0px);
+    }
 }
