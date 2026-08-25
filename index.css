@@ -2297,3 +2297,49 @@ td.day.active, span.month.active, span.year.active {
     #vwsearch { width: min(320px, 56vw) !important; }
     #vwsearch input { font-size: 16px !important; }
 }
+
+/* ── touch console: second pass ───────────────────────────────────────────────
+   Tighter still, and the right-hand column no longer overlaps itself.
+
+   The map's zoom stack starts at bottom:72px and is roughly 150px tall
+   (attribution + zoom in/out + compass), so the Chase Stream Hub camera button
+   at bottom:150px landed in the middle of it. Two changes fix that:
+     - the compass is removed on touch. map.js disables rotation entirely
+       (touchZoomRotate.disableRotation / dragRotate.disable), so the control
+       cannot do anything — it was only consuming height.
+     - the camera button is lifted above the whole column.
+   ---------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+
+    /* ---- console: another step down ---- */
+    .mapFooter { padding: 3px 4px !important; gap: 3px !important; }
+    .mapFooter span { font-size: 12px !important; }
+
+    #vortexPlayBtn { width: 26px !important; height: 26px !important; }
+    #vortexPlayBtn .fa { font-size: 11px !important; }
+
+    #vortexTimeline { flex: 1 1 36px !important; min-width: 34px !important; }
+
+    #vortexSpeed { font-size: 10px !important; padding: 3px 4px !important; }
+    #vortexProBadge { padding: 4px 5px !important; }
+
+    #vortexBarIcons .fa { font-size: 14px !important; }
+    #vortexBarIcons .mapFooterMenuItem { min-width: 30px; }
+    #vortexBarIcons .menu_item_not_selected,
+    #vortexBarIcons .menu_item_selected { padding: 4px !important; }
+
+    /* ---- right-hand column ---- */
+    /* Rotation is disabled on this map, so the compass is a dead control that
+       was only pushing everything else up. */
+    .mapboxgl-ctrl-compass,
+    .maplibregl-ctrl-compass { display: none !important; }
+
+    /* Chase Stream Hub camera, lifted clear of the zoom buttons.
+       Plain px — never a custom property or env() for a position here. */
+    #vrsh-launch {
+        bottom: 214px !important;
+        width: 40px !important;
+        height: 40px !important;
+        font-size: 16px !important;
+    }
+}
