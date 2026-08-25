@@ -2234,10 +2234,21 @@ td.day.active, span.month.active, span.year.active {
         flex-wrap: nowrap !important;
     }
 
-    /* Station/product/scan-time already appear in the header card at the top,
-       so the footer copy is pure duplication — and it is the single widest
-       thing in the bar. */
-    #productMapFooter { display: none !important; }
+    /* The product picker lives in here — #productsDropdownTrigger is what opens
+       the product menu (app/core/menu/productSelectionMenu.js), and the radar
+       header card is hidden app-wide, so this is the ONLY way to change
+       products. It must never be display:none. Compact it instead.
+       JS toggles its display as a radar loads, so do not force a display value
+       here either — that would show an empty module before any radar is up. */
+    #productMapFooter {
+        min-width: 0 !important;
+        max-width: 104px !important;
+        padding: 3px 6px !important;
+    }
+    #footerStation { font-size: 9.5px !important; }
+    #productsDropdownTriggerText { font-size: 9.5px !important; }
+    #radarDateTime { font-size: 7.5px !important; }
+    #extraProductInfo { display: none !important; }   /* the one genuinely redundant line */
 
     /* Keep the Pro signal, drop its label. */
     #vortexProBadge { font-size: 0 !important; padding: 5px 6px !important; gap: 0 !important; }
