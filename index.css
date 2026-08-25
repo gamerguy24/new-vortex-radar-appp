@@ -2202,157 +2202,137 @@ td.day.active, span.month.active, span.year.active {
 }
 
 /* =========================================================================
-   TOUCH / ANDROID CONSOLE
+   ANDROID / TOUCH CONSOLE  —  purpose-built, not a shrunken desktop bar
 
-   Keyed off (pointer: coarse) with NO width test on purpose. The viewport meta
-   has no width=device-width, so an Android WebView reports a ~980px layout
-   width — a `max-width: 820px` test never matches on a phone, which is how the
-   previous attempt silently did nothing at all. Pointer type is the reliable
-   signal here.
+   The desktop console is one long flex row: product picker, transport,
+   timeline, speed, then ~14 tool icons. No amount of shrinking makes that fit
+   a phone, because the icons alone need more width than the screen has.
 
-   Two problems this solves:
-     1. The console was wider than the screen, so its own controls ran off the
-        edge and most of the toolbar was unreachable.
-     2. The console sat on top of the map's zoom buttons.
+   So on touch it becomes TWO ROWS:
 
-   SAFETY RULE for this block: only ONE positional declaration exists (raising
-   the zoom controls), and it is a plain px length. Never position anything
-   here with a custom property or env() — an unresolved value computes to
-   'unset', which for top/bottom/left/right means 'auto', and the element loses
-   its anchor and lands at the top-left of the page. That is exactly how the
-   whole console ended up stacked at the top of the screen once before.
+       ┌───────────────────────────────────────────┐
+       │ PRODUCT │ ▶ │ ──timeline── │ 1× │  ← controls
+       ├───────────────────────────────────────────┤
+       │ ▣ ▣ ▣ ▣ ▣ ▣ ▣ ▣ ▣ ▣ ▣ …  (swipe)  │  ← tools, full width
+       └───────────────────────────────────────────┘
+
+   No DOM change is needed: the console is already a flex container, so giving
+   the icon row `flex-basis: 100%` wraps it onto its own line, where it gets
+   the full width of the bar as a scrolling runway instead of fighting the
+   transport controls for space.
+
+   Nothing is hidden. In particular #productMapFooter stays — it holds
+   #productsDropdownTrigger, the app's ONLY product picker (the radar header
+   card is display:none app-wide).
+
+   POSITION SAFETY: every position here is a plain px length. Never use a
+   custom property or env() for top/bottom/left/right — an unresolved value
+   computes to 'unset' (= auto), the element loses its anchor and lands at the
+   top-left of the page. That is how the whole console once ended up stacked
+   at the top of the screen.
+
+   Vertical budget on the right-hand side, so nothing overlaps:
+       console      8 →  ~82px
+       zoom column 94 → ~211px   (compass hidden: rotation is disabled anyway)
+       camera     232 →  272px
    ========================================================================= */
 @media (pointer: coarse) {
 
-    /* ---- the console fits the screen ---- */
+    /* ---- the console itself ---- */
     .mapFooter {
-        /* Inset from the screen edges rather than running edge-to-edge. The
-           toolbar rail scrolls, so a narrower bar costs no functionality. */
-        max-width: min(600px, 88vw) !important;
-        padding: 4px 5px !important;
-        gap: 4px !important;
-        flex-wrap: nowrap !important;
+        flex-wrap: wrap !important;
+        max-width: min(560px, 94vw) !important;
+        bottom: 8px !important;
+        padding: 4px 6px 3px !important;
+        gap: 3px 5px !important;
+        justify-content: center !important;
+        align-items: center !important;
     }
+    .mapFooter span { font-size: 12px !important; }
 
-    /* The product picker lives in here — #productsDropdownTrigger is what opens
-       the product menu (app/core/menu/productSelectionMenu.js), and the radar
-       header card is hidden app-wide, so this is the ONLY way to change
-       products. It must never be display:none. Compact it instead.
-       JS toggles its display as a radar loads, so do not force a display value
-       here either — that would show an empty module before any radar is up. */
+    /* ---- row 1: product picker + transport ---- */
+
+    /* Contains #productsDropdownTrigger — the only way to change products.
+       Compact it, never hide it, and never force a display value (JS reveals
+       it once a radar loads). */
     #productMapFooter {
         min-width: 0 !important;
-        max-width: 104px !important;
-        padding: 3px 6px !important;
+        max-width: 96px !important;
+        padding: 2px 6px !important;
+        flex: 0 1 auto;
     }
     #footerStation { font-size: 9.5px !important; }
     #productsDropdownTriggerText { font-size: 9.5px !important; }
     #radarDateTime { font-size: 7.5px !important; }
-    #extraProductInfo { display: none !important; }   /* the one genuinely redundant line */
+    #extraProductInfo { display: none !important; }
 
-    /* Keep the Pro signal, drop its label. */
-    #vortexProBadge { font-size: 0 !important; padding: 5px 6px !important; gap: 0 !important; }
+    #vortexProBadge { font-size: 0 !important; padding: 4px 5px !important; gap: 0 !important; }
     #vortexProBadge .fa { font-size: 10px !important; }
 
-    /* Transport: smaller, but still a comfortable tap target. */
-    #vortexPlayBtn { width: 30px !important; height: 30px !important; flex: 0 0 auto; }
-    #vortexPlayBtn .fa { font-size: 12px !important; }
+    #vortexPlayBtn { width: 26px !important; height: 26px !important; flex: 0 0 auto; }
+    #vortexPlayBtn .fa { font-size: 11px !important; }
 
-    /* The timeline yields space to the toolbar rather than the other way round. */
-    #vortexTimeline { flex: 1 1 44px !important; min-width: 40px !important; }
+    #vortexTimeline { flex: 1 1 60px !important; min-width: 50px !important; }
 
     #vortexSpeedWrap { flex: 0 0 auto; }
-    #vortexSpeed { font-size: 11px !important; padding: 4px 4px !important; }
+    #vortexSpeed { font-size: 10px !important; padding: 3px 4px !important; }
 
-    /* ---- THE FIX THAT MATTERS: the toolbar becomes a scrollable rail ----
-       ~14 icons cannot fit a phone. Letting the row shrink and scroll inside
-       the console makes every tool reachable without moving the console or
-       resizing the window. `min-width: 0` is mandatory: a flex child will not
-       shrink below its content width without it, so the scroll never engages. */
+    /* ---- row 2: the tool rail, full width and scrollable ----
+       `flex: 0 0 100%` is what pushes it onto its own line. `min-width: 0` is
+       what lets it scroll rather than stretch the bar. */
     #vortexBarIcons {
-        flex: 1 1 auto !important;
+        flex: 0 0 100% !important;
+        width: 100% !important;
         min-width: 0 !important;
+        order: 9;
+        margin: 2px 0 0 !important;
+        padding: 3px 0 0 !important;
+        border-left: none !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.075) !important;
         overflow-x: auto !important;
         overflow-y: hidden !important;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
-        margin-left: 2px !important;
-        padding-left: 4px !important;
+        justify-content: flex-start !important;
+        /* fade the right edge so it reads as scrollable */
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), rgba(0,0,0,0.2) 100%);
+        mask-image: linear-gradient(to right, #000 calc(100% - 14px), rgba(0,0,0,0.2) 100%);
     }
     #vortexBarIcons::-webkit-scrollbar { display: none; }
     #vortexBarIcons .mapFooterMenuItem {
         flex: 0 0 auto !important;
-        min-width: 34px;
+        min-width: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
-    #vortexBarIcons .fa { font-size: 15px !important; }
+    #vortexBarIcons .fa { font-size: 14px !important; }
     #vortexBarIcons .menu_item_not_selected,
-    #vortexBarIcons .menu_item_selected { padding: 5px !important; }
+    #vortexBarIcons .menu_item_selected { padding: 4px !important; }
 
-    /* A soft fade on the right edge signals that the rail scrolls. */
-    #vortexBarIcons {
-        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 12px), rgba(0,0,0,0.15) 100%);
-        mask-image: linear-gradient(to right, #000 calc(100% - 12px), rgba(0,0,0,0.15) 100%);
-    }
+    /* ---- right-hand column, stacked so nothing overlaps ---- */
 
-    /* ---- stop the console covering the zoom buttons ----
-       The only position in this block, and a plain length so it cannot
-       un-anchor the control the way a bad custom property would. */
+    /* Rotation is disabled on this map (map.js), so the compass is a dead
+       control that only consumed height. */
+    .mapboxgl-ctrl-compass,
+    .maplibregl-ctrl-compass { display: none !important; }
+
     .mapboxgl-ctrl-bottom-right,
-    .maplibregl-ctrl-bottom-right { bottom: 72px !important; }
+    .maplibregl-ctrl-bottom-right { bottom: 94px !important; }
 
     .mapboxgl-ctrl-group button,
     .maplibregl-ctrl-group button { width: 34px !important; height: 34px !important; }
 
-    /* ---- touch targets in the menu ---- */
-    .vortexRadarMenuRow { padding: 11px 12px; }
-
-    /* 16px prevents mobile browsers zooming the page when a field is focused. */
-    #vwsearch { width: min(320px, 56vw) !important; }
-    #vwsearch input { font-size: 16px !important; }
-}
-
-/* ── touch console: second pass ───────────────────────────────────────────────
-   Tighter still, and the right-hand column no longer overlaps itself.
-
-   The map's zoom stack starts at bottom:72px and is roughly 150px tall
-   (attribution + zoom in/out + compass), so the Chase Stream Hub camera button
-   at bottom:150px landed in the middle of it. Two changes fix that:
-     - the compass is removed on touch. map.js disables rotation entirely
-       (touchZoomRotate.disableRotation / dragRotate.disable), so the control
-       cannot do anything — it was only consuming height.
-     - the camera button is lifted above the whole column.
-   ---------------------------------------------------------------------------- */
-@media (pointer: coarse) {
-
-    /* ---- console: another step down ---- */
-    .mapFooter { padding: 3px 4px !important; gap: 3px !important; }
-    .mapFooter span { font-size: 12px !important; }
-
-    #vortexPlayBtn { width: 26px !important; height: 26px !important; }
-    #vortexPlayBtn .fa { font-size: 11px !important; }
-
-    #vortexTimeline { flex: 1 1 36px !important; min-width: 34px !important; }
-
-    #vortexSpeed { font-size: 10px !important; padding: 3px 4px !important; }
-    #vortexProBadge { padding: 4px 5px !important; }
-
-    #vortexBarIcons .fa { font-size: 14px !important; }
-    #vortexBarIcons .mapFooterMenuItem { min-width: 30px; }
-    #vortexBarIcons .menu_item_not_selected,
-    #vortexBarIcons .menu_item_selected { padding: 4px !important; }
-
-    /* ---- right-hand column ---- */
-    /* Rotation is disabled on this map, so the compass is a dead control that
-       was only pushing everything else up. */
-    .mapboxgl-ctrl-compass,
-    .maplibregl-ctrl-compass { display: none !important; }
-
-    /* Chase Stream Hub camera, lifted clear of the zoom buttons.
-       Plain px — never a custom property or env() for a position here. */
+    /* Chase Stream Hub camera, above the zoom column. */
     #vrsh-launch {
-        bottom: 214px !important;
+        bottom: 232px !important;
         width: 40px !important;
         height: 40px !important;
         font-size: 16px !important;
     }
+
+    /* ---- misc touch ergonomics ---- */
+    .vortexRadarMenuRow { padding: 11px 12px; }
+    #vwsearch { width: min(320px, 56vw) !important; }
+    #vwsearch input { font-size: 16px !important; }
 }
