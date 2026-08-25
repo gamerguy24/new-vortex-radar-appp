@@ -2202,41 +2202,98 @@ td.day.active, span.month.active, span.year.active {
 }
 
 /* =========================================================================
-   MOBILE — MINIMAL, ADDITIVE ONLY
+   TOUCH / ANDROID CONSOLE
 
-   Hard rule for this block, learned the hard way: do NOT set top/bottom/left/
-   right/transform on any existing control here. A custom property or env()
-   that fails to resolve does not get ignored — it computes to 'unset', which
-   for those properties means 'auto', and the element loses its anchor and
-   lands at the top-left of the page. That is how the entire bottom console
-   ended up stacked at the top of the screen once already.
+   Keyed off (pointer: coarse) with NO width test on purpose. The viewport meta
+   has no width=device-width, so an Android WebView reports a ~980px layout
+   width — a `max-width: 820px` test never matches on a phone, which is how the
+   previous attempt silently did nothing at all. Pointer type is the reliable
+   signal here.
 
-   So this block changes only sizes, overflow and flex behaviour. Nothing here
-   can move a control off-screen or on top of another one, because nothing here
-   positions anything.
+   Two problems this solves:
+     1. The console was wider than the screen, so its own controls ran off the
+        edge and most of the toolbar was unreachable.
+     2. The console sat on top of the map's zoom buttons.
+
+   SAFETY RULE for this block: only ONE positional declaration exists (raising
+   the zoom controls), and it is a plain px length. Never position anything
+   here with a custom property or env() — an unresolved value computes to
+   'unset', which for top/bottom/left/right means 'auto', and the element loses
+   its anchor and lands at the top-left of the page. That is exactly how the
+   whole console ended up stacked at the top of the screen once before.
    ========================================================================= */
-@media (pointer: coarse) and (max-width: 820px) {
+@media (pointer: coarse) {
 
-    /* THE ONE THAT MATTERS: the ~14 tool icons live in a single centred flex
-       row that runs off both edges of a phone, which put most of the app's
-       features out of reach. Letting the row shrink and scroll inside the
-       space it already occupies makes them reachable without moving the
-       console or any control in it.
-       `min-width: 0` is required — a flex child will not shrink below its
-       content width without it, and the scroll never engages. */
+    /* ---- the console fits the screen ---- */
+    .mapFooter {
+        max-width: calc(100vw - 10px) !important;
+        padding: 4px 5px !important;
+        gap: 4px !important;
+        flex-wrap: nowrap !important;
+    }
+
+    /* Station/product/scan-time already appear in the header card at the top,
+       so the footer copy is pure duplication — and it is the single widest
+       thing in the bar. */
+    #productMapFooter { display: none !important; }
+
+    /* Keep the Pro signal, drop its label. */
+    #vortexProBadge { font-size: 0 !important; padding: 5px 6px !important; gap: 0 !important; }
+    #vortexProBadge .fa { font-size: 10px !important; }
+
+    /* Transport: smaller, but still a comfortable tap target. */
+    #vortexPlayBtn { width: 30px !important; height: 30px !important; flex: 0 0 auto; }
+    #vortexPlayBtn .fa { font-size: 12px !important; }
+
+    /* The timeline yields space to the toolbar rather than the other way round. */
+    #vortexTimeline { flex: 1 1 44px !important; min-width: 40px !important; }
+
+    #vortexSpeedWrap { flex: 0 0 auto; }
+    #vortexSpeed { font-size: 11px !important; padding: 4px 4px !important; }
+
+    /* ---- THE FIX THAT MATTERS: the toolbar becomes a scrollable rail ----
+       ~14 icons cannot fit a phone. Letting the row shrink and scroll inside
+       the console makes every tool reachable without moving the console or
+       resizing the window. `min-width: 0` is mandatory: a flex child will not
+       shrink below its content width without it, so the scroll never engages. */
     #vortexBarIcons {
-        flex: 1 1 auto;
-        min-width: 0;
-        overflow-x: auto;
-        overflow-y: hidden;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
+        margin-left: 2px !important;
+        padding-left: 4px !important;
     }
     #vortexBarIcons::-webkit-scrollbar { display: none; }
-    #vortexBarIcons .mapFooterMenuItem { flex: 0 0 auto; }
+    #vortexBarIcons .mapFooterMenuItem {
+        flex: 0 0 auto !important;
+        min-width: 34px;
+    }
+    #vortexBarIcons .fa { font-size: 15px !important; }
+    #vortexBarIcons .menu_item_not_selected,
+    #vortexBarIcons .menu_item_selected { padding: 5px !important; }
 
-    /* Keep the search field from covering the alert pill. Width only. */
+    /* A soft fade on the right edge signals that the rail scrolls. */
+    #vortexBarIcons {
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 12px), rgba(0,0,0,0.15) 100%);
+        mask-image: linear-gradient(to right, #000 calc(100% - 12px), rgba(0,0,0,0.15) 100%);
+    }
+
+    /* ---- stop the console covering the zoom buttons ----
+       The only position in this block, and a plain length so it cannot
+       un-anchor the control the way a bad custom property would. */
+    .mapboxgl-ctrl-bottom-right,
+    .maplibregl-ctrl-bottom-right { bottom: 72px !important; }
+
+    .mapboxgl-ctrl-group button,
+    .maplibregl-ctrl-group button { width: 34px !important; height: 34px !important; }
+
+    /* ---- touch targets in the menu ---- */
+    .vortexRadarMenuRow { padding: 11px 12px; }
+
+    /* 16px prevents mobile browsers zooming the page when a field is focused. */
     #vwsearch { width: min(320px, 56vw) !important; }
-    /* 16px stops iOS zooming the whole page when the field is focused. */
     #vwsearch input { font-size: 16px !important; }
 }
