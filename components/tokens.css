@@ -67,6 +67,15 @@
     --vx-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
     --vx-shadow-lg: 0 14px 38px rgba(0, 0, 0, 0.62);
 
+    /* ---- device safe areas (notch, status bar, gesture bar).
+       env() resolves to 0 everywhere that has no inset, so these are safe to
+       use unconditionally. viewport-fit=cover in index.html is what makes the
+       insets non-zero on a phone. */
+    --vx-safe-top: env(safe-area-inset-top, 0px);
+    --vx-safe-right: env(safe-area-inset-right, 0px);
+    --vx-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --vx-safe-left: env(safe-area-inset-left, 0px);
+
     /* ---- type */
     --vx-font: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
     --vx-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;

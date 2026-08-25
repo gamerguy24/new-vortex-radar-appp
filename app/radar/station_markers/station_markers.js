@@ -11,6 +11,12 @@ const Level2Factory = require('../libnexrad/level2/level2_factory');
 const NEXRADLevel3File = require('../libnexrad/level3/level3_parser');
 const Level3Factory = require('../libnexrad/level3/level3_factory');
 
+// Phone-sized screens get smaller station pills (see the icon/text-size ramps
+// below). Read once at load: this only sets a starting scale, and the zoom
+// interpolation does the rest, so it does not need to react to rotation.
+const _mobile = (typeof window !== 'undefined')
+    && (window.innerWidth <= 760 || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+
 const loaders_nexrad = require('../libnexrad/loaders_nexrad');
 const nexrad_locations = require('../libnexrad/nexrad_locations').NEXRAD_LOCATIONS;
 
@@ -108,9 +114,29 @@ function _add_stations_layer(radar_stations_geojson, callback) {
                     'blue_station'
                 ],
 
-                'icon-size': 0.23,
+                /*
+                 * Size with zoom, and start smaller on a phone.
+                 *
+                 * These were fixed at icon-size 0.23 / text-size 13, which is
+                 * fine on a desktop but buries a phone screen: at continental
+                 * zoom every NEXRAD in the country renders a full-size pill and
+                 * the labels cover the weather they are supposed to annotate.
+                 * Interpolating on zoom keeps them readable when you are zoomed
+                 * into a storm and out of the way when you are not.
+                 */
+                'icon-size': [
+                    'interpolate', ['linear'], ['zoom'],
+                    3, _mobile ? 0.13 : 0.18,
+                    6, _mobile ? 0.19 : 0.23,
+                    9, _mobile ? 0.23 : 0.26,
+                ],
                 'text-field': ['get', 'station_id'],
-                'text-size': 13,
+                'text-size': [
+                    'interpolate', ['linear'], ['zoom'],
+                    3, _mobile ? 8.5 : 10.5,
+                    6, _mobile ? 11 : 13,
+                    9, _mobile ? 12.5 : 14,
+                ],
                 'text-font': [
                     'Arial Unicode MS Bold'
                 ],
