@@ -2226,7 +2226,9 @@ td.day.active, span.month.active, span.year.active {
 
     /* ---- the console fits the screen ---- */
     .mapFooter {
-        max-width: calc(100vw - 10px) !important;
+        /* Inset from the screen edges rather than running edge-to-edge. The
+           toolbar rail scrolls, so a narrower bar costs no functionality. */
+        max-width: min(600px, 88vw) !important;
         padding: 4px 5px !important;
         gap: 4px !important;
         flex-wrap: nowrap !important;
