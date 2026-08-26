@@ -49,32 +49,67 @@ function lib() {
  * Mirrors get_latest_level_2_url() in app/radar/libnexrad/loaders_nexrad.js:
  * list today's YYYY/MM/DD/SITE/ prefix and take the last key, skipping _MDM.
  */
-export async function awsLatestVolumeUrl(site) {
-  const id = String(site || '').toUpperCase().replace(/\s/g, '');
-  if (!/^[A-Z]{3,4}$/.test(id)) return null;
+/**
+ * Latest volume for a site.
+ *
+ * Returns { url } on success, or { url: null, reason } explaining the failure.
+ * The distinction matters: "the archive did not answer" and "this radar has not
+ * posted a scan" are different problems with different fixes, and collapsing
+ * them into one message sent us looking in the wrong place. A silent `continue`
+ * used to turn a failed request into "no recent Level 2 volume listed", which
+ * reads like the radar is down when the request never actually succeeded.
+ */
+export async function listLatestVolume(site) {
+  const id = String(site || '').toUpperCase().replace(/[^A-Z]/g, '');
+  if (!/^[A-Z]{3,4}$/.test(id)) return { url: null, reason: `"${site}" is not a radar id` };
 
   const now = new Date();
-  // Just after 00Z the day's prefix can still be empty, so fall back a day.
-  for (let back = 0; back < 2; back++) {
+  let reachedArchive = false;
+  let lastFailure = null;
+
+  // Walk back a few days. Just after 00Z today's prefix is legitimately empty,
+  // and a station down for maintenance can have a quiet day or two.
+  for (let back = 0; back < 3; back++) {
     const d = new Date(now.getTime() - back * 86400000);
     const y = d.getUTCFullYear();
     const m = String(d.getUTCMonth() + 1).padStart(2, '0');
     const day = String(d.getUTCDate()).padStart(2, '0');
     const prefix = `${y}/${m}/${day}/${id}/`;
+
     let xml;
     try {
-      const r = await fetch(`${L2_BUCKET}/?list-type=2&delimiter=%2F&prefix=${encodeURIComponent(prefix)}`);
-      if (!r.ok) continue;
+      // Cache-buster, as the radar page uses: a listing is the one request that
+      // must never come from cache, or you decode a volume that is already old.
+      const r = await fetch(
+        `${L2_BUCKET}/?list-type=2&delimiter=%2F&prefix=${encodeURIComponent(prefix)}&_=${Date.now()}`,
+      );
+      if (!r.ok) { lastFailure = `archive returned HTTP ${r.status}`; continue; }
       xml = await r.text();
+      reachedArchive = true;
     } catch (e) {
-      continue;   // network/CORS trouble; try the previous day
+      lastFailure = e.message || 'network error';
+      continue;
     }
+
+    // Keys are lexicographic, so the last one is the newest. Skip the _MDM
+    // metadata objects, exactly as loaders_nexrad.js does.
     const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)]
       .map((mm) => mm[1])
       .filter((k) => !k.endsWith('_MDM') && /_V\d\d$/.test(k));
-    if (keys.length) return `${L2_BUCKET}/${keys[keys.length - 1]}`;
+    if (keys.length) return { url: `${L2_BUCKET}/${keys[keys.length - 1]}`, key: keys[keys.length - 1] };
   }
-  return null;
+
+  return {
+    url: null,
+    reason: reachedArchive
+      ? `${id} has not posted a scan in the last 3 days`
+      : `could not reach the NEXRAD archive (${lastFailure || 'no response'})`,
+  };
+}
+
+/** Convenience wrapper: the URL, or null. */
+export async function awsLatestVolumeUrl(site) {
+  return (await listLatestVolume(site)).url;
 }
 
 /* ── volume cache ─────────────────────────────────────────────────────────────
@@ -216,8 +251,9 @@ export async function loadSweep({ site, product = 'reflectivity', onProgress = n
   const code = (PRODUCTS[product] || PRODUCTS.reflectivity).code;
 
   if (onProgress) onProgress('finding latest scan');
-  const url = await awsLatestVolumeUrl(site);
-  if (!url) throw new Error(`no recent Level 2 volume listed for ${site}`);
+  const found = await listLatestVolume(site);
+  if (!found.url) throw new Error(found.reason);
+  const url = found.url;
 
   const factory = await loadVolume(url, onProgress);
 

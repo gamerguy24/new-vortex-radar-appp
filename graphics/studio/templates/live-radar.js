@@ -24,10 +24,24 @@
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { roundRect } from '../engine/scene.js';
-import { fetchRadarL2, radarL2Layer, isLevel2Site } from '../engine/radar_l2.js';
+import { fetchRadarL2, radarL2Layer, isLevel2Site, radarPageView } from '../engine/radar_l2.js';
 import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js';
 
 const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
+
+// KTLX, used only when this browser has never had the radar page open.
+const FALLBACK_VIEW = { lat: 35.33, lon: -97.28 };
+
+/**
+ * Where the map should open: on the radar the viewer last had up on the radar
+ * page. Position is read straight from the record the radar page writes, so
+ * this stays synchronous — defaultConfig() cannot await a station lookup.
+ */
+function openingView() {
+  const v = radarPageView();
+  if (v && isFinite(v.lat) && isFinite(v.lon)) return { lat: v.lat, lon: v.lon };
+  return FALLBACK_VIEW;
+}
 
 // One in-flight radar decode, keyed by SITE and PRODUCT — not by the view. A
 // decoded volume covers the radar's whole disc, so moving the map re-rasterises
@@ -374,17 +388,23 @@ export default {
   providesRadar: true,
 
   defaultConfig() {
+    const opened = openingView();
     return {
       __kind: 'live-radar',
       title: 'LIVE RADAR',
       subtitle: '',
       timeLabel: '',
-      // View — a moveable map rather than a region preset.
-      centerLat: 35.33,
-      centerLon: -97.28,
+      // View — a moveable map rather than a region preset. It opens framed on
+      // whatever radar the viewer last had up on the radar page, so the studio
+      // starts on the storm they came here to make a graphic of. Falls back to
+      // KTLX when there is nothing recorded (a fresh browser).
+      centerLat: opened.lat,
+      centerLon: opened.lon,
       zoom: 7.2,
       lockMap: false,
-      showHint: true,
+      // Off by default: it is a hint for a map you already know is draggable,
+      // and it sits over the frame you are trying to compose.
+      showHint: false,
       // Radar
       radarSite: 'auto',
       palette: 'auto',

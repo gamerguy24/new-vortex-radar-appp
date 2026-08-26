@@ -287,6 +287,34 @@ class Level2Factory {
         window.vortexData.nexrad_factory_elevation_number = elevation_number;
         window.vortexData.nexrad_factory = this;
 
+        /* Remember which radar is on screen, for the Graphics Studio.
+         *
+         * The studio decodes Level 2 itself and needs to know which site the
+         * viewer is actually looking at, so a graphic is built from the same
+         * radar as the map they just came from instead of whichever station
+         * happens to sit nearest the studio's default view. Same idea as the
+         * colortable pick, which is already recorded this way.
+         *
+         * Write-only and fully guarded: private-mode browsers throw on
+         * localStorage, and nothing on this page reads it back, so a failure
+         * here must never interrupt a plot. */
+        try {
+            // The station comes out of a fixed-width header field, so strip
+            // anything that is not a letter rather than trusting it to be clean.
+            const st = String(this.station || '').toUpperCase().replace(/[^A-Z]/g, '');
+            if (/^[A-Z]{3,4}$/.test(st)) {
+                // Position too, so the studio can open framed on this radar
+                // without waiting on an async station-table lookup first.
+                const loc = this.get_location();
+                const record = { site: st, at: Date.now() };
+                if (loc && isFinite(loc[0]) && isFinite(loc[1])) {
+                    record.lat = loc[0];
+                    record.lon = loc[1];
+                }
+                localStorage.setItem('vortexCurrentRadarSite', JSON.stringify(record));
+            }
+        } catch (e) { /* storage unavailable — the studio just falls back */ }
+
         calculate_coordinates(this, options);
     }
 

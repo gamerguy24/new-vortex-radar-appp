@@ -78,22 +78,82 @@ function viewCenter(scene) {
  * stations, and neither publishes a Level 2 volume, so picking one would
  * guarantee a "no volume listed" failure.
  */
-async function nearestSite(scene) {
+// Rough great-circle distance in km. Good enough for ranking stations.
+function kmBetween(aLat, aLon, bLat, bLon) {
+  const dy = (bLat - aLat) * 111.32;
+  const dx = (bLon - aLon) * 111.32 * Math.cos(((aLat + bLat) / 2) * Math.PI / 180);
+  return Math.sqrt(dy * dy + dx * dx);
+}
+
+/** WSR-88D stations, nearest to the view centre first. */
+async function sitesByDistance(scene) {
   let sites;
   try { sites = await loadRadarSites(); } catch (e) { sites = null; }
-  if (!sites || !sites.length) return null;
+  if (!sites || !sites.length) return [];
 
   const { lat, lon } = viewCenter(scene);
-  let best = null, bestD = Infinity;
-  for (const s of sites) {
-    if (!s || !isFinite(s.lat) || !isFinite(s.lon)) continue;
-    if (!isLevel2Site(s)) continue;
-    const dy = s.lat - lat;
-    const dx = (s.lon - lon) * Math.cos(lat * Math.PI / 180);
-    const d = dy * dy + dx * dx;
-    if (d < bestD) { bestD = d; best = s; }
+  return sites
+    .filter((s) => s && isFinite(s.lat) && isFinite(s.lon) && isLevel2Site(s))
+    .map((s) => ({ ...s, km: kmBetween(lat, lon, s.lat, s.lon) }))
+    .sort((a, b) => a.km - b.km);
+}
+
+/**
+ * The radar the viewer last had open on the radar page, if it is relevant here.
+ *
+ * The point of the studio is to make a graphic of the storm you were just
+ * looking at, so when the view is inside that radar's coverage it is the right
+ * default — not whichever station happens to sit closest to the centre of the
+ * frame. Outside its range it is ignored, because a graphic of empty sky is
+ * worse than picking a different radar.
+ *
+ * The radar page records this in localStorage when it plots a Level 2 volume
+ * (see plot() in app/radar/libnexrad/level2/level2_factory.js).
+ */
+const CURRENT_SITE_KEY = 'vortexCurrentRadarSite';
+const CURRENT_SITE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const L2_RANGE_KM = 230;
+
+export function radarPageView() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CURRENT_SITE_KEY) || 'null');
+    if (!raw || typeof raw.site !== 'string') return null;
+    // Stale entries are worse than no entry: a site from last week says nothing
+    // about what the viewer is working on now.
+    if (!raw.at || Date.now() - raw.at > CURRENT_SITE_MAX_AGE_MS) return null;
+    return raw;
+  } catch (e) {
+    return null;
   }
-  return best ? best.id : null;
+}
+
+function radarPageSite() {
+  const v = radarPageView();
+  return v ? v.site : null;
+}
+
+/**
+ * Candidate sites for the "auto" setting, best first.
+ *
+ * More than one, deliberately. A single station can be down for maintenance or
+ * simply have nothing in the archive, and hard-failing on it means the operator
+ * sees an error for a radar they never chose. Trying the next nearest turns
+ * that into a graphic.
+ */
+async function autoCandidates(scene, limit = 4) {
+  const ranked = await sitesByDistance(scene);
+  if (!ranked.length) return [];
+
+  const ids = ranked.slice(0, limit).map((s) => s.id);
+
+  const preferred = radarPageSite();
+  if (preferred) {
+    const match = ranked.find((s) => s.id === preferred);
+    if (match && match.km <= L2_RANGE_KM) {
+      return [preferred, ...ids.filter((id) => id !== preferred)];
+    }
+  }
+  return ids;
 }
 
 /**
@@ -112,10 +172,26 @@ export async function fetchRadarL2(scene, opts = {}) {
     onProgress = null,
   } = opts;
 
-  const siteId = site || await nearestSite(scene);
-  if (!siteId) throw new Error('no radar site for this view');
+  // An explicit pick is honoured exactly — if the operator chose a station, a
+  // silent substitution would be a lie. "Auto" gets to try alternatives.
+  const candidates = site ? [site] : await autoCandidates(scene);
+  if (!candidates.length) throw new Error('no radar site for this view');
 
-  const radar = await loadSweep({ site: siteId, product, onProgress });
+  let radar = null;
+  const failures = [];
+  for (const id of candidates) {
+    try {
+      radar = await loadSweep({ site: id, product, onProgress });
+      break;
+    } catch (e) {
+      failures.push(`${id}: ${e.message}`);
+    }
+  }
+  if (!radar) {
+    // Report every station tried, so the message says what actually happened
+    // rather than naming one radar the operator never picked.
+    throw new Error(failures.length === 1 ? failures[0] : failures.join('; '));
+  }
 
   // Explicit pick wins; otherwise follow whatever the viewer chose on the radar
   // page, so a graphic does not quietly disagree with the radar they are
