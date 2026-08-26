@@ -1854,9 +1854,20 @@ const L2_BUCKETS = [
     { host: 'unidata-nexrad-level2-chunks.s3.amazonaws.com', kind: 'chunks' },
 ];
 
+// Marker l2-list hands back when the archive bucket denied us but the realtime
+// chunks bucket (used by /api/level2/latest above, and known to still allow
+// anonymous access) has a current volume. Not a real URL — l2-file recognizes
+// the scheme and reconstructs the volume from chunks instead of fetching it.
+// The client never needs to know the difference: a fetch() of this string fails
+// immediately (unsupported scheme), which is exactly what already sends it to
+// the l2-file relay for a normal archive URL.
+const CHUNKS_MARKER_PREFIX = 'vortex-chunks:';
+
 function isAllowedL2Url(raw) {
+    const s = String(raw || '');
+    if (s.startsWith(CHUNKS_MARKER_PREFIX)) return /^[A-Z]{3,4}$/.test(s.slice(CHUNKS_MARKER_PREFIX.length));
     let u;
-    try { u = new URL(raw); } catch (e) { return false; }
+    try { u = new URL(s); } catch (e) { return false; }
     if (u.protocol !== 'https:') return false;
     if (!L2_BUCKETS.some((b) => b.host === u.hostname)) return false;
     // A volume key, not an arbitrary object: .../YYYY/MM/DD/SITE/SITEyyyymmdd_hhmmss_Vnn
@@ -1895,6 +1906,18 @@ app.get('/api/graphics/l2-list', requireAuth, async (req, res) => {
         }
     }
 
+    // Archive bucket gave us nothing (commonly: it denies anonymous access from
+    // this host entirely — see the Level-II proxy comment above). Before
+    // reporting failure, check the realtime chunks bucket, a different bucket
+    // with different permissions that /api/level2/latest already relies on.
+    try {
+        const folders = await listVolumeFolders(site);
+        if (folders.length) {
+            res.setHeader('Cache-Control', 'no-store');
+            return res.json({ url: CHUNKS_MARKER_PREFIX + site, key: site + ' (realtime chunks)', via: 'chunks' });
+        }
+    } catch (e) { /* chunks bucket unreachable too — fall through to the error below */ }
+
     res.status(503).json({
         error: reached
             ? `${site} has not posted a scan in the last 3 days`
@@ -1907,6 +1930,19 @@ app.get('/api/graphics/l2-list', requireAuth, async (req, res) => {
 app.get('/api/graphics/l2-file', requireAuth, async (req, res) => {
     const url = String(req.query.url || '');
     if (!isAllowedL2Url(url)) return res.status(400).json({ error: 'not a NEXRAD Level 2 volume URL' });
+
+    if (url.startsWith(CHUNKS_MARKER_PREFIX)) {
+        const site = url.slice(CHUNKS_MARKER_PREFIX.length);
+        try {
+            const buf = await fetchLatestL2(site);
+            if (!buf.length) throw new Error('empty volume');
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('Cache-Control', 'no-store');
+            return res.send(buf);
+        } catch (e) {
+            return res.status(502).json({ error: 'could not reconstruct volume from realtime chunks: ' + (e.message || e) });
+        }
+    }
 
     let upstream;
     try {
