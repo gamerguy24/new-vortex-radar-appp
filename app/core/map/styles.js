@@ -43,6 +43,8 @@ function change_map_style(style) {
         // Use the Vortex Radar deep-navy theme rather than the style's original
         // (RadarScope-like) gray defaults.
         require('./vortex_basemap').apply_vortex_basemap();
+        // Satellite/style swaps drop user-added layers; restore counties if on.
+        try { require('./county_borders').reapply(); } catch (e) { /* optional */ }
     }
     function set_light() {
         const white = 'rgb(246, 244, 237)';

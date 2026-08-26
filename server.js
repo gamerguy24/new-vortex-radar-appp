@@ -1841,6 +1841,25 @@ app.get('/api/graphics/radar-l2', requireAuth, async (req, res) => {
     }
 });
 
+// Radar site list for the Graphics Studio. Served from the app's own
+// NEXRAD_LOCATIONS table (the same one the radar page plots), so the studio
+// never keeps a second, drifting copy of the site list.
+let _radarSitesCache = null;
+app.get('/api/graphics/radar-sites', requireAuth, (req, res) => {
+    if (!_radarSitesCache) {
+        try {
+            const { NEXRAD_LOCATIONS } = require('./app/radar/libnexrad/nexrad_locations');
+            _radarSitesCache = Object.entries(NEXRAD_LOCATIONS)
+                .filter(([, v]) => v && typeof v.lat === 'number' && typeof v.lon === 'number')
+                .map(([id, v]) => ({ id, lat: v.lat, lon: v.lon, name: v.name || '', type: v.type || '' }));
+        } catch (e) {
+            return res.status(500).json({ error: 'site list unavailable: ' + e.message });
+        }
+    }
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // static data
+    res.json({ count: _radarSitesCache.length, sites: _radarSitesCache });
+});
+
 // ─── Spotter Network proxy (avoids browser CORS) ─────────────────────────────
 async function spotterProxy(endpoint, req, res) {
     try {

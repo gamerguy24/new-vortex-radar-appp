@@ -162,3 +162,9 @@ armFunctions.toggleswitchFunctions($('#armrHurricaneLegendVisBtnSwitchElem'), fu
 //         map.setLayoutProperty('spc_border', 'visibility', 'none');
 //     }
 // })
+// County boundaries (the Mapbox base style has none — see county_borders.js).
+const county_borders = require('../map/county_borders');
+armFunctions.toggleswitchFunctions($('#armrCountyVisBtnSwitchElem'),
+    function() { county_borders.enable(); },
+    function() { county_borders.disable(); }
+);

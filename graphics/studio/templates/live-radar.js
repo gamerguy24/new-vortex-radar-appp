@@ -20,12 +20,17 @@ import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.j
 import { cityLabelLayer } from '../engine/labels.js';
 import { roundRect } from '../engine/scene.js';
 import { fetchRadarL2, radarL2Layer } from '../engine/radar_l2.js';
+import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js';
 
 const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
 
 // One in-flight radar request, keyed by view+options so panning re-fetches but
 // an unrelated rerender (editing a title) does not.
 const radarStore = { key: null, status: 'idle', radar: null, error: null };
+
+// Radar station pills (the blue KTLX-style markers from the radar page).
+// Loaded once from the app's own site table and reused across rerenders.
+const siteStore = { status: 'idle', sites: null };
 
 // Pointer wiring is installed once on the studio canvas and reads whatever the
 // live config/ctrl are, so it survives rerenders.
@@ -321,7 +326,9 @@ export default {
       // Map
       basemap: BASEMAP_OPTIONS && BASEMAP_OPTIONS[0] ? BASEMAP_OPTIONS[0].value : 'dark',
       showCities: true,
-      counties: 'normal',
+      counties: 'bold',
+      sites: 'labels',
+      sitesTdwr: false,
       // Chrome
       showHeader: true,
       showLegend: true,
@@ -363,6 +370,11 @@ export default {
         { value: 'off', label: 'Off' }, { value: 'subtle', label: 'Subtle' },
         { value: 'normal', label: 'Normal' }, { value: 'bold', label: 'Bold' }] },
       { key: 'showCities', label: 'City labels', type: 'toggle' },
+      { key: 'sites', label: 'Radar sites', type: 'select', options: [
+        { value: 'off', label: 'Off' },
+        { value: 'labels', label: 'Station labels (KTLX)' },
+        { value: 'dots', label: 'Dots only' }] },
+      { key: 'sitesTdwr', label: 'Include TDWR sites', type: 'toggle' },
 
       { key: 'showHeader', label: 'Show header', type: 'toggle' },
       { key: 'showLegend', label: 'Show dBZ legend', type: 'toggle' },
@@ -484,6 +496,30 @@ export default {
     }
 
     if (config.showCities) scene.add(cityLabelLayer({ maxRank: 3, fontSize: 18 }));
+
+    /* ── radar station pills ──
+     * The same markers the radar page shows, drawn over the map so a graphic
+     * can identify which sites are in frame. Loaded once, then cached. */
+    if (config.sites && config.sites !== 'off') {
+      if (siteStore.status === 'idle') {
+        siteStore.status = 'loading';
+        loadRadarSites().then((list) => {
+          siteStore.sites = list;
+          siteStore.status = 'ready';
+          ctrl.rerender();
+        });
+      }
+      if (siteStore.sites && siteStore.sites.length) {
+        scene.add(radarSitesLayer({
+          sites: siteStore.sites,
+          labels: config.sites === 'labels',
+          tdwr: !!config.sitesTdwr,
+          fontSize: 15,
+          // Mark the site actually supplying the radar on screen.
+          highlight: radarStore.radar && radarStore.radar.meta ? radarStore.radar.meta.site : null,
+        }));
+      }
+    }
     scene.add(legendLayer(config));
     scene.add(chromeLayer(config, radarStore));
   },
