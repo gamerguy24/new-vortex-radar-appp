@@ -1944,15 +1944,36 @@ app.get('/api/graphics/l2-file', requireAuth, async (req, res) => {
         }
     }
 
-    let upstream;
+    // Site parsed from a real archive URL (.../YYYY/MM/DD/SITE/SITEyyyymmdd_...),
+    // for the chunks fallback below. Not present for the marker branch above,
+    // which already carries its own site.
+    const archiveSiteMatch = url.match(/\/\d{4}\/\d{2}\/\d{2}\/([A-Z]{3,4})\//);
+
+    let upstream, archiveFailure = null;
     try {
         upstream = await fetch(url);
+        if (!upstream.ok || !upstream.body) archiveFailure = `archive returned HTTP ${upstream.status}`;
     } catch (e) {
-        return res.status(502).json({ error: 'could not reach the NEXRAD archive: ' + (e.message || e) });
+        archiveFailure = e.message || 'network error';
     }
-    if (!upstream.ok || !upstream.body) {
-        return res.status(upstream.status === 404 ? 404 : 502)
-            .json({ error: `archive returned HTTP ${upstream.status}` });
+
+    if (archiveFailure) {
+        // The browser (or a previous, successful call to l2-list) resolved this
+        // URL directly against the archive bucket, but relaying THIS specific
+        // object through us just failed the same way our own listing does (see
+        // l2-list above). Same fix: fall back to the realtime chunks bucket
+        // rather than surfacing the archive failure when we have another way.
+        if (archiveSiteMatch) {
+            try {
+                const buf = await fetchLatestL2(archiveSiteMatch[1]);
+                if (buf.length) {
+                    res.setHeader('Content-Type', 'application/octet-stream');
+                    res.setHeader('Cache-Control', 'no-store');
+                    return res.send(buf);
+                }
+            } catch (e) { /* chunks fallback also failed — report the original archive error below */ }
+        }
+        return res.status(502).json({ error: 'could not reach the NEXRAD archive: ' + archiveFailure });
     }
 
     res.setHeader('Content-Type', 'application/octet-stream');
