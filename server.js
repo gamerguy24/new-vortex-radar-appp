@@ -390,6 +390,26 @@ app.use((req, res, next) => {
     next();
 });
 
+/*
+ * Which commit is this box serving? Public, and deliberately so.
+ *
+ * Everything else is behind the session gate, so "has the deploy actually
+ * landed?" cannot be answered from outside without signing in. That question
+ * has repeatedly cost a full round trip while a fix sat pushed and undeployed,
+ * with the stale build looking exactly like a code bug.
+ *
+ * Returns the short commit and NOTHING else — no paths, no config, no installed
+ * versions. Read once at boot, so it cannot lie about a pending restart either:
+ * if the sha is old, the running process is old.
+ *
+ * Registered HERE, before backend/tornado mounts requireAuth on all of /api
+ * (see attachTornado). Moving it later silently makes it authenticated again.
+ */
+app.get('/api/version', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ commit: buildInfo().commit || null });
+});
+
 // Billing JSON API (status/checkout/portal) — after the middleware above so
 // req.user is populated. /status is public; checkout/portal require sign-in.
 app.use('/api/billing', billing.apiRouter());
