@@ -74,16 +74,29 @@ function parseVolume(input, filename) {
  * so sweep 1 is not reliably the one holding VEL.
  */
 function bestElevationFor(factory, product) {
-  let best = null;
-  let bestAngle = Infinity;
+  const candidates = [];
   for (let e = 1; e <= factory.nscans; e++) {
     const sweep = factory.grouped_sweeps[e];
     if (!sweep || !sweep[0] || !sweep[0][product] || !sweep[0][product].ngates) continue;
     let angle;
     try { angle = factory.get_elevation_angle(e); } catch (err) { continue; }
-    if (angle < bestAngle) { bestAngle = angle; best = e; }
+    candidates.push({ e, angle, ngates: sweep[0][product].ngates, nradials: sweep.length });
   }
-  return best;
+  if (!candidates.length) return null;
+
+  const lowest = Math.min(...candidates.map((c) => c.angle));
+
+  // Sweeps at the SAME nominal tilt can differ in resolution. In a split cut the
+  // super-res surveillance sweep and the Doppler sweep are both at ~0.5°, and
+  // some VCPs also carry a legacy-resolution copy of the same product. Picking
+  // by elevation alone therefore picks the finer or the coarser one depending on
+  // scan order — which is not a decision to leave to chance when the whole point
+  // is super-res. Among the lowest tilt, take the most gates, then the most
+  // radials: that is the super-res sweep by definition (0.25 km x 0.5° rather
+  // than 1 km x 1°).
+  const atLowest = candidates.filter((c) => Math.abs(c.angle - lowest) < 0.05);
+  atLowest.sort((a, b) => (b.ngates - a.ngates) || (b.nradials - a.nradials));
+  return atLowest[0].e;
 }
 
 /**
@@ -111,15 +124,21 @@ function sweepFrom(factory, product) {
     if (typeof n === 'number' && n > 0) nyquist = n;
   } catch (e) { /* optional */ }
 
+  const azimuths = factory.get_azimuth_angles(elevation);
+  const gateSpacingKm = ranges.length > 1 ? (ranges[1] - ranges[0]) : null;
+
   return {
     product,
     elevation,
     elevationAngle,
-    azimuths: factory.get_azimuth_angles(elevation),
+    azimuths,
     ranges,
     data,
     nyquist,
-    gateSpacingKm: ranges.length > 1 ? (ranges[1] - ranges[0]) : null,
+    gateSpacingKm,
+    // Super-res is 0.25 km gates on a 0.5° azimuth grid; legacy is 1 km / 1°.
+    // Reported so a caption can state it rather than implying it.
+    superRes: !!(gateSpacingKm && gateSpacingKm < 0.5 && azimuths.length > 600),
   };
 }
 

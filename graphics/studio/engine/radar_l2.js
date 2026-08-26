@@ -210,6 +210,8 @@ export async function fetchRadarL2(scene, opts = {}) {
     source: 'aws',
     gates: radar.sweep.ranges.length,
     radials: radar.sweep.azimuths.length,
+    superRes: radar.sweep.superRes,
+    gateSpacingKm: radar.sweep.gateSpacingKm,
   };
   return radar;
 }

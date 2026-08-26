@@ -99,6 +99,20 @@ export async function listLatestVolume(site) {
     if (keys.length) return { url: `${L2_BUCKET}/${keys[keys.length - 1]}`, key: keys[keys.length - 1] };
   }
 
+  // Direct listing got us nothing. Before giving up, ask our own server to
+  // look — it is a different network path, and "this browser cannot reach S3"
+  // is a completely different problem from "this radar has no data".
+  try {
+    const r = await fetch(`/api/graphics/l2-list?site=${id}`, { cache: 'no-store' });
+    const j = await r.json();
+    if (r.ok && j && j.url) return { url: j.url, key: j.key, via: 'relay' };
+    if (j && j.error) {
+      return { url: null, reason: j.error };
+    }
+  } catch (e) {
+    // Relay unreachable too — fall through to the direct-path reason below.
+  }
+
   return {
     url: null,
     reason: reachedArchive
@@ -140,9 +154,32 @@ async function loadVolume(url, onProgress) {
     const L = lib();
     if (!L) throw new Error('Level 2 decoder not loaded');
     if (onProgress) onProgress('downloading volume');
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`could not download the volume (HTTP ${res.status})`);
-    const buf = await res.arrayBuffer();
+
+    // Direct from the bucket first — same request the radar page makes. If that
+    // fails for ANY reason, relay it through our own origin, which sidesteps
+    // CORS and networks that block S3. The relay only pipes bytes; the decode
+    // still happens here.
+    let buf = null;
+    let directError = null;
+    try {
+      const res = await fetch(url);
+      if (res.ok) buf = await res.arrayBuffer();
+      else directError = `HTTP ${res.status}`;
+    } catch (e) {
+      directError = e.message || 'network error';
+    }
+
+    if (!buf) {
+      if (onProgress) onProgress('downloading volume (relay)');
+      const res = await fetch(`/api/graphics/l2-file?url=${encodeURIComponent(url)}`, { cache: 'no-store' });
+      if (!res.ok) {
+        let why = `HTTP ${res.status}`;
+        try { const j = await res.json(); if (j && j.error) why = j.error; } catch (e) { /* not JSON */ }
+        throw new Error(`could not download the volume (direct: ${directError}; relay: ${why})`);
+      }
+      buf = await res.arrayBuffer();
+    }
+
     if (onProgress) onProgress('decoding');
     const name = url.split('/').pop();
     const factory = await L.parseVolume(buf, name);

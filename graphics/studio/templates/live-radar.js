@@ -318,7 +318,12 @@ function chromeLayer(cfg, store) {
         // Caption names the radar, product AND which feed served it, so a
         // fallback to a non-app source is visible rather than silent.
         const meta = store.radar && store.radar.meta;
-        const feed = meta && meta.source ? (meta.source === 'aws' ? 'AWS Level 2' : meta.source.toUpperCase()) : null;
+        // State the resolution rather than implying it: "Super-Res" here means
+        // 0.25 km gates on a 0.5 degree azimuth grid, measured off the sweep
+        // that was actually drawn.
+        const feed = meta && meta.source
+          ? ((meta.superRes ? 'Super-Res ' : '') + 'AWS Level 2')
+          : null;
         const sub = [cfg.subtitle, meta ? `${meta.site} · ${meta.productLabel}` : null, feed]
           .filter(Boolean).join('   ·   ');
         txt(ctx, sub, bw + 28, 92, { size: 18, weight: 700, color: '#b9c4d1' });

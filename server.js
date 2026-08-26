@@ -1811,6 +1811,104 @@ app.get('/api/proxy', requireAuth, async (req, res) => {
 // NEXRAD_LOCATIONS table (the same one the radar page plots), so the studio
 // never keeps a second, drifting copy of the site list.
 let _radarSitesCache = null;
+// ─── Level 2 relay for the Graphics Studio ───────────────────────────────────
+//
+// The studio decodes Level 2 in the BROWSER. Normally it talks to S3 directly,
+// exactly as the radar page does. These two routes exist only for when it
+// cannot — a network that blocks the bucket, a CORS refusal, an S3 hiccup —
+// so a graphic does not simply fail.
+//
+// READ THIS BEFORE EXTENDING: neither route decodes anything. One returns a
+// key, the other pipes bytes straight through. That is deliberate. A previous
+// version of this feature decoded volumes here, which cost ~620 MB of RSS per
+// render and got the process OOM-killed; the browser saw a bare HTTP 502. Keep
+// the decoding in the client.
+const L2_BUCKETS = [
+    // What the radar page uses: complete archived volumes.
+    { host: 'noaa-nexrad-level2.s3.amazonaws.com', kind: 'archive' },
+    // Unidata's real-time mirror, listed as a second source.
+    { host: 'unidata-nexrad-level2-chunks.s3.amazonaws.com', kind: 'chunks' },
+];
+
+function isAllowedL2Url(raw) {
+    let u;
+    try { u = new URL(raw); } catch (e) { return false; }
+    if (u.protocol !== 'https:') return false;
+    if (!L2_BUCKETS.some((b) => b.host === u.hostname)) return false;
+    // A volume key, not an arbitrary object: .../YYYY/MM/DD/SITE/SITEyyyymmdd_hhmmss_Vnn
+    return /_V\d{2}$/.test(u.pathname);
+}
+
+// Latest volume key for a site, resolved server-side.
+app.get('/api/graphics/l2-list', requireAuth, async (req, res) => {
+    const site = String(req.query.site || '').toUpperCase().replace(/[^A-Z]/g, '');
+    if (!/^[A-Z]{3,4}$/.test(site)) return res.status(400).json({ error: 'site is required' });
+
+    const base = 'https://' + L2_BUCKETS[0].host;
+    const now = Date.now();
+    let reached = false;
+    let lastFailure = null;
+
+    for (let back = 0; back < 3; back++) {
+        const d = new Date(now - back * 86400000);
+        const prefix = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${site}/`;
+        let xml;
+        try {
+            const r = await fetch(`${base}/?list-type=2&delimiter=%2F&prefix=${encodeURIComponent(prefix)}`);
+            if (!r.ok) { lastFailure = `archive returned HTTP ${r.status}`; continue; }
+            xml = await r.text();
+            reached = true;
+        } catch (e) {
+            lastFailure = e.message || 'network error';
+            continue;
+        }
+        const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)]
+            .map((m) => m[1])
+            .filter((k) => !k.endsWith('_MDM') && /_V\d{2}$/.test(k));
+        if (keys.length) {
+            res.setHeader('Cache-Control', 'no-store');
+            return res.json({ url: `${base}/${keys[keys.length - 1]}`, key: keys[keys.length - 1] });
+        }
+    }
+
+    res.status(503).json({
+        error: reached
+            ? `${site} has not posted a scan in the last 3 days`
+            : `could not reach the NEXRAD archive (${lastFailure || 'no response'})`,
+    });
+});
+
+// Pipe one volume through. Streamed, never buffered — a volume is ~10 MB and
+// this must not become a memory cost per request.
+app.get('/api/graphics/l2-file', requireAuth, async (req, res) => {
+    const url = String(req.query.url || '');
+    if (!isAllowedL2Url(url)) return res.status(400).json({ error: 'not a NEXRAD Level 2 volume URL' });
+
+    let upstream;
+    try {
+        upstream = await fetch(url);
+    } catch (e) {
+        return res.status(502).json({ error: 'could not reach the NEXRAD archive: ' + (e.message || e) });
+    }
+    if (!upstream.ok || !upstream.body) {
+        return res.status(upstream.status === 404 ? 404 : 502)
+            .json({ error: `archive returned HTTP ${upstream.status}` });
+    }
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Cache-Control', 'no-store');
+    const len = upstream.headers.get('content-length');
+    if (len) res.setHeader('Content-Length', len);
+
+    try {
+        const { Readable } = require('stream');
+        Readable.fromWeb(upstream.body).pipe(res);
+    } catch (e) {
+        if (!res.headersSent) res.status(502).json({ error: 'relay failed: ' + e.message });
+        else res.end();
+    }
+});
+
 // ─── Which build is this box running? ────────────────────────────────────────
 // Reported from the checkout itself, not from anything committed, so it cannot
 // go stale: a build stamp written at build time would keep claiming whatever it
