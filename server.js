@@ -1789,6 +1789,58 @@ app.get('/api/proxy', requireAuth, async (req, res) => {
     }
 });
 
+// ─── Graphics Studio: high-res Level 2 radar raster ──────────────────────────
+// Renders the SAME super-res data the main radar page draws (nws_radar_l2.js +
+// the app's colormaps) as an equirectangular PNG for a bbox, so a studio
+// template can show real radar rather than the NWS ImageServer mosaic.
+// Cached briefly per request signature: a volume only updates every 4-6 min, and
+// panning the studio map would otherwise re-decode on every drag.
+const radarPngCache = new Map(); // sig -> { at, buffer, meta }
+const RADAR_PNG_TTL_MS = 2 * 60 * 1000;
+
+app.get('/api/graphics/radar-l2', requireAuth, async (req, res) => {
+    const q = req.query || {};
+    const bbox = String(q.bbox || '').split(',').map(Number);
+    if (bbox.length !== 4 || bbox.some((n) => !Number.isFinite(n))) {
+        return res.status(400).json({ error: 'bbox=W,S,E,N is required' });
+    }
+    const width = Math.max(64, Math.min(2400, parseInt(q.w, 10) || 1200));
+    const product = q.product === 'velocity' ? 'velocity' : 'reflectivity';
+    const smooth = !/^(0|false|no)$/i.test(String(q.smooth == null ? '1' : q.smooth));
+
+    // Round the bbox into the signature so small pans reuse a render.
+    const r = (n) => Math.round(n * 20) / 20;
+    const sig = [bbox.map(r).join(','), width, product, smooth].join('|');
+
+    const hit = radarPngCache.get(sig);
+    if (hit && Date.now() - hit.at < RADAR_PNG_TTL_MS) {
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('X-Radar-Meta', JSON.stringify(hit.meta));
+        return res.send(hit.buffer);
+    }
+
+    try {
+        const out = await require('./backend/graphics/radar_l2_render')
+            .renderRadarPng({ bbox, width, product, smooth, minDbz: Number.isFinite(parseFloat(q.minDbz)) ? parseFloat(q.minDbz) : undefined });
+        if (!out) return res.status(503).json({ error: 'No radar volume available for this view.' });
+
+        radarPngCache.set(sig, { at: Date.now(), buffer: out.buffer, meta: out.meta });
+        // Keep the cache small — these are multi-hundred-KB PNGs.
+        if (radarPngCache.size > 12) {
+            const oldest = [...radarPngCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+            if (oldest) radarPngCache.delete(oldest[0]);
+        }
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('X-Radar-Meta', JSON.stringify(out.meta));
+        res.send(out.buffer);
+    } catch (e) {
+        console.warn('[GFX-RADAR] render failed:', e.message);
+        res.status(502).json({ error: 'Radar render failed: ' + e.message });
+    }
+});
+
 // ─── Spotter Network proxy (avoids browser CORS) ─────────────────────────────
 async function spotterProxy(endpoint, req, res) {
     try {
