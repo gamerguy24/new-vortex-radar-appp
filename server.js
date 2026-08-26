@@ -1824,8 +1824,16 @@ app.get('/api/graphics/radar-l2', requireAuth, async (req, res) => {
     }
 
     try {
-        const out = await require('./backend/graphics/radar_l2_render')
-            .renderRadarPng({ bbox, width, product, smooth, site, volumeUrl: q.volumeUrl || null, palette: q.palette ? String(q.palette).slice(0,12) : null, minDbz: Number.isFinite(parseFloat(q.minDbz)) ? parseFloat(q.minDbz) : undefined });
+        // Rendered OUT OF PROCESS: a Level 2 decode costs ~620 MB RSS, and doing
+        // that inside this server is what was getting it OOM-killed (the browser
+        // saw a proxy 502). The child exits and the OS reclaims all of it.
+        const out = await require('./backend/graphics/radar_render_isolated')
+            .renderIsolated({
+                bbox, width, product, smooth, site,
+                volumeUrl: q.volumeUrl || null,
+                palette: q.palette ? String(q.palette).slice(0, 12) : null,
+                minDbz: Number.isFinite(parseFloat(q.minDbz)) ? parseFloat(q.minDbz) : undefined,
+            }, { signature: sig });
         if (!out) return res.status(503).json({ error: 'No radar volume available for this view.' });
 
         radarPngCache.set(sig, { at: Date.now(), buffer: out.buffer, meta: out.meta });
