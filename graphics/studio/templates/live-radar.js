@@ -552,6 +552,9 @@ export default {
       loadRadarSites().then((list) => {
         siteStore.sites = list;
         siteStore.status = 'ready';
+        // Rebuild the panel, not just the canvas: the "Radar site" dropdown is
+        // built from this list, and fields() already ran before it arrived.
+        if (ctrl.rebuildProps) ctrl.rebuildProps();
         ctrl.rerender();
       });
     }

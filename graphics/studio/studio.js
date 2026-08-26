@@ -101,6 +101,11 @@ const ctrl = {
   getBrush: () => (state.brush === 'custom' ? state.color : state.brush),
   rerender,
   importSpc,
+  // Rebuild the properties panel. fields() is evaluated once when a template is
+  // selected, so a template whose options are only known after an async load
+  // (e.g. Live Radar's 212-station radar-site list) has no way to show them
+  // without this — the dropdown would sit there with just its placeholder.
+  rebuildProps: () => buildProps(),
 };
 
 // The active paint scale. Templates may expose getScale(config) for datasets
