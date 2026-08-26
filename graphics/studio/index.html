@@ -82,7 +82,7 @@
         </label>
         <button class="tb-btn ghosty" id="tool-clear" title="Clear all brush strokes">Clear drawing</button>
         <span class="tb-sep"></span>
-        <div class="tb-group" role="group" aria-label="Radar">
+        <div class="tb-group" role="group" aria-label="Radar" id="radar-group">
           <button class="tb-btn" id="radar-toggle" title="Overlay live NEXRAD base reflectivity">◈ Radar</button>
           <label class="tb-field tb-size" title="Radar opacity">
             <span>Opacity</span>
@@ -124,6 +124,13 @@
 
   <!-- Native (Capacitor) compatibility — back button + in-app nav; no-op in a browser -->
   <script type="module" src="../../components/native_adapt.js"></script>
+  <!-- The app's OWN Level 2 parser and factory, exposed as window.VortexL2.
+       The Live Radar template decodes NEXRAD volumes with it right here in the
+       browser — the same decoder the radar page runs — so a graphic matches the
+       live radar gate for gate, with no server render in between.
+       Classic (non-module) script: it must be on window before studio.js runs.
+       Built by tools/build.js; run npm run build after touching app/**. -->
+  <script src="../../dist/l2_bundle.js"></script>
   <script src="vendor/d3.v7.min.js"></script>
   <script src="vendor/topojson-client.min.js"></script>
   <script type="module" src="studio.js"></script>

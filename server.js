@@ -1789,68 +1789,23 @@ app.get('/api/proxy', requireAuth, async (req, res) => {
     }
 });
 
-// ─── Graphics Studio: high-res Level 2 radar raster ──────────────────────────
-// Renders the SAME super-res data the main radar page draws (nws_radar_l2.js +
-// the app's colormaps) as an equirectangular PNG for a bbox, so a studio
-// template can show real radar rather than the NWS ImageServer mosaic.
-// Cached briefly per request signature: a volume only updates every 4-6 min, and
-// panning the studio map would otherwise re-decode on every drag.
-const radarPngCache = new Map(); // sig -> { at, buffer, meta }
-const RADAR_PNG_TTL_MS = 2 * 60 * 1000;
-// Small on purpose: these are multi-hundred-KB PNGs held beside decoded radar
-// volumes, and memory pressure here shows up as a proxy 502, not a clean error.
-
-app.get('/api/graphics/radar-l2', requireAuth, async (req, res) => {
-    const q = req.query || {};
-    const bbox = String(q.bbox || '').split(',').map(Number);
-    if (bbox.length !== 4 || bbox.some((n) => !Number.isFinite(n))) {
-        return res.status(400).json({ error: 'bbox=W,S,E,N is required' });
-    }
-    const width = Math.max(64, Math.min(2400, parseInt(q.w, 10) || 1200));
-    const product = q.product === 'velocity' ? 'velocity' : 'reflectivity';
-    const smooth = !/^(0|false|no)$/i.test(String(q.smooth == null ? '1' : q.smooth));
-
-    // Round the bbox into the signature so small pans reuse a render.
-    const r = (n) => Math.round(n * 20) / 20;
-    const site = q.site ? String(q.site).toUpperCase().slice(0, 5) : null;
-    const sig = [bbox.map(r).join(','), width, product, smooth, site || 'auto', q.palette || '', q.volumeUrl || ''].join('|');
-
-    const hit = radarPngCache.get(sig);
-    if (hit && Date.now() - hit.at < RADAR_PNG_TTL_MS) {
-        res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Cache-Control', 'no-store');
-        res.setHeader('X-Radar-Meta', JSON.stringify(hit.meta));
-        return res.send(hit.buffer);
-    }
-
-    try {
-        // Rendered OUT OF PROCESS: a Level 2 decode costs ~620 MB RSS, and doing
-        // that inside this server is what was getting it OOM-killed (the browser
-        // saw a proxy 502). The child exits and the OS reclaims all of it.
-        const out = await require('./backend/graphics/radar_render_isolated')
-            .renderIsolated({
-                bbox, width, product, smooth, site,
-                volumeUrl: q.volumeUrl || null,
-                palette: q.palette ? String(q.palette).slice(0, 12) : null,
-                minDbz: Number.isFinite(parseFloat(q.minDbz)) ? parseFloat(q.minDbz) : undefined,
-            }, { signature: sig });
-        if (!out) return res.status(503).json({ error: 'No radar volume available for this view.' });
-
-        radarPngCache.set(sig, { at: Date.now(), buffer: out.buffer, meta: out.meta });
-        // Keep the cache small — these are multi-hundred-KB PNGs.
-        if (radarPngCache.size > 4) {
-            const oldest = [...radarPngCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
-            if (oldest) radarPngCache.delete(oldest[0]);
-        }
-        res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Cache-Control', 'no-store');
-        res.setHeader('X-Radar-Meta', JSON.stringify(out.meta));
-        res.send(out.buffer);
-    } catch (e) {
-        console.warn('[GFX-RADAR] render failed:', e.message);
-        res.status(502).json({ error: 'Radar render failed: ' + e.message });
-    }
-});
+// ─── Graphics Studio: Level 2 radar ─────────────────────────────────────────
+// There is no server-side radar render. The studio decodes NEXRAD Level 2 in
+// the BROWSER with the app's own libnexrad decoder (dist/l2_bundle.js) — the
+// same code path the radar page runs. See
+// graphics/studio/engine/radar_l2_raster.js.
+//
+// A server-render endpoint used to live here and was removed deliberately. It
+// was a SECOND render path, and it drifted from the first in every way that
+// mattered: this host cannot always list the AWS bucket anonymously, so it fell
+// back to a different feed whose data disagreed with the radar page; a decode
+// costs several hundred MB of RSS, so concurrent renders got the process
+// OOM-killed and the browser saw a bare HTTP 502; and every pan re-decoded from
+// scratch, which is where the ~30 second waits came from. Decoding in the
+// client removes all three, and it is the only place a viewer's uploaded
+// colortable can be resolved, since those live in their localStorage.
+//
+// The browser still needs the station table, which is served just below.
 
 // Radar site list for the Graphics Studio. Served from the app's own
 // NEXRAD_LOCATIONS table (the same one the radar page plots), so the studio

@@ -146,8 +146,26 @@ function selectTemplate(id) {
   buildProps();
   rerender();
   updateHint();
+  syncRadarChrome();
   // The new template may cover a different region; refit radar to its view.
-  if (state.radar) loadRadar();
+  if (state.radar && !state.template.providesRadar) loadRadar();
+}
+
+/*
+ * Show the shared radar toolbar only when it can actually do something.
+ *
+ * insertRadarLayer() already refuses to composite the national mosaic over a
+ * template that draws its own radar, but leaving the button sitting there meant
+ * an operator could switch it on, see nothing change, and reasonably conclude
+ * the template was still showing national coverage. The control that has no
+ * effect is the one to remove.
+ */
+function syncRadarChrome() {
+  const group = document.getElementById('radar-group');
+  if (!group) return;
+  const own = !!(state.template && state.template.providesRadar);
+  group.hidden = own;
+  if (own && state.radar) { state.radar = null; setRadarUI(false); }
 }
 
 // Per-template presentation metadata for the rail + properties header.
@@ -889,6 +907,7 @@ function loadProject(project) {
   state.color = project.color || state.color;
   state.brushPx = project.brushPx || state.brushPx;
   state.logo = null;
+  syncRadarChrome();
   $('logo-remove').hidden = true;
   if (project.logo && project.logo.src) {
     const img = new Image();
@@ -995,6 +1014,7 @@ $('btn-psd').onclick = savePsd;
   buildRail();
   buildProps();
   setTool('fill');
+  syncRadarChrome();
   rerender();
   updateHint();
 })();

@@ -8,25 +8,31 @@
 //    and the canvas is wired for drag-to-pan and wheel-to-zoom, so you compose
 //    the shot directly instead of picking a region from a list.
 //
-// 2. THE RADAR IS THE APP'S OWN DATA. engine/radar.js fetches a pre-rendered
-//    NWS mosaic; this uses engine/radar_l2.js → /api/graphics/radar-l2, which
-//    decodes super-res NEXRAD Level 2 with the same decoder and the same
-//    colormaps as the radar page. Smoothing is the same idea as the radar
-//    page's smoothing toggle: gate values are interpolated before they are
-//    coloured, so the image is smooth without inventing dBZ levels.
+// 2. THE RADAR IS THE APP'S OWN DATA, DECODED HERE. engine/radar.js fetches a
+//    pre-rendered NWS mosaic; this uses engine/radar_l2.js, which pulls the
+//    volume straight from the AWS bucket the radar page lists and decodes
+//    super-res NEXRAD Level 2 IN THIS BROWSER with the app's own libnexrad
+//    decoder and colormaps. No server render sits in between, so a graphic and
+//    the live radar cannot disagree.
+//
+//    Because the data is decoded once and held in memory, panning and zooming
+//    only re-rasterise — they do not refetch. Smoothing is the same idea as the
+//    radar page's smoothing toggle: gate values are interpolated before they
+//    are coloured, so the image is smooth without inventing dBZ levels.
 //
 // Everything else (title, brand, timestamp, legend, sponsor) is editable text.
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { roundRect } from '../engine/scene.js';
-import { fetchRadarL2, radarL2Layer } from '../engine/radar_l2.js';
+import { fetchRadarL2, radarL2Layer, isLevel2Site } from '../engine/radar_l2.js';
 import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js';
 
 const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
 
-// One in-flight radar request, keyed by view+options so panning re-fetches but
-// an unrelated rerender (editing a title) does not.
-const radarStore = { key: null, status: 'idle', radar: null, error: null, retryTimer: null };
+// One in-flight radar decode, keyed by SITE and PRODUCT — not by the view. A
+// decoded volume covers the radar's whole disc, so moving the map re-rasterises
+// what is already here rather than fetching anything.
+const radarStore = { key: null, status: 'idle', stage: null, radar: null, error: null, retryTimer: null };
 
 // Radar station pills (the blue KTLX-style markers from the radar page).
 // Loaded once from the app's own site table and reused across rerenders.
@@ -35,13 +41,11 @@ const siteStore = { status: 'idle', sites: null };
 // Pointer wiring is installed once on the studio canvas and reads whatever the
 // live config/ctrl are, so it survives rerenders.
 //
-// `active` is the important field. While the map is being dragged or zoomed we
-// must NOT re-request radar: the fetch key is derived from the view, so a fetch
-// fired mid-drag is superseded by the next pointermove and discarded, and the
-// radar can never finish loading while you touch the map — while the server is
-// asked for a fresh multi-second render dozens of times a second. Instead the
-// last raster keeps drawing (warped to the new view) and one fetch runs when
-// you stop.
+// `active` is the important field. Two things are gated on it. A decode must
+// not START mid-drag — it is seconds of work on the main thread and would make
+// the map stutter — and the raster is rebuilt at reduced resolution while you
+// move, since rasterising is a projection inversion per pixel. Both go back to
+// full quality once you stop.
 const interaction = {
   installed: false, config: null, ctrl: null, scene: null,
   active: false, rafPending: false, idleTimer: null,
@@ -188,7 +192,11 @@ function installInteraction() {
 function siteOptions() {
   const opts = [{ value: 'auto', label: 'Auto — nearest to view centre' }];
   if (siteStore.sites && siteStore.sites.length) {
-    for (const st of [...siteStore.sites].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    // WSR-88D only. The station table also holds TDWR and profiler sites, and
+    // neither publishes a Level 2 volume — offering them would just hand the
+    // operator a choice that always fails.
+    const usable = siteStore.sites.filter(isLevel2Site);
+    for (const st of usable.sort((a, b) => (a.id < b.id ? -1 : 1))) {
       opts.push({ value: st.id, label: st.name ? st.id + ' — ' + st.name : st.id });
     }
   }
@@ -314,7 +322,10 @@ function chromeLayer(cfg, store) {
       if (stamp) txt(ctx, stamp, W - 26, 56, { size: 20, weight: 800, color: '#fff', align: 'right', shadow: true });
 
       if (store.status === 'loading') {
-        txt(ctx, 'Loading radar…', W - 26, 86, { size: 15, weight: 700, color: '#e8862b', align: 'right' });
+        // Name the stage. Fetching the volume and decoding it are seconds apart,
+        // and a bare "Loading…" for that long reads as a hang.
+        const stage = store.stage ? `Loading radar — ${store.stage}…` : 'Loading radar…';
+        txt(ctx, stage, W - 26, 86, { size: 15, weight: 700, color: '#e8862b', align: 'right' });
       } else if (store.status === 'refreshing') {
         txt(ctx, 'Updating…', W - 26, 86, { size: 13, weight: 700, color: '#96a2b0', align: 'right' });
       } else if (store.status === 'error') {
@@ -500,17 +511,32 @@ export default {
       minDbz: parseFloat(config.minDbz) || 0,
       opacity: parseFloat(config.radarOpacity) || 0.9,
       width: parseInt(config.quality, 10) || 1600,
+      // Progress text, so a first decode reads as work in progress rather than
+      // a frozen panel: the download and decode take a few seconds.
+      onProgress: (stage) => {
+        if (radarStore.key !== null) { radarStore.stage = stage; ctrl.rerender(); }
+      },
     };
-    // Key on the view (rounded, so a 1px drag doesn't refetch) plus the options.
+    // Key on WHAT IS DECODED, not on the camera.
+    //
+    // A decoded volume covers the radar's whole ~230 km disc, so panning and
+    // zooming inside it need no new data — they only re-rasterise what is
+    // already in memory. Smoothing, dBZ floor and quality are render settings
+    // and are applied by the layer, so they are not here either. Only the site
+    // and the product change which bytes have to be fetched.
+    //
+    // On the 'auto' setting the site is resolved from the view centre inside
+    // fetchRadarL2, so the key carries the view centre at low precision: enough
+    // that crossing into another radar's territory re-resolves, coarse enough
+    // that ordinary panning does not.
     const key = [
-      config.centerLat.toFixed(2), config.centerLon.toFixed(2), config.zoom.toFixed(2),
-      opts.product, opts.smooth, opts.minDbz, opts.width,
-      opts.site || 'auto', opts.palette || 'auto',
+      opts.product,
+      opts.site || `auto@${config.centerLat.toFixed(0)},${config.centerLon.toFixed(0)}`,
+      opts.palette || 'auto',
     ].join('|');
 
-    // Only request radar once the view has settled. Mid-drag the key changes on
-    // every frame, so a request fired here would be thrown away by the staleness
-    // guard below and the radar would never finish loading.
+    // Don't start a decode mid-drag; it would compete with the redraw for the
+    // main thread and make the map stutter.
     if (radarStore.key !== key && !interaction.active) {
       radarStore.key = key;
       // Keep the previous raster on screen while the new one loads — warped to
@@ -523,16 +549,19 @@ export default {
           if (radarStore.key !== key) return;      // view moved on; drop stale result
           radarStore.radar = r;
           radarStore.status = 'ready';
+          radarStore.stage = null;
           ctrl.rerender();
         })
         .catch((e) => {
           if (radarStore.key !== key) return;
           radarStore.status = 'error';
+          radarStore.stage = null;
           radarStore.error = e.message;
           // Keep whatever raster we already had rather than blanking the map.
-          // Then clear the key so the next rerender retries: a render can fail
-          // for transient reasons (the volume was mid-upload, the server was
-          // busy), and without this the failure sticks until the view moves.
+          // Then clear the key so the next rerender retries: a decode can fail
+          // for transient reasons (the volume was still being uploaded to the
+          // bucket, the network dropped), and without this the failure sticks
+          // until the view moves.
           if (!radarStore.retryTimer) {
             radarStore.retryTimer = setTimeout(() => {
               radarStore.retryTimer = null;
@@ -551,6 +580,8 @@ export default {
       // between a smooth drag and a stuttering one.
       scene.add(radarL2Layer(radarStore.radar, {
         quality: interaction.active ? 700 : opts.width,
+        smooth: opts.smooth,
+        minDbz: opts.minDbz,
       }));
 
       // Re-stroke ONLY the state outlines over the radar.
