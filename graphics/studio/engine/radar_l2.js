@@ -46,6 +46,47 @@ export function viewBbox(scene, padFrac = 0.04) {
   ];
 }
 
+/* ── AWS volume resolution, in the browser ────────────────────────────────────
+ * This mirrors get_latest_level_2_url() in app/radar/libnexrad/loaders_nexrad.js
+ * exactly: list noaa-nexrad-level2 for today's YYYY/MM/DD/SITE/ prefix and take
+ * the last key, skipping the _MDM metadata object.
+ *
+ * It runs HERE, in the browser, on purpose. The radar page lists that bucket
+ * from the browser and it works; some servers cannot list it anonymously (the
+ * request is refused with AccessDenied), in which case a server-side lookup
+ * silently falls back to a different feed — Unidata THREDDS — whose data does
+ * not match what the radar page is drawing. Resolving the key here and handing
+ * the server the exact object URL means the graphic uses the same volume the
+ * radar page would load, regardless of what the server can list.
+ */
+const L2_BUCKET = 'https://noaa-nexrad-level2.s3.amazonaws.com';
+
+export async function awsLatestVolumeUrl(site) {
+  const id = String(site || '').toUpperCase().replace(/\s/g, '');
+  if (!/^[A-Z]{3,4}$/.test(id)) return null;
+
+  const now = new Date();
+  for (let back = 0; back < 2; back++) {
+    const d = new Date(now.getTime() - back * 86400000);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const prefix = `${y}/${m}/${day}/${id}/`;
+    try {
+      const r = await fetch(`${L2_BUCKET}/?list-type=2&delimiter=%2F&prefix=${encodeURIComponent(prefix)}&_=${Date.now()}`);
+      if (!r.ok) continue;
+      const xml = await r.text();
+      const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)]
+        .map((mm) => mm[1])
+        .filter((k) => !k.endsWith('_MDM') && /_V\d\d$/.test(k));
+      if (keys.length) return `${L2_BUCKET}/${keys[keys.length - 1]}`;
+    } catch (e) {
+      // CORS or network trouble — the server-side path will be used instead.
+    }
+  }
+  return null;
+}
+
 // The radar page stores colortable picks as { REF: 'REF2', VEL: 'VEL1', … }.
 // Uploaded custom tables live only in that browser's localStorage, so the
 // server cannot resolve them; those fall back to the built-in default.
@@ -82,6 +123,16 @@ export async function fetchRadarL2(scene, opts = {}) {
   // A specific radar site, when the operator picked one. Without it the server
   // resolves the radar nearest the view centre, which drifts as you pan.
   if (site) qs.set('site', site);
+
+  // Resolve the volume from AWS here in the browser (same listing the radar
+  // page uses) and hand the server the exact object, so it renders the same
+  // volume the radar page would load rather than falling back to another feed.
+  if (site) {
+    try {
+      const url = await awsLatestVolumeUrl(site);
+      if (url) qs.set('volumeUrl', url);
+    } catch (e) { /* server-side resolution will be used */ }
+  }
 
   // Colortable: an explicit choice wins; otherwise fall back to whatever the
   // viewer selected on the radar page (choosing one there mutates

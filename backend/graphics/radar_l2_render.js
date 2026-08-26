@@ -51,6 +51,81 @@ const { NEXRAD_LOCATIONS } = require('../../app/radar/libnexrad/nexrad_locations
  */
 const VOLUME_TTL_MS = 3 * 60 * 1000;
 const volumeCache = new Map();   // site -> { at, name, factory }
+let lastSource = null;           // which feed served the most recent volume
+
+/*
+ * AWS FIRST — the same source the radar page uses.
+ *
+ * app/radar/libnexrad/loaders_nexrad.js lists
+ *   https://noaa-nexrad-level2.s3.amazonaws.com/?list-type=2&prefix=YYYY/MM/DD/SITE/
+ * and takes the newest *_V06 key. nws_radar_l2.js's latestVolume() instead tries
+ * Unidata THREDDS first and only falls back to AWS, which is a DIFFERENT feed:
+ * different filenames (Level2_KTLX_….ar2v), different latency, and visibly
+ * different data from what the radar page is drawing. Matching the radar page
+ * means going to the same bucket it does.
+ *
+ * THREDDS stays as a fallback for hosts where anonymous S3 listing is blocked.
+ */
+const L2_BUCKET = 'https://noaa-nexrad-level2.s3.amazonaws.com';
+const UA = process.env.NWS_USER_AGENT || 'VortexRadar Graphics';
+
+async function awsLatestVolume(site) {
+  const now = new Date();
+  for (let dayBack = 0; dayBack < 2; dayBack++) {
+    const d = new Date(now.getTime() - dayBack * 86400000);
+    const prefix = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/`
+      + `${String(d.getUTCDate()).padStart(2, '0')}/${site}/`;
+    let xml;
+    try {
+      const r = await fetch(`${L2_BUCKET}/?list-type=2&prefix=${encodeURIComponent(prefix)}`,
+        { headers: { 'User-Agent': UA } });
+      if (!r.ok) continue;
+      xml = await r.text();
+    } catch (e) { continue; }
+
+    // Newest _V0x key, ignoring the small _MDM metadata objects.
+    const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1])
+      .filter((k) => !k.endsWith('_MDM') && /_V\d\d$/.test(k));
+    if (keys.length) {
+      const key = keys[keys.length - 1];
+      return { url: `${L2_BUCKET}/${key}`, name: key.split('/').pop(), source: 'aws' };
+    }
+  }
+  return null;
+}
+
+/*
+ * Only this bucket may be fetched. The volume URL can be supplied by the client
+ * (the browser lists AWS successfully even where a server cannot), so it must be
+ * validated — an unchecked caller-supplied URL is an SSRF hole.
+ */
+function validVolumeUrl(url) {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol !== 'https:') return null;
+    if (u.hostname !== 'noaa-nexrad-level2.s3.amazonaws.com') return null;
+    if (!/_V\d\d$/.test(u.pathname)) return null;      // a Level 2 volume, nothing else
+    return u.href;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Preference order: an explicit (validated) AWS object from the client, then a
+// server-side AWS listing, then THREDDS. The first two are the same feed the
+// radar page uses; THREDDS is only a last resort so a graphic still renders.
+async function resolveVolume(site, volumeUrl) {
+  const explicit = validVolumeUrl(volumeUrl);
+  if (explicit) {
+    return { url: explicit, name: explicit.split('/').pop(), source: 'aws' };
+  }
+  try {
+    const aws = await awsLatestVolume(site);
+    if (aws) return aws;
+  } catch (e) { /* fall through */ }
+  const t = await latestVolume(site);
+  return t ? { ...t, source: t.source || 'thredds' } : null;
+}
 
 function bestElevationFor(factory, product) {
   let best = null, bestAng = Infinity;
@@ -64,15 +139,16 @@ function bestElevationFor(factory, product) {
   return best;
 }
 
-async function getRadarDataForSite(site, code) {
+async function getRadarDataForSite(site, code, volumeUrl) {
   const id = String(site || '').toUpperCase();
   const loc = NEXRAD_LOCATIONS[id];
   if (!loc) throw new Error('unknown radar site: ' + id);
 
   let entry = volumeCache.get(id);
   if (!entry || Date.now() - entry.at > VOLUME_TTL_MS) {
-    const found = await latestVolume(id);
+    const found = await resolveVolume(id, volumeUrl);
     if (!found) throw new Error('no recent volume for ' + id);
+    lastSource = found.source || null;
     if (!entry || entry.name !== found.name) {
       const res = await fetch(found.url, {
         headers: { 'User-Agent': process.env.NWS_USER_AGENT || 'VortexRadar Graphics' },
@@ -271,9 +347,11 @@ async function renderRadarPng(o) {
   // radar nearest the view centre is used.
   let rd;
   try {
-    rd = o.site
-      ? await getRadarDataForSite(o.site, code)
-      : await getRadarData(cLat, cLon, code);
+    // Both paths use the same AWS-first loader; 'auto' just resolves the
+    // nearest station first, exactly as the radar page would.
+    const siteId = o.site || nearestStation(cLat, cLon);
+    if (!siteId) throw new Error('no radar site for this view');
+    rd = await getRadarDataForSite(siteId, code, o.volumeUrl);
   } catch (e) {
     throw new Error('radar fetch/decode failed: ' + e.message);
   }
@@ -430,6 +508,7 @@ async function renderRadarPng(o) {
       superRes: gateKm <= 0.26 && azimuths.length >= 700,
       smoothed: smooth,
       palette: paletteId || code,
+      source: lastSource,
       minValue: minValue === -Infinity ? null : minValue,
       fadeDbz: isRef ? fadeSpan : null,
       paintedPixels: painted,

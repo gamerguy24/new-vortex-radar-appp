@@ -1811,7 +1811,7 @@ app.get('/api/graphics/radar-l2', requireAuth, async (req, res) => {
     // Round the bbox into the signature so small pans reuse a render.
     const r = (n) => Math.round(n * 20) / 20;
     const site = q.site ? String(q.site).toUpperCase().slice(0, 5) : null;
-    const sig = [bbox.map(r).join(','), width, product, smooth, site || 'auto', q.palette || ''].join('|');
+    const sig = [bbox.map(r).join(','), width, product, smooth, site || 'auto', q.palette || '', q.volumeUrl || ''].join('|');
 
     const hit = radarPngCache.get(sig);
     if (hit && Date.now() - hit.at < RADAR_PNG_TTL_MS) {
@@ -1823,7 +1823,7 @@ app.get('/api/graphics/radar-l2', requireAuth, async (req, res) => {
 
     try {
         const out = await require('./backend/graphics/radar_l2_render')
-            .renderRadarPng({ bbox, width, product, smooth, site, palette: q.palette ? String(q.palette).slice(0,12) : null, minDbz: Number.isFinite(parseFloat(q.minDbz)) ? parseFloat(q.minDbz) : undefined });
+            .renderRadarPng({ bbox, width, product, smooth, site, volumeUrl: q.volumeUrl || null, palette: q.palette ? String(q.palette).slice(0,12) : null, minDbz: Number.isFinite(parseFloat(q.minDbz)) ? parseFloat(q.minDbz) : undefined });
         if (!out) return res.status(503).json({ error: 'No radar volume available for this view.' });
 
         radarPngCache.set(sig, { at: Date.now(), buffer: out.buffer, meta: out.meta });

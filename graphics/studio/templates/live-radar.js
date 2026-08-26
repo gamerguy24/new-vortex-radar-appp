@@ -293,7 +293,11 @@ function chromeLayer(cfg, store) {
         txt(ctx, cfg.brandBottom || '', 20, 100, { size: 15, weight: 700, color: 'rgba(0,0,0,0.72)' });
 
         txt(ctx, cfg.title || '', bw + 26, 56, { size: 40, weight: 900, color: '#fff', shadow: true });
-        const sub = [cfg.subtitle, store.radar && store.radar.meta ? `${store.radar.meta.site} · ${store.radar.meta.productLabel}` : null]
+        // Caption names the radar, product AND which feed served it, so a
+        // fallback to a non-app source is visible rather than silent.
+        const meta = store.radar && store.radar.meta;
+        const feed = meta && meta.source ? (meta.source === 'aws' ? 'AWS Level 2' : meta.source.toUpperCase()) : null;
+        const sub = [cfg.subtitle, meta ? `${meta.site} · ${meta.productLabel}` : null, feed]
           .filter(Boolean).join('   ·   ');
         txt(ctx, sub, bw + 28, 92, { size: 18, weight: 700, color: '#b9c4d1' });
         ctx.restore();
