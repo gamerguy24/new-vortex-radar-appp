@@ -67,7 +67,7 @@ function chosenPalette(product) {
 export async function fetchRadarL2(scene, opts = {}) {
   const {
     opacity = 0.9, product = 'reflectivity', smooth = true,
-    minDbz = 15, width = 1600,
+    minDbz = 15, width = 1600, site = null, palette = null,
   } = opts;
 
   const bbox = viewBbox(scene);
@@ -79,12 +79,17 @@ export async function fetchRadarL2(scene, opts = {}) {
     minDbz: String(minDbz),
   });
 
-  // Match the colortable the viewer chose on the radar page. Choosing one there
-  // mutates product_colors[product] in the browser and records the pick in
-  // localStorage, so without this a graphic renders the built-in default and
-  // quietly disagrees with the radar they are looking at.
-  const palette = chosenPalette(product);
-  if (palette) qs.set('palette', palette);
+  // A specific radar site, when the operator picked one. Without it the server
+  // resolves the radar nearest the view centre, which drifts as you pan.
+  if (site) qs.set('site', site);
+
+  // Colortable: an explicit choice wins; otherwise fall back to whatever the
+  // viewer selected on the radar page (choosing one there mutates
+  // product_colors[product] in the browser and records the pick in localStorage,
+  // so without this a graphic renders the built-in default and quietly
+  // disagrees with the radar they are looking at).
+  const pal = palette || chosenPalette(product);
+  if (pal) qs.set('palette', pal);
 
   // Time-box the request. A decode of a fresh 10 MB volume can take a few
   // seconds; a stalled connection should surface as an error the template can

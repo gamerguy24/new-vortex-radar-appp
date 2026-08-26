@@ -180,6 +180,39 @@ function installInteraction() {
   }, { passive: false });
 }
 
+/* ── control options ───────────────────────────────────────────────────────── */
+
+// The site dropdown is built from the station table once it has loaded. Before
+// then only "Auto" is offered; selecting the template again (or any rerender
+// after the list arrives) fills it in. Sorted by id so it is scannable.
+function siteOptions() {
+  const opts = [{ value: 'auto', label: 'Auto — nearest to view centre' }];
+  if (siteStore.sites && siteStore.sites.length) {
+    for (const st of [...siteStore.sites].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+      opts.push({ value: st.id, label: st.name ? st.id + ' — ' + st.name : st.id });
+    }
+  }
+  return opts;
+}
+
+// Built-in colortables, mirroring the radar page's Colortables menu. "Auto"
+// follows whatever the viewer picked there (read from localStorage by
+// engine/radar_l2.js), so a graphic matches their radar without being told.
+function paletteOptions() {
+  return [
+    { value: 'auto', label: 'Auto — match my radar page' },
+    { value: 'REF', label: 'Reflectivity — Default' },
+    { value: 'REF1', label: 'Reflectivity — 1' },
+    { value: 'REF2', label: 'Reflectivity — 2' },
+    { value: 'REF3', label: 'Reflectivity — 3' },
+    { value: 'REF4', label: 'Reflectivity — 4' },
+    { value: 'REF5', label: 'Reflectivity — 5' },
+    { value: 'VEL', label: 'Velocity — Default' },
+    { value: 'VEL1', label: 'Velocity — 1' },
+    { value: 'VEL2', label: 'Velocity — 2' },
+  ];
+}
+
 /* ── drawing helpers ──────────────────────────────────────────────────────── */
 function txt(ctx, str, x, y, o = {}) {
   const { size = 30, weight = 800, color = '#fff', align = 'left', baseline = 'alphabetic', shadow = false, track = 0 } = o;
@@ -323,6 +356,8 @@ export default {
       lockMap: false,
       showHint: true,
       // Radar
+      radarSite: 'auto',
+      palette: 'auto',
       product: 'reflectivity',
       smooth: true,
       minDbz: '15',
@@ -356,6 +391,8 @@ export default {
       { key: 'centerLat', label: 'Center latitude', type: 'text' },
       { key: 'centerLon', label: 'Center longitude', type: 'text' },
 
+      { key: 'radarSite', label: 'Radar site', type: 'select', options: siteOptions() },
+      { key: 'palette', label: 'Colortable', type: 'select', options: paletteOptions() },
       { key: 'product', label: 'Radar product', type: 'select', options: [
         { value: 'reflectivity', label: 'Base Reflectivity' },
         { value: 'velocity', label: 'Base Velocity' }] },
@@ -437,6 +474,8 @@ export default {
 
     /* ── radar ── */
     const opts = {
+      site: config.radarSite && config.radarSite !== 'auto' ? config.radarSite : null,
+      palette: config.palette && config.palette !== 'auto' ? config.palette : null,
       product: config.product,
       smooth: !!config.smooth,
       minDbz: parseFloat(config.minDbz) || 0,
@@ -447,6 +486,7 @@ export default {
     const key = [
       config.centerLat.toFixed(2), config.centerLon.toFixed(2), config.zoom.toFixed(2),
       opts.product, opts.smooth, opts.minDbz, opts.width,
+      opts.site || 'auto', opts.palette || 'auto',
     ].join('|');
 
     // Only request radar once the view has settled. Mid-drag the key changes on
@@ -505,15 +545,18 @@ export default {
     /* ── radar station pills ──
      * The same markers the radar page shows, drawn over the map so a graphic
      * can identify which sites are in frame. Loaded once, then cached. */
+    // The station table also feeds the "Radar site" dropdown, so load it even
+    // when the markers themselves are switched off.
+    if (siteStore.status === 'idle') {
+      siteStore.status = 'loading';
+      loadRadarSites().then((list) => {
+        siteStore.sites = list;
+        siteStore.status = 'ready';
+        ctrl.rerender();
+      });
+    }
+
     if (config.sites && config.sites !== 'off') {
-      if (siteStore.status === 'idle') {
-        siteStore.status = 'loading';
-        loadRadarSites().then((list) => {
-          siteStore.sites = list;
-          siteStore.status = 'ready';
-          ctrl.rerender();
-        });
-      }
       if (siteStore.sites && siteStore.sites.length) {
         scene.add(radarSitesLayer({
           sites: siteStore.sites,

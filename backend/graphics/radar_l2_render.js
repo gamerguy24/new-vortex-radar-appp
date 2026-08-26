@@ -35,7 +35,87 @@
 const { createCanvas } = require('@napi-rs/canvas');
 const chroma = require('chroma-js');
 const colormaps = require('../../app/radar/colormaps/colormaps');
-const { getRadarData, nearestStation } = require('../../nws_radar_l2');
+const { getRadarData, nearestStation, latestVolume, decodeVolume } = require('../../nws_radar_l2');
+const { NEXRAD_LOCATIONS } = require('../../app/radar/libnexrad/nexrad_locations');
+
+/* ── explicit-site loading ────────────────────────────────────────────────────
+ * getRadarData() always resolves the radar NEAREST to a point, which is right
+ * for an automatic graphic but wrong when the operator wants a specific site —
+ * "show me KTLX" must mean KTLX even when the view has drifted closer to KFDR.
+ * So a chosen site is loaded here directly from the same primitives
+ * (latestVolume + decodeVolume) that getRadarData uses internally.
+ *
+ * One decoded volume per site is cached. A volume is ~10 MB of raw data and
+ * several seconds to decode, while a new one only appears every 4-6 minutes, so
+ * re-decoding per request would dominate the cost of every pan.
+ */
+const VOLUME_TTL_MS = 3 * 60 * 1000;
+const volumeCache = new Map();   // site -> { at, name, factory }
+
+function bestElevationFor(factory, product) {
+  let best = null, bestAng = Infinity;
+  for (let e = 1; e <= factory.nscans; e++) {
+    const sweep = factory.grouped_sweeps[e];
+    if (!sweep || !sweep[0] || !sweep[0][product] || !sweep[0][product].ngates) continue;
+    let ang;
+    try { ang = factory.get_elevation_angle(e); } catch (err) { continue; }
+    if (ang < bestAng) { bestAng = ang; best = e; }
+  }
+  return best;
+}
+
+async function getRadarDataForSite(site, code) {
+  const id = String(site || '').toUpperCase();
+  const loc = NEXRAD_LOCATIONS[id];
+  if (!loc) throw new Error('unknown radar site: ' + id);
+
+  let entry = volumeCache.get(id);
+  if (!entry || Date.now() - entry.at > VOLUME_TTL_MS) {
+    const found = await latestVolume(id);
+    if (!found) throw new Error('no recent volume for ' + id);
+    if (!entry || entry.name !== found.name) {
+      const res = await fetch(found.url, {
+        headers: { 'User-Agent': process.env.NWS_USER_AGENT || 'VortexRadar Graphics' },
+      });
+      if (!res.ok) throw new Error('volume download failed: HTTP ' + res.status);
+      const buf = Buffer.from(await res.arrayBuffer());
+      const factory = decodeVolume(buf, found.name);
+      if (!factory) throw new Error('decode produced nothing for ' + id);
+      entry = { at: Date.now(), name: found.name, factory };
+    } else {
+      entry.at = Date.now();
+    }
+    volumeCache.set(id, entry);
+    // Bound the cache — decoded volumes are large.
+    if (volumeCache.size > 3) {
+      const oldest = [...volumeCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (oldest && oldest[0] !== id) volumeCache.delete(oldest[0]);
+    }
+  }
+
+  const factory = entry.factory;
+  const elevation = bestElevationFor(factory, code);
+  if (elevation == null) throw new Error(`no ${code} sweep in ${id}'s current volume`);
+
+  const edges = factory.get_ranges(code, elevation);
+  const centres = new Array(Math.max(0, edges.length - 1));
+  for (let i = 0; i < centres.length; i++) centres[i] = (edges[i] + edges[i + 1]) / 2;
+
+  let elevationAngle = null, time = null;
+  try { elevationAngle = factory.get_elevation_angle(elevation); } catch (e) { /* optional */ }
+  try { time = factory.get_date(); } catch (e) { /* optional */ }
+
+  return {
+    site: id,
+    azimuths: factory.get_azimuth_angles(elevation),
+    ranges: centres,
+    data: factory.get_data(code, elevation),
+    location: [loc.lat, loc.lon, loc.elev || 0],
+    product: code,
+    elevationAngle,
+    time,
+  };
+}
 
 const D2R = Math.PI / 180;
 const R2D = 180 / Math.PI;
@@ -187,10 +267,13 @@ async function renderRadarPng(o) {
 
   const cLat = (S + N) / 2, cLon = (W + E) / 2;
 
-  // The app's own decoder. Returns the lowest sweep carrying this product.
+  // The app's own decoder. An explicit site is honoured exactly; otherwise the
+  // radar nearest the view centre is used.
   let rd;
   try {
-    rd = await getRadarData(cLat, cLon, code);
+    rd = o.site
+      ? await getRadarDataForSite(o.site, code)
+      : await getRadarData(cLat, cLon, code);
   } catch (e) {
     throw new Error('radar fetch/decode failed: ' + e.message);
   }
