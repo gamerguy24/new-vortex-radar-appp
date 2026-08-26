@@ -1824,9 +1824,13 @@ let _radarSitesCache = null;
 // render and got the process OOM-killed; the browser saw a bare HTTP 502. Keep
 // the decoding in the client.
 const L2_BUCKETS = [
-    // What the radar page uses: complete archived volumes.
+    // What the radar page uses, and the only bucket l2-list resolves from:
+    // complete, decodable volumes.
     { host: 'noaa-nexrad-level2.s3.amazonaws.com', kind: 'archive' },
-    // Unidata's real-time mirror, listed as a second source.
+    // Allowed for relaying, but NOT listed from. unidata-nexrad-level2-chunks
+    // stores partial volumes as separate S/I/E chunk objects that have to be
+    // fetched and concatenated before the parser can read them — lower latency,
+    // but a different format, not a drop-in substitute for a volume URL.
     { host: 'unidata-nexrad-level2-chunks.s3.amazonaws.com', kind: 'chunks' },
 ];
 
