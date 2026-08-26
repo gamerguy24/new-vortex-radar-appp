@@ -1902,6 +1902,7 @@ app.get('/api/graphics/l2-list', requireAuth, async (req, res) => {
             .filter((k) => !k.endsWith('_MDM') && /_V\d{2}$/.test(k));
         if (keys.length) {
             res.setHeader('Cache-Control', 'no-store');
+            console.log(`[L2-LIST] ${site} -> archive OK (${keys[keys.length - 1]})`);
             return res.json({ url: `${base}/${keys[keys.length - 1]}`, key: keys[keys.length - 1] });
         }
     }
@@ -1914,9 +1915,13 @@ app.get('/api/graphics/l2-list', requireAuth, async (req, res) => {
         const folders = await listVolumeFolders(site);
         if (folders.length) {
             res.setHeader('Cache-Control', 'no-store');
+            console.log(`[L2-LIST] ${site} -> archive failed (${lastFailure}), chunks fallback OK`);
             return res.json({ url: CHUNKS_MARKER_PREFIX + site, key: site + ' (realtime chunks)', via: 'chunks' });
         }
-    } catch (e) { /* chunks bucket unreachable too — fall through to the error below */ }
+        console.warn(`[L2-LIST] ${site} -> archive failed (${lastFailure}), chunks bucket has NO folders for this site`);
+    } catch (e) {
+        console.warn(`[L2-LIST] ${site} -> archive failed (${lastFailure}), chunks bucket ALSO failed: ${e.message}`);
+    }
 
     res.status(503).json({
         error: reached
@@ -1933,13 +1938,16 @@ app.get('/api/graphics/l2-file', requireAuth, async (req, res) => {
 
     if (url.startsWith(CHUNKS_MARKER_PREFIX)) {
         const site = url.slice(CHUNKS_MARKER_PREFIX.length);
+        const t0 = Date.now();
         try {
             const buf = await fetchLatestL2(site);
             if (!buf.length) throw new Error('empty volume');
             res.setHeader('Content-Type', 'application/octet-stream');
             res.setHeader('Cache-Control', 'no-store');
+            console.log(`[L2-FILE] ${site} -> chunks reconstruct OK, ${buf.length} bytes, ${Date.now() - t0}ms`);
             return res.send(buf);
         } catch (e) {
+            console.warn(`[L2-FILE] ${site} -> chunks reconstruct FAILED after ${Date.now() - t0}ms: ${e.message}`);
             return res.status(502).json({ error: 'could not reconstruct volume from realtime chunks: ' + (e.message || e) });
         }
     }
@@ -1963,19 +1971,26 @@ app.get('/api/graphics/l2-file', requireAuth, async (req, res) => {
         // object through us just failed the same way our own listing does (see
         // l2-list above). Same fix: fall back to the realtime chunks bucket
         // rather than surfacing the archive failure when we have another way.
+        console.warn(`[L2-FILE] direct archive relay FAILED (${archiveFailure}) for ${url}`);
         if (archiveSiteMatch) {
             try {
                 const buf = await fetchLatestL2(archiveSiteMatch[1]);
                 if (buf.length) {
                     res.setHeader('Content-Type', 'application/octet-stream');
                     res.setHeader('Cache-Control', 'no-store');
+                    console.log(`[L2-FILE] ${archiveSiteMatch[1]} -> chunks fallback after archive failure OK, ${buf.length} bytes`);
                     return res.send(buf);
                 }
-            } catch (e) { /* chunks fallback also failed — report the original archive error below */ }
+            } catch (e) {
+                console.warn(`[L2-FILE] ${archiveSiteMatch[1]} -> chunks fallback after archive failure ALSO FAILED: ${e.message}`);
+            }
+        } else {
+            console.warn(`[L2-FILE] could not parse a site out of the URL, no chunks fallback possible: ${url}`);
         }
         return res.status(502).json({ error: 'could not reach the NEXRAD archive: ' + archiveFailure });
     }
 
+    console.log(`[L2-FILE] ${url} -> direct archive relay OK`);
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Cache-Control', 'no-store');
     const len = upstream.headers.get('content-length');
