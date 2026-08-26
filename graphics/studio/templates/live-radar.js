@@ -29,7 +29,40 @@ const radarStore = { key: null, status: 'idle', radar: null, error: null };
 
 // Pointer wiring is installed once on the studio canvas and reads whatever the
 // live config/ctrl are, so it survives rerenders.
-const interaction = { installed: false, config: null, ctrl: null, scene: null };
+//
+// `active` is the important field. While the map is being dragged or zoomed we
+// must NOT re-request radar: the fetch key is derived from the view, so a fetch
+// fired mid-drag is superseded by the next pointermove and discarded, and the
+// radar can never finish loading while you touch the map — while the server is
+// asked for a fresh multi-second render dozens of times a second. Instead the
+// last raster keeps drawing (warped to the new view) and one fetch runs when
+// you stop.
+const interaction = {
+  installed: false, config: null, ctrl: null, scene: null,
+  active: false, rafPending: false, idleTimer: null,
+};
+
+// Coalesce redraws to one per animation frame. Without this a drag issues a
+// full rebuild + re-warp per pointermove event, which is the whole of the lag.
+function requestRedraw() {
+  if (interaction.rafPending || !interaction.ctrl) return;
+  interaction.rafPending = true;
+  requestAnimationFrame(() => {
+    interaction.rafPending = false;
+    if (interaction.ctrl) interaction.ctrl.rerender();
+  });
+}
+
+// Mark the map as being interacted with, and schedule the "settled" redraw that
+// actually refreshes the radar for the new view.
+function markActive() {
+  interaction.active = true;
+  clearTimeout(interaction.idleTimer);
+  interaction.idleTimer = setTimeout(() => {
+    interaction.active = false;
+    if (interaction.ctrl) interaction.ctrl.rerender();   // full quality + refetch
+  }, 320);
+}
 
 /* ── zoom maths ────────────────────────────────────────────────────────────
  * Web-mercator style: zoom z means the whole world is 256·2^z px wide, which is
@@ -98,7 +131,8 @@ function installInteraction() {
     cfg.centerLon = moved2[0];
     cfg.centerLat = moved2[1];
     clampView(cfg);
-    if (interaction.ctrl) interaction.ctrl.rerender();
+    markActive();
+    requestRedraw();
   });
 
   const endDrag = (ev) => {
@@ -136,7 +170,8 @@ function installInteraction() {
         clampView(cfg);
       }
     }
-    if (interaction.ctrl) interaction.ctrl.rerender();
+    markActive();
+    requestRedraw();
   }, { passive: false });
 }
 
@@ -238,6 +273,8 @@ function chromeLayer(cfg, store) {
 
       if (store.status === 'loading') {
         txt(ctx, 'Loading radar…', W - 26, 86, { size: 15, weight: 700, color: '#e8862b', align: 'right' });
+      } else if (store.status === 'refreshing') {
+        txt(ctx, 'Updating…', W - 26, 86, { size: 13, weight: 700, color: '#96a2b0', align: 'right' });
       } else if (store.status === 'error') {
         txt(ctx, 'Radar unavailable: ' + (store.error || ''), W - 26, 86, { size: 14, weight: 700, color: '#cc5a4c', align: 'right' });
       }
@@ -280,11 +317,11 @@ export default {
       smooth: true,
       minDbz: '15',
       radarOpacity: '0.9',
-      quality: '1600',
+      quality: '1200',
       // Map
       basemap: BASEMAP_OPTIONS && BASEMAP_OPTIONS[0] ? BASEMAP_OPTIONS[0].value : 'dark',
       showCities: true,
-      showCounties: true,
+      counties: 'normal',
       // Chrome
       showHeader: true,
       showLegend: true,
@@ -322,7 +359,9 @@ export default {
         { value: '1100', label: 'Fast' }, { value: '1600', label: 'High' }, { value: '2200', label: 'Maximum' }] },
 
       { key: 'basemap', label: 'Basemap', type: 'select', options: BASEMAP_OPTIONS },
-      { key: 'showCounties', label: 'County lines', type: 'toggle' },
+      { key: 'counties', label: 'County lines', type: 'select', options: [
+        { value: 'off', label: 'Off' }, { value: 'subtle', label: 'Subtle' },
+        { value: 'normal', label: 'Normal' }, { value: 'bold', label: 'Bold' }] },
       { key: 'showCities', label: 'City labels', type: 'toggle' },
 
       { key: 'showHeader', label: 'Show header', type: 'toggle' },
@@ -359,11 +398,24 @@ export default {
 
     scene.clearLayers();
     scene.add(backgroundLayer(config.basemap));
+    // Counties are drawn here, UNDER the radar, and their weight is explicit
+    // rather than inherited from the basemap style — the basemap decides county
+    // colour per style, which is fine for a static map but leaves you no way to
+    // make them readable once a radar layer is sitting on top of them.
+    const COUNTY_WEIGHTS = {
+      off: { countyW: 0 },
+      subtle: { county: 'rgba(255,255,255,0.45)', countyW: 0.9, countyHalo: 'rgba(0,0,0,0.45)', countyHaloW: 2.0 },
+      normal: { county: 'rgba(255,255,255,0.8)', countyW: 1.3, countyHalo: 'rgba(0,0,0,0.55)', countyHaloW: 2.8 },
+      bold: { county: 'rgba(255,255,255,0.95)', countyW: 1.9, countyHalo: 'rgba(0,0,0,0.7)', countyHaloW: 4.0 },
+    };
+    const countyStyle = COUNTY_WEIGHTS[config.counties] || COUNTY_WEIGHTS.normal;
+
     scene.add(landLayer({
       styleName: config.basemap,
       landFeatures: geo.states,
-      countyMesh: config.showCounties ? geo.countyBorders : null,
+      countyMesh: config.counties === 'off' ? null : geo.countyBorders,
       borderMesh: geo.stateBorders,
+      override: countyStyle,
     }));
 
     /* ── radar ── */
@@ -380,9 +432,15 @@ export default {
       opts.product, opts.smooth, opts.minDbz, opts.width,
     ].join('|');
 
-    if (radarStore.key !== key) {
+    // Only request radar once the view has settled. Mid-drag the key changes on
+    // every frame, so a request fired here would be thrown away by the staleness
+    // guard below and the radar would never finish loading.
+    if (radarStore.key !== key && !interaction.active) {
       radarStore.key = key;
-      radarStore.status = 'loading';
+      // Keep the previous raster on screen while the new one loads — warped to
+      // the current view it is still broadly right, and blanking the map every
+      // time you nudge it is worse than a few seconds of slightly stale echo.
+      radarStore.status = radarStore.radar ? 'refreshing' : 'loading';
       radarStore.error = null;
       fetchRadarL2(scene, opts)
         .then((r) => {
@@ -400,16 +458,28 @@ export default {
         });
     }
 
-    if (radarStore.status === 'ready' && radarStore.radar) {
+    if (radarStore.radar) {
       radarStore.radar.opacity = opts.opacity;
-      scene.add(radarL2Layer(radarStore.radar, { quality: opts.width }));
-      // Re-stroke borders over the radar so state/county lines stay readable.
+      // Warp cheaply while the map is moving, at full quality once it settles.
+      // The warp is a per-pixel projection inversion, so this is the difference
+      // between a smooth drag and a stuttering one.
+      scene.add(radarL2Layer(radarStore.radar, {
+        quality: interaction.active ? 700 : opts.width,
+      }));
+
+      // Re-stroke ONLY the state outlines over the radar.
+      //
+      // This used to re-stroke the counties too, on top of the pass underneath.
+      // Drawing the same white county mesh twice doubled its weight and its
+      // halo, so counties and state borders ended up identical heavy white
+      // lines and the map read as an unreadable mesh. Counties belong under the
+      // radar; states go over it so the frame stays legible.
       scene.add(landLayer({
         styleName: config.basemap,
         landFeatures: geo.states,
-        countyMesh: config.showCounties ? geo.countyBorders : null,
+        countyMesh: null,
         borderMesh: geo.stateBorders,
-        override: { land: 'rgba(0,0,0,0)', relief: false },
+        override: { land: 'rgba(0,0,0,0)', relief: false, countyW: 0 },
       }));
     }
 

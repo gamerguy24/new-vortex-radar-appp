@@ -65,7 +65,19 @@ export async function fetchRadarL2(scene, opts = {}) {
     minDbz: String(minDbz),
   });
 
-  const res = await fetch(`/api/graphics/radar-l2?${qs}`);
+  // Time-box the request. A decode of a fresh 10 MB volume can take a few
+  // seconds; a stalled connection should surface as an error the template can
+  // show, not leave the caption reading "Loading radar…" forever.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs || 45000);
+  let res;
+  try {
+    res = await fetch(`/api/graphics/radar-l2?${qs}`, { signal: ctrl.signal });
+  } catch (e) {
+    throw new Error(e.name === 'AbortError' ? 'timed out' : e.message);
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     let msg = 'HTTP ' + res.status;
     try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (e) { /* not json */ }

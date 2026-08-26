@@ -214,13 +214,39 @@ async function renderRadarPng(o) {
 
   let painted = 0;
 
+  /*
+   * Per-pixel geodesics, hoisted.
+   *
+   * The naive form calls toPolar() per pixel: ~6 transcendental ops across
+   * 1.3M pixels. But the geometry factorises — longitude depends only on the
+   * column and latitude only on the row — so sin/cos of Δλ are precomputed once
+   * per column and sin/cos of the latitude once per row, leaving just one acos
+   * and one atan2 per pixel. Same arithmetic, a fraction of the cost.
+   */
+  const sinφ1 = Math.sin(radarLat * D2R), cosφ1 = Math.cos(radarLat * D2R);
+  const cosDlon = new Float64Array(outW), sinDlon = new Float64Array(outW);
+  for (let x = 0; x < outW; x++) {
+    const dl = ((W + (x + 0.5) * dLon) - radarLon) * D2R;
+    cosDlon[x] = Math.cos(dl); sinDlon[x] = Math.sin(dl);
+  }
+
   for (let y = 0; y < outH; y++) {
     // Pixel centre; row 0 is the NORTH edge of the bbox.
     const lat = N - (y + 0.5) * dLat;
+    const φ2 = lat * D2R;
+    const sinφ2 = Math.sin(φ2), cosφ2 = Math.cos(φ2);
+    const rowA = sinφ1 * sinφ2;          // constant part of cos(central angle)
+    const rowB = cosφ1 * cosφ2;
+    const rowC = cosφ1 * sinφ2;
+    const rowD = sinφ1 * cosφ2;
+
     for (let x = 0; x < outW; x++) {
-      const lon = W + (x + 0.5) * dLon;
-      const { az, distKm } = toPolar(radarLat, radarLon, lat, lon);
+      const cosC = rowA + rowB * cosDlon[x];
+      const distKm = Math.acos(cosC > 1 ? 1 : cosC < -1 ? -1 : cosC) * R_EARTH_KM;
       if (distKm < rangeMin || distKm > maxRangeKm) continue;
+
+      let az = Math.atan2(sinDlon[x] * cosφ2, rowC - rowD * cosDlon[x]) * R2D;
+      if (az < 0) az += 360;
 
       let value = null;
 
