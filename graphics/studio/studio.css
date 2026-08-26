@@ -92,6 +92,13 @@ body {
   border: 1px solid var(--accent-line); padding: 2px 7px; border-radius: 999px; margin-left: 2px;
 }
 
+/* Deployed commit. Deliberately quiet — it is a diagnostic, not chrome — but
+   always present, so "is this build current?" never needs investigating. */
+.brand-build {
+  font-size: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-3); opacity: 0.65; margin-left: 8px; user-select: text;
+}
+
 .control { display: flex; align-items: center; gap: 8px; }
 .control-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); }
 .appbar-divider { width: 1px; height: 22px; background: var(--line-2); margin: 0 4px; }

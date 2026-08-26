@@ -1017,4 +1017,36 @@ $('btn-psd').onclick = savePsd;
   syncRadarChrome();
   rerender();
   updateHint();
+  showBuildStamp();
 })();
+
+/*
+ * Print the commit this server is running, next to the brand.
+ *
+ * Stale deploys have repeatedly presented as code that "still has the same
+ * bug" — the fix was pushed, the box had not pulled, and telling the two apart
+ * took a round trip every time. Now it is on screen. Compare it with the latest
+ * commit on main: if they differ, the box needs a pull, not a code change.
+ *
+ * Best-effort by design — a missing stamp must never be mistaken for a broken
+ * studio, so a failure just leaves the slot empty.
+ */
+async function showBuildStamp() {
+  const el = $('build-stamp');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/build', { cache: 'no-store' });
+    if (!r.ok) return;
+    const b = await r.json();
+    if (!b || !b.commit) return;
+    const when = b.committedAt ? new Date(b.committedAt) : null;
+    el.textContent = 'build ' + b.commit;
+    el.title = [
+      'Deployed commit: ' + b.commit + (b.branch ? ' (' + b.branch + ')' : ''),
+      when ? 'Committed: ' + when.toLocaleString() : null,
+      b.startedAt ? 'Server started: ' + new Date(b.startedAt).toLocaleString() : null,
+    ].filter(Boolean).join('\n');
+  } catch (e) {
+    /* diagnostics must never break the page */
+  }
+}

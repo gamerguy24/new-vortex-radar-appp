@@ -1811,6 +1811,37 @@ app.get('/api/proxy', requireAuth, async (req, res) => {
 // NEXRAD_LOCATIONS table (the same one the radar page plots), so the studio
 // never keeps a second, drifting copy of the site list.
 let _radarSitesCache = null;
+// ─── Which build is this box running? ────────────────────────────────────────
+// Reported from the checkout itself, not from anything committed, so it cannot
+// go stale: a build stamp written at build time would keep claiming whatever it
+// said when it was generated, which is exactly the failure mode this exists to
+// catch. Read once at boot — the answer cannot change without a restart.
+let _buildInfo = null;
+function buildInfo() {
+    if (_buildInfo) return _buildInfo;
+    const git = (args) => {
+        try {
+            return require('child_process')
+                .execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', timeout: 3000, windowsHide: true })
+                .trim();
+        } catch (e) {
+            return null;    // not a checkout, or git unavailable — not fatal
+        }
+    };
+    _buildInfo = {
+        commit: git(['rev-parse', '--short', 'HEAD']),
+        committedAt: git(['log', '-1', '--format=%cI']),
+        branch: git(['rev-parse', '--abbrev-ref', 'HEAD']),
+        startedAt: new Date().toISOString(),
+    };
+    return _buildInfo;
+}
+
+app.get('/api/build', requireAuth, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(buildInfo());
+});
+
 app.get('/api/graphics/radar-sites', requireAuth, (req, res) => {
     if (!_radarSitesCache) {
         try {
