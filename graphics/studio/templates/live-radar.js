@@ -26,7 +26,7 @@ const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
 
 // One in-flight radar request, keyed by view+options so panning re-fetches but
 // an unrelated rerender (editing a title) does not.
-const radarStore = { key: null, status: 'idle', radar: null, error: null };
+const radarStore = { key: null, status: 'idle', radar: null, error: null, retryTimer: null };
 
 // Radar station pills (the blue KTLX-style markers from the radar page).
 // Loaded once from the app's own site table and reused across rerenders.
@@ -318,7 +318,22 @@ function chromeLayer(cfg, store) {
       } else if (store.status === 'refreshing') {
         txt(ctx, 'Updating…', W - 26, 86, { size: 13, weight: 700, color: '#96a2b0', align: 'right' });
       } else if (store.status === 'error') {
-        txt(ctx, 'Radar unavailable: ' + (store.error || ''), W - 26, 86, { size: 14, weight: 700, color: '#cc5a4c', align: 'right' });
+        // Wrap so a real explanation is readable instead of running off the frame.
+        const words = String('Radar unavailable — ' + (store.error || '')).split(' ');
+        const lines = [];
+        let line = '';
+        ctx.save();
+        ctx.font = '700 14px ' + FONT;
+        for (const w of words) {
+          const test = line ? line + ' ' + w : w;
+          if (ctx.measureText(test).width > Math.min(560, W * 0.45) && line) { lines.push(line); line = w; }
+          else line = test;
+        }
+        if (line) lines.push(line);
+        ctx.restore();
+        lines.slice(0, 3).forEach((ln, i) => {
+          txt(ctx, ln, W - 26, 86 + i * 18, { size: 14, weight: 700, color: '#cc5a4c', align: 'right' });
+        });
       }
 
       // Hint that the map is draggable — never exported, only shown while the
@@ -512,9 +527,19 @@ export default {
         })
         .catch((e) => {
           if (radarStore.key !== key) return;
-          radarStore.radar = null;
           radarStore.status = 'error';
           radarStore.error = e.message;
+          // Keep whatever raster we already had rather than blanking the map.
+          // Then clear the key so the next rerender retries: a render can fail
+          // for transient reasons (the volume was mid-upload, the server was
+          // busy), and without this the failure sticks until the view moves.
+          if (!radarStore.retryTimer) {
+            radarStore.retryTimer = setTimeout(() => {
+              radarStore.retryTimer = null;
+              radarStore.key = null;
+              if (interaction.ctrl) interaction.ctrl.rerender();
+            }, 15000);
+          }
           ctrl.rerender();
         });
     }

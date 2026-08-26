@@ -1797,6 +1797,8 @@ app.get('/api/proxy', requireAuth, async (req, res) => {
 // panning the studio map would otherwise re-decode on every drag.
 const radarPngCache = new Map(); // sig -> { at, buffer, meta }
 const RADAR_PNG_TTL_MS = 2 * 60 * 1000;
+// Small on purpose: these are multi-hundred-KB PNGs held beside decoded radar
+// volumes, and memory pressure here shows up as a proxy 502, not a clean error.
 
 app.get('/api/graphics/radar-l2', requireAuth, async (req, res) => {
     const q = req.query || {};
@@ -1828,7 +1830,7 @@ app.get('/api/graphics/radar-l2', requireAuth, async (req, res) => {
 
         radarPngCache.set(sig, { at: Date.now(), buffer: out.buffer, meta: out.meta });
         // Keep the cache small — these are multi-hundred-KB PNGs.
-        if (radarPngCache.size > 12) {
+        if (radarPngCache.size > 4) {
             const oldest = [...radarPngCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
             if (oldest) radarPngCache.delete(oldest[0]);
         }

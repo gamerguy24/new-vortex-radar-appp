@@ -156,8 +156,23 @@ export async function fetchRadarL2(scene, opts = {}) {
     clearTimeout(timer);
   }
   if (!res.ok) {
-    let msg = 'HTTP ' + res.status;
-    try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (e) { /* not json */ }
+    // This endpoint always reports failures as JSON. A non-JSON body therefore
+    // means the response did not come from it — a reverse proxy answered
+    // instead, which is what happens when the node process is killed mid-render
+    // (a decoded Level 2 volume is hundreds of MB) or the proxy's read timeout
+    // fires first. Say that, rather than showing a bare status code that looks
+    // like the radar itself is broken.
+    let msg = null;
+    try {
+      const j = await res.json();
+      if (j && j.error) msg = j.error;
+    } catch (e) { /* not this endpoint's JSON */ }
+
+    if (!msg) {
+      msg = (res.status === 502 || res.status === 503 || res.status === 504)
+        ? `server did not complete the render (HTTP ${res.status}) — it likely ran out of memory or timed out; try a lower Render quality`
+        : `HTTP ${res.status}`;
+    }
     throw new Error(msg);
   }
 
