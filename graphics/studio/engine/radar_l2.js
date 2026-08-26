@@ -46,6 +46,20 @@ export function viewBbox(scene, padFrac = 0.04) {
   ];
 }
 
+// The radar page stores colortable picks as { REF: 'REF2', VEL: 'VEL1', … }.
+// Uploaded custom tables live only in that browser's localStorage, so the
+// server cannot resolve them; those fall back to the built-in default.
+function chosenPalette(product) {
+  const base = product === 'velocity' ? 'VEL' : 'REF';
+  try {
+    const choices = JSON.parse(localStorage.getItem('vortexColortableChoice') || '{}');
+    const id = choices && choices[base];
+    return (typeof id === 'string' && id !== base) ? id : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 /**
  * Fetch the Level 2 raster for the scene's current view.
  * Returns { img, bbox, opacity, meta } — shape-compatible with engine/radar.js.
@@ -64,6 +78,13 @@ export async function fetchRadarL2(scene, opts = {}) {
     smooth: smooth ? '1' : '0',
     minDbz: String(minDbz),
   });
+
+  // Match the colortable the viewer chose on the radar page. Choosing one there
+  // mutates product_colors[product] in the browser and records the pick in
+  // localStorage, so without this a graphic renders the built-in default and
+  // quietly disagrees with the radar they are looking at.
+  const palette = chosenPalette(product);
+  if (palette) qs.set('palette', palette);
 
   // Time-box the request. A decode of a fresh 10 MB volume can take a few
   // seconds; a stalled connection should surface as an error the template can

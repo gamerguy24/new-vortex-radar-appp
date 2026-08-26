@@ -38,6 +38,12 @@ const RADAR_CHROME = new Set([
   'title-bar', 'flag-header', 'banner-header', 'threat-box', 'branding',
 ]);
 function insertRadarLayer(sc = scene) {
+  // A template that renders its own radar opts out here. Without this the
+  // studio's shared NWS ImageServer mosaic gets composited on top of it, so a
+  // template drawing the app's Level 2 data ends up showing TWO radars at once
+  // — different source, different resolution, different colour table. That is
+  // exactly what made the Live Radar template disagree with the radar page.
+  if (state.template && state.template.providesRadar) return;
   if (!(state.radar && state.radar.img)) return;
   const layer = radarLayer(state.radar);
   const idx = sc.layers.findIndex((l) => RADAR_CHROME.has(l.name));

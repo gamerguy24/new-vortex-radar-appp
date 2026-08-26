@@ -61,8 +61,15 @@ function scaleValues(values, product) {
 
 // 512-entry value → [r,g,b] table. Wider than the graphic renderer's 256 because
 // this output is zoomable and banding shows at high zoom.
-function buildColorLut(code) {
-  const cm = colormaps[code];
+//
+// `paletteId` lets the caller ask for a specific colortable (REF2, VEL1, …).
+// The radar page lets a viewer choose one, and choosing it MUTATES
+// product_colors[product] in the browser — so a graphic rendered against the
+// built-in default would quietly disagree with what that viewer sees. `code` is
+// still the base product, because scaleValues() keys unit conversion off it
+// (velocity tables are in knots and must be divided to m/s).
+function buildColorLut(code, paletteId) {
+  const cm = (paletteId && colormaps[paletteId]) || colormaps[code];
   if (!cm) return null;
   const values = scaleValues([...cm.values], code);
   const scale = chroma.scale([...cm.colors]).domain(values).mode('lab');
@@ -193,7 +200,8 @@ async function renderRadarPng(o) {
   const radarLat = location[0], radarLon = location[1];
   if (!radarLat && !radarLon) return null;
 
-  const lut = buildColorLut(code);
+  const paletteId = typeof o.palette === 'string' && colormaps[o.palette] ? o.palette : null;
+  const lut = buildColorLut(code, paletteId);
   if (!lut) throw new Error('no colormap for ' + code);
 
   const buckets = buildAzimuthIndex(azimuths);
@@ -338,6 +346,7 @@ async function renderRadarPng(o) {
       gates: nGates,
       superRes: gateKm <= 0.26 && azimuths.length >= 700,
       smoothed: smooth,
+      palette: paletteId || code,
       minValue: minValue === -Infinity ? null : minValue,
       fadeDbz: isRef ? fadeSpan : null,
       paintedPixels: painted,

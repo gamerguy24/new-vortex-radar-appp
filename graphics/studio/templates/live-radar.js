@@ -305,6 +305,11 @@ export default {
   label: 'Live Radar (interactive)',
   scale: null,
 
+  // This template draws its own radar from the app's Level 2 data, so the
+  // studio must NOT also insert its shared NWS-mosaic layer — two radar
+  // sources composited together disagree on resolution and colour table.
+  providesRadar: true,
+
   defaultConfig() {
     return {
       __kind: 'live-radar',

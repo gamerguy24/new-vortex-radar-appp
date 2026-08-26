@@ -1822,7 +1822,7 @@ app.get('/api/graphics/radar-l2', requireAuth, async (req, res) => {
 
     try {
         const out = await require('./backend/graphics/radar_l2_render')
-            .renderRadarPng({ bbox, width, product, smooth, minDbz: Number.isFinite(parseFloat(q.minDbz)) ? parseFloat(q.minDbz) : undefined });
+            .renderRadarPng({ bbox, width, product, smooth, palette: q.palette ? String(q.palette).slice(0,12) : null, minDbz: Number.isFinite(parseFloat(q.minDbz)) ? parseFloat(q.minDbz) : undefined });
         if (!out) return res.status(503).json({ error: 'No radar volume available for this view.' });
 
         radarPngCache.set(sig, { at: Date.now(), buffer: out.buffer, meta: out.meta });
