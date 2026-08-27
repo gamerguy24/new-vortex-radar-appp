@@ -24,8 +24,8 @@
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { roundRect } from '../engine/scene.js';
-import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix4';
-import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js?v=cachefix1';
+import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix5';
+import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js?v=cachefix5';
 
 const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
 
@@ -63,6 +63,11 @@ const siteStore = { status: 'idle', sites: null };
 const interaction = {
   installed: false, config: null, ctrl: null, scene: null,
   active: false, rafPending: false, idleTimer: null,
+  // Set true once a pointerdown-to-pointerup gesture actually panned the map.
+  // The browser still fires a 'click' after a drag release, and if that
+  // release happens to land on a station marker it would otherwise select a
+  // radar the operator was just panning past, not clicking on.
+  moved: false,
 };
 
 // Coalesce redraws to one per animation frame. Without this a drag issues a
@@ -205,7 +210,6 @@ function installInteraction() {
 
   let dragging = false;
   let last = null;
-  let moved = false;
 
   // Canvas CSS pixels → scene pixels (the canvas is displayed scaled to fit).
   const toScene = (ev) => {
@@ -223,7 +227,7 @@ function installInteraction() {
     // Only when this template is active and the map is unlocked, so the studio's
     // paint/overlay-drag tools keep working everywhere else.
     if (!cfg || cfg.__kind !== 'live-radar' || cfg.lockMap) return;
-    dragging = true; moved = false;
+    dragging = true; interaction.moved = false;
     last = [ev.clientX, ev.clientY];
     canvas.setPointerCapture(ev.pointerId);
   });
@@ -234,7 +238,7 @@ function installInteraction() {
     if (!cfg || !sc || !sc.projection) return;
     const dx = ev.clientX - last[0], dy = ev.clientY - last[1];
     if (Math.abs(dx) + Math.abs(dy) < 1) return;
-    moved = true;
+    interaction.moved = true;
     last = [ev.clientX, ev.clientY];
 
     const r = canvas.getBoundingClientRect();
@@ -297,11 +301,15 @@ function installInteraction() {
 
 /* ── control options ───────────────────────────────────────────────────────── */
 
-// The site dropdown is built from the station table once it has loaded. Before
-// then only "Auto" is offered; selecting the template again (or any rerender
-// after the list arrives) fills it in. Sorted by id so it is scannable.
+// The site dropdown is built from the station table once it has loaded.
+// Sorted by id so it is scannable. No "Auto" entry: the config starts on
+// 'auto' internally just long enough to bootstrap a first site (see build()),
+// which then pins config.radarSite to whatever it resolved — from then on,
+// and from a click on a station marker (see engine/radar_sites.js's onSelect),
+// the site is always an explicit pick. Panning the map used to silently swap
+// sites when the view crossed into another radar's range; it no longer does.
 function siteOptions() {
-  const opts = [{ value: 'auto', label: 'Auto — nearest to view centre' }];
+  const opts = [];
   if (siteStore.sites && siteStore.sites.length) {
     // WSR-88D only. The station table also holds TDWR and profiler sites, and
     // neither publishes a Level 2 volume — offering them would just hand the
@@ -678,6 +686,18 @@ export default {
           radarStore.radar = r;
           radarStore.status = 'ready';
           radarStore.stage = null;
+          // Pin an 'auto' pick to whatever it actually resolved to, so panning
+          // from here on re-rasterises this site rather than silently hopping
+          // to whichever radar is nearest the new view centre. Also update the
+          // stored key to what build() would now compute for that concrete
+          // site — otherwise the very next rerender sees a "changed" key
+          // (auto@lat,lon vs. the real id) and redundantly refetches what it
+          // just fetched.
+          if (config.radarSite === 'auto' && r.meta && r.meta.site) {
+            config.radarSite = r.meta.site;
+            radarStore.key = [opts.product, r.meta.site, opts.palette || 'auto'].join('|');
+            if (ctrl.rebuildProps) ctrl.rebuildProps();
+          }
           ctrl.rerender();
         })
         .catch((e) => {
@@ -757,6 +777,15 @@ export default {
           fontSize: 15,
           // Mark the site actually supplying the radar on screen.
           highlight: radarStore.radar && radarStore.radar.meta ? radarStore.radar.meta.site : null,
+          // Click a station to use it, in place of the old auto-pick-by-camera
+          // behaviour. Skip a click that's really the release end of a pan —
+          // see interaction.moved's comment.
+          onSelect: (site) => {
+            if (interaction.moved || !isLevel2Site(site) || config.radarSite === site.id) return;
+            config.radarSite = site.id;
+            if (ctrl.rebuildProps) ctrl.rebuildProps();
+            ctrl.rerender();
+          },
         }));
       }
     }

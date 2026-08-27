@@ -22,7 +22,7 @@
  */
 
 import { loadSweep, loadSweepFromUrl, listLatestVolume, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix4';
-import { loadRadarSites } from './radar_sites.js?v=cachefix1';
+import { loadRadarSites } from './radar_sites.js?v=cachefix5';
 
 const CONUS = { W: -125, S: 24, E: -66.5, N: 50 };
 
@@ -402,7 +402,11 @@ export function radarL2Layer(radar, { quality = 1600, smooth = true, minDbz = 15
 
       const canvas = rasterize(radar, scene, { quality, smooth, minDbz, palette: radar.palette });
       if (!canvas) return;
-      radar._raster = { sig, canvas, proj: scene.projection.copy() };
+      // No .copy() needed (this vendored d3 build's projections don't have
+      // one): build() always constructs a brand-new projection object rather
+      // than mutating the previous one, so holding this reference is already
+      // a safe, unmutated snapshot of "the projection the raster was made at".
+      radar._raster = { sig, canvas, proj: scene.projection };
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.imageSmoothingEnabled = true;

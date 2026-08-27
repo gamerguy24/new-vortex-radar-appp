@@ -54,8 +54,12 @@ function pill(ctx, x, y, w, h, r) {
  * @param {number} o.fontSize
  * @param {string} o.highlight  a site id to emphasise (e.g. the one supplying the radar)
  * @param {boolean} o.tdwr      include TDWR sites
+ * @param {function} [o.onSelect]  called with a site record when its marker
+ *   is clicked (via the studio's existing click-to-fill hit-testing — see
+ *   scene.registerHit()). Only registered when provided, so templates that
+ *   just want the markers drawn (no picking) are unaffected.
  */
-export function radarSitesLayer({ sites: list, fontSize = 15, highlight = null, tdwr = true, labels = true } = {}) {
+export function radarSitesLayer({ sites: list, fontSize = 15, highlight = null, tdwr = true, labels = true, onSelect = null } = {}) {
   return {
     name: 'radar-sites',
     draw(ctx, scene) {
@@ -93,6 +97,12 @@ export function radarSitesLayer({ sites: list, fontSize = 15, highlight = null, 
           ctx.lineWidth = 1.5;
           ctx.strokeStyle = 'rgba(0,0,0,0.65)';
           ctx.stroke();
+          if (onSelect) {
+            // A bit bigger than the drawn dot — dots are a small target to hit exactly.
+            const hit = new Path2D();
+            hit.arc(x, y, 12, 0, Math.PI * 2);
+            scene.registerHit(hit, s, () => onSelect(s));
+          }
           continue;
         }
 
@@ -120,6 +130,12 @@ export function radarSitesLayer({ sites: list, fontSize = 15, highlight = null, 
 
         ctx.fillStyle = ink;
         ctx.fillText(s.id, bx + padX, y + 0.5);
+
+        if (onSelect) {
+          const hit = new Path2D();
+          hit.rect(bx - 3, by - 3, w + 6, h + 6);   // a little slack around the pill
+          scene.registerHit(hit, s, () => onSelect(s));
+        }
       }
       ctx.restore();
     },

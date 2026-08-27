@@ -6,7 +6,7 @@ import { loadGeo } from './engine/geo.js';
 import { freehandLayer, logoLayer, panelOverlayLayer, nameOverlayLayer } from './engine/overlays.js';
 import { fetchRadar, radarLayer } from './engine/radar.js';
 import { fetchSatellite, satelliteLayer, satelliteSig } from './engine/satellite.js';
-import { TEMPLATES, TEMPLATE_BY_ID, togglePlayback, isPlaying, stopPlayback } from './templates/index.js?v=cachefix4';
+import { TEMPLATES, TEMPLATE_BY_ID, togglePlayback, isPlaying, stopPlayback } from './templates/index.js?v=cachefix5';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('stage-canvas');
