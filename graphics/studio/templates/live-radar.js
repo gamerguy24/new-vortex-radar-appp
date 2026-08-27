@@ -87,6 +87,20 @@ function markActive() {
   }, 320);
 }
 
+// Keep the displayed volume from going stale. Panning/zooming only
+// re-rasterises whatever is already decoded (see radarStore's key comment
+// above) — nothing else ever re-checks for a newer scan, so a viewer who
+// never touches the map would otherwise keep looking at an ever-older volume
+// forever. NEXRAD volumes complete roughly every 4-6 minutes; checking every
+// 90s catches a new one promptly without hammering the bucket. Skipped
+// mid-interaction, same as every other refresh here.
+const REFRESH_INTERVAL_MS = 90 * 1000;
+setInterval(() => {
+  if (interaction.active || !interaction.ctrl) return;
+  radarStore.key = null;   // next build() sees this as a changed key and refetches
+  interaction.ctrl.rerender();
+}, REFRESH_INTERVAL_MS);
+
 /* ── zoom maths ────────────────────────────────────────────────────────────
  * Web-mercator style: zoom z means the whole world is 256·2^z px wide, which is
  * what d3.geoMercator's `scale` expresses as (256·2^z)/2π.

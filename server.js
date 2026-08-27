@@ -1708,9 +1708,15 @@ async function listVolumeChunks(station, folder) {
     return [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1]).sort((a, b) => chunkSeq(a) - chunkSeq(b));
 }
 
-async function fetchLatestL2(station) {
+// Which volume folder is current right now, without downloading it — used so
+// callers (the Graphics Studio marker below) can name the SPECIFIC volume
+// they resolved, not just "whichever is latest when someone asks". Naming the
+// volume is what lets the browser's own decode cache (keyed by URL) tell a
+// new scan apart from the one it already has; a marker that never changes
+// would look like the same file forever and never get re-fetched.
+async function resolveLatestFolder(station) {
     const folders = await listVolumeFolders(station);
-    if (!folders.length) throw new Error('No realtime Level-II found for ' + station + '.');
+    if (!folders.length) return null;
     let folder = pickLatestFolder(folders);
     let keys = await listVolumeChunks(station, folder);
     // Prefer a completed volume (has an end chunk); else fall back one volume.
@@ -1718,15 +1724,25 @@ async function fetchLatestL2(station) {
         const prev = folder > 0 ? folder - 1 : Math.max(...folders);
         if (folders.includes(prev)) {
             const pk = await listVolumeChunks(station, prev);
-            if (pk.some((k) => /-E$/.test(k))) keys = pk;
+            if (pk.some((k) => /-E$/.test(k))) { folder = prev; keys = pk; }
         }
     }
-    if (!keys.length) throw new Error('No Level-II chunks in latest volume for ' + station + '.');
+    return { folder, keys };
+}
+
+async function fetchChunksVolume(station, folder, keys) {
+    if (!keys || !keys.length) throw new Error('No Level-II chunks in that volume.');
     const parts = await Promise.all(keys.map(async (k) => {
         const r = await fetch(`${L2_CHUNKS}/${k}`, { cache: 'no-store' });
         return r.ok ? Buffer.from(await r.arrayBuffer()) : null;
     }));
     return Buffer.concat(parts.filter(Boolean));
+}
+
+async function fetchLatestL2(station) {
+    const resolved = await resolveLatestFolder(station);
+    if (!resolved) throw new Error('No realtime Level-II found for ' + station + '.');
+    return fetchChunksVolume(station, resolved.folder, resolved.keys);
 }
 
 app.get('/api/level2/latest', requireAuth, async (req, res) => {
@@ -1863,9 +1879,15 @@ const L2_BUCKETS = [
 // the l2-file relay for a normal archive URL.
 const CHUNKS_MARKER_PREFIX = 'vortex-chunks:';
 
+// Marker shape: "vortex-chunks:SITE:FOLDER" — the folder (volume) number is
+// part of the marker, not just the site, so a new scan produces a URL the
+// browser has never seen before. Without it every check for "is there a
+// newer volume yet?" would resolve to the exact same string as last time,
+// and the browser's own decode cache (keyed by URL) would never see a reason
+// to refetch — the radar would freeze on whatever volume loaded first.
 function isAllowedL2Url(raw) {
     const s = String(raw || '');
-    if (s.startsWith(CHUNKS_MARKER_PREFIX)) return /^[A-Z]{3,4}$/.test(s.slice(CHUNKS_MARKER_PREFIX.length));
+    if (s.startsWith(CHUNKS_MARKER_PREFIX)) return /^[A-Z]{3,4}:\d+$/.test(s.slice(CHUNKS_MARKER_PREFIX.length));
     let u;
     try { u = new URL(s); } catch (e) { return false; }
     if (u.protocol !== 'https:') return false;
@@ -1912,11 +1934,15 @@ app.get('/api/graphics/l2-list', requireAuth, async (req, res) => {
     // reporting failure, check the realtime chunks bucket, a different bucket
     // with different permissions that /api/level2/latest already relies on.
     try {
-        const folders = await listVolumeFolders(site);
-        if (folders.length) {
+        const resolved = await resolveLatestFolder(site);
+        if (resolved) {
             res.setHeader('Cache-Control', 'no-store');
-            console.log(`[L2-LIST] ${site} -> archive failed (${lastFailure}), chunks fallback OK`);
-            return res.json({ url: CHUNKS_MARKER_PREFIX + site, key: site + ' (realtime chunks)', via: 'chunks' });
+            console.log(`[L2-LIST] ${site} -> archive failed (${lastFailure}), chunks fallback OK (folder ${resolved.folder})`);
+            return res.json({
+                url: `${CHUNKS_MARKER_PREFIX}${site}:${resolved.folder}`,
+                key: `${site} vol#${resolved.folder} (realtime chunks)`,
+                via: 'chunks',
+            });
         }
         console.warn(`[L2-LIST] ${site} -> archive failed (${lastFailure}), chunks bucket has NO folders for this site`);
     } catch (e) {
@@ -1937,17 +1963,24 @@ app.get('/api/graphics/l2-file', requireAuth, async (req, res) => {
     if (!isAllowedL2Url(url)) return res.status(400).json({ error: 'not a NEXRAD Level 2 volume URL' });
 
     if (url.startsWith(CHUNKS_MARKER_PREFIX)) {
-        const site = url.slice(CHUNKS_MARKER_PREFIX.length);
+        const [site, folderStr] = url.slice(CHUNKS_MARKER_PREFIX.length).split(':');
+        const folder = parseInt(folderStr, 10);
         const t0 = Date.now();
         try {
-            const buf = await fetchLatestL2(site);
+            // Re-list this SPECIFIC folder rather than re-resolving "latest" — the
+            // marker names an exact volume, and by the time this request lands a
+            // newer one may already exist. Serving anything other than what was
+            // named reintroduces the very staleness this marker format exists to
+            // prevent (the browser would cache it under the OLD marker's URL).
+            const keys = await listVolumeChunks(site, folder);
+            const buf = await fetchChunksVolume(site, folder, keys);
             if (!buf.length) throw new Error('empty volume');
             res.setHeader('Content-Type', 'application/octet-stream');
             res.setHeader('Cache-Control', 'no-store');
-            console.log(`[L2-FILE] ${site} -> chunks reconstruct OK, ${buf.length} bytes, ${Date.now() - t0}ms`);
+            console.log(`[L2-FILE] ${site} vol#${folder} -> chunks reconstruct OK, ${buf.length} bytes, ${Date.now() - t0}ms`);
             return res.send(buf);
         } catch (e) {
-            console.warn(`[L2-FILE] ${site} -> chunks reconstruct FAILED after ${Date.now() - t0}ms: ${e.message}`);
+            console.warn(`[L2-FILE] ${site} vol#${folder} -> chunks reconstruct FAILED after ${Date.now() - t0}ms: ${e.message}`);
             return res.status(502).json({ error: 'could not reconstruct volume from realtime chunks: ' + (e.message || e) });
         }
     }
