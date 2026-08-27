@@ -286,20 +286,17 @@ function nearestRadial(buckets, azimuths, az) {
 /* ── sweep loading ────────────────────────────────────────────────────────── */
 
 /**
- * Download + decode the latest volume for a site and pull one sweep out of it.
+ * Download + decode a KNOWN volume URL and pull one sweep out of it. The
+ * lower-level primitive behind loadSweep() — split out so a loop of PAST
+ * volumes (Play, in the Live Radar template) can load a specific already-
+ * resolved marker without re-running "find the latest" for each frame.
  * @returns {Promise<object>} { sweep, location, time, site, product, code, volumeUrl }
  */
-export async function loadSweep({ site, product = 'reflectivity', onProgress = null } = {}) {
+export async function loadSweepFromUrl({ url, site, product = 'reflectivity', onProgress = null } = {}) {
   const L = lib();
   if (!L) throw new Error('Level 2 decoder not loaded — reload the page');
 
   const code = (PRODUCTS[product] || PRODUCTS.reflectivity).code;
-
-  if (onProgress) onProgress('finding latest scan');
-  const found = await listLatestVolume(site);
-  if (!found.url) throw new Error(found.reason);
-  const url = found.url;
-
   const factory = await loadVolume(url, onProgress);
 
   const sweep = L.sweepFrom(factory, code);
@@ -316,6 +313,17 @@ export async function loadSweep({ site, product = 'reflectivity', onProgress = n
     code,
     volumeUrl: url,
   };
+}
+
+/**
+ * Download + decode the latest volume for a site and pull one sweep out of it.
+ * @returns {Promise<object>} { sweep, location, time, site, product, code, volumeUrl }
+ */
+export async function loadSweep({ site, product = 'reflectivity', onProgress = null } = {}) {
+  if (onProgress) onProgress('finding latest scan');
+  const found = await listLatestVolume(site);
+  if (!found.url) throw new Error(found.reason);
+  return loadSweepFromUrl({ url: found.url, site, product, onProgress });
 }
 
 /* ── rasterisation ────────────────────────────────────────────────────────── */

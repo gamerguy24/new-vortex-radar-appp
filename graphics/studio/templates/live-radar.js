@@ -24,7 +24,7 @@
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { roundRect } from '../engine/scene.js';
-import { fetchRadarL2, radarL2Layer, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix3';
+import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix4';
 import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js?v=cachefix1';
 
 const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
@@ -96,10 +96,93 @@ function markActive() {
 // mid-interaction, same as every other refresh here.
 const REFRESH_INTERVAL_MS = 90 * 1000;
 setInterval(() => {
-  if (interaction.active || !interaction.ctrl) return;
+  // Skip while a loop is playing — Play already keeps the picture moving,
+  // and nulling the key here would yank the display back to a single fetch
+  // mid-loop.
+  if (interaction.active || !interaction.ctrl || playback.playing) return;
   radarStore.key = null;   // next build() sees this as a changed key and refetches
   interaction.ctrl.rerender();
 }, REFRESH_INTERVAL_MS);
+
+/* ── loop playback (Play) ─────────────────────────────────────────────────
+ * Cycles the display through the last several volumes for whichever site is
+ * on screen, so an operator can see storm motion without leaving the
+ * Studio. Frames are decoded once and held here directly — not through
+ * radar_l2_raster's small LRU volume cache — so replaying the loop after
+ * the first pass is free: no re-download, no re-decode, and each frame's
+ * own raster cache (see radar_l2.js) means even the pixels are only ever
+ * rasterised once per view.
+ */
+const LOOP_FRAME_MS = 750;
+const playback = { playing: false, frames: [], idx: 0, key: null, timer: null };
+
+function stopPlayback() {
+  playback.playing = false;
+  clearInterval(playback.timer);
+  playback.timer = null;
+}
+
+export function isPlaying() { return playback.playing; }
+export { stopPlayback };
+
+export async function togglePlayback() {
+  if (playback.playing) {
+    stopPlayback();
+    if (interaction.ctrl) interaction.ctrl.rerender();
+    return;
+  }
+  if (!radarStore.radar) return;   // nothing on screen yet to loop
+
+  // radarStore.key already encodes site + product + palette (see build()) —
+  // reuse it so a loop is invalidated the same moment a single fetch would be.
+  if (playback.key !== radarStore.key) { playback.frames = []; playback.idx = 0; playback.key = radarStore.key; }
+
+  playback.playing = true;
+  if (interaction.ctrl) interaction.ctrl.rerender();   // flip the button at once
+
+  if (!playback.frames.length) {
+    const base = radarStore.radar;
+    try {
+      playback.frames = await fetchRadarL2Loop(interaction.scene, {
+        site: base.meta.site,
+        product: base.product,
+        palette: base.palette,
+        opacity: base.opacity,
+        onProgress: (stage) => {
+          radarStore.stage = stage;
+          if (interaction.ctrl) interaction.ctrl.rerender();
+        },
+      });
+    } catch (e) {
+      playback.playing = false;
+      radarStore.status = 'error';
+      radarStore.stage = null;
+      radarStore.error = e.message;
+      if (interaction.ctrl) interaction.ctrl.rerender();
+      return;
+    }
+    playback.idx = Math.max(0, playback.frames.length - 1);   // start on newest
+  }
+
+  if (playback.frames.length < 2) {
+    // Nothing to animate (e.g. the archive-URL fallback only ever has one
+    // frame) — leave the single scan on screen rather than "play" a loop of one.
+    playback.playing = false;
+    if (interaction.ctrl) interaction.ctrl.rerender();
+    return;
+  }
+
+  radarStore.status = 'ready';
+  radarStore.stage = null;
+  radarStore.radar = playback.frames[playback.idx];
+
+  playback.timer = setInterval(() => {
+    if (interaction.active) return;   // don't fight a drag
+    playback.idx = (playback.idx + 1) % playback.frames.length;
+    radarStore.radar = playback.frames[playback.idx];
+    if (interaction.ctrl) interaction.ctrl.rerender();
+  }, LOOP_FRAME_MS);
+}
 
 /* ── zoom maths ────────────────────────────────────────────────────────────
  * Web-mercator style: zoom z means the whole world is 256·2^z px wide, which is
@@ -361,6 +444,8 @@ function chromeLayer(cfg, store) {
         txt(ctx, stage, W - 26, 86, { size: 15, weight: 700, color: '#e8862b', align: 'right' });
       } else if (store.status === 'refreshing') {
         txt(ctx, 'Updating…', W - 26, 86, { size: 13, weight: 700, color: '#96a2b0', align: 'right' });
+      } else if (playback.playing && playback.frames.length > 1) {
+        txt(ctx, `Looping — frame ${playback.idx + 1}/${playback.frames.length}`, W - 26, 86, { size: 13, weight: 700, color: '#4c8dff', align: 'right' });
       } else if (store.status === 'error') {
         // Wrap so a real explanation is readable instead of running off the frame.
         const words = String('Radar unavailable — ' + (store.error || '')).split(' ');
@@ -577,6 +662,10 @@ export default {
     // Don't start a decode mid-drag; it would compete with the redraw for the
     // main thread and make the map stutter.
     if (radarStore.key !== key && !interaction.active) {
+      // Site/product/palette changed — a running loop belongs to the old
+      // selection and would otherwise keep animating it underneath the new one.
+      if (playback.playing) stopPlayback();
+      playback.frames = []; playback.idx = 0; playback.key = null;
       radarStore.key = key;
       // Keep the previous raster on screen while the new one loads — warped to
       // the current view it is still broadly right, and blanking the map every
@@ -618,9 +707,10 @@ export default {
       // The warp is a per-pixel projection inversion, so this is the difference
       // between a smooth drag and a stuttering one.
       scene.add(radarL2Layer(radarStore.radar, {
-        quality: interaction.active ? 700 : opts.width,
+        quality: opts.width,
         smooth: opts.smooth,
         minDbz: opts.minDbz,
+        fastPreview: interaction.active,
       }));
 
       // Re-stroke ONLY the state outlines over the radar.

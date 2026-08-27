@@ -21,7 +21,7 @@
  * rasteriser itself.
  */
 
-import { loadSweep, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix3';
+import { loadSweep, loadSweepFromUrl, listLatestVolume, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix4';
 import { loadRadarSites } from './radar_sites.js?v=cachefix1';
 
 const CONUS = { W: -125, S: 24, E: -66.5, N: 50 };
@@ -216,31 +216,138 @@ export async function fetchRadarL2(scene, opts = {}) {
   return radar;
 }
 
+/* ── loop frames (Play) ──────────────────────────────────────────────────── */
+
+// How many past volumes a Play loop holds, and how long each stays on screen.
+const LOOP_FRAME_COUNT = 8;
+
+/**
+ * The last LOOP_FRAME_COUNT volumes for one site, oldest first, as a marker
+ * chain: the chunks bucket names each volume's folder as a simple counter
+ * (see server.js's pickLatestFolder), so "the volume before this one" is
+ * just that number minus one. A folder that's missing or incomplete just
+ * shortens the loop rather than failing it — a station hiccup on one scan
+ * shouldn't cost the whole loop.
+ */
+async function loadLoopFrames(site, product, onProgress) {
+  const found = await listLatestVolume(site);
+  if (!found.url) throw new Error(found.reason);
+
+  const m = /^vortex-chunks:([A-Z0-9]{3,4}):(\d+)$/.exec(found.url);
+  const urls = [];
+  if (m) {
+    const latest = parseInt(m[2], 10);
+    for (let i = LOOP_FRAME_COUNT - 1; i >= 0; i--) {
+      const f = latest - i;
+      if (f >= 0) urls.push(`vortex-chunks:${m[1]}:${f}`);
+    }
+  } else {
+    // Direct archive URL (the browser reached S3 itself): that listing only
+    // ever hands back the single latest key, so a loop can't be built from
+    // it — one frame is what's available.
+    urls.push(found.url);
+  }
+
+  const frames = [];
+  for (let i = 0; i < urls.length; i++) {
+    if (onProgress) onProgress(`loop frame ${i + 1}/${urls.length}`);
+    try {
+      frames.push(await loadSweepFromUrl({ url: urls[i], site, product }));
+    } catch (e) {
+      // Missing/incomplete volume — skip it, keep the rest of the loop.
+    }
+  }
+  return frames;
+}
+
+/**
+ * Load a Play loop for the current view. Site resolution mirrors
+ * fetchRadarL2 exactly (explicit pick wins; "auto" tries the nearest
+ * candidates in order) so the loop is built from the same site a single
+ * frame would have picked.
+ * @returns {Promise<object[]>} frames, oldest first, each shaped like fetchRadarL2's result.
+ */
+export async function fetchRadarL2Loop(scene, opts = {}) {
+  const {
+    opacity = 0.9, product = 'reflectivity', site = null, palette = null,
+    onProgress = null,
+  } = opts;
+
+  const candidates = site ? [site] : await autoCandidates(scene);
+  if (!candidates.length) throw new Error('no radar site for this view');
+
+  let frames = null;
+  const failures = [];
+  for (const id of candidates) {
+    try {
+      const found = await loadLoopFrames(id, product, onProgress);
+      if (found.length) { frames = found; break; }
+      failures.push(`${id}: no scans available`);
+    } catch (e) {
+      failures.push(`${id}: ${e.message}`);
+    }
+  }
+  if (!frames) throw new Error(failures.length === 1 ? failures[0] : failures.join('; '));
+
+  const chosen = palette || chosenPalette(product);
+  for (const f of frames) {
+    f.palette = chosen;
+    f.opacity = opacity;
+    f.meta = {
+      site: f.site,
+      product,
+      productLabel: (PRODUCTS[product] || PRODUCTS.reflectivity).label,
+      scanTime: f.time ? f.time.toISOString() : null,
+      elevationAngle: f.sweep.elevationAngle,
+      palette: f.palette || f.code,
+      source: 'aws',
+      gates: f.sweep.ranges.length,
+      radials: f.sweep.azimuths.length,
+      superRes: f.sweep.superRes,
+      gateSpacingKm: f.sweep.gateSpacingKm,
+    };
+  }
+  return frames;
+}
+
 /* ── layer ────────────────────────────────────────────────────────────────── */
 
 // Cheap signature of the projection geometry, so the raster is only rebuilt
 // when the view actually changes rather than on every unrelated rerender.
+const SIG_PTS = [[-98, 39], [-118, 34], [-80, 42]];
 function projSig(scene) {
   const p = scene.projection;
-  const pts = [[-98, 39], [-118, 34], [-80, 42]];
   let s = `${scene.width}x${scene.height}|`;
-  for (const pt of pts) { const q = p(pt); s += q ? `${Math.round(q[0])},${Math.round(q[1])};` : 'n;'; }
+  for (const pt of SIG_PTS) { const q = p(pt); s += q ? `${Math.round(q[0])},${Math.round(q[1])};` : 'n;'; }
   return s;
 }
 
-function getRaster(radar, scene, o) {
-  const sig = [
-    projSig(scene), o.quality, o.smooth ? 1 : 0, o.minDbz, radar.palette || '',
-  ].join('|');
-  if (radar._raster && radar._raster.sig === sig) return radar._raster.canvas;
-  const canvas = rasterize(radar, scene, {
-    quality: o.quality,
-    smooth: o.smooth,
-    minDbz: o.minDbz,
-    palette: radar.palette,
-  });
-  radar._raster = { sig, canvas };
-  return canvas;
+// Two points, far enough apart to be numerically stable, used to derive the
+// transform below. Any two distinct points work — see similarityBetween().
+const XFORM_PTS = [[-98, 39], [-80, 42]];
+
+/**
+ * The pure scale+translate that turns "old projection's pixels" into "new
+ * projection's pixels", when the only thing that changed is the mercator
+ * projection's centre/zoom (never rotation, here).
+ *
+ * This holds exactly, not approximately: a mercator projection's own output
+ * plane is a function of longitude and latitude alone, and re-centring /
+ * re-scaling it is a plain affine remap of that plane — the same fact that
+ * lets slippy-map tiles be dragged around as flat images instead of
+ * redrawn. Two reference points measured under both projections fully pin
+ * down that affine map (uniform scale, since neither projection is ever
+ * rotated or skewed here).
+ */
+function similarityBetween(oldProj, newProj) {
+  const a0 = oldProj(XFORM_PTS[0]), b0 = oldProj(XFORM_PTS[1]);
+  const a1 = newProj(XFORM_PTS[0]), b1 = newProj(XFORM_PTS[1]);
+  if (!a0 || !b0 || !a1 || !b1) return null;
+  const oldDist = Math.hypot(b0[0] - a0[0], b0[1] - a0[1]);
+  if (oldDist < 1e-6) return null;
+  const s = Math.hypot(b1[0] - a1[0], b1[1] - a1[1]) / oldDist;
+  if (!isFinite(s) || s <= 0) return null;
+  return { s, tx: a1[0] - s * a0[0], ty: a1[1] - s * a0[1] };
 }
 
 /**
@@ -249,22 +356,58 @@ function getRaster(radar, scene, o) {
  * `quality` is the raster width. engine/radar.js caps its equivalent at 900
  * because a national mosaic is fuzzy anyway; here the source is super-res gate
  * data, so a higher resolution is the difference between a crisp storm core and
- * a soft blob. Drop it while the map is being dragged — this is a per-pixel
- * projection inversion, so it is the difference between a smooth drag and a
- * stuttering one.
+ * a soft blob.
+ *
+ * `fastPreview` (set while the map is being dragged/zoomed) skips the real
+ * per-pixel rasterisation — a spherical inverse-projection over hundreds of
+ * thousands of pixels, which is where drag stutter came from — and instead
+ * blits the last real raster through similarityBetween() above. That is
+ * exact for pan/zoom, so quality never actually drops; the true raster is
+ * simply recomputed once when the view settles (see markActive()'s idle
+ * timer in live-radar.js), which is invisible at the ~300ms it takes.
  */
-export function radarL2Layer(radar, { quality = 1600, smooth = true, minDbz = 15 } = {}) {
+export function radarL2Layer(radar, { quality = 1600, smooth = true, minDbz = 15, fastPreview = false } = {}) {
   return {
     name: 'radar-l2',
     draw(ctx, scene) {
       if (!radar || !radar.sweep) return;
-      const raster = getRaster(radar, scene, { quality, smooth, minDbz });
-      if (!raster) return;
+
+      const sig = [projSig(scene), quality, smooth ? 1 : 0, minDbz, radar.palette || ''].join('|');
+      const cached = radar._raster;
+      const alpha = radar.opacity == null ? 0.9 : radar.opacity;
+
+      if (cached && cached.sig === sig) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(cached.canvas, 0, 0, scene.width, scene.height);
+        ctx.restore();
+        return;
+      }
+
+      if (fastPreview && cached && cached.proj) {
+        const t = similarityBetween(cached.proj, scene.projection);
+        if (t) {
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          const w = cached.canvas.width, h = cached.canvas.height;
+          ctx.drawImage(cached.canvas, 0, 0, w, h, t.tx, t.ty, w * t.s, h * t.s);
+          ctx.restore();
+          return;
+        }
+      }
+
+      const canvas = rasterize(radar, scene, { quality, smooth, minDbz, palette: radar.palette });
+      if (!canvas) return;
+      radar._raster = { sig, canvas, proj: scene.projection.copy() };
       ctx.save();
-      ctx.globalAlpha = radar.opacity == null ? 0.9 : radar.opacity;
+      ctx.globalAlpha = alpha;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(raster, 0, 0, scene.width, scene.height);
+      ctx.drawImage(canvas, 0, 0, scene.width, scene.height);
       ctx.restore();
     },
   };

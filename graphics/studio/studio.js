@@ -6,7 +6,7 @@ import { loadGeo } from './engine/geo.js';
 import { freehandLayer, logoLayer, panelOverlayLayer, nameOverlayLayer } from './engine/overlays.js';
 import { fetchRadar, radarLayer } from './engine/radar.js';
 import { fetchSatellite, satelliteLayer, satelliteSig } from './engine/satellite.js';
-import { TEMPLATES, TEMPLATE_BY_ID } from './templates/index.js?v=cachefix3';
+import { TEMPLATES, TEMPLATE_BY_ID, togglePlayback, isPlaying, stopPlayback } from './templates/index.js?v=cachefix4';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('stage-canvas');
@@ -166,6 +166,21 @@ function syncRadarChrome() {
   const own = !!(state.template && state.template.providesRadar);
   group.hidden = own;
   if (own && state.radar) { state.radar = null; setRadarUI(false); }
+
+  // The Play loop button is specific to Live Radar. Stop a running loop when
+  // leaving the template — otherwise its timer keeps firing rerenders in the
+  // background for a template that isn't even showing it.
+  const isLiveRadar = state.template && state.template.id === 'live-radar';
+  const liveToolbar = document.getElementById('live-radar-toolbar');
+  if (liveToolbar) liveToolbar.hidden = !isLiveRadar;
+  if (!isLiveRadar && isPlaying()) { stopPlayback(); setLiveRadarPlayUI(false); }
+}
+
+function setLiveRadarPlayUI(playing) {
+  const btn = $('live-radar-play');
+  if (!btn) return;
+  btn.textContent = playing ? '⏸ Pause' : '▶ Play';
+  btn.classList.toggle('active', playing);
 }
 
 // Per-template presentation metadata for the rail + properties header.
@@ -822,6 +837,19 @@ $('radar-toggle').onclick = () => {
 $('radar-refresh').onclick = () => { if (state.radar) loadRadar(); };
 $('radar-opacity').oninput = (e) => {
   if (state.radar) { state.radar.opacity = (Number(e.target.value) || 80) / 100; rerender(); }
+};
+
+// Live Radar's own loop button — see templates/live-radar.js for the actual
+// playback logic; this just reflects its state and starts/stops it.
+$('live-radar-play').onclick = async () => {
+  const btn = $('live-radar-play');
+  btn.disabled = true;
+  try {
+    await togglePlayback();
+  } finally {
+    btn.disabled = false;
+    setLiveRadarPlayUI(isPlaying());
+  }
 };
 
 // Custom logo: upload an image and stamp it on every template.
