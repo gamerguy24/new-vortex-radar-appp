@@ -24,7 +24,7 @@
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { roundRect } from '../engine/scene.js';
-import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix5';
+import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix6';
 import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js?v=cachefix5';
 
 const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';

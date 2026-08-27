@@ -393,8 +393,19 @@ export function radarL2Layer(radar, { quality = 1600, smooth = true, minDbz = 15
           ctx.globalAlpha = alpha;
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          const w = cached.canvas.width, h = cached.canvas.height;
-          ctx.drawImage(cached.canvas, 0, 0, w, h, t.tx, t.ty, w * t.s, h * t.s);
+          // The destination rect scales off the SCENE's own dimensions, not
+          // the raster canvas's pixel size — those two differ whenever
+          // `quality` isn't equal to scene.width (the normal case: quality
+          // defaults to 1200/1600/2200 while the canvas is 1920 or more).
+          // Scaling off the raster's own width/height here was the bug:
+          // t.s is a scene-space scale factor, so applying it to the
+          // raster's (differently-sized) pixel dimensions drew the image at
+          // the wrong size and mostly off-frame — which is what "the radar
+          // disappears while dragging" was.
+          ctx.drawImage(
+            cached.canvas, 0, 0, cached.canvas.width, cached.canvas.height,
+            t.tx, t.ty, scene.width * t.s, scene.height * t.s,
+          );
           ctx.restore();
           return;
         }
