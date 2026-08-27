@@ -26,6 +26,10 @@ function _disable_pane_updater(target) {
 function file_to_buffer(url, callback) {
     // good catch! thanks CGray1234!
     if (url.includes('tgftp.nws.noaa.gov')) url = ut.phpProxy + url;
+    // A "vortex-chunks:SITE:FOLDER" marker from get_latest_level_2_url's relay
+    // fallback below — not a real URL, so route it through our own server,
+    // which can reconstruct the volume from the realtime chunks bucket.
+    if (url.startsWith('vortex-chunks:')) url = '/api/graphics/l2-file?url=' + encodeURIComponent(url);
 
     fetch(url)
     .then(response => response.arrayBuffer())
@@ -54,31 +58,65 @@ function _url_to_filename(url) {
  * in this function, this will be a string with the latest file's URL.
  */
 function get_latest_level_2_url(station, callback) {
-    var curTime = new Date();
-    var year = curTime.getUTCFullYear();
-    var month = curTime.getUTCMonth() + 1;
-    if (month.toString().length == 1) month = "0" + month.toString();
-    var day = curTime.getUTCDate();
-    if (day.toString().length == 1) day = "0" + day.toString();
-    var stationToGet = station.toUpperCase().replace(/ /g, '')
-    var fullURL = "https://noaa-nexrad-level2.s3.amazonaws.com/?list-type=2&delimiter=%2F&prefix=" + year + "%2F" + month + "%2F" + day + "%2F" + stationToGet + "%2F"
-    //console.log(fullURL)
+    var stationToGet = station.toUpperCase().replace(/ /g, '');
     var baseURL = 'https://noaa-nexrad-level2.s3.amazonaws.com';
-    //https://noaa-nexrad-level2.s3.amazonaws.com/2022/08/09/KATX/KATX20220809_004942_V06
-    fullURL = ut.preventFileCaching(fullURL);
-    $.get(fullURL, function (data) {
-        var dataToWorkWith = JSON.stringify(ut.xmlToJson(data)).replace(/#/g, 'HASH')
-        dataToWorkWith = JSON.parse(dataToWorkWith)
-        //console.log(dataToWorkWith)
-        var filenameKey = dataToWorkWith.ListBucketResult.Contents
-        var latestFileName = filenameKey[filenameKey.length - 1].Key.HASHtext.slice(16);
-        if (latestFileName.includes('MDM')) {
-            latestFileName = filenameKey[filenameKey.length - 2].Key.HASHtext.slice(16);
+
+    // Walk back a few UTC days before giving up. The original version checked
+    // ONLY today's folder with no error handling at all: a failed request (a
+    // network hiccup, the archive denying this browser/network, or simply
+    // nothing posted yet in the first few minutes after 00Z) meant the
+    // callback was never called — nothing replaced whatever radar was already
+    // on screen, so a stale scan (sometimes a full day old) just sat there
+    // looking current. Three days covers a station down for maintenance too.
+    function tryDay(daysBack) {
+        if (daysBack > 2) {
+            // Direct archive access failed for 3 days running — ask our own
+            // server. It has a different network path and, when the archive
+            // denies it too, falls back to the realtime chunks bucket (a
+            // different bucket with different permissions) — see
+            // /api/graphics/l2-list in server.js.
+            fetch('/api/graphics/l2-list?site=' + stationToGet, { cache: 'no-store' })
+                .then((r) => r.json())
+                .then((j) => { if (j && j.url) callback(j.url); })
+                .catch(() => { /* nothing left to try; leave the last good frame on screen */ });
+            return;
         }
 
-        var finishedURL = `${baseURL}/${year}/${month}/${day}/${station}/${latestFileName}`;
-        callback(finishedURL);
-    })
+        var curTime = new Date(Date.now() - daysBack * 86400000);
+        var year = curTime.getUTCFullYear();
+        var month = curTime.getUTCMonth() + 1;
+        if (month.toString().length == 1) month = "0" + month.toString();
+        var day = curTime.getUTCDate();
+        if (day.toString().length == 1) day = "0" + day.toString();
+        var fullURL = "https://noaa-nexrad-level2.s3.amazonaws.com/?list-type=2&delimiter=%2F&prefix=" + year + "%2F" + month + "%2F" + day + "%2F" + stationToGet + "%2F"
+        fullURL = ut.preventFileCaching(fullURL);
+
+        $.get(fullURL, function (data) {
+            try {
+                var dataToWorkWith = JSON.stringify(ut.xmlToJson(data)).replace(/#/g, 'HASH')
+                dataToWorkWith = JSON.parse(dataToWorkWith)
+                var filenameKey = dataToWorkWith.ListBucketResult.Contents
+                if (!filenameKey) { tryDay(daysBack + 1); return; }
+                var arr = Array.isArray(filenameKey) ? filenameKey : [filenameKey];
+                var latestFileName = arr[arr.length - 1].Key.HASHtext.slice(16);
+                if (latestFileName.includes('MDM')) {
+                    if (arr.length < 2) { tryDay(daysBack + 1); return; }
+                    latestFileName = arr[arr.length - 2].Key.HASHtext.slice(16);
+                }
+                var finishedURL = `${baseURL}/${year}/${month}/${day}/${station}/${latestFileName}`;
+                callback(finishedURL);
+            } catch (e) {
+                tryDay(daysBack + 1);
+            }
+        }).fail(function () {
+            // The original bug in a nutshell: without this, an AJAX error
+            // (network drop, CORS, the archive returning 403) meant tryDay
+            // never ran again and the callback never fired.
+            tryDay(daysBack + 1);
+        });
+    }
+
+    tryDay(0);
 }
 
 /**
