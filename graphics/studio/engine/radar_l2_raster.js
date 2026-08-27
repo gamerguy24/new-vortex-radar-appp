@@ -159,14 +159,22 @@ async function loadVolume(url, onProgress) {
     // fails for ANY reason, relay it through our own origin, which sidesteps
     // CORS and networks that block S3. The relay only pipes bytes; the decode
     // still happens here.
+    //
+    // A "vortex-chunks:" marker (from listLatestVolume's relay fallback) is
+    // never a fetchable URL — skip straight to the relay instead of making a
+    // guaranteed-to-fail request first. Browsers log a failed fetch to the
+    // console regardless of whether the rejection is caught, so without this
+    // every marker-sourced volume logged a scary (but harmless) network error.
     let buf = null;
-    let directError = null;
-    try {
-      const res = await fetch(url);
-      if (res.ok) buf = await res.arrayBuffer();
-      else directError = `HTTP ${res.status}`;
-    } catch (e) {
-      directError = e.message || 'network error';
+    let directError = url.startsWith('vortex-chunks:') ? 'not a direct URL' : null;
+    if (directError === null) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) buf = await res.arrayBuffer();
+        else directError = `HTTP ${res.status}`;
+      } catch (e) {
+        directError = e.message || 'network error';
+      }
     }
 
     if (!buf) {
