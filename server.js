@@ -1698,10 +1698,27 @@ async function listVolumeFolders(station) {
     const xml = await s3ListText(`${L2_CHUNKS}/?list-type=2&delimiter=/&prefix=${station}/`);
     return [...xml.matchAll(/<Prefix>[^<]*\/(\d+)\/<\/Prefix>/g)].map((m) => parseInt(m[1], 10)).filter((n) => !isNaN(n));
 }
+// The chunks bucket is a rolling window of recent volumes per site — normally a
+// single contiguous run of folder numbers. But cleanup lags sometimes leave a
+// lone straggler folder from far in the past still listed. A plain max()
+// picks that straggler whenever it's numerically highest (wraparound case),
+// and a naive "big span = wraparound, take the low cluster" heuristic gets
+// fooled the same way by a straggler sitting BELOW the real window (observed
+// live: folders 386-862 current, plus one leftover "214" from a day-plus
+// earlier, which made that heuristic return 499 as "latest" — 36+ hours
+// stale). Clustering by gap and taking the largest cluster's max ignores an
+// isolated straggler on either side, since the real current window is always
+// far bigger than one leftover folder.
 function pickLatestFolder(nums) {
-    const max = Math.max(...nums), min = Math.min(...nums);
-    // Volume numbers wrap 0..999; if the set straddles a wrap, newest is the low cluster.
-    return (max - min > 500) ? Math.max(...nums.filter((n) => n < 500)) : max;
+    const sorted = [...new Set(nums)].sort((a, b) => a - b);
+    const GAP = 20;
+    const clusters = [[sorted[0]]];
+    for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i] - sorted[i - 1] <= GAP) clusters[clusters.length - 1].push(sorted[i]);
+        else clusters.push([sorted[i]]);
+    }
+    clusters.sort((a, b) => b.length - a.length);
+    return clusters[0][clusters[0].length - 1];
 }
 async function listVolumeChunks(station, folder) {
     const xml = await s3ListText(`${L2_CHUNKS}/?list-type=2&prefix=${station}/${folder}/`);
