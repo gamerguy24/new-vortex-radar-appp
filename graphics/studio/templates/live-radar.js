@@ -24,8 +24,8 @@
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { roundRect } from '../engine/scene.js';
-import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix6';
-import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js?v=cachefix5';
+import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, warmRasters, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix7';
+import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js?v=cachefix7';
 
 const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
 
@@ -89,6 +89,10 @@ function markActive() {
   interaction.idleTimer = setTimeout(() => {
     interaction.active = false;
     if (interaction.ctrl) interaction.ctrl.rerender();   // full quality + refetch
+    // A raster belongs to the projection it was drawn under, so the move just
+    // invalidated every loop frame. Rebuild them now, off the animation path,
+    // rather than letting the loop rebuild them one hitch at a time.
+    if (playback.playing) warmFrames();
   }, 320);
 }
 
@@ -119,12 +123,15 @@ setInterval(() => {
  * rasterised once per view.
  */
 const LOOP_FRAME_MS = 750;
-const playback = { playing: false, frames: [], idx: 0, key: null, timer: null };
+const playback = { playing: false, frames: [], idx: 0, key: null, timer: null, warmCancel: null };
 
 function stopPlayback() {
   playback.playing = false;
   clearInterval(playback.timer);
   playback.timer = null;
+  // Stop any warm-up still running, so it is not competing for the main
+  // thread after the operator has already pressed stop.
+  if (playback.warmCancel) { playback.warmCancel(); playback.warmCancel = null; }
 }
 
 export function isPlaying() { return playback.playing; }
@@ -178,8 +185,15 @@ export async function togglePlayback() {
   }
 
   radarStore.status = 'ready';
-  radarStore.stage = null;
   radarStore.radar = playback.frames[playback.idx];
+
+  // Build every frame's raster BEFORE animating. Without this the first pass
+  // round the loop hitches on each frame, because a frame is only rasterised
+  // by the tick that first displays it.
+  warmFrames(() => {
+    radarStore.stage = null;
+    if (interaction.ctrl) interaction.ctrl.rerender();
+  });
 
   playback.timer = setInterval(() => {
     if (interaction.active) return;   // don't fight a drag
@@ -187,6 +201,38 @@ export async function togglePlayback() {
     radarStore.radar = playback.frames[playback.idx];
     if (interaction.ctrl) interaction.ctrl.rerender();
   }, LOOP_FRAME_MS);
+}
+
+/**
+ * Pre-rasterise the loop's frames for the CURRENT view, one per animation
+ * frame so the page stays responsive.
+ *
+ * Called when a loop starts and again whenever the map settles somewhere new:
+ * a raster is tied to the projection it was drawn under, so panning or zooming
+ * invalidates all of them at once and the loop would otherwise spend its next
+ * pass rebuilding them one hitch at a time.
+ */
+function warmFrames(onDone) {
+  if (playback.warmCancel) { playback.warmCancel(); playback.warmCancel = null; }
+  if (!playback.frames.length || !interaction.scene) return;
+
+  const cfg = interaction.config;
+  if (!cfg) return;
+  const opts = {
+    quality: parseInt(cfg.quality, 10) || 1600,
+    smooth: !!cfg.smooth,
+    minDbz: parseFloat(cfg.minDbz) || 0,
+  };
+
+  playback.warmCancel = warmRasters(playback.frames, interaction.scene, opts, (done, total) => {
+    if (done < total) {
+      radarStore.stage = `preparing loop ${done}/${total}`;
+      if (interaction.ctrl) interaction.ctrl.rerender();
+    } else {
+      playback.warmCancel = null;
+      if (onDone) onDone();
+    }
+  });
 }
 
 /* ── zoom maths ────────────────────────────────────────────────────────────

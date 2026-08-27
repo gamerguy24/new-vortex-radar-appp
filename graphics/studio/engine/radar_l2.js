@@ -21,8 +21,8 @@
  * rasteriser itself.
  */
 
-import { loadSweep, loadSweepFromUrl, listLatestVolume, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix4';
-import { loadRadarSites } from './radar_sites.js?v=cachefix5';
+import { loadSweep, loadSweepFromUrl, listLatestVolume, prefetchVolume, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix7';
+import { loadRadarSites } from './radar_sites.js?v=cachefix7';
 
 const CONUS = { W: -125, S: 24, E: -66.5, N: 50 };
 
@@ -248,6 +248,15 @@ async function loadLoopFrames(site, product, onProgress) {
     urls.push(found.url);
   }
 
+  // Start every download at once, then decode them in order.
+  //
+  // Serial download-then-decode per frame meant eight round trips end to end,
+  // which was most of the wait before a loop could start. Overlapping the
+  // network cuts that to roughly one round trip. Decoding stays strictly
+  // sequential below: eight volumes parsed concurrently would hold eight fully
+  // decoded volumes in memory at once, which is hundreds of megabytes each.
+  urls.forEach((u) => prefetchVolume(u));
+
   const frames = [];
   for (let i = 0; i < urls.length; i++) {
     if (onProgress) onProgress(`loop frame ${i + 1}/${urls.length}`);
@@ -366,13 +375,63 @@ function similarityBetween(oldProj, newProj) {
  * simply recomputed once when the view settles (see markActive()'s idle
  * timer in live-radar.js), which is invisible at the ~300ms it takes.
  */
+function rasterSig(scene, quality, smooth, minDbz, palette) {
+  return [projSig(scene), quality, smooth ? 1 : 0, minDbz, palette || ''].join('|');
+}
+
+/**
+ * Build and cache one frame's raster if it is not already current.
+ *
+ * Split out of the layer so a Play loop can pre-build every frame BEFORE it
+ * starts animating. Otherwise each frame rasterises on the very tick that first
+ * displays it — a visible hitch per frame on the first pass round the loop, and
+ * again after every pan or zoom, because moving the map invalidates all of them
+ * at once.
+ *
+ * @returns {boolean} true if a raster was actually built (i.e. work was done)
+ */
+export function ensureRaster(radar, scene, { quality = 1600, smooth = true, minDbz = 15 } = {}) {
+  if (!radar || !radar.sweep) return false;
+  const sig = rasterSig(scene, quality, smooth, minDbz, radar.palette);
+  if (radar._raster && radar._raster.sig === sig) return false;
+  const canvas = rasterize(radar, scene, { quality, smooth, minDbz, palette: radar.palette });
+  if (!canvas) { radar._raster = null; return true; }
+  radar._raster = { sig, canvas, proj: scene.projection, sw: scene.width, sh: scene.height };
+  return true;
+}
+
+/**
+ * Pre-build rasters for a list of frames, ONE PER ANIMATION FRAME.
+ *
+ * Doing all of them in a single synchronous pass would block the main thread
+ * for the better part of a second, which is the very stutter this exists to
+ * remove. Spreading the work keeps the page responsive while the loop warms.
+ *
+ * @returns {function} cancel — call it if the view changes or playback stops,
+ *          so a superseded warm-up stops competing for the main thread.
+ */
+export function warmRasters(frames, scene, opts = {}, onProgress = null) {
+  let i = 0;
+  let cancelled = false;
+  const step = () => {
+    if (cancelled) return;
+    // Skip frames that are already current; only real work costs a frame.
+    while (i < frames.length && !ensureRaster(frames[i], scene, opts)) i++;
+    if (onProgress) onProgress(Math.min(i + 1, frames.length), frames.length);
+    if (i < frames.length) { i++; requestAnimationFrame(step); }
+    else if (onProgress) onProgress(frames.length, frames.length);
+  };
+  requestAnimationFrame(step);
+  return () => { cancelled = true; };
+}
+
 export function radarL2Layer(radar, { quality = 1600, smooth = true, minDbz = 15, fastPreview = false } = {}) {
   return {
     name: 'radar-l2',
     draw(ctx, scene) {
       if (!radar || !radar.sweep) return;
 
-      const sig = [projSig(scene), quality, smooth ? 1 : 0, minDbz, radar.palette || ''].join('|');
+      const sig = rasterSig(scene, quality, smooth, minDbz, radar.palette);
       const cached = radar._raster;
       const alpha = radar.opacity == null ? 0.9 : radar.opacity;
 
@@ -393,18 +452,23 @@ export function radarL2Layer(radar, { quality = 1600, smooth = true, minDbz = 15
           ctx.globalAlpha = alpha;
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          // The destination rect scales off the SCENE's own dimensions, not
-          // the raster canvas's pixel size — those two differ whenever
-          // `quality` isn't equal to scene.width (the normal case: quality
-          // defaults to 1200/1600/2200 while the canvas is 1920 or more).
-          // Scaling off the raster's own width/height here was the bug:
-          // t.s is a scene-space scale factor, so applying it to the
-          // raster's (differently-sized) pixel dimensions drew the image at
-          // the wrong size and mostly off-frame — which is what "the radar
-          // disappears while dragging" was.
+          // The destination rect scales off the SCENE dimensions the raster
+          // covered, not the raster canvas's own pixel size — those two differ
+          // whenever `quality` isn't equal to scene.width (the normal case:
+          // quality defaults to 1200/1600/2200 while the canvas is 1920 or
+          // more). Scaling off the raster's own width/height here was the bug:
+          // t.s is a scene-space scale factor, so applying it to the raster's
+          // (differently-sized) pixel dimensions drew the image at the wrong
+          // size and mostly off-frame — which is what "the radar disappears
+          // while dragging" was.
+          //
+          // cached.sw/sh rather than the CURRENT scene: if the canvas has been
+          // resized since this raster was made (the 1080p/720p picker), the
+          // current dimensions are not the ones it covers.
+          const rw = cached.sw || scene.width, rh = cached.sh || scene.height;
           ctx.drawImage(
             cached.canvas, 0, 0, cached.canvas.width, cached.canvas.height,
-            t.tx, t.ty, scene.width * t.s, scene.height * t.s,
+            t.tx, t.ty, rw * t.s, rh * t.s,
           );
           ctx.restore();
           return;
@@ -417,7 +481,9 @@ export function radarL2Layer(radar, { quality = 1600, smooth = true, minDbz = 15
       // one): build() always constructs a brand-new projection object rather
       // than mutating the previous one, so holding this reference is already
       // a safe, unmutated snapshot of "the projection the raster was made at".
-      radar._raster = { sig, canvas, proj: scene.projection };
+      // sw/sh: the scene rect this raster covers. The fast-preview blit above
+      // needs it, because the canvas itself is only `quality` px wide.
+      radar._raster = { sig, canvas, proj: scene.projection, sw: scene.width, sh: scene.height };
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.imageSmoothingEnabled = true;

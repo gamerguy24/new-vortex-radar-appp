@@ -142,17 +142,25 @@ function rememberVolume(url, factory) {
   }
 }
 
-async function loadVolume(url, onProgress) {
-  if (volumeCache.has(url)) {
-    const f = volumeCache.get(url);
-    volumeCache.delete(url); rememberVolume(url, f);   // mark as recently used
-    return f;
-  }
-  if (inflight.has(url)) return inflight.get(url);
+/*
+ * Downloaded-but-not-yet-decoded volumes.
+ *
+ * Download and decode are separated so a Play loop can overlap its NETWORK time
+ * across every frame while still decoding them ONE AT A TIME. That order
+ * matters in both directions: eight serial downloads is most of the wait before
+ * a loop starts, but eight concurrent DECODES would hold eight fully parsed
+ * volumes in memory at once — hundreds of megabytes each — and take the tab
+ * down. Bytes are cheap to hold; parsed volumes are not.
+ */
+const byteCache = new Map();      // url -> ArrayBuffer
+const byteInflight = new Map();   // url -> Promise<ArrayBuffer>
+const MAX_CACHED_BYTES = 10;
+
+async function downloadVolumeBytes(url, onProgress) {
+  if (byteCache.has(url)) return byteCache.get(url);
+  if (byteInflight.has(url)) return byteInflight.get(url);
 
   const job = (async () => {
-    const L = lib();
-    if (!L) throw new Error('Level 2 decoder not loaded');
     if (onProgress) onProgress('downloading volume');
 
     // Direct from the bucket first — same request the radar page makes. If that
@@ -187,6 +195,36 @@ async function loadVolume(url, onProgress) {
       }
       buf = await res.arrayBuffer();
     }
+
+    byteCache.set(url, buf);
+    while (byteCache.size > MAX_CACHED_BYTES) byteCache.delete(byteCache.keys().next().value);
+    return buf;
+  })();
+
+  byteInflight.set(url, job);
+  try { return await job; } finally { byteInflight.delete(url); }
+}
+
+/**
+ * Start a volume downloading without decoding it. Used to warm a Play loop's
+ * frames concurrently before they are decoded in sequence.
+ */
+export function prefetchVolume(url) {
+  return downloadVolumeBytes(url).catch(() => null);
+}
+
+async function loadVolume(url, onProgress) {
+  if (volumeCache.has(url)) {
+    const f = volumeCache.get(url);
+    volumeCache.delete(url); rememberVolume(url, f);   // mark as recently used
+    return f;
+  }
+  if (inflight.has(url)) return inflight.get(url);
+
+  const job = (async () => {
+    const L = lib();
+    if (!L) throw new Error('Level 2 decoder not loaded');
+    const buf = await downloadVolumeBytes(url, onProgress);
 
     if (onProgress) onProgress('decoding');
     const name = url.split('/').pop();
@@ -329,6 +367,60 @@ export async function loadSweep({ site, product = 'reflectivity', onProgress = n
 /* ── rasterisation ────────────────────────────────────────────────────────── */
 
 /**
+ * Longitude-per-column and latitude-per-row for the output grid, IF this
+ * projection separates that way.
+ *
+ * Mercator and equirectangular do: x carries longitude alone, y carries
+ * latitude alone. That turns a per-pixel inverse projection into O(W + H)
+ * inversions. Conic and azimuthal projections do not, and neither does any
+ * projection with a rotation applied.
+ *
+ * The property is TESTED, not assumed. Longitude is sampled down two widely
+ * separated rows and latitude across two widely separated columns; if either
+ * varies, this returns null and the caller falls back to inverting per pixel.
+ * A tolerance rather than exact equality, because the projection's own
+ * arithmetic is floating point.
+ *
+ * @returns {{lon: Float64Array, lat: Float64Array}|null}
+ */
+function separableGrid(p, OW, OH, inv) {
+  if (!p || !p.invert) return null;
+
+  const yA = 0;
+  const yB = (OH - 1) * inv;
+  const xA = 0;
+  const xB = (OW - 1) * inv;
+  const probes = [
+    p.invert([xA, yA]), p.invert([xB, yA]),
+    p.invert([xA, yB]), p.invert([xB, yB]),
+  ];
+  if (probes.some((q) => !q || !isFinite(q[0]) || !isFinite(q[1]))) return null;
+
+  const TOL = 1e-6;
+  // Longitude must not depend on y, latitude must not depend on x.
+  if (Math.abs(probes[0][0] - probes[2][0]) > TOL) return null;
+  if (Math.abs(probes[1][0] - probes[3][0]) > TOL) return null;
+  if (Math.abs(probes[0][1] - probes[1][1]) > TOL) return null;
+  if (Math.abs(probes[2][1] - probes[3][1]) > TOL) return null;
+
+  const lon = new Float64Array(OW);
+  for (let ox = 0; ox < OW; ox++) {
+    const q = p.invert([ox * inv, yA]);
+    lon[ox] = q ? q[0] : NaN;
+  }
+  const lat = new Float64Array(OH);
+  for (let oy = 0; oy < OH; oy++) {
+    const q = p.invert([xA, oy * inv]);
+    lat[oy] = q ? q[1] : NaN;
+  }
+  // A NaN anywhere means the projection folded; the safe path handles that.
+  for (let i = 0; i < OW; i++) if (!isFinite(lon[i])) return null;
+  for (let i = 0; i < OH; i++) if (!isFinite(lat[i])) return null;
+
+  return { lon, lat };
+}
+
+/**
  * Draw a sweep into the scene's projection.
  *
  * @param {object} radar   result of loadSweep()
@@ -392,29 +484,94 @@ export function rasterize(radar, scene, o = {}) {
   const sinφ1 = Math.sin(radarLat * D2R);
   const cosφ1 = Math.cos(radarLat * D2R);
 
+  /*
+   * THE EXPENSIVE PART, AND WHY IT IS NOT ANY MORE.
+   *
+   * This loop used to call projection.invert([x, y]) for every output pixel —
+   * roughly 800,000 calls for a 1200px raster, each allocating a two-element
+   * array and running its own trig — and then four more trig calls per pixel to
+   * get the geometry. That single fact was most of the "loading takes a long
+   * time" and all of the pause when a drag settled.
+   *
+   * A cylindrical projection (mercator here, and equirectangular) separates:
+   * screen x depends only on longitude, screen y only on latitude. So the whole
+   * grid is described by ONE row of longitudes and ONE column of latitudes —
+   * O(W + H) inversions instead of O(W × H) — and the per-pixel trig collapses
+   * into two lookup tables. What is left inside the loop is one acos and one
+   * atan2.
+   *
+   * Separability is verified rather than assumed: if the projection ever
+   * changes to one that rotates or is non-cylindrical, `cols` comes back null
+   * and the original per-pixel path runs instead. Correct either way, fast in
+   * the case that actually ships.
+   */
+  const grid = separableGrid(p, OW, OH, inv);
+
+  // Per-column longitude terms (constant down a column).
+  let cosDlon = null, sinDlon = null;
+  // Per-row latitude terms (constant across a row).
+  let rowSin = null, rowCos = null;
+  if (grid) {
+    cosDlon = new Float64Array(OW);
+    sinDlon = new Float64Array(OW);
+    for (let ox = 0; ox < OW; ox++) {
+      const dl = (grid.lon[ox] - radarLon) * D2R;
+      cosDlon[ox] = Math.cos(dl);
+      sinDlon[ox] = Math.sin(dl);
+    }
+    rowSin = new Float64Array(OH);
+    rowCos = new Float64Array(OH);
+    for (let oy = 0; oy < OH; oy++) {
+      const φ = grid.lat[oy] * D2R;
+      rowSin[oy] = Math.sin(φ);
+      rowCos[oy] = Math.cos(φ);
+    }
+  }
+
   let painted = 0;
 
   for (let oy = 0; oy < OH; oy++) {
     const sy = oy * inv;
+
+    // Row constants. In the separable case these come from the tables; the
+    // fallback recomputes them per pixel below.
+    const rSin = grid ? rowSin[oy] : 0;
+    const rCos = grid ? rowCos[oy] : 0;
+    const rowA = grid ? sinφ1 * rSin : 0;      // constant part of cos(central angle)
+    const rowB = grid ? cosφ1 * rCos : 0;
+    const rowC = grid ? cosφ1 * rSin : 0;      // constant parts of the bearing
+    const rowD = grid ? sinφ1 * rCos : 0;
+    const rowValid = !grid || isFinite(grid.lat[oy]);
+    if (!rowValid) continue;
+
     for (let ox = 0; ox < OW; ox++) {
-      const ll = p.invert([ox * inv, sy]);
-      if (!ll) continue;
-      const lon = ll[0], lat = ll[1];
-      if (!isFinite(lon) || !isFinite(lat)) continue;
+      let cosC, sinΔλ, cosΔλ, sinφ2, cosφ2;
+
+      if (grid) {
+        cosΔλ = cosDlon[ox]; sinΔλ = sinDlon[ox];
+        sinφ2 = rSin; cosφ2 = rCos;
+        cosC = rowA + rowB * cosΔλ;
+      } else {
+        const ll = p.invert([ox * inv, sy]);
+        if (!ll) continue;
+        const lon = ll[0], lat = ll[1];
+        if (!isFinite(lon) || !isFinite(lat)) continue;
+        const φ2 = lat * D2R;
+        const Δλ = (lon - radarLon) * D2R;
+        sinφ2 = Math.sin(φ2); cosφ2 = Math.cos(φ2);
+        cosΔλ = Math.cos(Δλ); sinΔλ = Math.sin(Δλ);
+        cosC = sinφ1 * sinφ2 + cosφ1 * cosφ2 * cosΔλ;
+      }
 
       // Great-circle range and bearing from the radar: the inverse of the gate
       // geometry — given this pixel, where is it in the radar's polar grid?
-      const φ2 = lat * D2R;
-      const Δλ = (lon - radarLon) * D2R;
-      const sinφ2 = Math.sin(φ2), cosφ2 = Math.cos(φ2);
-      const cosΔλ = Math.cos(Δλ), sinΔλ = Math.sin(Δλ);
-
-      let cosC = sinφ1 * sinφ2 + cosφ1 * cosφ2 * cosΔλ;
       if (cosC > 1) cosC = 1; else if (cosC < -1) cosC = -1;
       const distKm = Math.acos(cosC) * R_EARTH_KM;
       if (distKm < rangeMin || distKm > maxRangeKm) continue;
 
-      let az = Math.atan2(sinΔλ * cosφ2, cosφ1 * sinφ2 - sinφ1 * cosφ2 * cosΔλ) * R2D;
+      let az = grid
+        ? Math.atan2(sinΔλ * cosφ2, rowC - rowD * cosΔλ) * R2D
+        : Math.atan2(sinΔλ * cosφ2, cosφ1 * sinφ2 - sinφ1 * cosφ2 * cosΔλ) * R2D;
       if (az < 0) az += 360;
 
       const ri = nearestRadial(buckets, azimuths, az);
