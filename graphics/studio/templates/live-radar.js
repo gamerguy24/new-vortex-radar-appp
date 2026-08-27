@@ -24,8 +24,8 @@
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { roundRect } from '../engine/scene.js';
-import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, warmRasters, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix9';
-import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js?v=cachefix9';
+import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, warmRasters, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix10';
+import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js?v=cachefix10';
 
 const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
 
@@ -179,7 +179,15 @@ export async function togglePlayback() {
     if (interaction.ctrl) interaction.ctrl.rerender();
     return;
   }
-  if (!radarStore.radar) return;   // nothing on screen yet to loop
+  // Nothing on screen yet to loop. Say so rather than returning in silence —
+  // a button that does nothing and reports nothing is indistinguishable from a
+  // broken one, which is exactly how this was reported.
+  if (!radarStore.radar) {
+    radarStore.status = 'error';
+    radarStore.error = 'wait for the radar to load before starting a loop';
+    if (interaction.ctrl) interaction.ctrl.rerender();
+    return;
+  }
 
   // radarStore.key already encodes site + product + palette (see build()) —
   // reuse it so a loop is invalidated the same moment a single fetch would be.
@@ -213,9 +221,14 @@ export async function togglePlayback() {
   }
 
   if (playback.frames.length < 2) {
-    // Nothing to animate (e.g. the archive-URL fallback only ever has one
-    // frame) — leave the single scan on screen rather than "play" a loop of one.
+    // Only one scan came back, so there is nothing to animate. Leave it on
+    // screen, but SAY why the loop did not start: this path returning quietly
+    // is what made Play look broken when a listing could only produce a single
+    // volume.
     playback.playing = false;
+    radarStore.status = 'error';
+    radarStore.error = `only one scan is available for ${radarStore.radar.meta.site} right now — nothing to loop`;
+    radarStore.stage = null;
     if (interaction.ctrl) interaction.ctrl.rerender();
     return;
   }

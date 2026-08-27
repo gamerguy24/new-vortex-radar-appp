@@ -6,7 +6,7 @@ import { loadGeo } from './engine/geo.js';
 import { freehandLayer, logoLayer, panelOverlayLayer, nameOverlayLayer } from './engine/overlays.js';
 import { fetchRadar, radarLayer } from './engine/radar.js';
 import { fetchSatellite, satelliteLayer, satelliteSig } from './engine/satellite.js';
-import { TEMPLATES, TEMPLATE_BY_ID, togglePlayback, isPlaying, stopPlayback, goLive, isLive } from './templates/index.js?v=cachefix9';
+import { TEMPLATES, TEMPLATE_BY_ID, togglePlayback, isPlaying, stopPlayback, goLive, isLive } from './templates/index.js?v=cachefix10';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('stage-canvas');
@@ -852,7 +852,13 @@ $('radar-opacity').oninput = (e) => {
 // playback logic; this just reflects its state and starts/stops it.
 $('live-radar-play').onclick = async () => {
   const btn = $('live-radar-play');
+  const starting = !isPlaying();
   btn.disabled = true;
+  // Say so IMMEDIATELY. togglePlayback() has to download and decode several
+  // volumes before a loop can start, which is seconds of waiting, and the
+  // button used to sit greyed out still reading "Play" for all of it with no
+  // other sign of life — indistinguishable from a dead button.
+  if (starting) btn.textContent = '⏳ Loading…';
   try {
     await togglePlayback();
   } finally {

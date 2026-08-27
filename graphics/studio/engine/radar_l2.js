@@ -21,8 +21,8 @@
  * rasteriser itself.
  */
 
-import { loadSweep, loadSweepFromUrl, listLatestVolume, listRecentVolumes, prefetchVolume, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix9';
-import { loadRadarSites } from './radar_sites.js?v=cachefix9';
+import { loadSweep, loadSweepFromUrl, listLatestVolume, listRecentVolumes, prefetchVolume, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix10';
+import { loadRadarSites } from './radar_sites.js?v=cachefix10';
 
 const CONUS = { W: -125, S: 24, E: -66.5, N: 50 };
 
@@ -423,8 +423,17 @@ export function warmRasters(frames, scene, opts = {}, onProgress = null) {
   let cancelled = false;
   const step = () => {
     if (cancelled) return;
-    // Skip frames that are already current; only real work costs a frame.
-    while (i < frames.length && !ensureRaster(frames[i], scene, opts)) i++;
+    // A throw here would escape into the animation frame, where nothing catches
+    // it: the chain would stop dead partway through and the remaining frames
+    // would never get rasters, with no error anywhere near the Play button. A
+    // frame that cannot be rasterised is skipped instead, so one bad scan costs
+    // one frame rather than the rest of the loop.
+    try {
+      // Skip frames that are already current; only real work costs a frame.
+      while (i < frames.length && !ensureRaster(frames[i], scene, opts)) i++;
+    } catch (e) {
+      console.warn('[studio] could not rasterise loop frame', i, e && e.message);
+    }
     if (onProgress) onProgress(Math.min(i + 1, frames.length), frames.length);
     if (i < frames.length) { i++; requestAnimationFrame(step); }
     else if (onProgress) onProgress(frames.length, frames.length);
