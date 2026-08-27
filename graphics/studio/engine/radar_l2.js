@@ -21,8 +21,8 @@
  * rasteriser itself.
  */
 
-import { loadSweep, loadSweepFromUrl, listLatestVolume, listRecentVolumes, prefetchVolume, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix8';
-import { loadRadarSites } from './radar_sites.js?v=cachefix8';
+import { loadSweep, loadSweepFromUrl, listLatestVolume, listRecentVolumes, prefetchVolume, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix9';
+import { loadRadarSites } from './radar_sites.js?v=cachefix9';
 
 const CONUS = { W: -125, S: 24, E: -66.5, N: 50 };
 

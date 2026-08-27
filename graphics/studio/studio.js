@@ -6,7 +6,7 @@ import { loadGeo } from './engine/geo.js';
 import { freehandLayer, logoLayer, panelOverlayLayer, nameOverlayLayer } from './engine/overlays.js';
 import { fetchRadar, radarLayer } from './engine/radar.js';
 import { fetchSatellite, satelliteLayer, satelliteSig } from './engine/satellite.js';
-import { TEMPLATES, TEMPLATE_BY_ID, togglePlayback, isPlaying, stopPlayback } from './templates/index.js?v=cachefix8';
+import { TEMPLATES, TEMPLATE_BY_ID, togglePlayback, isPlaying, stopPlayback, goLive, isLive } from './templates/index.js?v=cachefix9';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('stage-canvas');
@@ -173,14 +173,23 @@ function syncRadarChrome() {
   const isLiveRadar = state.template && state.template.id === 'live-radar';
   const liveToolbar = document.getElementById('live-radar-toolbar');
   if (liveToolbar) liveToolbar.hidden = !isLiveRadar;
-  if (!isLiveRadar && isPlaying()) { stopPlayback(); setLiveRadarPlayUI(false); }
+  if (!isLiveRadar && isPlaying()) { stopPlayback(); }
+  // Sync whenever the toolbar's visibility is settled, so Play/Live show the
+  // real state the moment the template appears rather than only after a click.
+  setLiveRadarPlayUI(isPlaying());
 }
 
 function setLiveRadarPlayUI(playing) {
   const btn = $('live-radar-play');
-  if (!btn) return;
-  btn.textContent = playing ? '⏸ Pause' : '▶ Play';
-  btn.classList.toggle('active', playing);
+  if (btn) {
+    btn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    btn.classList.toggle('active', playing);
+  }
+  // Live lights up when the display IS the newest scan, so the pair reads as a
+  // state: Live lit means you are on current data, Play lit means you are
+  // watching history.
+  const live = $('live-radar-live');
+  if (live) live.classList.toggle('active', isLive());
 }
 
 // Per-template presentation metadata for the rail + properties header.
@@ -850,6 +859,13 @@ $('live-radar-play').onclick = async () => {
     btn.disabled = false;
     setLiveRadarPlayUI(isPlaying());
   }
+};
+
+// Jump back to the newest scan — stops a running loop and forces a fresh
+// listing rather than waiting out the template's 90-second refresh timer.
+$('live-radar-live').onclick = () => {
+  goLive();
+  setLiveRadarPlayUI(isPlaying());
 };
 
 // Custom logo: upload an image and stamp it on every template.

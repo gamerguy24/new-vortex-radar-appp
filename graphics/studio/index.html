@@ -97,6 +97,10 @@
         </div>
         <div class="tb-group" role="group" aria-label="Radar loop" id="live-radar-toolbar" hidden>
           <button class="tb-btn" id="live-radar-play" title="Loop the last several scans for this site">▶ Play</button>
+          <!-- Jump back to the newest scan. Shown as active whenever the
+               display IS the newest, so the button doubles as an indicator of
+               whether you are looking at live data or at loop history. -->
+          <button class="tb-btn" id="live-radar-live" title="Jump to the latest scan">● Live</button>
         </div>
         <span class="tb-sep"></span>
         <div class="tb-group" aria-label="Logo">
@@ -141,7 +145,7 @@
   <script src="../../dist/l2_bundle.js?v=cachefix1"></script>
   <script src="vendor/d3.v7.min.js"></script>
   <script src="vendor/topojson-client.min.js"></script>
-  <script type="module" src="studio.js?v=cachefix8"></script>
+  <script type="module" src="studio.js?v=cachefix9"></script>
   <script src="toolbelt_drag.js"></script>
 </body>
 </html>

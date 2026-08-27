@@ -24,8 +24,8 @@
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { roundRect } from '../engine/scene.js';
-import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, warmRasters, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix8';
-import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js?v=cachefix8';
+import { fetchRadarL2, fetchRadarL2Loop, radarL2Layer, warmRasters, isLevel2Site, radarPageView } from '../engine/radar_l2.js?v=cachefix9';
+import { loadRadarSites, radarSitesLayer } from '../engine/radar_sites.js?v=cachefix9';
 
 const FONT = '"Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
 
@@ -136,6 +136,42 @@ function stopPlayback() {
 
 export function isPlaying() { return playback.playing; }
 export { stopPlayback };
+
+/**
+ * Is the display currently showing the newest scan?
+ *
+ * True whenever a loop is not running: the single-fetch path always shows the
+ * newest volume it could find, and refreshes itself every REFRESH_INTERVAL_MS.
+ * A running loop is history by definition — it spends most of its time on
+ * frames older than the latest.
+ */
+export function isLive() { return !playback.playing; }
+
+/**
+ * Jump to the latest scan.
+ *
+ * Two jobs, because there are two ways to be behind. A loop parks the display
+ * on whichever frame it happens to be showing, so playback stops; and the
+ * single-frame path only re-checks the bucket every 90 seconds, so the cached
+ * key is cleared to force a fresh listing right now rather than waiting out
+ * that timer.
+ *
+ * Loop frames are dropped too: they were listed at some earlier moment, so
+ * pressing Play afterwards should rebuild the loop around the new newest scan
+ * rather than replay a window that has since moved. Re-listing is one request,
+ * and any volume still in the byte cache is reused rather than re-downloaded.
+ */
+export function goLive() {
+  stopPlayback();
+  playback.frames = [];
+  playback.idx = 0;
+  playback.key = null;
+
+  radarStore.key = null;              // build() treats this as a changed key
+  radarStore.error = null;
+  radarStore.status = radarStore.radar ? 'refreshing' : 'loading';
+  if (interaction.ctrl) interaction.ctrl.rerender();
+}
 
 export async function togglePlayback() {
   if (playback.playing) {
