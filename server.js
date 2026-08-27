@@ -1918,12 +1918,18 @@ app.get('/api/graphics/l2-list', requireAuth, async (req, res) => {
     const site = String(req.query.site || '').toUpperCase().replace(/[^A-Z]/g, '');
     if (!/^[A-Z]{3,4}$/.test(site)) return res.status(400).json({ error: 'site is required' });
 
+    // How many volumes back the caller wants. The listing returns the whole
+    // day regardless, so a Play loop costs exactly the same request that a
+    // single frame does. Defaults to 1 for callers that only want the latest.
+    const want = Math.max(1, Math.min(64, parseInt(req.query.count, 10) || 1));
+
     const base = 'https://' + L2_BUCKETS[0].host;
     const now = Date.now();
     let reached = false;
     let lastFailure = null;
+    let collected = [];   // oldest first
 
-    for (let back = 0; back < 3; back++) {
+    for (let back = 0; back < 3 && collected.length < want; back++) {
         const d = new Date(now - back * 86400000);
         const prefix = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${site}/`;
         let xml;
@@ -1939,11 +1945,20 @@ app.get('/api/graphics/l2-list', requireAuth, async (req, res) => {
         const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)]
             .map((m) => m[1])
             .filter((k) => !k.endsWith('_MDM') && /_V\d{2}$/.test(k));
-        if (keys.length) {
-            res.setHeader('Cache-Control', 'no-store');
-            console.log(`[L2-LIST] ${site} -> archive OK (${keys[keys.length - 1]})`);
-            return res.json({ url: `${base}/${keys[keys.length - 1]}`, key: keys[keys.length - 1] });
-        }
+        // Keys are lexicographic, so each day arrives oldest first; earlier
+        // days are prepended to keep the whole list chronological.
+        collected = keys.concat(collected);
+    }
+
+    if (collected.length) {
+        const tail = collected.slice(-want);
+        res.setHeader('Cache-Control', 'no-store');
+        console.log(`[L2-LIST] ${site} -> archive OK (${tail.length} of ${want}, newest ${tail[tail.length - 1]})`);
+        return res.json({
+            urls: tail.map((k) => `${base}/${k}`),
+            url: `${base}/${tail[tail.length - 1]}`,   // back-compat: the newest
+            key: tail[tail.length - 1],
+        });
     }
 
     // Archive bucket gave us nothing (commonly: it denies anonymous access from

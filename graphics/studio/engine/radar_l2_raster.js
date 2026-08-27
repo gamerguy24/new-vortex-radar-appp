@@ -59,17 +59,32 @@ function lib() {
  * used to turn a failed request into "no recent Level 2 volume listed", which
  * reads like the radar is down when the request never actually succeeded.
  */
-export async function listLatestVolume(site) {
+/**
+ * The most recent `count` volumes for a site, OLDEST FIRST.
+ *
+ * The archive listing already returns every key for the day, so a loop costs
+ * exactly the same listing request a single frame does. An earlier version
+ * returned only the newest key and the Play loop had no way to ask for more —
+ * so whenever the browser could reach S3 directly (the healthy case) a loop got
+ * exactly one frame and silently refused to play. The better the network, the
+ * more broken Play was.
+ *
+ * @returns {{urls: string[], via: string}|{urls: null, reason: string}}
+ */
+export async function listRecentVolumes(site, count = 1) {
   const id = String(site || '').toUpperCase().replace(/[^A-Z]/g, '');
-  if (!/^[A-Z]{3,4}$/.test(id)) return { url: null, reason: `"${site}" is not a radar id` };
+  if (!/^[A-Z]{3,4}$/.test(id)) return { urls: null, reason: `"${site}" is not a radar id` };
+  const want = Math.max(1, Math.min(64, count));
 
   const now = new Date();
   let reachedArchive = false;
   let lastFailure = null;
+  let collected = [];   // oldest first
 
   // Walk back a few days. Just after 00Z today's prefix is legitimately empty,
-  // and a station down for maintenance can have a quiet day or two.
-  for (let back = 0; back < 3; back++) {
+  // a station down for maintenance can have a quiet day or two, and a loop
+  // asked for right after midnight needs yesterday's tail to fill up.
+  for (let back = 0; back < 3 && collected.length < want; back++) {
     const d = new Date(now.getTime() - back * 86400000);
     const y = d.getUTCFullYear();
     const m = String(d.getUTCMonth() + 1).padStart(2, '0');
@@ -91,34 +106,50 @@ export async function listLatestVolume(site) {
       continue;
     }
 
-    // Keys are lexicographic, so the last one is the newest. Skip the _MDM
+    // Keys are lexicographic, so they come out oldest first. Skip the _MDM
     // metadata objects, exactly as loaders_nexrad.js does.
     const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)]
       .map((mm) => mm[1])
       .filter((k) => !k.endsWith('_MDM') && /_V\d\d$/.test(k));
-    if (keys.length) return { url: `${L2_BUCKET}/${keys[keys.length - 1]}`, key: keys[keys.length - 1] };
+    // Earlier days are prepended, keeping the whole list chronological.
+    collected = keys.concat(collected);
+  }
+
+  if (collected.length) {
+    const tail = collected.slice(-want);
+    return { urls: tail.map((k) => `${L2_BUCKET}/${k}`), via: 'direct' };
   }
 
   // Direct listing got us nothing. Before giving up, ask our own server to
   // look — it is a different network path, and "this browser cannot reach S3"
   // is a completely different problem from "this radar has no data".
   try {
-    const r = await fetch(`/api/graphics/l2-list?site=${id}`, { cache: 'no-store' });
+    const r = await fetch(`/api/graphics/l2-list?site=${id}&count=${want}`, { cache: 'no-store' });
     const j = await r.json();
-    if (r.ok && j && j.url) return { url: j.url, key: j.key, via: 'relay' };
-    if (j && j.error) {
-      return { url: null, reason: j.error };
+    if (r.ok && j) {
+      if (Array.isArray(j.urls) && j.urls.length) return { urls: j.urls, via: 'relay' };
+      if (j.url) return { urls: [j.url], via: 'relay' };
     }
+    if (j && j.error) return { urls: null, reason: j.error };
   } catch (e) {
     // Relay unreachable too — fall through to the direct-path reason below.
   }
 
   return {
-    url: null,
+    urls: null,
     reason: reachedArchive
       ? `${id} has not posted a scan in the last 3 days`
       : `could not reach the NEXRAD archive (${lastFailure || 'no response'})`,
   };
+}
+
+export async function listLatestVolume(site) {
+  const r = await listRecentVolumes(site, 1);
+  if (r.urls && r.urls.length) {
+    const url = r.urls[r.urls.length - 1];
+    return { url, key: url.split('/').pop(), via: r.via };
+  }
+  return { url: null, reason: r.reason };
 }
 
 /** Convenience wrapper: the URL, or null. */

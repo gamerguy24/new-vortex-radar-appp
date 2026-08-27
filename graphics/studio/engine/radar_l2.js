@@ -21,8 +21,8 @@
  * rasteriser itself.
  */
 
-import { loadSweep, loadSweepFromUrl, listLatestVolume, prefetchVolume, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix7';
-import { loadRadarSites } from './radar_sites.js?v=cachefix7';
+import { loadSweep, loadSweepFromUrl, listLatestVolume, listRecentVolumes, prefetchVolume, rasterize, chosenPalette, awsLatestVolumeUrl, PRODUCTS } from './radar_l2_raster.js?v=cachefix8';
+import { loadRadarSites } from './radar_sites.js?v=cachefix8';
 
 const CONUS = { W: -125, S: 24, E: -66.5, N: 50 };
 
@@ -230,22 +230,30 @@ const LOOP_FRAME_COUNT = 8;
  * shouldn't cost the whole loop.
  */
 async function loadLoopFrames(site, product, onProgress) {
-  const found = await listLatestVolume(site);
-  if (!found.url) throw new Error(found.reason);
+  // Ask for the whole loop up front. The archive listing returns every key for
+  // the day anyway, so N frames cost the same one request as a single frame.
+  const found = await listRecentVolumes(site, LOOP_FRAME_COUNT);
+  if (!found.urls || !found.urls.length) throw new Error(found.reason);
 
-  const m = /^vortex-chunks:([A-Z0-9]{3,4}):(\d+)$/.exec(found.url);
-  const urls = [];
-  if (m) {
-    const latest = parseInt(m[2], 10);
-    for (let i = LOOP_FRAME_COUNT - 1; i >= 0; i--) {
-      const f = latest - i;
-      if (f >= 0) urls.push(`vortex-chunks:${m[1]}:${f}`);
+  let urls = found.urls;
+
+  // The relay's chunks fallback answers with a single marker rather than a list
+  // of keys: the chunks bucket names each volume's folder as a plain counter
+  // (see server.js's pickLatestFolder), so "the volume before this one" is that
+  // number minus one. Expand the marker into a chain. A folder that turns out
+  // to be missing or incomplete just shortens the loop below rather than
+  // failing it — one station hiccup shouldn't cost the whole loop.
+  if (urls.length === 1) {
+    const m = /^vortex-chunks:([A-Z0-9]{3,4}):(\d+)$/.exec(urls[0]);
+    if (m) {
+      const latest = parseInt(m[2], 10);
+      const chain = [];
+      for (let i = LOOP_FRAME_COUNT - 1; i >= 0; i--) {
+        const f = latest - i;
+        if (f >= 0) chain.push(`vortex-chunks:${m[1]}:${f}`);
+      }
+      urls = chain;
     }
-  } else {
-    // Direct archive URL (the browser reached S3 itself): that listing only
-    // ever hands back the single latest key, so a loop can't be built from
-    // it — one frame is what's available.
-    urls.push(found.url);
   }
 
   // Start every download at once, then decode them in order.
