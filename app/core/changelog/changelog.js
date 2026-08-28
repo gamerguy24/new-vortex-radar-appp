@@ -3,11 +3,33 @@
  * "What's New" screen — a running list of user-facing additions so users can see
  * what's changed. To add a release, unshift a new entry onto CHANGELOG (newest
  * first); each item is a { title, desc } feature line.
+ *
+ * THIS IS THE CHANGELOG THAT SHIPS. tools/CHANGELOG.md is a leftover from the
+ * upstream project — it stopped in 2022 and its links still point at that repo.
+ * Add entries here.
+ *
+ * Write for the person using the app, not the person who wrote the patch: what
+ * they can now do, and why it helps. Internal refactors and bug fixes nobody
+ * noticed do not belong here; a bug they DID notice ("the radar no longer
+ * disappears while you drag") does.
+ *
+ * This file lives under app/, so it only reaches anyone after `npm run build`
+ * — which also rewrites tools/size.txt, the cache-buster the page uses. Editing
+ * it without rebuilding changes nothing for users.
  */
 
 const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
+    {
+        date: 'August 28, 2026',
+        items: [
+            { title: 'Live Radar in Graphics Studio', desc: 'A new Studio template with a map you can actually move — drag to pan, scroll to zoom, and compose the shot directly instead of picking a region from a list. The radar is the app’s own super-res Level 2, decoded right in your browser with the same decoder and the same colortables as the radar page, so a graphic and the live radar agree gate for gate. Pick any WSR-88D, or let it follow whichever radar you were just watching.' },
+            { title: 'Radar loops in the Studio', desc: 'Press Play to loop the last several scans for the site on screen and watch storm motion without leaving the Studio. Frames are prepared before the loop starts, so it plays smoothly instead of stuttering on its first pass.' },
+            { title: 'Live button', desc: 'Jump straight back to the newest scan from anywhere in a loop. It lights up whenever you’re on current data, so at a glance you can tell live radar from loop history.' },
+            { title: 'Smoother panning', desc: 'Moving the map is much faster, and the radar no longer disappears while you drag it.' },
+        ],
+    },
     {
         date: 'July 29, 2026',
         items: [
