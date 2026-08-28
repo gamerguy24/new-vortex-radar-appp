@@ -11,9 +11,17 @@
 .vptt {
   position: fixed;
   right: 16px;
-  bottom: calc(16px + var(--vx-safe-bottom, 0px));
+  /* PLAIN PX ONLY for top/bottom/left/right. An unresolved custom property
+     computes to auto and un-anchors the element -- that is how the mobile
+     console once ended up stacked at the top-left of the page. Safe-area
+     padding is applied INSIDE the panel instead (see .vptt-body). */
+  bottom: 16px;
   width: 300px;
-  z-index: 1200;
+  /* The app chrome occupies 100001-100070. Sit above the map furniture
+     (100040) but below toasts (100061) and the side panels (100070), which
+     should still be able to cover this. At the original 1200 the panel drew
+     underneath the radar UI entirely. */
+  z-index: 100060;
   background: var(--vx-surface, #10141b);
   border: 1px solid var(--vx-line, #232c39);
   border-radius: 12px;
@@ -23,7 +31,7 @@
   overflow: hidden;
 }
 
-.vptt-head {
+.vptt-head { cursor: pointer;
   display: flex; align-items: center; gap: 8px;
   padding: 9px 11px;
   background: rgba(255, 255, 255, 0.03);
@@ -33,7 +41,7 @@
 .vptt-title b { color: var(--vx-accent, #e8862b); }
 .vptt-quality { font-size: 12px; cursor: help; }
 .vptt-min {
-  background: none; border: 0; color: var(--vx-text-dim, #8996a6);
+  background: none; border: 0; color: var(--vx-text-2, #8996a6);
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px;
 }
 
@@ -43,6 +51,10 @@
 .vptt-dot.vptt-down { background: #ff2d55; }
 
 .vptt-body { padding: 11px; display: flex; flex-direction: column; gap: 9px; }
+/* Safe area handled as padding, never as a position offset (see above). */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .vptt-body { padding-bottom: calc(11px + env(safe-area-inset-bottom) * 0.5); }
+}
 .vptt-collapsed .vptt-body { display: none; }
 
 .vptt-channels {
@@ -53,7 +65,7 @@
 
 .vptt-now { font-size: 12.5px; min-height: 18px; }
 .vptt-live { color: #ff7a1a; font-weight: 700; }
-.vptt-idle { color: var(--vx-text-dim, #8996a6); }
+.vptt-idle { color: var(--vx-text-2, #8996a6); }
 
 /* ── the button ───────────────────────────────────────────────────────────── */
 .vptt-talk {
@@ -88,7 +100,7 @@
 }
 @media (prefers-reduced-motion: reduce) { .vptt-nope .vptt-talk { animation: none; } }
 
-.vptt-hint { font-size: 11px; color: var(--vx-text-dim, #8996a6); min-height: 14px; text-align: center; }
+.vptt-hint { font-size: 11px; color: var(--vx-text-2, #8996a6); min-height: 14px; text-align: center; }
 
 .vptt-users { max-height: 148px; overflow-y: auto; }
 .vptt-user {
@@ -96,10 +108,10 @@
   font-size: 12px; padding: 4px 2px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
-.vptt-state { color: var(--vx-text-faint, #5d6875); font-size: 10px; letter-spacing: 0.06em; }
-.vptt-empty { font-size: 11.5px; color: var(--vx-text-faint, #5d6875); padding: 6px 2px; }
+.vptt-state { color: var(--vx-text-3, #5d6875); font-size: 10px; letter-spacing: 0.06em; }
+.vptt-empty { font-size: 11.5px; color: var(--vx-text-3, #5d6875); padding: 6px 2px; }
 
-.vptt-settings { font-size: 11.5px; color: var(--vx-text-dim, #8996a6); }
+.vptt-settings { font-size: 11.5px; color: var(--vx-text-2, #8996a6); }
 .vptt-settings summary { cursor: pointer; padding: 3px 0; }
 .vptt-settings label { display: block; margin-top: 7px; }
 .vptt-settings select, .vptt-settings input[type="text"], .vptt-settings input[type="range"] {
@@ -116,7 +128,10 @@
 @media (pointer: coarse), (max-width: 620px) {
   .vptt {
     left: 8px; right: 8px; width: auto;
-    bottom: calc(8px + var(--vx-safe-bottom, 0px));
+    /* Clear of .mapFooter, which is pinned at bottom:8px on mobile and holds
+       the app's only product picker -- covering it would be worse than the
+       panel being slightly higher. */
+    bottom: 74px;
     max-height: 76vh;
     display: flex; flex-direction: column;
   }

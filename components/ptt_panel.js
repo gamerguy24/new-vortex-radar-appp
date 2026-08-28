@@ -69,7 +69,10 @@ class VortexPTT {
     this.buildUI();
     // On the radar page the panel starts as a small widget so it never covers
     // the map uninvited; the standalone /ptt page omits this and opens fully.
-    if (root.hasAttribute('data-start-collapsed')) root.classList.add('vptt-collapsed');
+    if (root.hasAttribute('data-start-collapsed')) {
+      root.classList.add('vptt-collapsed');
+      this.ui.min.textContent = '+';
+    }
     this.connect();
     this.installKeys();
   }
@@ -83,7 +86,7 @@ class VortexPTT {
         <span class="vptt-dot" data-role="dot"></span>
         <span class="vptt-title">VORTEX <b>PTT</b></span>
         <span class="vptt-quality" data-role="quality"></span>
-        <button class="vptt-min" data-role="min" title="Minimise">–</button>
+        <button class="vptt-min" data-role="min" title="Show or hide the radio">–</button>
       </div>
       <div class="vptt-body" data-role="body">
         <select class="vptt-channels" data-role="channels"></select>
@@ -109,7 +112,15 @@ class VortexPTT {
       key: q('key'), loc: q('loc'),
     };
 
-    this.ui.min.onclick = () => this.root.classList.toggle('vptt-collapsed');
+    // The whole header toggles, not just the little button: collapsed, the
+    // strip IS the only target, and a control labelled 'minimise' on an
+    // already-minimised panel reads as broken.
+    const toggle = () => {
+      const closed = this.root.classList.toggle('vptt-collapsed');
+      this.ui.min.textContent = closed ? '+' : '–';
+    };
+    this.ui.min.onclick = (e) => { e.stopPropagation(); toggle(); };
+    this.root.querySelector('.vptt-head').onclick = toggle;
     this.ui.channels.onchange = () => this.join(this.ui.channels.value);
     this.ui.vol.value = String(Math.round(this.outputVolume * 100));
     this.ui.vol.oninput = () => {
