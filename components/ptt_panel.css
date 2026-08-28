@@ -104,6 +104,13 @@
 /* A microphone problem is actionable — make it readable, not a grey whisper. */
 .vptt-hint.vptt-err { color: #ff9a8a; font-size: 11.5px; line-height: 1.4; }
 
+/* Escape hatch shown when the installed app cannot reach the microphone. */
+.vptt-fallback {
+  display: block; text-align: center; margin: 2px 0 4px; padding: 7px;
+  font-size: 12px; font-weight: 600; text-decoration: none;
+  color: #0b0e13; background: var(--vx-accent, #e8862b); border-radius: 6px;
+}
+.vptt-fallback:hover { filter: brightness(1.08); }
 .vptt-users { max-height: 148px; overflow-y: auto; }
 .vptt-user {
   display: flex; justify-content: space-between; gap: 8px;

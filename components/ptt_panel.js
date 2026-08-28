@@ -475,6 +475,28 @@ class VortexPTT {
     return / wv\)|; wv;/.test(navigator.userAgent || '');
   }
 
+  /**
+   * Any INSTALLED build — Android shell, packaged Windows app, or an installed
+   * PWA — as opposed to an ordinary browser tab.
+   *
+   * These all wrap this same site, and all of them sit behind a package-level
+   * permission the page cannot request for itself. The distinction matters
+   * because the advice for each case is completely different, and the advice
+   * for a browser tab is useless in an app.
+   */
+  isPackagedApp() {
+    if (this.isNativeApp()) return true;
+    try {
+      // Installed PWA / MSIX-wrapped web app: launched from the Start menu, not
+      // rendered in a tab.
+      if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+      if (window.matchMedia && window.matchMedia('(display-mode: window-controls-overlay)').matches) return true;
+      if (navigator.standalone) return true;                    // iOS home-screen
+      if (window.Windows || window.MSApp) return true;          // WinRT is present in MSIX
+    } catch (e) { /* matchMedia can throw in odd embeddings */ }
+    return false;
+  }
+
   micFailed(e, silent) {
     /*
      * A native WebView is a different failure from a browser tab, and needs a
@@ -506,9 +528,19 @@ class VortexPTT {
     const labelsVisible = this.ui.mics && this.ui.mics.options.length
       && [...this.ui.mics.options].some((o) => o.textContent && !/^audioinput$/i.test(o.textContent));
 
-    const blocked = labelsVisible
-      ? 'The browser has permission, so this is blocking above it. On Windows: Settings → Privacy & security → Microphone, and switch on both "Microphone access" and "Let desktop apps access your microphone". Also close anything holding the mic exclusively (OBS, Discord, Elgato/voice-changer software), then press again.'
-      : 'Microphone blocked. Click the padlock in the address bar, allow the microphone, then press again.';
+    /*
+     * The installed app is a different story from a browser tab. A packaged
+     * Windows (MSIX) or Android build only gets the microphone if the PACKAGE
+     * declares that capability; if it does not, Windows shows no Microphone
+     * toggle under the app's permissions at all — there is literally nothing
+     * for the operator to switch on, and every "allow the microphone"
+     * instruction is a dead end. Say that plainly instead.
+     */
+    const blocked = this.isPackagedApp()
+      ? 'The installed app was not built with microphone access, so there is no permission to switch on — Windows will not even list one. It needs the microphone capability added to the app package and a rebuild. Until then, use the browser link below: same account, same channel.'
+      : labelsVisible
+        ? 'The browser has permission, so something above it is blocking. On Windows: Settings → Privacy & security → Microphone, and switch on both "Microphone access" and "Let desktop apps access your microphone". Also close anything holding the mic exclusively (OBS, Discord, Elgato/voice-changer software), then press again.'
+        : 'Microphone blocked. Click the padlock in the address bar, allow the microphone, then press again.';
 
     const why = {
       NotAllowedError: blocked,
@@ -593,6 +625,33 @@ class VortexPTT {
     // is usually recoverable, and a dead button is not.
     this.ui.talk.disabled = false;
     console.warn('[PTT] microphone unavailable', code || '', text);
+    this.offerBrowserFallback();
+  }
+
+  /*
+   * An escape hatch to a plain browser tab.
+   *
+   * The installed Windows and Android builds are shells around this same site,
+   * and a shell can only reach the microphone if its own package declares that
+   * capability — something no code on this page can grant, and which takes a
+   * rebuild of the package to change. Until that happens the operator is stuck
+   * with a radio that can only listen.
+   *
+   * Their default browser has no such restriction, and it is the same account,
+   * same channel and the same people. So rather than explaining that, offer the
+   * door: one button, and they are talking in a few seconds.
+   */
+  offerBrowserFallback() {
+    if (this.ui.fallback) return;
+    const a = document.createElement('a');
+    a.className = 'vptt-fallback';
+    a.href = '/ptt';
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = 'Open the radio in your browser ↗';
+    a.title = 'Same account, same channel — a browser tab is not subject to the app’s permissions.';
+    this.ui.hint.insertAdjacentElement('afterend', a);
+    this.ui.fallback = a;
   }
 
   /**
