@@ -1,0 +1,213 @@
+/*
+ * eoc.css — VORTEX EOC MODE
+ *
+ * A deliberately different interface from the radar app. The radar page is a
+ * map with tools laid over it; this is a WALL BOARD: fixed three-column layout,
+ * no floating chrome, nothing that moves on its own, everything legible from a
+ * few feet away. Colour is used for severity only — never decoration — so that
+ * anything red on this screen means something.
+ *
+ * Palette comes from components/tokens.css so it stays part of the product,
+ * but the density, type scale and structure are its own.
+ */
+
+:root {
+  --eoc-bg: #07090d;
+  --eoc-panel: #10141b;
+  --eoc-panel-2: #161c25;
+  --eoc-line: #232c39;
+  --eoc-text: #e6ecf3;
+  --eoc-dim: #8996a6;
+  --eoc-faint: #5d6875;
+
+  /* Severity. These are the only saturated colours on the page. */
+  --sev-extreme: #ff2d55;
+  --sev-severe: #ff7a1a;
+  --sev-moderate: #ffd23f;
+  --sev-minor: #4da3ff;
+  --sev-ok: #35d07f;
+
+  --eoc-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --eoc-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; height: 100%;
+  background: var(--eoc-bg);
+  color: var(--eoc-text);
+  font-family: var(--eoc-sans);
+  overflow: hidden;
+}
+
+/* ── status strip ─────────────────────────────────────────────────────────── */
+.eoc-bar {
+  display: flex; align-items: center; gap: 28px;
+  height: 68px; padding: 0 18px;
+  background: linear-gradient(180deg, #121821, #0c1017);
+  border-bottom: 1px solid var(--eoc-line);
+}
+.eoc-ident { display: flex; align-items: center; gap: 10px; min-width: 240px; }
+.eoc-name { font-size: 19px; letter-spacing: 0.14em; font-weight: 600; }
+.eoc-name b { font-weight: 800; color: var(--sev-severe); }
+.eoc-mode {
+  font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--eoc-faint); border-left: 1px solid var(--eoc-line); padding-left: 10px;
+}
+/* Feed health. Green = polling normally, amber = serving a stale copy. */
+.eoc-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--eoc-faint); flex: none; }
+.eoc-dot.live { background: var(--sev-ok); box-shadow: 0 0 10px rgba(53, 208, 127, 0.7); }
+.eoc-dot.stale { background: var(--sev-moderate); box-shadow: 0 0 10px rgba(255, 210, 63, 0.6); }
+.eoc-dot.down { background: var(--sev-extreme); box-shadow: 0 0 10px rgba(255, 45, 85, 0.7); }
+
+.eoc-stats { display: flex; gap: 26px; flex: 1; }
+.stat { min-width: 92px; }
+.stat-num {
+  font-family: var(--eoc-mono); font-size: 22px; font-weight: 700;
+  line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.stat-major .stat-num { font-size: 30px; color: var(--sev-severe); }
+.stat-lbl {
+  font-size: 10px; letter-spacing: 0.11em; text-transform: uppercase;
+  color: var(--eoc-faint); margin-top: 3px;
+}
+
+.eoc-clock { text-align: right; font-family: var(--eoc-mono); }
+.clock-local { font-size: 20px; font-variant-numeric: tabular-nums; }
+.clock-utc { font-size: 11px; color: var(--eoc-faint); }
+
+.eoc-exit {
+  color: var(--eoc-dim); text-decoration: none; font-size: 12px;
+  border: 1px solid var(--eoc-line); border-radius: 6px; padding: 7px 11px;
+}
+.eoc-exit:hover { color: var(--eoc-text); border-color: var(--eoc-dim); }
+
+/* Shown only when the warning feed could not be refreshed. */
+.eoc-stale {
+  background: rgba(255, 210, 63, 0.14);
+  border-bottom: 1px solid rgba(255, 210, 63, 0.4);
+  color: var(--sev-moderate);
+  font-size: 12px; padding: 7px 18px; font-family: var(--eoc-mono);
+}
+
+/* ── layout ───────────────────────────────────────────────────────────────── */
+.eoc-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr 330px;
+  gap: 10px; padding: 10px;
+  height: calc(100% - 68px);
+}
+.eoc-stale:not([hidden]) ~ .eoc-grid { height: calc(100% - 68px - 31px); }
+
+.col { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.col-map { position: relative; }
+
+.panel {
+  background: var(--eoc-panel);
+  border: 1px solid var(--eoc-line);
+  border-radius: 8px;
+  display: flex; flex-direction: column; min-height: 0;
+}
+.panel-grow { flex: 1; }
+
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-bottom: 1px solid var(--eoc-line);
+}
+.panel-head h2 {
+  margin: 0; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.13em; text-transform: uppercase; color: var(--eoc-dim);
+}
+.panel-count {
+  font-family: var(--eoc-mono); font-size: 12px; color: var(--eoc-text);
+  background: var(--eoc-panel-2); border-radius: 999px; padding: 2px 9px;
+}
+.panel-body { padding: 8px; min-height: 0; }
+.scroll { overflow-y: auto; }
+.short { max-height: 210px; }
+.empty { color: var(--eoc-faint); font-size: 12px; padding: 10px 4px; }
+
+/* ── warning rows ─────────────────────────────────────────────────────────── */
+.chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 10px 2px; }
+.chip {
+  font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--eoc-dim); background: var(--eoc-panel-2);
+  border: 1px solid var(--eoc-line); border-radius: 999px;
+  padding: 4px 9px; cursor: pointer; font-weight: 600;
+}
+.chip.on { color: #07090d; background: var(--eoc-dim); border-color: var(--eoc-dim); }
+
+.warn {
+  border-left: 3px solid var(--eoc-faint);
+  background: var(--eoc-panel-2);
+  border-radius: 0 6px 6px 0;
+  padding: 8px 10px; margin-bottom: 6px; cursor: pointer;
+}
+.warn:hover { background: #1b2330; }
+.warn.sev-Extreme { border-left-color: var(--sev-extreme); }
+.warn.sev-Severe { border-left-color: var(--sev-severe); }
+.warn.sev-Moderate { border-left-color: var(--sev-moderate); }
+.warn.sev-Minor { border-left-color: var(--sev-minor); }
+/* A confirmed or catastrophic tornado warning must not look like a row in a
+   list. This is the one thing on the page allowed to pulse. */
+.warn.emergency {
+  background: rgba(255, 45, 85, 0.14);
+  border-left-color: var(--sev-extreme);
+  animation: eoc-pulse 1.6s ease-in-out infinite;
+}
+@keyframes eoc-pulse { 50% { background: rgba(255, 45, 85, 0.28); } }
+@media (prefers-reduced-motion: reduce) { .warn.emergency { animation: none; } }
+
+.warn-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.warn-event { font-size: 13px; font-weight: 700; }
+.warn-time { font-family: var(--eoc-mono); font-size: 11px; color: var(--eoc-dim); white-space: nowrap; }
+.warn-area { font-size: 11.5px; color: var(--eoc-dim); margin-top: 3px; line-height: 1.35; }
+.warn-meta { display: flex; gap: 10px; margin-top: 5px; font-family: var(--eoc-mono); font-size: 10.5px; color: var(--eoc-faint); }
+.warn-tag {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--sev-extreme); border: 1px solid currentColor; border-radius: 3px; padding: 1px 4px;
+}
+
+/* ── reports ──────────────────────────────────────────────────────────────── */
+.rep { padding: 7px 9px; border-bottom: 1px solid var(--eoc-line); cursor: pointer; }
+.rep:last-child { border-bottom: 0; }
+.rep:hover { background: var(--eoc-panel-2); }
+.rep-type { font-size: 12.5px; font-weight: 700; }
+.rep-sub { font-size: 11px; color: var(--eoc-dim); margin-top: 2px; }
+.rep.fresh { animation: eoc-flash 2.5s ease-out 1; }
+@keyframes eoc-flash { from { background: rgba(255, 122, 26, 0.3); } }
+
+/* ── facilities ───────────────────────────────────────────────────────────── */
+.fac-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 4px; font-size: 12px; }
+.fac-row + .fac-row { border-top: 1px solid var(--eoc-line); }
+.fac-key { display: flex; align-items: center; gap: 7px; color: var(--eoc-dim); }
+.fac-swatch { width: 9px; height: 9px; border-radius: 2px; }
+.fac-n { font-family: var(--eoc-mono); font-variant-numeric: tabular-nums; }
+.fac-src { font-size: 10px; color: var(--eoc-faint); margin-top: 8px; line-height: 1.4; }
+
+/* ── map ──────────────────────────────────────────────────────────────────── */
+#eoc-map { position: absolute; inset: 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--eoc-line); }
+.map-tools { position: absolute; top: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 5px; max-width: 70%; z-index: 5; }
+.map-note {
+  position: absolute; bottom: 10px; left: 10px; z-index: 5;
+  font-family: var(--eoc-mono); font-size: 10.5px; color: var(--eoc-dim);
+  background: rgba(7, 9, 13, 0.82); border: 1px solid var(--eoc-line);
+  border-radius: 5px; padding: 5px 8px; max-width: 70%;
+}
+.map-note:empty { display: none; }
+
+.btn-wide {
+  width: 100%; margin-top: 8px; padding: 8px;
+  background: var(--eoc-panel-2); color: var(--eoc-text);
+  border: 1px solid var(--eoc-line); border-radius: 6px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.btn-wide:hover { border-color: var(--eoc-dim); }
+
+/* Narrow screens: stack rather than crush the columns. The board is designed
+   for a wide display, but it must not become unusable on a laptop. */
+@media (max-width: 1280px) {
+  .eoc-grid { grid-template-columns: 300px 1fr; }
+  .col-right { display: none; }
+}

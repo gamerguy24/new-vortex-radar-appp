@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vortex EOC Mode</title>
+  <link rel="stylesheet" href="../components/tokens.css" />
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css" />
+  <link rel="stylesheet" href="eoc.css?v=1" />
+</head>
+<body>
+
+<!-- ── status strip ─────────────────────────────────────────────────────────
+     The line an operator reads first: what is happening, to how many people,
+     and whether what they are looking at is current. -->
+<header class="eoc-bar">
+  <div class="eoc-ident">
+    <span class="eoc-dot" id="feed-dot" title="Feed status"></span>
+    <span class="eoc-name">VORTEX <b>EOC</b></span>
+    <span class="eoc-mode">Emergency Operations</span>
+  </div>
+
+  <div class="eoc-stats">
+    <div class="stat" id="stat-warnings-wrap">
+      <div class="stat-num" id="stat-warnings">—</div>
+      <div class="stat-lbl">Active warnings</div>
+    </div>
+    <div class="stat stat-major">
+      <div class="stat-num" id="stat-population">—</div>
+      <div class="stat-lbl">Population affected</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-counties">—</div>
+      <div class="stat-lbl">Counties</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-reports">—</div>
+      <div class="stat-lbl">Field reports</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-spotters">—</div>
+      <div class="stat-lbl">Spotters</div>
+    </div>
+  </div>
+
+  <div class="eoc-clock">
+    <div class="clock-local" id="clock-local">--:--:--</div>
+    <div class="clock-utc" id="clock-utc">--:--Z</div>
+  </div>
+
+  <a class="eoc-exit" href="/" title="Back to radar">Radar ↗</a>
+</header>
+
+<div class="eoc-stale" id="stale-banner" hidden></div>
+
+<main class="eoc-grid">
+
+  <!-- ── left: what is happening ── -->
+  <section class="col col-left">
+    <div class="panel panel-grow">
+      <div class="panel-head">
+        <h2>Active Warnings</h2>
+        <span class="panel-count" id="warn-count">0</span>
+      </div>
+      <div class="chips" id="warn-filters"></div>
+      <div class="panel-body scroll" id="warn-list">
+        <div class="empty">Loading warnings…</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Damage &amp; Field Reports</h2>
+        <span class="panel-count" id="report-count">0</span>
+      </div>
+      <div class="panel-body scroll short" id="report-list">
+        <div class="empty">Waiting for reports…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── centre: the map ── -->
+  <section class="col col-map">
+    <div id="eoc-map"></div>
+    <div class="map-tools" id="map-tools"></div>
+    <div class="map-note" id="map-note"></div>
+  </section>
+
+  <!-- ── right: resources and infrastructure ── -->
+  <section class="col col-right">
+    <div class="panel">
+      <div class="panel-head"><h2>Storm Tracks</h2><span class="panel-count" id="storm-count">0</span></div>
+      <div class="panel-body scroll short" id="storm-list"><div class="empty">—</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Critical Infrastructure</h2><span class="panel-count" id="fac-count">0</span></div>
+      <div class="panel-body" id="fac-summary"><div class="empty">Zoom the map in to load facilities.</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Power Outages</h2><span class="panel-count" id="outage-count">—</span></div>
+      <div class="panel-body" id="outage-body"><div class="empty">—</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Comms</h2></div>
+      <div class="panel-body">
+        <div id="global-ptt-player"></div>
+        <button class="btn-wide" id="btn-cams">Live Cameras</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>window.MAPBOX_TOKEN = 'pk.eyJ1IjoiZGF2aWR3YWxsaXMwMCIsImEiOiJjbHlpNHJvZ2QwYzduMmpvZmdjejlkYjAxIn0.JNNcliJC4EFmok7iT5I6MQ';</script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js"></script>
+<script type="module" src="../components/scanner_player.js"></script>
+<script type="module" src="eoc.js?v=1"></script>
+</body>
+</html>

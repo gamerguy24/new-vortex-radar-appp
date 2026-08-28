@@ -2218,6 +2218,16 @@ try {
     console.error('[TORNADO] failed to attach (feature disabled):', e.message);
 }
 
+// ─── VORTEX EOC MODE (emergency operations dashboard at /eoc) ────────────────
+// Aggregates warnings, population affected, field reports, spotters, outages,
+// storm tracks and critical facilities onto one board. Pro-gated like the
+// Graphics Studio. Wrapped so a failure here can never stop the radar serving.
+try {
+    require('./backend/eoc').attachEoc({ app, requireAuth, requirePage: billing.requireProPage });
+} catch (e) {
+    console.error('[EOC] failed to attach (feature disabled):', e.message);
+}
+
 // ─── Static files ──────────────────────────────────────────────────────────────
 const sendFile = (file) => (req, res) => res.sendFile(path.join(ROOT, file));
 
@@ -2260,6 +2270,14 @@ app.use('/graphics/studio', (req, res, next) => {
     if (/\.(js|css|html)$/.test(req.path)) res.setHeader('Cache-Control', 'no-cache');
     next();
 });
+// EOC mode is served the same way: plain ESM, so always revalidate. It also
+// gets a real index route — express.static runs with index:false, so without
+// this "/eoc" would 404 and only "/eoc/index.html" would work.
+app.use('/eoc', (req, res, next) => {
+    if (/\.(js|css|html)$/.test(req.path)) res.setHeader('Cache-Control', 'no-cache');
+    next();
+});
+app.get(['/eoc', '/eoc/'], sendFile(path.join('eoc', 'index.html')));
 app.use(express.static(ROOT, { index: false }));
 
 // Final 404
