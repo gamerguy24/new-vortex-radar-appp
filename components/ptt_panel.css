@@ -127,6 +127,16 @@
   background: var(--vx-surface-2, #161c25); color: var(--vx-text, #e6ecf3);
   border: 1px solid var(--vx-line, #232c39); border-radius: 6px;
 }
+.vptt-test {
+  width: 100%; margin-top: 9px; padding: 7px;
+  background: var(--vx-surface-2, #161c25); color: var(--vx-text, #e6ecf3);
+  border: 1px solid var(--vx-line, #232c39); border-radius: 6px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.vptt-test:disabled { opacity: 0.6; cursor: default; }
+/* Live input level, so "is my mic even working" is answerable on its own. */
+.vptt-meter { height: 6px; margin-top: 6px; border-radius: 3px; background: rgba(255,255,255,0.07); overflow: hidden; }
+.vptt-meter i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg,#35d07f,#ffd23f,#ff3b30); transition: width 0.06s linear; }
 .vptt-check { display: flex !important; align-items: center; gap: 7px; }
 .vptt-check input { width: auto; margin: 0; }
 

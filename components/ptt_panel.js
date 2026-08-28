@@ -109,6 +109,8 @@ class VortexPTT {
           <label>Volume<input type="range" min="0" max="100" data-role="vol"></label>
           <label>PTT key<input type="text" maxlength="12" data-role="key" readonly></label>
           <label class="vptt-check"><input type="checkbox" data-role="loc"> Share my location on this channel</label>
+          <button class="vptt-test" data-role="mictest">Test microphone</button>
+          <div class="vptt-meter" data-role="meter"><i></i></div>
         </details>
       </div>`;
 
@@ -117,7 +119,7 @@ class VortexPTT {
       dot: q('dot'), quality: q('quality'), body: q('body'), min: q('min'),
       channels: q('channels'), now: q('now'), talk: q('talk'), hint: q('hint'),
       users: q('users'), net: q('net'), mics: q('mics'), spks: q('spks'), vol: q('vol'),
-      key: q('key'), loc: q('loc'),
+      key: q('key'), loc: q('loc'), mictest: q('mictest'), meter: q('meter'),
     };
 
     // The whole header toggles, not just the little button: collapsed, the
@@ -145,6 +147,7 @@ class VortexPTT {
       this.ui.key.blur();
     };
     this.ui.loc.onchange = () => this.sendLocation();
+    this.ui.mictest.onclick = () => this.testMic();
 
     // Pointer events cover mouse, pen and touch in one path, and give us
     // capture — so sliding a finger off the button still releases properly
@@ -420,22 +423,32 @@ class VortexPTT {
     }
 
     const savedId = localStorage.getItem('vortexPttMic');
+    /*
+     * deviceId is a PREFERENCE, never `exact`.
+     *
+     * Chrome's device ids are origin-scoped and rotate whenever site data is
+     * cleared, so a saved one goes stale routinely. With `exact` that is a hard
+     * failure; as a plain value it is an "ideal" hint the browser silently
+     * ignores when the device is gone. There is no upside to `exact` here — we
+     * would rather have the default microphone than no microphone.
+     */
     const base = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
     try {
       this.micStream = await navigator.mediaDevices.getUserMedia({
-        audio: savedId ? { ...base, deviceId: { exact: savedId } } : base,
+        audio: savedId ? { ...base, deviceId: savedId } : base,
       });
     } catch (e) {
-      // A saved device that has since been unplugged fails with exact:. Retry
-      // once with no device preference before reporting anything.
-      if (savedId && /OverconstrainedError|NotFoundError/.test(e.name)) {
-        localStorage.removeItem('vortexPttMic');
-        try {
-          this.micStream = await navigator.mediaDevices.getUserMedia({ audio: base });
-        } catch (e2) { return this.micFailed(e2, silent); }
-      } else {
-        return this.micFailed(e, silent);
+      // Retry bare, whatever went wrong. Processing constraints and device
+      // hints are both things a browser or a virtual audio driver can refuse,
+      // and a plain { audio: true } is the request most likely to be honoured.
+      // Only if THAT fails is it a real permission or hardware problem.
+      try {
+        if (savedId) localStorage.removeItem('vortexPttMic');
+        this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.warn('[PTT] microphone opened only after dropping constraints:', e.name);
+      } catch (e2) {
+        return this.micFailed(e2, silent);
       }
     }
 
@@ -482,9 +495,24 @@ class VortexPTT {
 
     // Say WHICH failure. "Microphone unavailable" gives nobody anything to act
     // on; these each have a different fix.
+    /*
+     * If device LABELS are visible, this origin has already been granted
+     * microphone permission at some point — enumerateDevices only reveals them
+     * after a grant. A NotAllowedError in that state is almost never the site
+     * permission; it is the operating system refusing the browser, which no
+     * amount of clicking the padlock will fix. Telling someone to re-allow a
+     * permission they have already allowed is how a support loop starts.
+     */
+    const labelsVisible = this.ui.mics && this.ui.mics.options.length
+      && [...this.ui.mics.options].some((o) => o.textContent && !/^audioinput$/i.test(o.textContent));
+
+    const blocked = labelsVisible
+      ? 'The browser has permission, so this is blocking above it. On Windows: Settings → Privacy & security → Microphone, and switch on both "Microphone access" and "Let desktop apps access your microphone". Also close anything holding the mic exclusively (OBS, Discord, Elgato/voice-changer software), then press again.'
+      : 'Microphone blocked. Click the padlock in the address bar, allow the microphone, then press again.';
+
     const why = {
-      NotAllowedError: 'Microphone blocked. Click the padlock in the address bar, allow the microphone, then press again.',
-      PermissionDeniedError: 'Microphone blocked. Allow it in your browser settings, then press again.',
+      NotAllowedError: blocked,
+      PermissionDeniedError: blocked,
       NotFoundError: 'No microphone found. Plug one in or choose one under Audio & settings.',
       NotReadableError: 'Your microphone is in use by another app. Close it and press again.',
       OverconstrainedError: 'That microphone is unavailable. Pick another under Audio & settings.',
@@ -493,6 +521,69 @@ class VortexPTT {
     }[e && e.name] || `Microphone error: ${(e && (e.message || e.name)) || 'unknown'}`;
     this.micError(why, e && e.name);
     return false;
+  }
+
+  /**
+   * Open the microphone and show a live level meter for a few seconds.
+   *
+   * Separate from the talk button on purpose. It answers "is my microphone
+   * working at all" without involving channels, the floor, or other people —
+   * so when nobody can hear you, you can tell which half of the problem you
+   * have before anyone starts guessing.
+   */
+  async testMic() {
+    this.ui.mictest.disabled = true;
+    this.ui.mictest.textContent = 'Testing…';
+    const ok = await this.ensureMic();
+    if (!ok) {
+      this.ui.mictest.disabled = false;
+      this.ui.mictest.textContent = 'Test microphone';
+      return;
+    }
+
+    let ctx;
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = ctx.createMediaStreamSource(this.micStream);
+      const an = ctx.createAnalyser();
+      an.fftSize = 512;
+      src.connect(an);
+      const buf = new Uint8Array(an.frequencyBinCount);
+      const bar = this.ui.meter.querySelector('i');
+      const started = Date.now();
+      let peak = 0;
+
+      const tick = () => {
+        an.getByteTimeDomainData(buf);
+        let max = 0;
+        for (let i = 0; i < buf.length; i++) max = Math.max(max, Math.abs(buf[i] - 128));
+        const level = Math.min(100, Math.round((max / 128) * 140));
+        peak = Math.max(peak, level);
+        bar.style.width = level + '%';
+        if (Date.now() - started < 6000) requestAnimationFrame(tick);
+        else {
+          bar.style.width = '0%';
+          try { ctx.close(); } catch (e) {}
+          this.ui.mictest.disabled = false;
+          this.ui.mictest.textContent = 'Test microphone';
+          this.ui.hint.classList.toggle('vptt-err', peak < 4);
+          this.ui.hint.textContent = peak < 4
+            ? 'No sound reached the microphone. Check it is not muted in hardware, and that the right device is selected above.'
+            : 'Microphone works. Hold the button to talk.';
+        }
+      };
+      // The meter needs the track live; PTT mute would show a flat line.
+      const wasEnabled = this.micTrack.enabled;
+      this.micTrack.enabled = true;
+      tick();
+      setTimeout(() => { this.micTrack.enabled = wasEnabled; }, 6000);
+      this.ui.hint.classList.remove('vptt-err');
+      this.ui.hint.textContent = 'Say something…';
+    } catch (e) {
+      this.ui.mictest.disabled = false;
+      this.ui.mictest.textContent = 'Test microphone';
+      this.micError('Could not measure the microphone: ' + (e.message || e), 'meter');
+    }
   }
 
   micError(text, code) {
