@@ -54,12 +54,43 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
 
   const radio = createRadio({ store, log });
 
+  /*
+   * THE RADIO IS STAFF-ONLY, AND THIS IS WHERE THAT IS ENFORCED.
+   *
+   * Applied to /ptt, every /api/ptt route below, and the socket upgrade — so a
+   * non-admin cannot reach the radio by typing the URL, calling the API
+   * directly, or opening a WebSocket by hand. The panel also hides itself for
+   * non-admins, but that is only tidiness; this is the actual gate.
+   */
+  function requireRadio(req, res, next) {
+    if (perms.canUsePtt(req.user, store.grants())) return next();
+    if ((req.headers.accept || '').includes('text/html')) return res.status(403).send('Not available.');
+    return res.status(403).json({ error: 'The radio is available to administrators only.' });
+  }
+  const gate = [requireAuth, requireRadio];
+
+  // The standalone /ptt page and everything under it. Registered here, before
+  // server.js adds its index route and before express.static, so a non-admin
+  // gets 403 whether they ask for /ptt, /ptt/, or /ptt/index.html directly.
+  app.use('/ptt', gate);
+
+  // Cheap probe so the panel can decide whether to render at all, without
+  // pulling the whole channel list first.
+  app.get('/api/ptt/access', requireAuth, (req, res) => {
+    const allowed = perms.canUsePtt(req.user, store.grants());
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      allowed,
+      role: allowed ? perms.roleFor(req.user, store.grants(), null) : null,
+    });
+  });
+
   /* ── REST ───────────────────────────────────────────────────────────────
    * The socket is the live surface; these exist so the panel can render before
    * it connects, and so admin tools have somewhere to POST.
    */
 
-  app.get('/api/ptt/channels', requireAuth, (req, res) => {
+  app.get('/api/ptt/channels', gate, (req, res) => {
     const grants = store.grants();
     const list = store.all()
       .filter((c) => {
@@ -81,7 +112,7 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
     });
   });
 
-  app.get('/api/ptt/channels/:id', requireAuth, (req, res) => {
+  app.get('/api/ptt/channels/:id', gate, (req, res) => {
     const c = store.byId(req.params.id);
     if (!c) return res.status(404).json({ error: 'No such channel.' });
     const check = perms.canJoin(req.user, c, store.grants(), null);
@@ -93,14 +124,14 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
     });
   });
 
-  app.get('/api/ptt/users', requireAuth, (req, res) => {
+  app.get('/api/ptt/users', gate, (req, res) => {
     res.json({ users: radio.onlineUsers() });
   });
 
   // Join/leave over REST exist for completeness, but the socket is the real
   // path: membership is a live-connection concept, so a POST can only report
   // whether the door is open, not walk through it.
-  app.post('/api/ptt/channels/:id/join', requireAuth, (req, res) => {
+  app.post('/api/ptt/channels/:id/join', gate, (req, res) => {
     const c = store.byId(req.params.id);
     if (!c) return res.status(404).json({ error: 'No such channel.' });
     const check = perms.canJoin(req.user, c, store.grants(), (req.body || {}).password);
@@ -108,13 +139,13 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
     res.json({ ok: true, channel: store.publicChannel(c, radio.liveFor(c.id)), connectVia: '/ptt/socket' });
   });
 
-  app.post('/api/ptt/channels/:id/leave', requireAuth, (req, res) => {
+  app.post('/api/ptt/channels/:id/leave', gate, (req, res) => {
     res.json({ ok: true, note: 'Leaving is a socket action; close or send ptt:leave.' });
   });
 
   /* ── admin ──────────────────────────────────────────────────────────── */
 
-  app.post('/api/ptt/channels', requireAuth, (req, res) => {
+  app.post('/api/ptt/channels', gate, (req, res) => {
     if (!perms.can(req.user, 'create_channel', store.grants(), null)) {
       return res.status(403).json({ error: 'You cannot create channels.' });
     }
@@ -127,7 +158,7 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
     res.json({ ok: true, channel: store.publicChannel(created, radio.liveFor(id)) });
   });
 
-  app.post('/api/ptt/channels/:id/edit', requireAuth, (req, res) => {
+  app.post('/api/ptt/channels/:id/edit', gate, (req, res) => {
     const c = store.byId(req.params.id);
     if (!c) return res.status(404).json({ error: 'No such channel.' });
     if (!perms.can(req.user, 'edit_channel', store.grants(), c)) {
@@ -138,7 +169,7 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
     res.json({ ok: true, channel: store.publicChannel(updated, radio.liveFor(c.id)) });
   });
 
-  app.delete('/api/ptt/channels/:id', requireAuth, (req, res) => {
+  app.delete('/api/ptt/channels/:id', gate, (req, res) => {
     const c = store.byId(req.params.id);
     if (!c) return res.status(404).json({ error: 'No such channel.' });
     if (!perms.can(req.user, 'delete_channel', store.grants(), c)) {
@@ -152,7 +183,7 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
   });
 
   // Radio-wide grants: role, priority transmit, radio ban, transmit disable.
-  app.post('/api/ptt/users/:id/grant', requireAuth, requireAdmin, (req, res) => {
+  app.post('/api/ptt/users/:id/grant', gate, requireAdmin, (req, res) => {
     const b = req.body || {};
     const patch = {};
     if (b.role !== undefined) {
@@ -168,7 +199,7 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
     res.json({ ok: true, grant });
   });
 
-  app.get('/api/ptt/events', requireAuth, requireAdmin, (req, res) => {
+  app.get('/api/ptt/events', gate, requireAdmin, (req, res) => {
     const limit = Math.max(1, Math.min(500, parseInt(req.query.limit, 10) || 200));
     res.json({ events: events.slice(-limit).reverse() });
   });
@@ -211,8 +242,10 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
       if (!user) return reject('401 Unauthorized', 'no session');
       if (user.isLocked) return reject('403 Forbidden', 'account locked');
 
-      const grant = (store.grants().byUser || {})[user.id];
-      if (grant && grant.banned) return reject('403 Forbidden', 'radio ban');
+      // Same staff-only gate as the routes. A hand-rolled WebSocket bypasses
+      // Express entirely, so this check has to be repeated here rather than
+      // assumed from the page having loaded.
+      if (!perms.canUsePtt(user, store.grants())) return reject('403 Forbidden', 'not an administrator');
 
       wss.handleUpgrade(req, socket, head, (ws) => {
         radio.attachClient(ws, user);

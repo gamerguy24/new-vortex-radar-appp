@@ -13,14 +13,18 @@ const http = require('http');
 const WebSocket = require('ws');
 const { attachPtt } = require('../backend/ptt');
 
-const mem = {};
+const mem = { 'ptt_grants.json': { byUser: { u1: { role: 'USER' }, u2: { role: 'USER' } } } };
 const app = express();
 app.use(express.json());
 
 // Stand-in for Vortex's session layer, shaped the same way.
+// The radio is staff-only. Nick and David are ordinary accounts an admin has
+// explicitly granted radio access to; Nathan is a Vortex admin; Casey has
+// neither and must be refused by every path.
 const SESSIONS = { 'tok-nick': { id: 'u1', username: 'Nick' },
                    'tok-dave': { id: 'u2', username: 'David' },
-                   'tok-adm':  { id: 'u3', username: 'Nathan', isAdmin: true } };
+                   'tok-adm':  { id: 'u3', username: 'Nathan', isAdmin: true },
+                   'tok-none': { id: 'u9', username: 'Casey' } };
 const userFromRequest = (req) => {
   const m = /vr_session=([^;]+)/.exec(req.headers.cookie || '');
   return m ? SESSIONS[m[1]] || null : null;
@@ -114,6 +118,23 @@ server.listen(0, '127.0.0.1', async () => {
   const ch = (await r3.json()).channels.find((c) => c.id === 'storm-chasers');
   check('floor released when the transmitter drops', !ch.transmitting, JSON.stringify(ch.transmitting));
   check('occupancy fell to 1', ch.users === 1, String(ch.users));
+
+  console.log('--- staff-only gate ---');
+  const noSock = new WebSocket(`ws://127.0.0.1:${PORT}/ptt/socket`, { headers: { Cookie: 'vr_session=tok-none' } });
+  const noSockRejected = await new Promise((r) => { noSock.on('error', () => r(true)); noSock.on('open', () => r(false)); });
+  check('socket refused for an account without radio access', noSockRejected);
+
+  const rApi = await fetch(`http://127.0.0.1:${PORT}/api/ptt/channels`, { headers: { Cookie: 'vr_session=tok-none' } });
+  check('API refused for the same account', rApi.status === 403, 'got ' + rApi.status);
+
+  const rPage = await fetch(`http://127.0.0.1:${PORT}/ptt/index.html`, { headers: { Cookie: 'vr_session=tok-none' } });
+  check('page refused for the same account', rPage.status === 403, 'got ' + rPage.status);
+
+  const rProbe = await fetch(`http://127.0.0.1:${PORT}/api/ptt/access`, { headers: { Cookie: 'vr_session=tok-none' } });
+  check('access probe says allowed:false', (await rProbe.json()).allowed === false);
+
+  const rProbeOk = await fetch(`http://127.0.0.1:${PORT}/api/ptt/access`, { headers: { Cookie: 'vr_session=tok-adm' } });
+  check('access probe says allowed:true for an admin', (await rProbeOk.json()).allowed === true);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   server.close();

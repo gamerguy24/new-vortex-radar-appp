@@ -930,9 +930,32 @@ class VortexPTT {
 }
 
 let instance = null;
-export function mountPttPanel(target) {
+
+/**
+ * Mount the radio, but only for accounts allowed to use it.
+ *
+ * PTT is staff-only. The server enforces that on every route and on the socket
+ * upgrade — this check exists so an ordinary user never sees a control they
+ * cannot use, not to provide the security. The panel builds no DOM and opens no
+ * socket until access is confirmed, so nothing flashes on screen first and the
+ * element is removed outright when the answer is no.
+ */
+export async function mountPttPanel(target) {
   const root = target || document.getElementById('vortex-ptt') || document.querySelector('[data-vortex-ptt]');
   if (!root || instance) return instance;
+
+  let allowed = false;
+  try {
+    const r = await fetch('/api/ptt/access', { cache: 'no-store' });
+    allowed = r.ok && !!(await r.json()).allowed;
+  } catch (e) {
+    allowed = false;      // can't confirm -> don't show it
+  }
+  if (!allowed) {
+    if (root.parentNode) root.parentNode.removeChild(root);
+    return null;
+  }
+
   instance = new VortexPTT(root);
   setInterval(() => instance.reportQuality(), 5000);
   return instance;

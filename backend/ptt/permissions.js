@@ -118,6 +118,29 @@ function canJoin(user, channel, grants, password) {
   return { ok: true };
 }
 
+/**
+ * May this account use the radio AT ALL?
+ *
+ * PTT is staff-only. This is the outermost gate — the page, every /api/ptt
+ * route and the WebSocket upgrade all check it, so a non-admin cannot reach the
+ * radio by any path, not merely fail to see the button. Hiding the panel is
+ * cosmetic; this is the part that matters.
+ *
+ * Admins are in by virtue of their Vortex account. Beyond that, an admin can
+ * extend access to one specific person by giving them a radio role through
+ * /api/ptt/users/:id/grant — that endpoint is itself admin-only, so the set of
+ * people on the radio stays under admin control either way. A radio ban closes
+ * the door regardless of rank.
+ */
+function canUsePtt(user, grants) {
+  if (!user) return false;
+  if (user.isLocked) return false;
+  const g = (grants && grants.byUser && grants.byUser[user.id]) || {};
+  if (g.banned) return false;
+  if (user.isSuperAdmin || user.isAdmin) return true;
+  return !!(g.role && RANK[g.role] != null);
+}
+
 /** Priority transmit can seize the floor from an ordinary transmission. */
 function canPriority(user, grants, channel) {
   const g = (grants && grants.byUser && grants.byUser[user.id]) || {};
@@ -149,4 +172,4 @@ function displayName(user) {
     .join(' ') || local;
 }
 
-module.exports = { ROLES, RANK, CAPS, roleFor, can, canTransmit, canJoin, canPriority, displayName };
+module.exports = { ROLES, RANK, CAPS, roleFor, can, canTransmit, canJoin, canPriority, canUsePtt, displayName };
