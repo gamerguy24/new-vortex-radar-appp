@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Vortex PTT</title>
+  <link rel="stylesheet" href="../components/tokens.css" />
+  <link rel="stylesheet" href="../components/ptt_panel.css?v=1" />
+  <style>
+    /* Standalone page: the same panel, docked centre-screen instead of
+       floating over a map. One component, two placements. */
+    body {
+      margin: 0; min-height: 100dvh;
+      background: radial-gradient(1200px 600px at 50% -10%, #16202c, #07090d);
+      color: var(--vx-text, #e6ecf3);
+      font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+      display: flex; flex-direction: column; align-items: center; gap: 18px;
+      padding: 28px 16px;
+    }
+    h1 { font-size: 17px; letter-spacing: 0.16em; font-weight: 600; margin: 0; }
+    h1 b { color: var(--vx-accent, #e8862b); }
+    .sub { font-size: 12px; color: var(--vx-text-dim, #8996a6); margin: 0; }
+    a.back { font-size: 12px; color: var(--vx-text-dim, #8996a6); text-decoration: none; }
+    a.back:hover { color: var(--vx-text, #e6ecf3); }
+    /* Undock it from the fixed corner for this page. */
+    #vortex-ptt.vptt { position: static; width: min(420px, 100%); box-shadow: none; }
+  </style>
+</head>
+<body>
+  <h1>VORTEX <b>PTT</b></h1>
+  <p class="sub">Hold to talk. Release to listen.</p>
+  <div id="vortex-ptt"></div>
+  <a class="back" href="/">← Back to radar</a>
+  <script type="module" src="../components/ptt_panel.js?v=1"></script>
+</body>
+</html>

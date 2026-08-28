@@ -2228,6 +2228,37 @@ try {
     console.error('[EOC] failed to attach (feature disabled):', e.message);
 }
 
+// ─── VORTEX PTT (self-hosted push-to-talk radio) ─────────────────────────────
+// Control plane only: channels, presence, floor control and WebRTC signalling.
+// Voice goes browser-to-browser and never through this process. Separate from
+// scanner.js, which is a one-way broadcast relay and stays exactly as it is.
+//
+// The radio identifies people with THE SAME SESSION the website uses — the
+// upgrade request carries the vr_session cookie, so userFromRequest resolves it
+// through the same sessions map and user store as every other route. There is
+// no second account system and nothing the client asserts about itself.
+function userFromRequest(req) {
+    const cookies = {};
+    (req.headers.cookie || '').split(';').forEach((part) => {
+        const i = part.indexOf('=');
+        if (i > -1) cookies[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    });
+    const token = cookies[COOKIE];
+    const sess = token && sessions.get(token);
+    if (!sess) return null;
+    if (Date.now() - sess.created > SESSION_TTL_MS) { destroySession(token); return null; }
+    return findById(sess.userId) || null;
+}
+
+let pttApi = null;
+try {
+    pttApi = require('./backend/ptt').attachPtt({
+        app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson, userFromRequest,
+    });
+} catch (e) {
+    console.error('[PTT] failed to attach (radio disabled):', e.message);
+}
+
 // ─── Static files ──────────────────────────────────────────────────────────────
 const sendFile = (file) => (req, res) => res.sendFile(path.join(ROOT, file));
 
@@ -2278,6 +2309,10 @@ app.use('/eoc', (req, res, next) => {
     next();
 });
 app.get(['/eoc', '/eoc/'], sendFile(path.join('eoc', 'index.html')));
+
+// The standalone radio page. Signed-in users only — the panel is also embedded
+// in the radar itself, so this is for anyone who wants it on its own screen.
+app.get(['/ptt', '/ptt/'], requireAuth, sendFile(path.join('ptt', 'index.html')));
 app.use(express.static(ROOT, { index: false }));
 
 // Final 404
@@ -2309,5 +2344,14 @@ const server = app.listen(PORT, HOST, () => {
 if (scannerApi && typeof scannerApi.attachUpgrade === 'function') {
     try { scannerApi.attachUpgrade(server); } catch (e) {
         console.error('[SCANNER] WebSocket ingest failed to attach:', e.message);
+    }
+}
+
+// The PTT radio shares the same port and the same upgrade event. Both handlers
+// check the path and return for anything that is not theirs, so they coexist:
+// /scanner/ingest-ws belongs to the scanner, /ptt/socket to the radio.
+if (pttApi && typeof pttApi.attachUpgrade === 'function') {
+    try { pttApi.attachUpgrade(server); } catch (e) {
+        console.error('[PTT] WebSocket failed to attach:', e.message);
     }
 }

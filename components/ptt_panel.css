@@ -1,0 +1,126 @@
+/*
+ * components/ptt_panel.css
+ * VORTEX PTT panel. Floats over the radar; collapses to a widget.
+ *
+ * Sizing is driven by one rule: this gets used one-handed, in a moving vehicle,
+ * by someone who is looking at the road. The talk button is therefore the
+ * largest thing on the panel and stays a fixed, generous target on every
+ * breakpoint — everything else gives up space before it does.
+ */
+
+.vptt {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + var(--vx-safe-bottom, 0px));
+  width: 300px;
+  z-index: 1200;
+  background: var(--vx-surface, #10141b);
+  border: 1px solid var(--vx-line, #232c39);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  color: var(--vx-text, #e6ecf3);
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+}
+
+.vptt-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 11px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--vx-line, #232c39);
+}
+.vptt-title { font-size: 12px; letter-spacing: 0.12em; font-weight: 600; flex: 1; }
+.vptt-title b { color: var(--vx-accent, #e8862b); }
+.vptt-quality { font-size: 12px; cursor: help; }
+.vptt-min {
+  background: none; border: 0; color: var(--vx-text-dim, #8996a6);
+  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+
+/* Connection light. Red is reserved for "the radio is down". */
+.vptt-dot { width: 8px; height: 8px; border-radius: 50%; background: #5d6875; flex: none; }
+.vptt-dot.vptt-ok { background: #35d07f; }
+.vptt-dot.vptt-down { background: #ff2d55; }
+
+.vptt-body { padding: 11px; display: flex; flex-direction: column; gap: 9px; }
+.vptt-collapsed .vptt-body { display: none; }
+
+.vptt-channels {
+  width: 100%; padding: 7px 9px; font-size: 13px;
+  background: var(--vx-surface-2, #161c25); color: inherit;
+  border: 1px solid var(--vx-line, #232c39); border-radius: 7px;
+}
+
+.vptt-now { font-size: 12.5px; min-height: 18px; }
+.vptt-live { color: #ff7a1a; font-weight: 700; }
+.vptt-idle { color: var(--vx-text-dim, #8996a6); }
+
+/* ── the button ───────────────────────────────────────────────────────────── */
+.vptt-talk {
+  width: 100%;
+  min-height: 86px;
+  border-radius: 12px;
+  border: 2px solid var(--vx-line, #232c39);
+  background: linear-gradient(180deg, #1d2632, #141a23);
+  color: var(--vx-text, #e6ecf3);
+  font-size: 16px; font-weight: 800; letter-spacing: 0.06em;
+  cursor: pointer;
+  /* Without this a hold on mobile selects text, scrolls the map, or opens the
+     callout menu instead of keying the radio. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform 0.06s ease, background 0.12s ease;
+}
+.vptt-talk:disabled { opacity: 0.45; cursor: not-allowed; }
+.vptt-pressed .vptt-talk { transform: scale(0.985); }
+/* Only turns red once the SERVER has granted the floor — so the colour means
+   "you are on air", not "you pressed a button". */
+.vptt-tx .vptt-talk {
+  background: linear-gradient(180deg, #ff3b30, #c2211a);
+  border-color: #ff6b60;
+  box-shadow: 0 0 0 4px rgba(255, 59, 48, 0.22);
+}
+.vptt-nope .vptt-talk { animation: vptt-shake 0.32s ease; }
+@keyframes vptt-shake {
+  25% { transform: translateX(-5px); } 75% { transform: translateX(5px); }
+}
+@media (prefers-reduced-motion: reduce) { .vptt-nope .vptt-talk { animation: none; } }
+
+.vptt-hint { font-size: 11px; color: var(--vx-text-dim, #8996a6); min-height: 14px; text-align: center; }
+
+.vptt-users { max-height: 148px; overflow-y: auto; }
+.vptt-user {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 12px; padding: 4px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.vptt-state { color: var(--vx-text-faint, #5d6875); font-size: 10px; letter-spacing: 0.06em; }
+.vptt-empty { font-size: 11.5px; color: var(--vx-text-faint, #5d6875); padding: 6px 2px; }
+
+.vptt-settings { font-size: 11.5px; color: var(--vx-text-dim, #8996a6); }
+.vptt-settings summary { cursor: pointer; padding: 3px 0; }
+.vptt-settings label { display: block; margin-top: 7px; }
+.vptt-settings select, .vptt-settings input[type="text"], .vptt-settings input[type="range"] {
+  width: 100%; margin-top: 3px; padding: 5px 7px; font-size: 12px;
+  background: var(--vx-surface-2, #161c25); color: var(--vx-text, #e6ecf3);
+  border: 1px solid var(--vx-line, #232c39); border-radius: 6px;
+}
+.vptt-check { display: flex !important; align-items: center; gap: 7px; }
+.vptt-check input { width: auto; margin: 0; }
+
+/* ── mobile ───────────────────────────────────────────────────────────────
+   Full-width along the bottom, above the safe area. The talk button grows
+   rather than shrinks: it is the control that has to work while moving. */
+@media (pointer: coarse), (max-width: 620px) {
+  .vptt {
+    left: 8px; right: 8px; width: auto;
+    bottom: calc(8px + var(--vx-safe-bottom, 0px));
+    max-height: 76vh;
+    display: flex; flex-direction: column;
+  }
+  .vptt-body { overflow-y: auto; }
+  .vptt-talk { min-height: 108px; font-size: 18px; }
+  .vptt-users { max-height: 110px; }
+}
