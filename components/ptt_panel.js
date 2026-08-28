@@ -101,6 +101,7 @@ class VortexPTT {
         <button class="vptt-talk" data-role="talk" disabled>HOLD TO TALK 🎙️</button>
         <div class="vptt-hint" data-role="hint"></div>
         <div class="vptt-users" data-role="users"></div>
+        <div class="vptt-net" data-role="net"></div>
         <details class="vptt-settings">
           <summary>Audio &amp; settings</summary>
           <label>Microphone<select data-role="mics"></select></label>
@@ -115,7 +116,7 @@ class VortexPTT {
     this.ui = {
       dot: q('dot'), quality: q('quality'), body: q('body'), min: q('min'),
       channels: q('channels'), now: q('now'), talk: q('talk'), hint: q('hint'),
-      users: q('users'), mics: q('mics'), spks: q('spks'), vol: q('vol'),
+      users: q('users'), net: q('net'), mics: q('mics'), spks: q('spks'), vol: q('vol'),
       key: q('key'), loc: q('loc'),
     };
 
@@ -271,6 +272,7 @@ class VortexPTT {
           : 'You cannot transmit on this channel';
         this.renderNow();
         this.renderUsers();
+        this.renderNet();
         // Connect to peers for LISTENING. Receiving audio needs no microphone,
         // so joining never prompts for one — that happens on the first press.
         for (const p of (m.peers || [])) this.openPeer(p.connId, true);
@@ -283,6 +285,7 @@ class VortexPTT {
         this.transmitting = m.transmitting;
         this.renderNow();
         this.renderUsers();
+        this.renderNet();
         break;
 
       case 'ptt:start':
@@ -442,10 +445,10 @@ class VortexPTT {
     this.micTrack.onended = () => { this.micTrack = null; this.micStream = null; };
     this.enumerateDevices();
 
-    // Peers opened before the mic existed carry no outbound track, so they
-    // would connect and stay silent. Rebuild them now that there is something
-    // to send. This happens once, on the first press.
-    await this.rebuildPeers();
+    // Drop the new track into the audio channel every peer connection already
+    // has. No renegotiation, no teardown — the m-line was negotiated when the
+    // connection was built.
+    await this.attachMicToPeers();
     this.ui.hint.textContent = 'Ready — hold to talk';
     return true;
   }
@@ -501,13 +504,19 @@ class VortexPTT {
     console.warn('[PTT] microphone unavailable', code || '', text);
   }
 
-  /** Reopen every peer connection, so the new outbound track is included. */
-  async rebuildPeers() {
-    const ids = (this.users || [])
-      .map((u) => u.connId)
-      .filter((id) => id && id !== this.connId);
-    this.teardownPeers();
-    for (const id of ids) await this.openPeer(id, true);
+  /**
+   * Put the microphone into every existing peer connection.
+   *
+   * replaceTrack on an already-negotiated sender does not touch the SDP, so
+   * this is instant and cannot collide with an offer arriving at the same
+   * moment. An earlier version tore every connection down and re-offered,
+   * which worked but risked glare and dropped audio for a beat.
+   */
+  async attachMicToPeers() {
+    if (!this.micTrack) return;
+    for (const p of this.peers.values()) {
+      try { await p.tx.sender.replaceTrack(this.micTrack); } catch (e) { /* peer went away */ }
+    }
   }
 
   // Kept for callers that only need to listen.
@@ -517,15 +526,41 @@ class VortexPTT {
     let p = this.peers.get(connId);
     if (p) return p;
     const pc = new RTCPeerConnection({ iceServers: ICE });
-    p = { pc, pending: [] };
+
+    /*
+     * ALWAYS negotiate an audio m-line, microphone or not.
+     *
+     * This is the bug that stopped anyone being heard, on desktop as well as
+     * the app. The old code called addTrack ONLY if a microphone already
+     * existed — and since joining no longer asks for one, every connection was
+     * built by a listener with no track. It then tried to compensate with
+     * createOffer({ offerToReceiveAudio: true }), which is the legacy Plan B
+     * constraint that modern browsers ignore entirely. The resulting offer
+     * carried NO media sections at all, so the peer connection came up healthy
+     * and could never carry audio in either direction. Pressing the button
+     * un-muted a track that was not part of any connection: green light,
+     * silence.
+     *
+     * A sendrecv transceiver created up front gives every connection a real
+     * audio channel from the first offer. When the microphone arrives later,
+     * replaceTrack() drops it into that existing channel with NO renegotiation
+     * — which is exactly how "unmute" works in any production WebRTC app, and
+     * avoids the offer/answer glare a teardown-and-rebuild would invite.
+     */
+    const tx = pc.addTransceiver('audio', { direction: 'sendrecv' });
+    p = { pc, tx };
     this.peers.set(connId, p);
 
-    if (this.micTrack) pc.addTrack(this.micTrack, this.micStream);
+    if (this.micTrack) tx.sender.replaceTrack(this.micTrack).catch(() => {});
 
     pc.onicecandidate = (e) => {
       if (e.candidate) this.send('webrtc:ice', { to: connId, payload: e.candidate });
     };
-    pc.ontrack = (e) => this.playRemote(connId, e.streams[0]);
+    pc.ontrack = (e) => {
+      p.remoteTrack = true;        // proof the audio channel really negotiated
+      this.playRemote(connId, e.streams[0]);
+      this.renderNet();
+    };
     pc.onconnectionstatechange = () => {
       if (/failed|closed/.test(pc.connectionState)) this.closePeer(connId);
       this.reportQuality();
@@ -537,7 +572,10 @@ class VortexPTT {
     const { pc } = this.peerConn(connId);
     if (!initiator) return;
     try {
-      const offer = await pc.createOffer({ offerToReceiveAudio: true });
+      // No offerToReceiveAudio: that constraint is Plan B and is ignored under
+      // Unified Plan. The transceiver created in peerConn() is what puts the
+      // audio m-line in this offer.
+      const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       this.send('webrtc:offer', { to: connId, payload: offer });
     } catch (e) { /* the other side may still offer us */ }
@@ -614,6 +652,7 @@ class VortexPTT {
       else if (rtt > 180 || loss > 4) { grade = '🟠'; word = 'Poor'; }
       else if (rtt > 90 || loss > 1) { grade = '🟡'; word = 'Good'; }
       this.ui.quality.textContent = grade;
+      this.renderNet();
       this.ui.quality.title =
         `${word}${rtt != null ? ` · ${rtt}ms` : ''}${loss != null ? ` · ${loss}% loss` : ''}${jitter != null ? ` · ${jitter}ms jitter` : ''}`;
     } catch (e) { /* stats are advisory */ }
@@ -622,6 +661,32 @@ class VortexPTT {
   /* ── misc ─────────────────────────────────────────────────────────────── */
 
   setDot(k) { this.ui.dot.className = 'vptt-dot vptt-' + k; }
+
+  /*
+   * Whether the audio path is actually up, rather than merely connected.
+   *
+   * A peer connection can reach 'connected' with no media negotiated at all —
+   * which is exactly the state that made everyone silent while every indicator
+   * on the panel looked healthy. This counts peers that have a real inbound
+   * audio track, so "connected but mute" becomes visible instead of invisible.
+   */
+  renderNet() {
+    if (!this.ui.net) return;
+    const total = this.peers.size;
+    if (!total) {
+      this.ui.net.textContent = this.channel ? 'No one else connected' : '';
+      this.ui.net.classList.remove('vptt-warn');
+      return;
+    }
+    let live = 0;
+    for (const p of this.peers.values()) {
+      const st = p.pc.connectionState || p.pc.iceConnectionState || '';
+      if (p.remoteTrack && /connected|completed/.test(st)) live++;
+    }
+    const mic = this.micTrack && this.micTrack.readyState === 'live' ? 'mic ready' : 'mic not started';
+    this.ui.net.textContent = 'Audio ' + live + '/' + total + ' · ' + mic;
+    this.ui.net.classList.toggle('vptt-warn', live < total);
+  }
 
   renderNow() {
     if (!this.channel) { this.ui.now.textContent = 'Select a channel'; return; }

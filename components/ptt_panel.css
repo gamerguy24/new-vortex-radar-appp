@@ -116,6 +116,9 @@
 .vptt-dev { font-size: 10px; color: var(--vx-text-3, #5d6875); }
 .vptt-empty { font-size: 11.5px; color: var(--vx-text-3, #5d6875); padding: 6px 2px; }
 
+/* Audio-path readout: connected is not the same as audible. */
+.vptt-net { font-size: 10.5px; color: var(--vx-text-3, #5d6875); padding: 4px 2px 0; font-variant-numeric: tabular-nums; }
+.vptt-net.vptt-warn { color: #ffc46b; }
 .vptt-settings { font-size: 11.5px; color: var(--vx-text-2, #8996a6); }
 .vptt-settings summary { cursor: pointer; padding: 3px 0; }
 .vptt-settings label { display: block; margin-top: 7px; }
