@@ -71,7 +71,7 @@ function createRadio({ store, log }) {
     return membersOf(channelId).map((c) => ({
       connId: c.id,
       userId: c.user.id,
-      name: c.user.username || c.user.name || 'User',
+      name: perms.displayName(c.user),
       role: perms.roleFor(c.user, store.grants(), store.byId(channelId)),
       state: floor && floor.connId === c.id ? 'TRANSMITTING'
         : (Date.now() - c.lastSeen > 90 * 1000 ? 'IDLE' : 'LISTENING'),
@@ -174,13 +174,13 @@ function createRadio({ store, log }) {
       }
       // Priority seizes the floor. The person cut off is told why.
       const displaced = clients.get(held.connId);
-      if (displaced) send(displaced, 'ptt:stop', { channelId, reason: 'pre-empted', by: client.user.username });
+      if (displaced) send(displaced, 'ptt:stop', { channelId, reason: 'pre-empted', by: perms.displayName(client.user) });
       releaseFloor(channelId, 'pre-empted');
     }
 
     const floor = {
       userId: client.user.id,
-      name: client.user.username || client.user.name || 'User',
+      name: perms.displayName(client.user),
       connId: client.id,
       since: Date.now(),
       expires: Date.now() + FLOOR_MAX_MS,
@@ -242,7 +242,7 @@ function createRadio({ store, log }) {
       },
       // Peers already in the channel, so the newcomer can open connections.
       peers: membersOf(channelId).filter((c) => c.id !== client.id).map((c) => ({
-        connId: c.id, userId: c.user.id, name: c.user.username || 'User',
+        connId: c.id, userId: c.user.id, name: perms.displayName(c.user),
       })),
     });
     pushPresence(channelId);
@@ -277,7 +277,7 @@ function createRadio({ store, log }) {
     send(target, msg.type, {
       from: client.id,
       fromUserId: client.user.id,
-      fromName: client.user.username || 'User',
+      fromName: perms.displayName(client.user),
       payload: msg.payload,
     });
   }
@@ -293,7 +293,7 @@ function createRadio({ store, log }) {
     if (!target || target.channelId !== client.channelId) return;
 
     if (msg.action === 'kick') {
-      send(target, 'ptt:kicked', { channelId: client.channelId, by: client.user.username });
+      send(target, 'ptt:kicked', { channelId: client.channelId, by: perms.displayName(client.user) });
       leaveChannel(target);
       log('USER_KICK', { channelId: client.channelId, by: client.user.id, userId: target.user.id });
     } else if (msg.action === 'mute') {
@@ -304,7 +304,7 @@ function createRadio({ store, log }) {
       }
       const floor = floors.get(client.channelId);
       if (floor && floor.connId === target.id) releaseFloor(client.channelId, 'muted');
-      send(target, 'ptt:muted', { channelId: client.channelId, by: client.user.username });
+      send(target, 'ptt:muted', { channelId: client.channelId, by: perms.displayName(client.user) });
       log('USER_MUTE', { channelId: client.channelId, by: client.user.id, userId: target.user.id });
       pushPresence(client.channelId);
     }
@@ -322,7 +322,7 @@ function createRadio({ store, log }) {
 
     send(client, 'ptt:hello', {
       connId: id,
-      user: { id: user.id, name: user.username || user.name, role: perms.roleFor(user, store.grants(), null) },
+      user: { id: user.id, name: perms.displayName(user), role: perms.roleFor(user, store.grants(), null) },
       // The client must never assume it may talk after reconnecting — it is
       // told the rules, and still has to ask for the floor.
       floorRules: { maxMs: FLOOR_MAX_MS, keepaliveMs: 2000 },
@@ -382,7 +382,7 @@ function createRadio({ store, log }) {
     },
     onlineUsers: () => [...clients.values()].map((c) => ({
       userId: c.user.id,
-      name: c.user.username || 'User',
+      name: perms.displayName(c.user),
       channelId: c.channelId,
     })),
     // Used by the admin API when a channel is deleted out from under people.

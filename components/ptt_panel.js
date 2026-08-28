@@ -11,13 +11,20 @@
  * RTCPeerConnection with every other member. The server never carries speech —
  * it only relays offers, answers and ICE, and decides who is allowed to talk.
  *
- * The microphone track is added to those connections ONCE, when you join, and
- * left DISABLED. Pressing PTT flips `track.enabled = true`. The alternative —
- * adding the track on key-down and removing it on key-up — forces an SDP
- * renegotiation on every single press, which costs a few hundred milliseconds
- * at exactly the moment someone is trying to say something urgent. A disabled
- * track transmits nothing, so nothing leaves the machine until the floor is
- * granted.
+ * JOINING NEVER ASKS FOR THE MICROPHONE. Receiving audio needs no microphone at
+ * all, so joining a channel connects you for listening and nothing more. The
+ * mic is requested on the FIRST PRESS of the talk button — a call stack that
+ * starts at a real click, tap or key press, which is the context browsers
+ * actually grant. An earlier version asked while handling the join message,
+ * with no gesture anywhere in the stack, and on failure disabled the button
+ * permanently; that combination is what "nobody can talk" looked like.
+ *
+ * Once acquired, the track is added to every peer connection and left DISABLED.
+ * Pressing PTT flips `track.enabled = true`. The alternative — adding the track
+ * on key-down and removing it on key-up — forces an SDP renegotiation on every
+ * single press, which costs a few hundred milliseconds at exactly the moment
+ * someone is trying to say something urgent. A disabled track transmits
+ * nothing, so nothing leaves the machine until the floor is granted.
  *
  * THE SERVER DECIDES, NOT THIS FILE. Pressing the button sends ptt:request and
  * waits. The microphone is not un-muted until ptt:granted comes back. That is
@@ -264,9 +271,9 @@ class VortexPTT {
           : 'You cannot transmit on this channel';
         this.renderNow();
         this.renderUsers();
-        this.startAudio().then(() => {
-          for (const p of (m.peers || [])) this.openPeer(p.connId, true);
-        });
+        // Connect to peers for LISTENING. Receiving audio needs no microphone,
+        // so joining never prompts for one — that happens on the first press.
+        for (const p of (m.peers || [])) this.openPeer(p.connId, true);
         this.sendLocation();
         break;
 
@@ -334,10 +341,27 @@ class VortexPTT {
 
   press() {
     if (this.pressed) return;
-    if (!this.channel || !this.caps.speak) { this.buzz(); return; }
+    if (!this.channel) { this.ui.hint.textContent = 'Join a channel first'; this.buzz(); return; }
+    if (!this.caps.speak) { this.buzz(); return; }
+
     this.pressed = true;
     this.root.classList.add('vptt-pressed');
-    // Ask. Do not open the microphone yet — the server decides.
+    this.ui.hint.classList.remove('vptt-err');
+
+    // First press also acquires the microphone — this call stack starts at a
+    // real click/tap/keypress, which is the context browsers grant it in.
+    if (!this.micTrack || this.micTrack.readyState !== 'live') {
+      this.ui.hint.textContent = 'Starting microphone…';
+      this.ensureMic().then((ok) => {
+        // They may have let go while the permission prompt was up. Do not key
+        // the radio open behind them.
+        if (!ok || !this.pressed) { if (!ok) this.release(); return; }
+        this.send('ptt:request', {});
+      });
+      return;
+    }
+
+    // Ask. Do not un-mute yet — the server decides who holds the floor.
     this.send('ptt:request', {});
   }
 
@@ -372,27 +396,96 @@ class VortexPTT {
 
   /* ── audio + WebRTC ───────────────────────────────────────────────────── */
 
-  async startAudio() {
-    if (this.micStream) return;
+  /*
+   * Acquire the microphone.
+   *
+   * CALLED FROM A USER GESTURE, DELIBERATELY. The first version asked for the
+   * mic while handling the ptt:joined WebSocket message — no click, no tap, no
+   * key press anywhere in the call stack. Browsers treat that far more harshly
+   * than a request made from a real gesture, and when it failed the panel set
+   * talk.disabled = true and there was no way back without reloading the page.
+   * That is what "nobody can talk" looked like.
+   *
+   * Now: joining gets you listening (receiving needs no microphone at all), and
+   * the mic is requested the first time you actually press the button.
+   */
+  async ensureMic({ silent } = {}) {
+    if (this.micTrack && this.micTrack.readyState === 'live') return true;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      this.micError('This browser cannot capture audio.', 'insecure');
+      return false;
+    }
+
+    const savedId = localStorage.getItem('vortexPttMic');
+    const base = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+
     try {
       this.micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          deviceId: localStorage.getItem('vortexPttMic') || undefined,
-        },
+        audio: savedId ? { ...base, deviceId: { exact: savedId } } : base,
       });
-      this.micTrack = this.micStream.getAudioTracks()[0];
-      // Captured, but silent until the server grants the floor.
-      this.micTrack.enabled = false;
-      this.enumerateDevices();
     } catch (e) {
-      this.ui.hint.textContent = 'Microphone unavailable — you can still listen.';
-      this.caps.speak = false;
-      this.ui.talk.disabled = true;
+      // A saved device that has since been unplugged fails with exact:. Retry
+      // once with no device preference before reporting anything.
+      if (savedId && /OverconstrainedError|NotFoundError/.test(e.name)) {
+        localStorage.removeItem('vortexPttMic');
+        try {
+          this.micStream = await navigator.mediaDevices.getUserMedia({ audio: base });
+        } catch (e2) { return this.micFailed(e2, silent); }
+      } else {
+        return this.micFailed(e, silent);
+      }
     }
+
+    this.micTrack = this.micStream.getAudioTracks()[0];
+    // Captured, but silent until the server grants the floor.
+    this.micTrack.enabled = false;
+    this.micTrack.onended = () => { this.micTrack = null; this.micStream = null; };
+    this.enumerateDevices();
+
+    // Peers opened before the mic existed carry no outbound track, so they
+    // would connect and stay silent. Rebuild them now that there is something
+    // to send. This happens once, on the first press.
+    await this.rebuildPeers();
+    this.ui.hint.textContent = 'Ready — hold to talk';
+    return true;
   }
+
+  micFailed(e, silent) {
+    // Say WHICH failure. "Microphone unavailable" gives nobody anything to act
+    // on; these each have a different fix.
+    const why = {
+      NotAllowedError: 'Microphone blocked. Click the padlock in the address bar, allow the microphone, then press again.',
+      PermissionDeniedError: 'Microphone blocked. Allow it in your browser settings, then press again.',
+      NotFoundError: 'No microphone found. Plug one in or choose one under Audio & settings.',
+      NotReadableError: 'Your microphone is in use by another app. Close it and press again.',
+      OverconstrainedError: 'That microphone is unavailable. Pick another under Audio & settings.',
+      SecurityError: 'The browser blocked the microphone on this page.',
+      AbortError: 'The microphone could not be started. Press again.',
+    }[e && e.name] || `Microphone error: ${(e && (e.message || e.name)) || 'unknown'}`;
+    this.micError(why, e && e.name);
+    return false;
+  }
+
+  micError(text, code) {
+    this.ui.hint.textContent = text;
+    this.ui.hint.classList.add('vptt-err');
+    // NOT disabled. The button stays live so pressing again retries — a denial
+    // is usually recoverable, and a dead button is not.
+    this.ui.talk.disabled = false;
+    console.warn('[PTT] microphone unavailable', code || '', text);
+  }
+
+  /** Reopen every peer connection, so the new outbound track is included. */
+  async rebuildPeers() {
+    const ids = (this.users || [])
+      .map((u) => u.connId)
+      .filter((id) => id && id !== this.connId);
+    this.teardownPeers();
+    for (const id of ids) await this.openPeer(id, true);
+  }
+
+  // Kept for callers that only need to listen.
+  async startAudio() { return true; }
 
   peerConn(connId) {
     let p = this.peers.get(connId);
@@ -425,7 +518,6 @@ class VortexPTT {
   }
 
   async onOffer(m) {
-    await this.startAudio();
     const { pc } = this.peerConn(m.from);
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(m.payload));
@@ -543,7 +635,13 @@ class VortexPTT {
         if (saved) sel.value = saved;
         sel.onchange = () => {
           localStorage.setItem(key, sel.value);
-          if (kind === 'audioinput') { this.micStream = null; this.startAudio(); }
+          if (kind === 'audioinput') {
+            // Drop the old capture before asking for the new one, or the previous
+            // device stays open and some browsers refuse the second request.
+            if (this.micStream) this.micStream.getTracks().forEach((t) => t.stop());
+            this.micStream = null; this.micTrack = null;
+            this.ensureMic();
+          }
           else for (const a of this.audioEls.values()) if (a.setSinkId) a.setSinkId(sel.value).catch(() => {});
         };
       };

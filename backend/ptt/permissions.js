@@ -125,4 +125,28 @@ function canPriority(user, grants, channel) {
   return can(user, 'priority', grants, channel);
 }
 
-module.exports = { ROLES, RANK, CAPS, roleFor, can, canTransmit, canJoin, canPriority };
+/**
+ * A name to put on the radio.
+ *
+ * Vortex accounts carry an email and nothing else -- no username, no display
+ * name -- so the local part of the address is the only identity available.
+ * Without this every operator showed up as the literal word "User", which on a
+ * radio is worse than useless: you cannot tell who is transmitting.
+ */
+function displayName(user) {
+  if (!user) return 'Unknown';
+  if (user.displayName) return String(user.displayName);
+  if (user.username) return String(user.username);
+  const local = String(user.email || '').split('@')[0];
+  if (!local) return 'User ' + String(user.id || '').slice(0, 4);
+  // first.last / first_last / first-last -> First Last
+  return local
+    .replace(/[._-]+/g, ' ')
+    .replace(/\d+$/, '')
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ') || local;
+}
+
+module.exports = { ROLES, RANK, CAPS, roleFor, can, canTransmit, canJoin, canPriority, displayName };
