@@ -111,6 +111,9 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 .vptt-state { color: var(--vx-text-3, #5d6875); font-size: 10px; letter-spacing: 0.06em; }
+.vptt-you { font-size: 9.5px; color: var(--vx-accent, #e8862b); text-transform: uppercase; letter-spacing: 0.08em; }
+/* Same person on two devices (app + website, say) — shown once, counted. */
+.vptt-dev { font-size: 10px; color: var(--vx-text-3, #5d6875); }
 .vptt-empty { font-size: 11.5px; color: var(--vx-text-3, #5d6875); padding: 6px 2px; }
 
 .vptt-settings { font-size: 11.5px; color: var(--vx-text-2, #8996a6); }

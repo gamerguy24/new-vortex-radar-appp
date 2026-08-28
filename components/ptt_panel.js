@@ -450,7 +450,33 @@ class VortexPTT {
     return true;
   }
 
+  /** Running inside the Capacitor shell rather than a browser tab? */
+  isNativeApp() {
+    const C = typeof window !== 'undefined' && window.Capacitor;
+    if (C && typeof C.isNativePlatform === 'function' && C.isNativePlatform()) return true;
+    // The APK wraps this same site, so if Capacitor has not injected yet, fall
+    // back to the user agent Android WebViews advertise.
+    return / wv\)|; wv;/.test(navigator.userAgent || '');
+  }
+
   micFailed(e, silent) {
+    /*
+     * A native WebView is a different failure from a browser tab, and needs a
+     * different answer. Android will not hand a WebView the microphone unless
+     * the APK itself declares android.permission.RECORD_AUDIO — that is a
+     * native manifest entry, and no amount of JavaScript on this page can grant
+     * it. Saying "allow it in your browser settings" to someone in the app
+     * sends them looking for a padlock icon that does not exist.
+     */
+    if (this.isNativeApp() && /NotAllowedError|PermissionDeniedError|NotFoundError|SecurityError/.test(e && e.name)) {
+      this.micError(
+        'The app has not been granted microphone access. Check Android Settings → Apps → Vortex Radar → Permissions → Microphone. '
+        + 'If Microphone is not listed there at all, the APK needs the RECORD_AUDIO permission added and rebuilt — voice will keep working on the website meanwhile.',
+        'native:' + (e && e.name),
+      );
+      return false;
+    }
+
     // Say WHICH failure. "Microphone unavailable" gives nobody anything to act
     // on; these each have a different fix.
     const why = {
@@ -606,10 +632,47 @@ class VortexPTT {
   }
 
   renderUsers() {
-    this.ui.users.innerHTML = this.users.map((u) => {
+    /*
+     * Presence is per CONNECTION, and one person can hold several — the app and
+     * the website at once, or a phone and a laptop. Listing every connection
+     * separately showed "Nathan Bradley" twice and made a two-person channel
+     * look like four, which on a radio is actively misleading.
+     *
+     * Group by user. The strongest state wins, since someone transmitting from
+     * one device is transmitting, whatever their other devices are doing.
+     */
+    const RANK = { TRANSMITTING: 0, LISTENING: 1, IDLE: 2 };
+    const byUser = new Map();
+    for (const u of this.users) {
+      const prev = byUser.get(u.userId);
+      if (!prev) byUser.set(u.userId, { ...u, devices: 1 });
+      else {
+        prev.devices++;
+        if (RANK[u.state] < RANK[prev.state]) prev.state = u.state;
+      }
+    }
+    const list = [...byUser.values()].sort((a, b) => RANK[a.state] - RANK[b.state]);
+
+    // Keep the channel's own count honest. The dropdown label is built from the
+    // REST list, which is fetched once on connect and then goes stale — it read
+    // "(1)" while four people were plainly listed underneath it.
+    this.updateChannelCount(list.length);
+
+    this.ui.users.innerHTML = list.map((u) => {
       const icon = u.state === 'TRANSMITTING' ? '🎙️' : (u.state === 'IDLE' ? '🟡' : '🟢');
-      return `<div class="vptt-user"><span>${icon} ${esc(u.name)}</span><span class="vptt-state">${u.state}</span></div>`;
+      const me = this.me && u.userId === this.me.id ? ' <span class="vptt-you">you</span>' : '';
+      const dev = u.devices > 1 ? ` <span class="vptt-dev">×${u.devices}</span>` : '';
+      return `<div class="vptt-user"><span>${icon} ${esc(u.name)}${me}${dev}</span><span class="vptt-state">${u.state}</span></div>`;
     }).join('') || '<div class="vptt-empty">No one here yet</div>';
+  }
+
+  /** Rewrite the live count on the selected channel's <option>. */
+  updateChannelCount(n) {
+    if (!this.channel) return;
+    const opt = [...this.ui.channels.options].find((o) => o.value === this.channel.id);
+    if (!opt) return;
+    const ch = this.channels.find((c) => c.id === this.channel.id) || this.channel;
+    opt.textContent = `${ch.emoji} ${ch.name} (${n})`;
   }
 
   sendLocation() {
