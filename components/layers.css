@@ -629,3 +629,77 @@
     font-size: 12px; cursor: pointer;
 }
 .pro-toast-btn:hover { filter: brightness(1.06); }
+
+/* ── Panel scrolling ─────────────────────────────────────────────────────────
+ * App-wide rule: a floating panel must never hide content it cannot scroll to.
+ *
+ * The panels are pinned top and bottom (top: 64px; bottom: 64px), so their
+ * height is whatever the viewport gives them. On a laptop — or any short
+ * window, which a wide monitor can easily be — the content is taller than that
+ * space, and with `overflow: hidden` the overflow was simply unreachable. In
+ * Models & Forecast that meant Quick Fields ran off the bottom and "All
+ * variables" could not be opened at all.
+ *
+ * THE FLEXBOX TRAP: overflow-y: auto is not enough on its own. A flex item
+ * defaults to min-height: auto, which refuses to shrink below its content, so
+ * the item grows past its parent instead of scrolling and the scrollbar never
+ * appears. min-height: 0 is what actually lets it scroll.
+ */
+.vmp-main,
+.vloc-list,
+.vmp-list {
+    min-height: 0;
+    overscroll-behavior: contain;   /* don't chain into zooming the map behind */
+}
+
+/* The whole body of the models panel scrolls, not just the variable list. */
+.vmp-main {
+    overflow-y: auto;
+    /* Room for the scrollbar so it never sits on top of the content. */
+    padding-right: 12px;
+}
+
+/*
+ * The variable list is a scroll area INSIDE a scroll area, so it needs a bound
+ * of its own — `flex: 1` was meaningless here (its parent is a plain block) and
+ * left it growing without limit. A viewport-relative cap keeps it usable on a
+ * short screen and generous on a tall one.
+ */
+.vmp-list {
+    flex: none;
+    max-height: min(42vh, 360px);
+}
+
+/*
+ * One scrollbar style for every panel scroll area. Thin, visible against a dark
+ * panel, and always present rather than hover-revealed — on a touch laptop an
+ * overlay scrollbar that only appears on hover is invisible until too late.
+ */
+.vmp-main, .vmp-list, .vloc-list {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.vmp-main::-webkit-scrollbar,
+.vloc-list::-webkit-scrollbar { width: 8px; }
+.vmp-main::-webkit-scrollbar-track,
+.vloc-list::-webkit-scrollbar-track { background: transparent; }
+.vmp-main::-webkit-scrollbar-thumb,
+.vloc-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: var(--vx-r-1, 4px);
+}
+.vmp-main::-webkit-scrollbar-thumb:hover,
+.vloc-list::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
+
+/*
+ * Short windows. Below roughly 700px tall the fixed 64px margins are a large
+ * share of the screen, so give the panels more of it and tighten the padding —
+ * the alternative is a panel with more chrome than content.
+ */
+@media (max-height: 700px) {
+    #vortexModelsPanel,
+    #vlocPanel { top: 52px; bottom: 52px; }
+    .vmp-main { padding-top: 10px; }
+    .vmp-status { margin: 5px 0 9px; }
+    .vmp-scrub { margin: 2px 0 9px; }
+}
