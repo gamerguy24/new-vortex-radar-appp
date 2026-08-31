@@ -37,6 +37,37 @@ function syncView(from, to) {
     }
 }
 
+/*
+ * Paint the RIGHT pane with the Vortex basemap theme.
+ *
+ * vortexBasemap.apply() returns without doing anything when the map's style is
+ * not readable yet, and isStyleLoaded() is commonly still false *inside* a
+ * style.load handler — which is exactly where it gets called from. So the first
+ * attempt often lands too early and the pane keeps the stock Mapbox dark style.
+ *
+ * The retry lives HERE, on the dual map only, and deliberately not inside
+ * vortexBasemap: that function also paints the main map, and a retry loop added
+ * there once left the whole app showing a blank grey map. A local, bounded,
+ * timer-based poll cannot reach the main map at all, and its worst case is a
+ * right pane that stays dark — the bug it is trying to fix, rather than a new one.
+ */
+function themeDual(attempt = 0) {
+    if (!dualMap || !window.vortexBasemap) return;
+    try {
+        if (dualMap.isStyleLoaded && dualMap.isStyleLoaded()) {
+            window.vortexBasemap.apply(dualMap);
+            return;
+        }
+    } catch (e) { /* fall through to the retry */ }
+
+    // ~2 seconds of attempts, then give up rather than poll forever.
+    if (attempt >= 20) {
+        console.warn('[SplitScreen] right pane style never became readable; leaving the default theme.');
+        return;
+    }
+    setTimeout(() => themeDual(attempt + 1), 100);
+}
+
 function ensureDual() {
     if (dualMap) return dualMap;
     const gl = GL();
@@ -59,9 +90,7 @@ function ensureDual() {
 
     // Wear the same basemap theme as the primary map — otherwise the compare
     // view shows Vortex's grey/blue map beside a stock Mapbox dark one.
-    dualMap.on('style.load', () => {
-        if (window.vortexBasemap) window.vortexBasemap.apply(dualMap);
-    });
+    dualMap.on('style.load', () => themeDual());
 
     // Match the primary map's interaction restrictions.
     dualMap.touchZoomRotate.disableRotation();
@@ -93,6 +122,10 @@ function enable() {
     splitActive = true;
     document.body.classList.add('vortex-split');
     syncView(main, dualMap);
+
+    // Opening the compare view is the moment the two maps are seen together,
+    // so re-assert the theme then as well. Idempotent.
+    themeDual();
 
     // Let the CSS width change apply, then resize both GL canvases.
     requestAnimationFrame(() => { main.resize(); if (dualMap) dualMap.resize(); });
