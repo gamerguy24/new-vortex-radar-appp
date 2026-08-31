@@ -53,6 +53,40 @@ function _set(m, layer, prop, value) {
 function _isCasing(id) { return /(^|[-_])case($|[-_])|casing/i.test(id); }
 function _isMajorRoad(id) { return /motorway|trunk|highway/i.test(id); }
 
+/*
+ * Retry bookkeeping, per map.
+ *
+ * The retry MUST be bounded and MUST NOT stack. 'idle' fires after every
+ * render, and painting the basemap calls setPaintProperty on hundreds of
+ * layers — which itself causes a render. So a retry that re-registers itself
+ * unconditionally is a loop that feeds on its own output, and a fresh listener
+ * leaks on every pass. One pending retry per map, with a hard cap: if the style
+ * has not become readable after a handful of attempts it never will, and the
+ * map is better left as Mapbox drew it than pinned in a render loop.
+ */
+const _pending = new WeakMap();
+const MAX_RETRIES = 5;
+
+function _scheduleRetry(m) {
+    const tries = _pending.get(m) || 0;
+    if (tries >= MAX_RETRIES) {
+        console.warn('[VortexBasemap] style never became readable; leaving the default theme.');
+        return;
+    }
+    _pending.set(m, tries + 1);
+
+    let ran = false;
+    const rerun = () => {
+        if (ran) return;          // whichever event wins, only one re-run
+        ran = true;
+        apply_vortex_basemap(m);
+    };
+    m.once('style.load', rerun);
+    // 'idle' is the reliable second chance: isStyleLoaded() is commonly still
+    // false inside a style.load handler, and style.load never fires twice.
+    m.once('idle', rerun);
+}
+
 function apply_vortex_basemap(targetMap) {
     const m = targetMap || map;
     if (!m || typeof m.getStyle !== 'function') return;
@@ -78,12 +112,13 @@ function apply_vortex_basemap(targetMap) {
      */
     try {
         if (typeof m.isStyleLoaded === 'function' && !m.isStyleLoaded()) {
-            const rerun = () => apply_vortex_basemap(m);
-            m.once('style.load', rerun);
-            m.once('idle', rerun);
+            _scheduleRetry(m);
             return;
         }
     } catch (e) { /* older gl-js without isStyleLoaded — just carry on */ }
+
+    // Made it: this map is painted, so any pending retry bookkeeping is done.
+    _pending.delete(m);
 
     // The named base layers in the Mapbox standard styles. Set explicitly first
     // so the map is right even if the layer walk below finds nothing.
