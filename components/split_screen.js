@@ -96,25 +96,6 @@ function enable() {
 
     // Let the CSS width change apply, then resize both GL canvases.
     requestAnimationFrame(() => { main.resize(); if (dualMap) dualMap.resize(); });
-
-    // Re-assert the Vortex theme every time the compare view opens. The
-    // style.load hook in ensureDual() covers the first time, but this is the
-    // moment the two maps are actually seen side by side, so it is the moment
-    // worth being certain about — and re-applying is idempotent.
-    if (window.vortexBasemap && dualMap) {
-        try { window.vortexBasemap.apply(dualMap); } catch (e) { /* theme is cosmetic */ }
-    }
-
-    /*
-     * Open with the left pane in charge, and put the SAME radar in the right
-     * pane so the compare view is a comparison from the first frame rather than
-     * a live map beside an empty one. From there the operator clicks a pane to
-     * aim the product menu at it.
-     */
-    if (window.vortexPanes) window.vortexPanes.setActive('main');
-    if (window.vortexDualRadar) {
-        try { window.vortexDualRadar.seed(); } catch (e) { console.warn('[SplitScreen] could not seed the right pane:', e); }
-    }
     setBtn(true);
     window.dispatchEvent(new CustomEvent('vortexsplitchange', { detail: { active: true } }));
 }

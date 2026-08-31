@@ -99,13 +99,7 @@ function loadTiltBtns(numOfTiltsArr) {
 
 $('.psmRow').click(function(e) {
     if ($(e.target).is($(this)) && !$(this).hasClass('l2prodSel')) {
-        // Station comes from the pane being driven. The dual pane falls back to
-        // the main pane's site, which is what makes "same radar, two products"
-        // work with no extra typing.
-        const _panes = require('../map/radar_panes');
-        const _target = _panes.active_pane();
-        const currentStation = _panes.pane_state(_target).currentStation
-            || window.vortexData.currentStation; // 'KAKQ'
+        const currentStation = window.vortexData.currentStation; // 'KAKQ';
 
         var innerText = $(this).text(); // the long product name, e.g. "Base Reflectivity"
         var value = $(this).attr('value'); // the abbreviated product name, e.g. "ref", "vel", "hyc"
@@ -115,33 +109,15 @@ $('.psmRow').click(function(e) {
         var selectedTiltNum = $(this).find('.psmRowTiltSelect').text().split(' ')[1];
         var resultProduct = productLookup[selectedTiltNum][value];
 
-        /*
-         * THIS MENU DRIVES WHICHEVER PANE IS ACTIVE.
-         *
-         * In split screen the operator picks a pane by clicking it, and every
-         * product choice then lands there — the way RadarOmega behaves. Before
-         * this, the menu always drove the left pane and the right one had a
-         * separate panel of its own, so choosing a product while looking at the
-         * right pane changed the left.
-         *
-         * active_pane() returns 'main' whenever split screen is off, so the
-         * single-pane behaviour is untouched.
-         */
-        const panes = require('../map/radar_panes');
-        const target = panes.active_pane();
-        const state = panes.pane_state(target);
+        // track the active product so the playback loop can fetch historical scans
+        window.vortexData.current_loop_product = resultProduct;
+        require('../../radar/animation/radar_loop').reset();
 
-        // Loop state is per pane; writing the dual pane's product onto
-        // window.vortexData would make the left pane's playback fetch the
-        // right pane's product.
-        state.current_loop_product = resultProduct;
-        state.from_file_upload = false;
-        if (target === 'main') require('../../radar/animation/radar_loop').reset();
-
+        window.vortexData.from_file_upload = false;
         if (value == 'srvel') {
-            loaders_nexrad.quick_storm_relative_velocity_plot(currentStation, resultProduct, (L3Factory) => { }, target);
+            loaders_nexrad.quick_storm_relative_velocity_plot(currentStation, resultProduct, (L3Factory) => { });
         } else {
-            loaders_nexrad.quick_level_3_plot(currentStation, resultProduct, (L3Factory) => { }, target);
+            loaders_nexrad.quick_level_3_plot(currentStation, resultProduct, (L3Factory) => { });
         }
         // loaders.getLatestFile(currentStation, [3, resultProduct, 0], function(url) {
         //     console.log(url)

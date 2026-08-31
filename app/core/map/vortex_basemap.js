@@ -53,72 +53,18 @@ function _set(m, layer, prop, value) {
 function _isCasing(id) { return /(^|[-_])case($|[-_])|casing/i.test(id); }
 function _isMajorRoad(id) { return /motorway|trunk|highway/i.test(id); }
 
-/*
- * Retry bookkeeping, per map.
- *
- * The retry MUST be bounded and MUST NOT stack. 'idle' fires after every
- * render, and painting the basemap calls setPaintProperty on hundreds of
- * layers — which itself causes a render. So a retry that re-registers itself
- * unconditionally is a loop that feeds on its own output, and a fresh listener
- * leaks on every pass. One pending retry per map, with a hard cap: if the style
- * has not become readable after a handful of attempts it never will, and the
- * map is better left as Mapbox drew it than pinned in a render loop.
- */
-const _pending = new WeakMap();
-const MAX_RETRIES = 5;
-
-function _scheduleRetry(m) {
-    const tries = _pending.get(m) || 0;
-    if (tries >= MAX_RETRIES) {
-        console.warn('[VortexBasemap] style never became readable; leaving the default theme.');
-        return;
-    }
-    _pending.set(m, tries + 1);
-
-    let ran = false;
-    const rerun = () => {
-        if (ran) return;          // whichever event wins, only one re-run
-        ran = true;
-        apply_vortex_basemap(m);
-    };
-    m.once('style.load', rerun);
-    // 'idle' is the reliable second chance: isStyleLoaded() is commonly still
-    // false inside a style.load handler, and style.load never fires twice.
-    m.once('idle', rerun);
-}
-
 function apply_vortex_basemap(targetMap) {
     const m = targetMap || map;
     if (!m || typeof m.getStyle !== 'function') return;
 
-    /*
-     * Called before the style finished loading (boot order, or a style swap)?
-     * There is nothing to paint yet — wait and re-run.
-     *
-     * WAIT ON 'idle', NOT ONLY ON 'style.load'. isStyleLoaded() commonly still
-     * returns false *inside* a style.load handler, so a caller doing the
-     * obvious thing —
-     *
-     *     map.on('style.load', () => vortexBasemap.apply(map))
-     *
-     * — landed here, queued another once('style.load') for an event that had
-     * already fired and would never fire again, and returned. The re-run never
-     * happened and the map stayed stock Mapbox dark. That is exactly what left
-     * the split-screen right pane dark beside Vortex's grey/blue left pane.
-     *
-     * 'idle' always follows, so it is the reliable second chance. Both are
-     * registered because a style swap fires style.load again later, and the
-     * paint operations are idempotent so running twice costs nothing.
-     */
+    // Called before the style finished loading (boot order, or a style swap)?
+    // There is nothing to paint yet — wait for the style and re-run once.
     try {
         if (typeof m.isStyleLoaded === 'function' && !m.isStyleLoaded()) {
-            _scheduleRetry(m);
+            m.once('style.load', () => apply_vortex_basemap(m));
             return;
         }
     } catch (e) { /* older gl-js without isStyleLoaded — just carry on */ }
-
-    // Made it: this map is painted, so any pending retry bookkeeping is done.
-    _pending.delete(m);
 
     // The named base layers in the Mapbox standard styles. Set explicitly first
     // so the map is right even if the layer walk below finds nothing.

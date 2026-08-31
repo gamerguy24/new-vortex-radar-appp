@@ -62,40 +62,4 @@ function pane_state(target) {
     return window.vortexData.panes.dual;
 }
 
-/*
- * WHICH PANE DO THE CONTROLS DRIVE?
- *
- * In split screen the product menu, the station markers and the elevation
- * picker all have to act on ONE pane, and the operator says which by clicking
- * it — the same way RadarOmega works. Without this every control drove the left
- * pane and the right one could only ever be set from a separate little panel of
- * its own, which is the arrangement this replaces.
- *
- * Always 'main' when split screen is off, so nothing can strand a control on a
- * pane that is not on screen.
- */
-function active_pane() {
-    if (typeof window === 'undefined') return 'main';
-    const split = document.body && document.body.classList.contains('vortex-split');
-    if (!split) return 'main';
-    return normalize(window.vortexData && window.vortexData.activePane);
-}
-
-function set_active_pane(target) {
-    if (typeof window === 'undefined') return 'main';
-    if (!window.vortexData) window.vortexData = {};
-    const t = normalize(target);
-    window.vortexData.activePane = t;
-
-    // Mark the panes so CSS can show which one the controls are pointed at. A
-    // mode you cannot see is a mode you will forget you are in.
-    const main = document.getElementById('map');
-    const dual = document.getElementById('mapDual');
-    if (main) main.classList.toggle('vortex-pane-active', t === 'main');
-    if (dual) dual.classList.toggle('vortex-pane-active', t === 'dual');
-
-    window.dispatchEvent(new CustomEvent('vortexpanechange', { detail: { pane: t } }));
-    return t;
-}
-
-module.exports = { get_pane, pane_state, active_pane, set_active_pane };
+module.exports = { get_pane, pane_state };
