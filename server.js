@@ -2228,6 +2228,16 @@ try {
     console.error('[EOC] failed to attach (feature disabled):', e.message);
 }
 
+// ─── Live wildfire data (NIFC WFIGS) ─────────────────────────────────────────
+// Burned-area perimeters and incident points. Complements components/fire_weather.js,
+// which draws fire danger, the SPC fire outlooks and InciWeb POINTS but carries no
+// footprint -- these are the polygons showing what has actually burned.
+try {
+    require('./backend/fire').attachFire({ app, requireAuth });
+} catch (e) {
+    console.error('[FIRE] failed to attach (feature disabled):', e.message);
+}
+
 // ─── VORTEX PTT (self-hosted push-to-talk radio) ─────────────────────────────
 // Control plane only: channels, presence, floor control and WebRTC signalling.
 // Voice goes browser-to-browser and never through this process. Separate from
