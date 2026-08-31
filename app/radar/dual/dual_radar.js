@@ -128,7 +128,20 @@ function init() {
     });
 }
 
-init();
+/*
+ * A failure in here must never take the app down with it.
+ *
+ * entry.js requires this module part-way through boot, so an exception at load
+ * aborts the rest of that sequence — every require after it never runs and the
+ * page comes up with its static HTML and no map at all. Split screen is a
+ * convenience; the radar is not. If this cannot start, it should be the only
+ * thing that does not.
+ */
+try {
+    init();
+} catch (e) {
+    console.error('[DualRadar] disabled — failed to initialise:', e);
+}
 
 // Reached from components/split_screen.js, which is an ES module outside this
 // bundle and so cannot require() into it.
