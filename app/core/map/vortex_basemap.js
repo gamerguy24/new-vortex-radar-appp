@@ -57,11 +57,30 @@ function apply_vortex_basemap(targetMap) {
     const m = targetMap || map;
     if (!m || typeof m.getStyle !== 'function') return;
 
-    // Called before the style finished loading (boot order, or a style swap)?
-    // There is nothing to paint yet — wait for the style and re-run once.
+    /*
+     * Called before the style finished loading (boot order, or a style swap)?
+     * There is nothing to paint yet — wait and re-run.
+     *
+     * WAIT ON 'idle', NOT ONLY ON 'style.load'. isStyleLoaded() commonly still
+     * returns false *inside* a style.load handler, so a caller doing the
+     * obvious thing —
+     *
+     *     map.on('style.load', () => vortexBasemap.apply(map))
+     *
+     * — landed here, queued another once('style.load') for an event that had
+     * already fired and would never fire again, and returned. The re-run never
+     * happened and the map stayed stock Mapbox dark. That is exactly what left
+     * the split-screen right pane dark beside Vortex's grey/blue left pane.
+     *
+     * 'idle' always follows, so it is the reliable second chance. Both are
+     * registered because a style swap fires style.load again later, and the
+     * paint operations are idempotent so running twice costs nothing.
+     */
     try {
         if (typeof m.isStyleLoaded === 'function' && !m.isStyleLoaded()) {
-            m.once('style.load', () => apply_vortex_basemap(m));
+            const rerun = () => apply_vortex_basemap(m);
+            m.once('style.load', rerun);
+            m.once('idle', rerun);
             return;
         }
     } catch (e) { /* older gl-js without isStyleLoaded — just carry on */ }

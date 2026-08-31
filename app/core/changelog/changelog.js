@@ -24,6 +24,7 @@ const CHANGELOG = [
     {
         date: 'August 28, 2026',
         items: [
+            { title: 'Split screen matches the main map', desc: 'The right pane now wears the same Vortex basemap as the left instead of a stock dark Mapbox style, so a side-by-side comparison actually looks like one map. Picking a product for the right pane also loads it straight away — no separate Load step — and clicking the right pane aims the controls at it.' },
             { title: 'Shift+V for velocity', desc: 'Press Shift+V to jump straight to velocity and Shift+R to go back to reflectivity, without opening the product menu. Works on WSR-88D, TDWR and Level 2 — it picks the right product for whichever radar you are on. Press ? for the full shortcut list.' },
             { title: 'Severe, Tropical and Fire settings', desc: 'The settings menu now has three dedicated screens under Tools — Severe, Tropical and Fire — instead of one SPC Outlooks page. Severe keeps the convective outlooks, Tropical gathers the NHC layers (hurricanes, spaghetti models, hurricane hunters, Atlantic and E Pacific tracks), and Fire brings the fire weather layers and SPC fire outlooks together in one place.' },
             { title: 'Live wildfire perimeters', desc: 'Two new Fire layers show what is actually burning: Fire Perimeters draws the burned area shaded by how contained it is, and Active Fires plots incidents sized by acreage. Tap either for acres, containment, cause and when it was first reported. Data from the interagency NIFC feeds, refreshed every few minutes.' },

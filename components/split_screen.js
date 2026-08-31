@@ -96,6 +96,14 @@ function enable() {
 
     // Let the CSS width change apply, then resize both GL canvases.
     requestAnimationFrame(() => { main.resize(); if (dualMap) dualMap.resize(); });
+
+    // Re-assert the Vortex theme every time the compare view opens. The
+    // style.load hook in ensureDual() covers the first time, but this is the
+    // moment the two maps are actually seen side by side, so it is the moment
+    // worth being certain about — and re-applying is idempotent.
+    if (window.vortexBasemap && dualMap) {
+        try { window.vortexBasemap.apply(dualMap); } catch (e) { /* theme is cosmetic */ }
+    }
     setBtn(true);
     window.dispatchEvent(new CustomEvent('vortexsplitchange', { detail: { active: true } }));
 }

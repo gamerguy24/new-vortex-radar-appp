@@ -52,6 +52,41 @@ function build_panel() {
     document.getElementById('drcStation').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') load_dual();
     });
+
+    /*
+     * Picking a product loads it. Pressing Load afterwards was a step that
+     * never had a reason to exist — there is nothing to confirm, and choosing
+     * "Base Velocity" from a menu titled "Right pane radar" has exactly one
+     * possible intent.
+     *
+     * Load stays, because it is also how you re-load after typing a station,
+     * and how you retry when a fetch fails.
+     */
+    document.getElementById('drcProduct').addEventListener('change', load_dual);
+
+    /*
+     * Clicking the right pane aims the controls at it.
+     *
+     * With no station typed, load_dual falls back to whatever the LEFT pane is
+     * showing — so a click plus a product choice is enough to get a comparison
+     * up, which is the common case: same site, two products, side by side.
+     * Clicking only focuses and pre-fills; it never loads on its own, because a
+     * stray click on the map should not start a fetch.
+     */
+    const dualEl = document.getElementById('mapDual');
+    if (dualEl) {
+        dualEl.addEventListener('click', () => {
+            const panel = document.getElementById('dualRadarControls');
+            if (!panel || panel.style.display === 'none') return;
+            const stationInput = document.getElementById('drcStation');
+            if (stationInput && !stationInput.value) {
+                const current = window.vortexData && window.vortexData.currentStation;
+                if (current) stationInput.placeholder = current;   // show what a blank field will use
+            }
+            const productSelect = document.getElementById('drcProduct');
+            if (productSelect) productSelect.focus();
+        });
+    }
 }
 
 // Normalize a user-typed site to an ICAO id (3-letter -> prefixed with K).
