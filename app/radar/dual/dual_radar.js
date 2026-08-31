@@ -11,7 +11,7 @@
  */
 
 const loaders_nexrad = require('../libnexrad/loaders_nexrad');
-const { pane_state, get_pane } = require('../../core/map/radar_panes');
+const { pane_state, get_pane, set_active_pane } = require('../../core/map/radar_panes');
 
 function dual_map() {
     return (window.vortexMap && window.vortexMap.dualMap) || null;
@@ -29,6 +29,77 @@ function dual_map() {
  * right pane gets its first radar from seed_dual() when split opens, and
  * follows the left pane's station after that.
  */
+
+/*
+ * THEMING AND PANE FOCUS LIVE HERE, NOT IN components/split_screen.js.
+ *
+ * Only index.css and bundle.js are cache-busted (index.html rewrites their URLs
+ * from tools/size.txt). The ES-module components are plain <script> tags, so a
+ * browser will happily serve a months-old split_screen.js next to a fresh
+ * bundle — which is exactly what happened: the right pane kept the stock Mapbox
+ * dark style and clicking it did not aim the product menu, because the code for
+ * both was sitting in a cached copy of that file. Anything that has to be right
+ * after a deploy belongs in the bundle.
+ */
+
+/*
+ * Paint the RIGHT pane with the Vortex basemap.
+ *
+ * apply_vortex_basemap() defers via once('style.load') when the style is not
+ * readable yet — but split_screen called it FROM a style.load handler, where
+ * isStyleLoaded() is still false and that event will never fire again. So it
+ * deferred forever and the pane stayed dark. Polling until the style is
+ * genuinely readable side-steps that entirely.
+ *
+ * dual_map() is passed explicitly, so this can only ever repaint the right
+ * pane; a retry loop that could reach the main map once blanked the whole app.
+ */
+function theme_dual(attempt = 0) {
+    const dm = dual_map();
+    if (!dm) return;
+    try {
+        if (dm.isStyleLoaded && dm.isStyleLoaded()) {
+            // Required here, not at module scope: vortex_basemap pulls in map.js,
+            // which builds the Mapbox instance on require. Load order is not
+            // something a right-pane feature should be moving around.
+            require('../../core/map/vortex_basemap').apply_vortex_basemap(dm);
+            return;
+        }
+    } catch (e) { /* fall through to the retry */ }
+
+    // ~10s: the pane's map is built on first open, so this waits out a cold
+    // style download on a slow connection rather than giving up at 2s.
+    if (attempt >= 100) {
+        console.warn('[DualRadar] right pane style never became readable; leaving the default theme.');
+        return;
+    }
+    setTimeout(() => theme_dual(attempt + 1), 100);
+}
+
+/*
+ * Click a pane to aim the product menu at it.
+ *
+ * Capture phase, so the pane registers before Mapbox's own handlers run, and
+ * every call is guarded: this is a convenience, and a failure here must never
+ * interfere with using the map. Only marked bound once BOTH panes are wired,
+ * so an early call cannot leave one of them dead.
+ */
+let pane_focus_bound = false;
+function install_pane_focus() {
+    if (pane_focus_bound) return;
+    const bind = (id, target) => {
+        const el = document.getElementById(id);
+        if (!el) return false;
+        el.addEventListener('pointerdown', () => {
+            if (!document.body.classList.contains('vortex-split')) return;
+            try { set_active_pane(target); } catch (e) { /* cosmetic */ }
+        }, true);
+        return true;
+    };
+    const main_ok = bind('map', 'main');
+    const dual_ok = bind('mapDual', 'dual');
+    pane_focus_bound = main_ok && dual_ok;
+}
 
 function when_style_ready(map, cb) {
     if (map && map.isStyleLoaded && map.isStyleLoaded()) return cb();
@@ -99,10 +170,18 @@ function init() {
     window.addEventListener('vortexsplitchange', (e) => {
         const active = !!(e.detail && e.detail.active);
         if (active) {
+            theme_dual();
+            install_pane_focus();
+            // Start on the left pane, so the first product choice after opening
+            // split screen lands where the operator is already looking.
+            set_active_pane('main');
             // Give the right pane something to show. Mapbox needs a frame to
             // size the new canvas before a layer added to it will draw.
             setTimeout(() => seed_dual(), 0);
         } else {
+            // Hand the controls back to the only pane left on screen, or the
+            // next product choice would vanish into a hidden map.
+            set_active_pane('main');
             teardown_dual();
         }
     });
@@ -124,11 +203,11 @@ function init() {
 
 init();
 
-// Reached from components/split_screen.js, which is an ES module outside this
-// bundle and so cannot require() into it.
+// Published for the console and for any ES-module component that needs to know
+// or set which pane the controls are driving (it cannot require() into here).
 if (typeof window !== 'undefined') {
     const panes = require('../../core/map/radar_panes');
     window.vortexPanes = { setActive: panes.set_active_pane, active: panes.active_pane };
 }
 
-module.exports = { seed_dual, teardown_dual };
+module.exports = { seed_dual, teardown_dual, theme_dual };
