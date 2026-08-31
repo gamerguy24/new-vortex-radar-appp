@@ -65,12 +65,17 @@ _load_spc_toggleswitch([
     // ['convective', 'significant_hail', 'day1'],
     // ['convective', 'significant_hail', 'day2'],
 
-    // ['fire', 'dryt', 'day1'],
-    // ['fire', 'dryt', 'day2'],
+    // Fire weather. The URLs were already in urls.js and the markup already in
+    // index.html; both were simply switched off. plot_data draws whatever fill
+    // and stroke the SPC GeoJSON carries, so fire outlooks render in SPC's own
+    // colours with no renderer change.
+    ['fire', 'dryt', 'day1'],
+    ['fire', 'dryt', 'day2'],
 
+    ['fire', 'windrh', 'day1'],
+    ['fire', 'windrh', 'day2'],
+
+    // Day 3-8 fire outlooks are experimental SPC products; left off for now.
     // ['fire', 'dryt_categorical', 'day3'],
     // ['fire', 'dryt_probabalistic', 'day3'],
-
-    // ['fire', 'windrh', 'day1'],
-    // ['fire', 'windrh', 'day2'],
 ]);
