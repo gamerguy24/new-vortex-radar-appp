@@ -22,6 +22,13 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'August 31, 2026',
+        items: [
+            { title: 'Split screen works like you’d expect', desc: 'Click a pane to select it, then pick from the product menu you already use — that pane changes, the other one stays put. So you can hold reflectivity on the left and flip the right through velocity, correlation coefficient and back without losing your place. The separate right-pane control box is gone; there is one set of controls now, and a highlight around the edge of a pane shows which map you are driving.' },
+            { title: 'Both panes wear the Vortex map', desc: 'The second pane now uses the same basemap as the first, instead of opening as a stock dark Mapbox map beside it. Both panes share whichever radar site you pick on the left, so the comparison is always the same storm.' },
+        ],
+    },
+    {
         date: 'August 28, 2026',
         items: [
             { title: 'Shift+V for velocity', desc: 'Press Shift+V to jump straight to velocity and Shift+R to go back to reflectivity, without opening the product menu. Works on WSR-88D, TDWR and Level 2 — it picks the right product for whichever radar you are on. Press ? for the full shortcut list.' },

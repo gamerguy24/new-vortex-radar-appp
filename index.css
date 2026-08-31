@@ -65,49 +65,6 @@ body.vortex-split #mapDual {
     box-sizing: border-box;
 }
 
-/* Right-pane radar station/product picker (shown when split is active) */
-#dualRadarControls {
-    position: fixed;
-    top: 72px;
-    right: 12px;
-    z-index: 100040;
-    background: var(--vx-surface);
-    border: 1px solid var(--vx-line-2);
-    border-radius: var(--vx-r-3);
-    padding: 8px 10px;
-    font-family: var(--vx-font);
-    color: var(--vx-text);
-    box-shadow: var(--vx-shadow);
-}
-#dualRadarControls .drc-title {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--vx-text-2);
-    margin-bottom: 6px;
-}
-#dualRadarControls .drc-row { display: flex; gap: 6px; align-items: center; }
-#dualRadarControls .drc-input {
-    background: var(--vx-surface-2);
-    color: var(--vx-text);
-    border: 1px solid var(--vx-line-2);
-    border-radius: var(--vx-r-2);
-    padding: 5px 7px;
-    font-size: 13px;
-}
-#dualRadarControls #drcStation { width: 70px; text-transform: uppercase; }
-#dualRadarControls .drc-btn {
-    background: var(--vx-accent);
-    color: var(--vx-accent-ink);
-    border: none;
-    border-radius: var(--vx-r-2);
-    padding: 6px 12px;
-    font-weight: 700;
-    cursor: pointer;
-}
-#dualRadarControls .drc-btn:hover { background: var(--vx-accent-hi); }
-#dualRadarControls .drc-status { margin-top: 6px; font-size: 12px; color: var(--vx-text-2); min-height: 14px; }
-
 .false-anchor {
     cursor: pointer;
     text-decoration: underline;

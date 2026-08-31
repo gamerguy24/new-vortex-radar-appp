@@ -250,6 +250,16 @@ function _init_click_listener() {
 
         window.vortexData.from_file_upload = false;
         loaders_nexrad.quick_level_3_plot(clickedStation, productToLoad, (L3Factory) => {});
+
+        /*
+         * Station markers live only on the left map, so this click is the only
+         * way to change sites. Announce it so the split-screen right pane can
+         * follow along (it keeps its own product). Nothing listens when split
+         * is off, and the main load above is unaffected either way.
+         */
+        window.dispatchEvent(new CustomEvent('vortexstationchange', {
+            detail: { station: clickedStation, type: stationType }
+        }));
     });
 }
 

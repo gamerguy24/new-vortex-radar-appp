@@ -109,12 +109,6 @@ $('.psmRow').click(function(e) {
         var selectedTiltNum = $(this).find('.psmRowTiltSelect').text().split(' ')[1];
         var resultProduct = productLookup[selectedTiltNum][value];
 
-        // track the active product so the playback loop can fetch historical scans
-        window.vortexData.current_loop_product = resultProduct;
-        require('../../radar/animation/radar_loop').reset();
-
-        window.vortexData.from_file_upload = false;
-
         /*
          * In split screen this menu drives whichever pane was last clicked.
          *
@@ -124,7 +118,23 @@ $('.psmRow').click(function(e) {
          * than leave the product menu doing nothing.
          */
         let target = 'main';
-        try { target = require('../map/radar_panes').active_pane(); } catch (e) { target = 'main'; }
+        let panes = null;
+        try {
+            panes = require('../map/radar_panes');
+            target = panes.active_pane();
+        } catch (e) { target = 'main'; panes = null; }
+
+        // Track the active product so the playback loop can fetch historical
+        // scans. Written into the TARGET pane's state: pane_state('main') is
+        // window.vortexData itself, so the single-pane path is unchanged, but
+        // setting the right pane's product must not overwrite the left one's
+        // (the loop would then replay the wrong product on the main map).
+        const S = panes ? panes.pane_state(target) : window.vortexData;
+        S.current_loop_product = resultProduct;
+        S.from_file_upload = false;
+
+        // Only the main pane has playback.
+        if (target === 'main') require('../../radar/animation/radar_loop').reset();
 
         if (value == 'srvel') {
             loaders_nexrad.quick_storm_relative_velocity_plot(currentStation, resultProduct, (L3Factory) => { }, target);
