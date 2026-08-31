@@ -104,6 +104,17 @@ function enable() {
     if (window.vortexBasemap && dualMap) {
         try { window.vortexBasemap.apply(dualMap); } catch (e) { /* theme is cosmetic */ }
     }
+
+    /*
+     * Open with the left pane in charge, and put the SAME radar in the right
+     * pane so the compare view is a comparison from the first frame rather than
+     * a live map beside an empty one. From there the operator clicks a pane to
+     * aim the product menu at it.
+     */
+    if (window.vortexPanes) window.vortexPanes.setActive('main');
+    if (window.vortexDualRadar) {
+        try { window.vortexDualRadar.seed(); } catch (e) { console.warn('[SplitScreen] could not seed the right pane:', e); }
+    }
     setBtn(true);
     window.dispatchEvent(new CustomEvent('vortexsplitchange', { detail: { active: true } }));
 }

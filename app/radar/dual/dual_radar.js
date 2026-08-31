@@ -4,131 +4,69 @@
  * so it can use loaders_nexrad; the split-screen toggle itself is the ES-module
  * component components/split_screen.js, which fires a 'vortexsplitchange' event.
  *
- * When split screen turns on we show a compact station + product picker over the
- * right pane and load NEXRAD into the 'dual' pane, independently of the main
- * pane (its own updater, its own state — see app/core/map/radar_panes.js). When
- * split turns off we tear the dual radar down.
+ * THERE IS NO SEPARATE RIGHT-PANE PANEL ANY MORE.
+ *
+ * This used to put a little station + product picker over the right pane, so the
+ * two panes were driven by two different controls and the app's own product menu
+ * always changed the LEFT one — which meant choosing a product while looking at
+ * the right pane changed the wrong map.
+ *
+ * It now works the way RadarOmega does: click a pane to make it active, and the
+ * app's normal product menu, station markers and tilt picker all act on that
+ * pane until you click the other one. This file's job is reduced to
+ *
+ *   - remembering which pane the controls point at (radar_panes.active_pane)
+ *   - putting the same radar in the right pane when split opens, so the compare
+ *     view starts as a comparison rather than a live map beside a blank one
+ *   - tearing the dual radar down when split closes
  */
 
 const loaders_nexrad = require('../libnexrad/loaders_nexrad');
-const { pane_state, get_pane } = require('../../core/map/radar_panes');
-
-// Tilt-1 Level 3 products (labels + codes mirror core/menu/productSelectionMenu).
-const PRODUCTS = [
-    { label: 'Base Reflectivity', value: 'N0B', srvel: false },
-    { label: 'Base Velocity', value: 'N0G', srvel: false },
-    { label: 'Storm-Rel Velocity', value: 'N0G', srvel: true },
-    { label: 'Correlation Coeff', value: 'N0C', srvel: false },
-    { label: 'Differential Refl (ZDR)', value: 'N0X', srvel: false },
-    { label: 'Hydrometeor Class', value: 'N0H', srvel: false },
-    { label: 'Specific Diff Phase (KDP)', value: 'N0K', srvel: false },
-];
+const { pane_state, get_pane, active_pane, set_active_pane } = require('../../core/map/radar_panes');
 
 function dual_map() {
     return (window.vortexMap && window.vortexMap.dualMap) || null;
 }
 
-function set_status(msg) {
-    const el = document.getElementById('drcStatus');
-    if (el) el.textContent = msg || '';
-}
-
-function build_panel() {
-    if (document.getElementById('dualRadarControls')) return;
-    const opts = PRODUCTS.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
-    const wrap = document.createElement('div');
-    wrap.id = 'dualRadarControls';
-    wrap.style.display = 'none';
-    wrap.innerHTML = `
-        <div class="drc-title">Right pane radar</div>
-        <div class="drc-row">
-            <input id="drcStation" class="drc-input" placeholder="ICAO" maxlength="4" />
-            <select id="drcProduct" class="drc-input">${opts}</select>
-            <button id="drcLoad" class="drc-btn">Load</button>
-        </div>
-        <div id="drcStatus" class="drc-status"></div>`;
-    document.body.appendChild(wrap);
-    document.getElementById('drcLoad').addEventListener('click', load_dual);
-    document.getElementById('drcStation').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') load_dual();
-    });
-
-    /*
-     * Picking a product loads it. Pressing Load afterwards was a step that
-     * never had a reason to exist — there is nothing to confirm, and choosing
-     * "Base Velocity" from a menu titled "Right pane radar" has exactly one
-     * possible intent.
-     *
-     * Load stays, because it is also how you re-load after typing a station,
-     * and how you retry when a fetch fails.
-     */
-    document.getElementById('drcProduct').addEventListener('change', load_dual);
-
-    /*
-     * Clicking the right pane aims the controls at it.
-     *
-     * With no station typed, load_dual falls back to whatever the LEFT pane is
-     * showing — so a click plus a product choice is enough to get a comparison
-     * up, which is the common case: same site, two products, side by side.
-     * Clicking only focuses and pre-fills; it never loads on its own, because a
-     * stray click on the map should not start a fetch.
-     */
-    const dualEl = document.getElementById('mapDual');
-    if (dualEl) {
-        dualEl.addEventListener('click', () => {
-            const panel = document.getElementById('dualRadarControls');
-            if (!panel || panel.style.display === 'none') return;
-            const stationInput = document.getElementById('drcStation');
-            if (stationInput && !stationInput.value) {
-                const current = window.vortexData && window.vortexData.currentStation;
-                if (current) stationInput.placeholder = current;   // show what a blank field will use
-            }
-            const productSelect = document.getElementById('drcProduct');
-            if (productSelect) productSelect.focus();
-        });
-    }
-}
-
-// Normalize a user-typed site to an ICAO id (3-letter -> prefixed with K).
-function normalize_station(raw) {
-    const s = (raw || '').trim().toUpperCase();
-    if (!s) return null;
-    return s.length === 3 ? `K${s}` : s;
-}
-
 function when_style_ready(map, cb) {
     if (map && map.isStyleLoaded && map.isStyleLoaded()) return cb();
-    if (map && map.once) {
-        let done = false;
-        const run = () => { if (!done) { done = true; cb(); } };
-        map.once('load', run);
-        map.once('style.load', run);
-        setTimeout(run, 4000);
-    }
+    if (!map) return;
+    let done = false;
+    const run = () => { if (!done) { done = true; cb(); } };
+    map.once('style.load', run);
+    // 'idle' is the reliable second chance: isStyleLoaded() can still be false
+    // inside a style.load handler, and style.load never fires twice.
+    map.once('idle', run);
 }
 
-function load_dual() {
-    const station = normalize_station(document.getElementById('drcStation').value)
-        || (window.vortexData && window.vortexData.currentStation);
-    if (!station) { set_status('Enter a station (e.g. KTLX).'); return; }
-
-    const idx = Number(document.getElementById('drcProduct').value) || 0;
-    const p = PRODUCTS[idx];
+/**
+ * Put a radar in the right pane.
+ *
+ * Defaults to whatever the LEFT pane is showing, which is what makes the
+ * compare view useful the instant it opens: the same site and product on both
+ * sides, ready for the operator to click the right pane and change one of them.
+ */
+function seed_dual(station, product) {
     const dm = dual_map();
-    if (!dm) { set_status('Split screen is not active.'); return; }
+    if (!dm) return;
 
-    set_status(`Loading ${station}…`);
+    const main = window.vortexData || {};
+    const S = pane_state('dual');
+
+    const site = station || S.currentStation || main.currentStation;
+    // current_loop_product is the Level 3 code actually on screen (e.g. N0B).
+    const code = product || S.current_loop_product || main.current_loop_product || 'N0B';
+    if (!site) return;
+
+    S.currentStation = site;
+    S.current_loop_product = code;
+    S.from_file_upload = false;
+
     when_style_ready(dm, () => {
-        const cb = () => set_status(`${station} · ${p.label}`);
         try {
-            if (p.srvel) {
-                loaders_nexrad.quick_storm_relative_velocity_plot(station, p.value, cb, 'dual');
-            } else {
-                loaders_nexrad.quick_level_3_plot(station, p.value, cb, 'dual');
-            }
+            loaders_nexrad.quick_level_3_plot(site, code, () => {}, 'dual');
         } catch (err) {
-            console.error('[DualRadar] load failed:', err);
-            set_status('Could not load that station/product.');
+            console.error('[DualRadar] could not seed the right pane:', err);
         }
     });
 }
@@ -149,22 +87,42 @@ function teardown_dual() {
             if (dm.getSource(pane.rangeSourceId)) dm.removeSource(pane.rangeSourceId);
         } catch (e) { /* map may be gone */ }
     }
-    set_status('');
+}
+
+/*
+ * Clicking a pane aims the controls at it.
+ *
+ * Bound in the CAPTURE phase on the container, so it registers the pane before
+ * Mapbox's own handlers or a marker's click handler run — otherwise clicking a
+ * station marker in the right pane would set the pane only after the marker had
+ * already loaded into the old one.
+ */
+function install_pane_focus() {
+    const bind = (id, target) => {
+        const el = document.getElementById(id);
+        if (!el || el._vxPaneBound) return;
+        el._vxPaneBound = true;
+        el.addEventListener('pointerdown', () => {
+            if (!document.body.classList.contains('vortex-split')) return;
+            if (active_pane() !== target) set_active_pane(target);
+        }, true);
+    };
+    bind('map', 'main');
+    bind('mapDual', 'dual');
 }
 
 function init() {
+    install_pane_focus();
+
     window.addEventListener('vortexsplitchange', (e) => {
         const active = !!(e.detail && e.detail.active);
-        build_panel();
-        const panel = document.getElementById('dualRadarControls');
         if (active) {
-            const stEl = document.getElementById('drcStation');
-            if (stEl && !stEl.value && window.vortexData && window.vortexData.currentStation) {
-                stEl.value = window.vortexData.currentStation;
-            }
-            if (panel) panel.style.display = 'block';
+            install_pane_focus();          // #mapDual may have only just appeared
+            set_active_pane('main');
         } else {
-            if (panel) panel.style.display = 'none';
+            // Leaving split screen must hand the controls back to the only pane
+            // left, or the next product choice would vanish into a hidden map.
+            set_active_pane('main');
             teardown_dual();
         }
     });
@@ -172,4 +130,11 @@ function init() {
 
 init();
 
-module.exports = { load_dual };
+// Reached from components/split_screen.js, which is an ES module outside this
+// bundle and so cannot require() into it.
+if (typeof window !== 'undefined') {
+    window.vortexDualRadar = { seed: seed_dual, teardown: teardown_dual };
+    window.vortexPanes = { setActive: set_active_pane, active: active_pane };
+}
+
+module.exports = { seed_dual, teardown_dual };

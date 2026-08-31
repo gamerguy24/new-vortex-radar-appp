@@ -250,6 +250,24 @@ function _init_click_listener() {
 
         window.vortexData.from_file_upload = false;
         loaders_nexrad.quick_level_3_plot(clickedStation, productToLoad, (L3Factory) => {});
+
+        /*
+         * SITE IS SHARED BETWEEN PANES; ONLY THE PRODUCT DIFFERS.
+         *
+         * The station markers live on the main map alone, so there is no way to
+         * pick a different site for the right pane — and rather than half-build
+         * one, both panes follow the site you choose here. That is also the
+         * comparison people actually want: one radar, reflectivity beside
+         * velocity.
+         *
+         * The right pane keeps ITS product and just moves to the new site.
+         */
+        if (document.body.classList.contains('vortex-split') && window.vortexDualRadar) {
+            const dualState = require('../../core/map/radar_panes').pane_state('dual');
+            try {
+                window.vortexDualRadar.seed(clickedStation, dualState.current_loop_product || productToLoad);
+            } catch (err) { console.warn('[DualRadar] could not follow the station change:', err); }
+        }
     });
 }
 
