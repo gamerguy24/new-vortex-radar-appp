@@ -14,7 +14,7 @@ const KEY = 'vortexMenuAccordion';
 // Groups collapsed by default (the bulk of the length). Everything else stays open.
 const DEFAULT_COLLAPSED = new Set([
     'IMAGERY & RADAR', 'SEVERE & FIRE', 'TROPICAL', 'SURFACE & MARINE',
-    'REPORTS & SPOTTERS', 'CAMERAS', 'MORE', 'TOOLS',
+    'REPORTS & SPOTTERS', 'CAMERAS & MORE', 'TOOLS',
 ]);
 
 function loadState() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
