@@ -15,7 +15,10 @@
      computes to auto and un-anchors the element -- that is how the mobile
      console once ended up stacked at the top-left of the page. Safe-area
      padding is applied INSIDE the panel instead (see .vptt-body). */
-  bottom: 16px;
+  /* Raised clear of the map footer, which is centred at bottom:14px and is
+     wide enough to reach here, and inset from the right edge so it does not
+     sit under the zoom controls. */
+  bottom: 88px;
   width: 300px;
   /* The app chrome occupies 100001-100070. Sit above the map furniture
      (100040) but below toasts (100061) and the side panels (100070), which
@@ -40,10 +43,14 @@
 .vptt-title { font-size: 12px; letter-spacing: 0.12em; font-weight: 600; flex: 1; }
 .vptt-title b { color: var(--vx-accent, #e8862b); }
 .vptt-quality { font-size: 12px; cursor: help; }
-.vptt-min {
+.vptt-min, .vptt-close {
   background: none; border: 0; color: var(--vx-text-2, #8996a6);
-  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px;
+  line-height: 1; cursor: pointer; padding: 0 4px;
 }
+.vptt-min { font-size: 18px; }
+/* Close puts the panel away entirely; the bottom-bar launcher brings it back. */
+.vptt-close { font-size: 13px; }
+.vptt-min:hover, .vptt-close:hover { color: var(--vx-text, #e6ecf3); }
 
 /* Connection light. Red is reserved for "the radio is down". */
 .vptt-dot { width: 8px; height: 8px; border-radius: 50%; background: #5d6875; flex: none; }
@@ -156,7 +163,7 @@
     /* Clear of .mapFooter, which is pinned at bottom:8px on mobile and holds
        the app's only product picker -- covering it would be worse than the
        panel being slightly higher. */
-    bottom: 74px;
+    bottom: 92px;
     max-height: 76vh;
     display: flex; flex-direction: column;
   }
@@ -164,3 +171,7 @@
   .vptt-talk { min-height: 108px; font-size: 18px; }
   .vptt-users { max-height: 110px; }
 }
+
+/* Bottom-bar launcher. Lit while the radio is open, like the other tools. */
+#vortexPttBtn .fa.vptt-launch-on,
+#vortexPttBtn.vptt-launch-on .fa { color: var(--vx-accent, #e8862b); }

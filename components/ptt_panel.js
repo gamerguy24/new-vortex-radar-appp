@@ -80,6 +80,25 @@ class VortexPTT {
       root.classList.add('vptt-collapsed');
       this.ui.min.textContent = '+';
     }
+    this.installLauncher();
+
+    /*
+     * Open state is remembered — but only where there is a way back in.
+     *
+     * The standalone /ptt page has no bottom bar and therefore no launcher, so
+     * honouring a saved "closed" there would leave a blank page with no control
+     * to reopen. The saved preference only applies when a launcher exists.
+     */
+    let open = true;
+    if (this.launcher) {
+      open = false;   // on the radar page the map is the point; one click away
+      try {
+        const saved = localStorage.getItem('vortexPttOpen');
+        if (saved !== null) open = saved === '1';
+      } catch (e) { /* private mode */ }
+    }
+    this.setOpen(open);
+
     this.connect();
     this.installKeys();
   }
@@ -94,6 +113,7 @@ class VortexPTT {
         <span class="vptt-title">VORTEX <b>PTT</b></span>
         <span class="vptt-quality" data-role="quality"></span>
         <button class="vptt-min" data-role="min" title="Show or hide the radio">–</button>
+        <button class="vptt-close" data-role="close" title="Close the radio">✕</button>
       </div>
       <div class="vptt-body" data-role="body">
         <select class="vptt-channels" data-role="channels"></select>
@@ -120,7 +140,22 @@ class VortexPTT {
       channels: q('channels'), now: q('now'), talk: q('talk'), hint: q('hint'),
       users: q('users'), net: q('net'), mics: q('mics'), spks: q('spks'), vol: q('vol'),
       key: q('key'), loc: q('loc'), mictest: q('mictest'), meter: q('meter'),
+      close: q('close'),
     };
+
+    /*
+     * Closing is not the same as collapsing.
+     *
+     * Collapsed still holds the socket open and keeps you in the channel — you
+     * are still on the radio, just not looking at it. Closed puts the panel
+     * away entirely, so the map is unobstructed. The socket stays connected
+     * either way: dropping out of a channel because someone tidied the screen
+     * would be a nasty surprise mid-chase.
+     *
+     * The launcher in the bottom bar is what brings it back, so there is always
+     * a way in.
+     */
+    this.ui.close.onclick = (e) => { e.stopPropagation(); this.setOpen(false); };
 
     // The whole header toggles, not just the little button: collapsed, the
     // strip IS the only target, and a control labelled 'minimise' on an
@@ -165,6 +200,57 @@ class VortexPTT {
     t.addEventListener('contextmenu', (e) => e.preventDefault());
 
     this.enumerateDevices();
+  }
+
+  /**
+   * Show or hide the whole panel, and keep the launcher in step.
+   *
+   * Remembered, because someone who closed the radio to see the map wants it
+   * closed next time too — reopening on every load would make the button feel
+   * like it had not worked.
+   */
+  setOpen(open) {
+    this.root.style.display = open ? '' : 'none';
+    if (this.launcher) this.launcher.classList.toggle('vptt-launch-on', open);
+    try { localStorage.setItem('vortexPttOpen', open ? '1' : '0'); } catch (e) { /* private mode */ }
+  }
+
+  isOpen() { return this.root.style.display !== 'none'; }
+
+  /**
+   * A radio icon in the bottom bar, alongside the other tools.
+   *
+   * Built here rather than sitting in index.html because the panel is
+   * staff-only: markup in the page would ship the button to every user and then
+   * have to hide it. Creating it only after access is confirmed means it never
+   * exists for anyone who cannot use it.
+   */
+  installLauncher() {
+    const bar = document.getElementById('vortexBarIcons');
+    if (!bar || document.getElementById('vortexPttBtn')) return;
+
+    const spacer = document.createElement('span');
+    spacer.className = 'vortexIconSpacer noselect';
+
+    const btn = document.createElement('div');
+    btn.id = 'vortexPttBtn';
+    btn.className = 'mapFooterMenuItem';
+    btn.title = 'Vortex PTT — radio';
+    btn.innerHTML = '<span id="vortexPttIcon" class="fa fa-microphone-lines icon-grey menu_item_not_selected"></span>';
+    btn.addEventListener('click', () => {
+      const open = !this.isOpen();
+      this.setOpen(open);
+      // Opening from the launcher should show the radio, not a collapsed strip
+      // the operator then has to click again.
+      if (open) {
+        this.root.classList.remove('vptt-collapsed');
+        this.ui.min.textContent = '–';
+      }
+    });
+
+    bar.appendChild(spacer);
+    bar.appendChild(btn);
+    this.launcher = btn;
   }
 
   installKeys() {
