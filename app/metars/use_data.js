@@ -35,7 +35,23 @@ function useData(data) {
 
             try {
                 var parsedMetarData = metarParser(rawMetarText);
-                var parsedMetarTemp = parseInt(ut.CtoF(parsedMetarData.temperature.celsius));
+                /*
+                 * DEW POINT, NOT TEMPERATURE.
+                 *
+                 * The station plot shows dew point because that is the field
+                 * that matters for the thing this app is for: dew point is what
+                 * says whether there is enough low-level moisture to work with,
+                 * and it does not swing with daytime heating the way
+                 * temperature does. A 95°F afternoon tells you very little; a
+                 * 72°F dew point tells you a great deal.
+                 *
+                 * A station reporting no dew point is skipped rather than shown
+                 * as a blank or a zero — an empty marker on a mesoanalysis is
+                 * worse than no marker.
+                 */
+                if (parsedMetarData.dewpoint == null || parsedMetarData.dewpoint.celsius == null) continue;
+                var parsedMetarTemp = parseInt(ut.CtoF(parsedMetarData.dewpoint.celsius));
+                if (!Number.isFinite(parsedMetarTemp)) continue;
                 var tempColor = getTempColor(parsedMetarTemp);
 
                 // const metar_img_data = metar_plot.metarToImgSrc(metar_plot.rawMetarToMetarPlot(rawMetarText));
@@ -169,10 +185,16 @@ function useData(data) {
             //     'body': metarHTMLBody
             // })
 
-            var metarHTMLBody = 
-`<div style="text-align: center; font-size: 30px; color: ${tempColor[1]}; background-color: ${tempColor[0]}"><b>${parsedMetarTemp}</b> °F</div>
+            // Lead with the dew point, to match what the marker on the map is
+            // showing. A popup headlining a different number from the dot you
+            // clicked reads as a bug. Temperature moves into the detail list.
+            var metarDewF = parseInt(ut.CtoF(metarDewPoint));
+            var dewColor = getTempColor(metarDewF);
+
+            var metarHTMLBody =
+`<div style="text-align: center; font-size: 30px; color: ${dewColor[1]}; background-color: ${dewColor[0]}"><b>${metarDewF}</b> °F dew point</div>
 <i><b>VALID: </b>${metarFancyTime}</i>
-<b>Dew Point: </b>${parseInt(ut.CtoF(metarDewPoint))} °F
+<b>Temperature: </b>${parsedMetarTemp} °F
 <b>Barometer: </b>${metarBarometer} inHG
 <b>Visibility: </b>${metarVisibility} miles
 

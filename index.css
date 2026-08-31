@@ -2336,3 +2336,45 @@ td.day.active, span.month.active, span.year.active {
     #vwsearch { width: min(320px, 56vw) !important; }
     #vwsearch input { font-size: 16px !important; }
 }
+
+/* ── Collapsible map footer ──────────────────────────────────────────────────
+ * The bar carries a lot now — product picker, timeline, speed and a dozen tool
+ * icons — and on a laptop it takes a real bite out of the map. A handle on its
+ * left edge folds it down to just that handle, so the map can be seen whole
+ * without losing the bar entirely.
+ *
+ * Collapsing hides the CONTENTS, not the bar: the handle has to stay on screen
+ * or there is no way back. `display: none` on the children rather than a height
+ * animation, because the bar sizes itself to its content and animating an auto
+ * height needs a fixed value that would go stale the moment a tool is added.
+ */
+#mapFooterCollapse {
+    flex: none;
+    width: 22px;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 0;
+    padding: 0;
+    margin-right: 2px;
+    background: transparent;
+    color: var(--vortex-text-dim, #8996a6);
+    font-size: 12px;
+    line-height: 1;
+    border-radius: 6px;
+}
+#mapFooterCollapse:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--vortex-text, #e6ecf3);
+}
+
+/* Everything except the handle folds away. */
+.mapFooter.vxFooterCollapsed > *:not(#mapFooterCollapse) { display: none !important; }
+.mapFooter.vxFooterCollapsed {
+    padding: 5px 4px;
+    /* Sit out of the way once folded, rather than leaving a wide empty pill. */
+    max-width: none;
+    width: auto !important;
+}

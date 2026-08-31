@@ -19,6 +19,7 @@ import { addBuoys, removeBuoys } from './buoys.js';
 import { addHurricaneTracks, removeHurricaneTracks } from './hurricane_tracks.js';
 import { addBuoyCams, removeBuoyCams } from './buoycams.js';
 import { addFireDanger, removeFireDanger, addDay1FireWx, removeDay1FireWx, addDay2FireWx, removeDay2FireWx, addWildfires, removeWildfires } from './fire_weather.js';
+import { addFirePerimeters, removeFirePerimeters, addActiveFires, removeActiveFires } from './fire_perimeters.js';
 
 function wrapper() { return window.vortexMap || null; }
 
@@ -47,7 +48,41 @@ function closeMenu() {
     if (m) m.style.display = 'none';
 }
 
+/*
+ * Fold the map footer away.
+ *
+ * The choice is remembered, because someone who folded the bar to see the map
+ * wants it folded next time too -- re-expanding on every load would make the
+ * control feel like it had not worked.
+ */
+function initFooterCollapse() {
+    const bar = document.getElementById('mapFooter');
+    const btn = document.getElementById('mapFooterCollapse');
+    if (!bar || !btn) return;
+
+    const apply = (collapsed) => {
+        bar.classList.toggle('vxFooterCollapsed', collapsed);
+        btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        btn.title = collapsed ? 'Show the bar' : 'Hide the bar';
+        const icon = btn.querySelector('i');
+        if (icon) icon.className = collapsed ? 'fa fa-chevron-up' : 'fa fa-chevron-down';
+    };
+
+    let collapsed = false;
+    try { collapsed = localStorage.getItem('vortexFooterCollapsed') === '1'; } catch (e) {}
+    apply(collapsed);
+
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        collapsed = !collapsed;
+        apply(collapsed);
+        try { localStorage.setItem('vortexFooterCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+    });
+}
+
 function init() {
+    initFooterCollapse();
+
     // --- dialogs (close the menu first so they aren't hidden behind it) ---
     onClick('armrLiveCamsBtn', () => { closeMenu(); openCams(); });
     onClick('armrReportWeatherBtn', () => withMap((w) => { closeMenu(); openWeatherReport(w); }, 'Report Weather'));
@@ -67,6 +102,10 @@ function init() {
     onToggle('armrDay1FireWxSwitchElem', (on) => withMap((w) => on ? addDay1FireWx(w) : removeDay1FireWx(), 'Day 1 Fire Wx'));
     onToggle('armrDay2FireWxSwitchElem', (on) => withMap((w) => on ? addDay2FireWx(w) : removeDay2FireWx(), 'Day 2 Fire Wx'));
     onToggle('armrWildfiresSwitchElem', (on) => withMap((w) => on ? addWildfires(w) : removeWildfires(), 'Wildfires'));
+    // NIFC footprint layers -- the burned area, which the placefile layers above
+    // do not carry. See components/fire_perimeters.js.
+    onToggle('armrFirePerimetersSwitchElem', (on) => withMap((w) => on ? addFirePerimeters(w) : removeFirePerimeters(w), 'Fire Perimeters'));
+    onToggle('armrActiveFiresSwitchElem', (on) => withMap((w) => on ? addActiveFires(w) : removeActiveFires(w), 'Active Fires'));
     onToggle('toggle-community-reports-layer', (on) => {
         localStorage.setItem('communityReportsEnabled', on ? 'true' : 'false');
         withMap((w) => on ? addWeatherReportMarkers(w) : removeWeatherReportMarkers(), 'User Storm Reports');

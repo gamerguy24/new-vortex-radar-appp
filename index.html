@@ -168,6 +168,9 @@
         MAP FOOTER
     -->
     <div id="mapFooter" class="mapFooter">
+        <!-- Folds the bar down to just this handle, so the map can be seen
+             whole on a short screen without losing the bar entirely. -->
+        <button id="mapFooterCollapse" title="Hide the bar" aria-expanded="true"><i class="fa fa-chevron-down"></i></button>
         <div id="productMapFooter" style="display: none">
             <div id="productsDropdownTrigger" class="noselect pdt"><span id="footerStation"></span><div id="productsDropdownTriggerText" class="icon-blue pdt">Products</div>
                 <div id="extraProductInfo" class="noselect" style="display: none">Info</div>
@@ -422,79 +425,6 @@
                     </div>
                     <br>
 
-                    <div class="armrHeader">SEVERE & FIRE</div>
-                    <div class="vortexRadarMenuRow armrTop" id="armrSPCOutlooksBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-cloud-bolt"></i>
-                        SPC Outlooks
-                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
-                    </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrDay1FireWxBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
-                        Day 1 Fire Wx
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrDay1FireWxSwitchElem">
-                        </div>
-                    </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrDay2FireWxBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
-                        Day 2 Fire Wx
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrDay2FireWxSwitchElem">
-                        </div>
-                    </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrFireDangerBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
-                        Fire Danger Monitor
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrFireDangerSwitchElem">
-                        </div>
-                    </div>
-                    <div class="vortexRadarMenuRow armrBottom" id="armrWildfiresBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
-                        Wildfires
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrWildfiresSwitchElem">
-                        </div>
-                    </div>
-                    <br>
-
-                    <div class="armrHeader">TROPICAL</div>
-                    <div class="vortexRadarMenuRow armrTop" id="armrHurricanesBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
-                        NHC Hurricanes
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrHurricanesBtnSwitchElem">
-                        </div>
-                    </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrSpaghettiBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-diagram-project"></i>
-                        Spaghetti Models
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSpaghettiBtnSwitchElem">
-                        </div>
-                    </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrHurricaneHuntersBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-plane"></i>
-                        Hurricane Hunters
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrHurricaneHuntersBtnSwitchElem">
-                        </div>
-                    </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrTracksAtlBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
-                        Atlantic Tracks
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrTracksAtlSwitchElem">
-                        </div>
-                    </div>
-                    <div class="vortexRadarMenuRow armrBottom" id="armrTracksEpacBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
-                        Eastern Pacific Tracks
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrTracksEpacSwitchElem">
-                        </div>
-                    </div>
-                    <br>
 
                     <div class="armrHeader">SURFACE & MARINE</div>
                     <div class="vortexRadarMenuRow armrTop" id="armrSurfaceFrontsBtn">
@@ -603,7 +533,22 @@
                     <br>
 
                     <div class="armrHeader">TOOLS</div>
-                    <div class="vortexRadarMenuRow armrTop" id="armrStorm3DBtn">
+                    <div class="vortexRadarMenuRow armrTop" id="armrSevereBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-cloud-bolt"></i>
+                        Severe
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrTropicalBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
+                        Tropical
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrFireBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
+                        Fire
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrStorm3DBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-cube"></i>
                         3D Storm View
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
@@ -925,8 +870,8 @@
 
                     <input type="file" id="hidden_colortable_file_uploader" style="display: none">
                 </div>
-                <div id="vortexRadarMenuSPCScreen" class="armScreen" style="display: none">
-                    <div class="armsHeader"><div class="armsHeaderBackBtn" id="armsSPCBackBtn"><i class="fa fa-chevron-left"></i>&nbsp;Back</div>SPC Outlooks<div class="armsHeaderExitBtn"><i class="fa fa-xmark"></i></div></div>
+                <div id="vortexRadarMenuSevereScreen" class="armScreen" style="display: none">
+                    <div class="armsHeader"><div class="armsHeaderBackBtn" id="armsSevereBackBtn"><i class="fa fa-chevron-left"></i>&nbsp;Back</div>Severe Weather<div class="armsHeaderExitBtn"><i class="fa fa-xmark"></i></div></div>
 
                     <br>
                     <div id="spcDataInfo"></div>
@@ -1002,9 +947,103 @@
                         </tr>
                     </table>
 
+                </div>
+                <div id="vortexRadarMenuTropicalScreen" class="armScreen" style="display: none">
+                    <div class="armsHeader"><div class="armsHeaderBackBtn" id="armsTropicalBackBtn"><i class="fa fa-chevron-left"></i>&nbsp;Back</div>Tropical<div class="armsHeaderExitBtn"><i class="fa fa-xmark"></i></div></div>
+
+                    <br>
+                    <div class="armrHeader">NHC LAYERS</div>
+                    <div class="vortexRadarMenuRow armrTop" id="armrHurricanesBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
+                        NHC Hurricanes
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrHurricanesBtnSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrSpaghettiBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-diagram-project"></i>
+                        Spaghetti Models
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSpaghettiBtnSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrHurricaneHuntersBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-plane"></i>
+                        Hurricane Hunters
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrHurricaneHuntersBtnSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrTracksAtlBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
+                        Atlantic Tracks
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrTracksAtlSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrBottom" id="armrTracksEpacBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
+                        Eastern Pacific Tracks
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrTracksEpacSwitchElem">
+                        </div>
+                    </div>
+                    <br>
+                </div>
+                <div id="vortexRadarMenuFireScreen" class="armScreen" style="display: none">
+                    <div class="armsHeader"><div class="armsHeaderBackBtn" id="armsFireBackBtn"><i class="fa fa-chevron-left"></i>&nbsp;Back</div>Fire<div class="armsHeaderExitBtn"><i class="fa fa-xmark"></i></div></div>
+
+                    <br>
+                    <div class="armrHeader">ACTIVE FIRES</div>
+                    <div class="vortexRadarMenuRow armrTop" id="armrFirePerimetersBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire-flame-curved"></i>
+                        Fire Perimeters
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrFirePerimetersSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrBottom" id="armrActiveFiresBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire-flame-simple"></i>
+                        Active Fires
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrActiveFiresSwitchElem">
+                        </div>
+                    </div>
                     <br>
 
-                    <div style="text-align: center; font-size: 20px; font-weight: bold;">FIRE</div>
+                    <div class="armrHeader">FIRE WEATHER</div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrDay1FireWxBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
+                        Day 1 Fire Wx
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrDay1FireWxSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrDay2FireWxBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
+                        Day 2 Fire Wx
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrDay2FireWxSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrFireDangerBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
+                        Fire Danger Monitor
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrFireDangerSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrBottom" id="armrWildfiresBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
+                        Wildfires
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrWildfiresSwitchElem">
+                        </div>
+                    </div>
+                    <br>
+
+                    <div class="armrHeader">SPC FIRE OUTLOOKS</div>
+<div style="text-align: center; font-size: 20px; font-weight: bold;">FIRE</div>
                     <table style="width: 100%" class="spcTable">
                         <tr>
                             <th class="spcTable"></th>
@@ -1034,6 +1073,7 @@
                             </td>
                         </tr>
                     </table>
+                    <br>
                 </div>
             </div>
         </div>

@@ -125,13 +125,27 @@ const fadeDuration = 150;
 
 var mainMenuScreen = '#vortexRadarMenuMainScreen';
 var settingsScreen = '#vortexRadarMenuSettingsScreen';
-var spcScreen = '#vortexRadarMenuSPCScreen';
+// SPC Outlooks became three screens — Severe, Tropical and Fire — each
+// reachable from TOOLS. severeScreen is the old spcScreen renamed, so the
+// convective tables inside it are untouched.
+var severeScreen = '#vortexRadarMenuSevereScreen';
+var tropicalScreen = '#vortexRadarMenuTropicalScreen';
+var fireScreen = '#vortexRadarMenuFireScreen';
+
+// The three occupy the same slot, so opening one must hide the others —
+// otherwise a previously-opened screen shows through underneath.
+function hideCategoryScreens(done) {
+    $(severeScreen).hide();
+    $(tropicalScreen).hide();
+    $(fireScreen).hide();
+    if (done) done();
+}
 var dealiasScreen = '#vortexRadarMenuDealiasScreen';
 var colortablesScreen = '#vortexRadarMenuColortablesScreen';
 
 $('#armrSettingsBtn').click(function() {
     $(mainMenuScreen).fadeOut(fadeDuration, function() {
-        $(spcScreen).fadeOut(fadeDuration, function() {
+        hideCategoryScreens(function() {
             $(settingsScreen).scrollTop(0).fadeIn(fadeDuration);
         });
     });
@@ -149,26 +163,39 @@ $('#armrSettingsBtn').click(function() {
 })
 $('#armsSettingsBackBtn').click(function() {
     $(settingsScreen).fadeOut(fadeDuration, function() {
-        $(spcScreen).fadeOut(fadeDuration, function() {
+        hideCategoryScreens(function() {
             $(mainMenuScreen).scrollTop(0).fadeIn(fadeDuration);
         });
     });
 })
 
-$('#armrSPCOutlooksBtn').click(function() {
+/*
+ * Severe, Tropical and Fire share one open-and-close shape, so they share one
+ * pair of helpers rather than three near-identical copies of the old SPC
+ * handler. Each is reached from TOOLS and returns to the main menu.
+ */
+function openCategoryScreen(screen) {
     $(mainMenuScreen).fadeOut(fadeDuration, function() {
         $(settingsScreen).fadeOut(fadeDuration, function() {
-            $(spcScreen).fadeIn(fadeDuration);
+            hideCategoryScreens();
+            $(screen).scrollTop(0).fadeIn(fadeDuration);
         });
     });
-})
-$('#armsSPCBackBtn').click(function() {
-    $(settingsScreen).fadeOut(fadeDuration, function() {
-        $(spcScreen).fadeOut(fadeDuration, function() {
-            $(mainMenuScreen).scrollTop(0).fadeIn(fadeDuration);
-        });
+}
+function closeCategoryScreen(screen) {
+    $(screen).fadeOut(fadeDuration, function() {
+        $(mainMenuScreen).scrollTop(0).fadeIn(fadeDuration);
     });
-})
+}
+
+$('#armrSevereBtn').click(function() { openCategoryScreen(severeScreen); })
+$('#armsSevereBackBtn').click(function() { closeCategoryScreen(severeScreen); })
+
+$('#armrTropicalBtn').click(function() { openCategoryScreen(tropicalScreen); })
+$('#armsTropicalBackBtn').click(function() { closeCategoryScreen(tropicalScreen); })
+
+$('#armrFireBtn').click(function() { openCategoryScreen(fireScreen); })
+$('#armsFireBackBtn').click(function() { closeCategoryScreen(fireScreen); })
 
 $('#armrDealiasSettingsBtn').click(function() {
     $(mainMenuScreen).fadeOut(fadeDuration, function() {

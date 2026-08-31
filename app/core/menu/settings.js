@@ -16,7 +16,12 @@ $(iconElem).on('click', function() {
     armFunctions.showARMwindow();
 
     $('#vortexRadarMenuSettingsScreen').hide();
-    $('#vortexRadarMenuSPCScreen').hide();
+    // SPC Outlooks split into Severe / Tropical / Fire. All three share the
+    // settings slot, so all three have to be hidden when the menu reopens on
+    // the main screen — leaving one visible shows it through underneath.
+    $('#vortexRadarMenuSevereScreen').hide();
+    $('#vortexRadarMenuTropicalScreen').hide();
+    $('#vortexRadarMenuFireScreen').hide();
     $('#vortexRadarMenuMainScreen').show();
 })
 
