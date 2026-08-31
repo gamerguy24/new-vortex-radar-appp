@@ -62,4 +62,38 @@ function pane_state(target) {
     return window.vortexData.panes.dual;
 }
 
-module.exports = { get_pane, pane_state };
+/*
+ * WHICH PANE DO THE CONTROLS DRIVE?
+ *
+ * In split screen the product menu has to act on ONE pane, and the operator
+ * says which by clicking it — the way RadarOmega works. Purely additive: no
+ * existing function's behaviour changes, and active_pane() returns 'main'
+ * whenever split screen is off, so single-pane use cannot be affected.
+ */
+function active_pane() {
+    try {
+        if (typeof document === 'undefined' || !document.body) return 'main';
+        if (!document.body.classList.contains('vortex-split')) return 'main';
+        return normalize(window.vortexData && window.vortexData.activePane);
+    } catch (e) {
+        return 'main';   // any doubt at all, drive the pane that is always there
+    }
+}
+
+function set_active_pane(target) {
+    const t = normalize(target);
+    try {
+        if (!window.vortexData) window.vortexData = {};
+        window.vortexData.activePane = t;
+        // Mark the panes so CSS can show which one is being driven. A mode you
+        // cannot see is a mode you forget you are in, and forgetting here means
+        // changing the wrong map during severe weather.
+        const main = document.getElementById('map');
+        const dual = document.getElementById('mapDual');
+        if (main) main.classList.toggle('vortex-pane-active', t === 'main');
+        if (dual) dual.classList.toggle('vortex-pane-active', t === 'dual');
+    } catch (e) { /* cosmetic; never worth throwing over */ }
+    return t;
+}
+
+module.exports = { get_pane, pane_state, active_pane, set_active_pane };

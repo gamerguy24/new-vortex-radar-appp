@@ -2378,3 +2378,23 @@ td.day.active, span.month.active, span.year.active {
     max-width: none;
     width: auto !important;
 }
+
+/* Active pane (split screen): which map the product menu is driving. Inset
+   shadow on a pseudo-element rather than a border, so the map canvas is never
+   resized, and pointer-events:none so it can never swallow a click. */
+body.vortex-split #map,
+body.vortex-split #mapDual { position: absolute; }
+body.vortex-split #map::after,
+body.vortex-split #mapDual::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 2px transparent;
+    transition: box-shadow 0.12s ease;
+    z-index: 5;
+}
+body.vortex-split #map.vortex-pane-active::after,
+body.vortex-split #mapDual.vortex-pane-active::after {
+    box-shadow: inset 0 0 0 2px var(--vx-accent, #e8862b);
+}

@@ -137,4 +137,11 @@ function init() {
 
 init();
 
+// Reached from components/split_screen.js, which is an ES module outside this
+// bundle and so cannot require() into it.
+if (typeof window !== 'undefined') {
+    const panes = require('../../core/map/radar_panes');
+    window.vortexPanes = { setActive: panes.set_active_pane, active: panes.active_pane };
+}
+
 module.exports = { load_dual };

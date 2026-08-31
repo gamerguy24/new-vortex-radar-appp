@@ -114,10 +114,22 @@ $('.psmRow').click(function(e) {
         require('../../radar/animation/radar_loop').reset();
 
         window.vortexData.from_file_upload = false;
+
+        /*
+         * In split screen this menu drives whichever pane was last clicked.
+         *
+         * active_pane() returns 'main' whenever split is off, so the ordinary
+         * single-pane path is byte-for-byte what it was. Wrapped because a
+         * failure to resolve the pane must fall back to the main map rather
+         * than leave the product menu doing nothing.
+         */
+        let target = 'main';
+        try { target = require('../map/radar_panes').active_pane(); } catch (e) { target = 'main'; }
+
         if (value == 'srvel') {
-            loaders_nexrad.quick_storm_relative_velocity_plot(currentStation, resultProduct, (L3Factory) => { });
+            loaders_nexrad.quick_storm_relative_velocity_plot(currentStation, resultProduct, (L3Factory) => { }, target);
         } else {
-            loaders_nexrad.quick_level_3_plot(currentStation, resultProduct, (L3Factory) => { });
+            loaders_nexrad.quick_level_3_plot(currentStation, resultProduct, (L3Factory) => { }, target);
         }
         // loaders.getLatestFile(currentStation, [3, resultProduct, 0], function(url) {
         //     console.log(url)

@@ -106,6 +106,32 @@ function ensureDual() {
     return dualMap;
 }
 
+/*
+ * Clicking a pane aims the product menu at it.
+ *
+ * Bound once, in the capture phase, so the pane registers before Mapbox's own
+ * handlers run. Every call is guarded: this is a convenience, and a failure
+ * here must never interfere with using the map.
+ */
+let paneFocusBound = false;
+function installPaneFocus() {
+    if (paneFocusBound) return;
+    const setActive = window.vortexPanes && window.vortexPanes.setActive;
+    if (!setActive) return;          // bundle not ready yet; enable() retries
+
+    const bind = (id, target) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('pointerdown', () => {
+            if (!splitActive) return;
+            try { setActive(target); } catch (e) { /* cosmetic */ }
+        }, true);
+    };
+    bind('map', 'main');
+    bind('mapDual', 'dual');
+    paneFocusBound = true;
+}
+
 function setBtn(on) {
     const icon = document.getElementById('vortexSplitIcon');
     if (icon) {
@@ -127,6 +153,10 @@ function enable() {
     // so re-assert the theme then as well. Idempotent.
     themeDual();
 
+    // Aim the controls at the left pane to begin with, and wire pane clicks.
+    installPaneFocus();
+    try { if (window.vortexPanes) window.vortexPanes.setActive('main'); } catch (e) { /* cosmetic */ }
+
     // Let the CSS width change apply, then resize both GL canvases.
     requestAnimationFrame(() => { main.resize(); if (dualMap) dualMap.resize(); });
     setBtn(true);
@@ -135,6 +165,9 @@ function enable() {
 
 function disable() {
     splitActive = false;
+    // Hand the controls back to the only pane left, or the next product choice
+    // would vanish into a map that is no longer on screen.
+    try { if (window.vortexPanes) window.vortexPanes.setActive('main'); } catch (e) { /* cosmetic */ }
     document.body.classList.remove('vortex-split');
     requestAnimationFrame(() => { const m = mainMap(); if (m) m.resize(); });
     setBtn(false);
