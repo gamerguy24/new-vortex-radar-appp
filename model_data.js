@@ -16,7 +16,7 @@
  *   GET /api/models/:id/list?prefix         -> S3 listing (browse; used by NDFD)
  */
 
-const { renderField, legendFor } = require('./grib2_render');
+const { renderField, renderVectorMagnitude, legendFor } = require('./grib2_render');
 const { buildSounding } = require('./soundings_grib');
 const os = require('os');
 const fs = require('fs');
@@ -315,17 +315,44 @@ function attachModels(app, requireAuth) {
       }
       if (!msg) return res.status(404).json({ error: 'Field not found; check /index' });
 
+      /*
+       * Optional SECOND message -> render sqrt(a^2 + b^2) instead of the field
+       * itself. Bulk wind shear is only stored as separate u and v components
+       * (VUCSH / VVCSH), so the quantity a forecaster actually wants has no
+       * single GRIB message and must be derived from the pair.
+       */
+      let msg2 = null;
+      if (req.query.msg2 != null) {
+        msg2 = messages.find((x) => x.n === Number(req.query.msg2)) || null;
+        if (!msg2) return res.status(404).json({ error: 'Second field not found; check /index' });
+      } else if (req.query.var2) {
+        const v2 = String(req.query.var2).toUpperCase();
+        const lvl2 = req.query.level2 ? String(req.query.level2).toLowerCase() : (msg.level || '').toLowerCase();
+        msg2 = messages.find((x) => x.variable.toUpperCase() === v2 && (!lvl2 || x.level.toLowerCase() === lvl2)) || null;
+        if (!msg2) return res.status(404).json({ error: 'Second field not found; check /index' });
+      }
+
       // Optional small render for thumbnails (w=180 etc.); default full res.
       const maxW = Math.max(60, Math.min(1600, Number(req.query.w) || 1400));
-      const cacheKey = `${req.params.id}:${date}:${cycle}:${fhr}:${msg.n}:${bbox.join(',')}:${maxW}`;
+      const cacheKey = `${req.params.id}:${date}:${cycle}:${fhr}:${msg.n}${msg2 ? '+' + msg2.n : ''}:${bbox.join(',')}:${maxW}`;
       let entry = pngGet(cacheKey);
       if (!entry) {
-        const range = `bytes=${msg.start}-${msg.end == null ? '' : msg.end}`;
-        const upstream = await fetch(s3KeyUrl(m.bucket, key), { headers: { Range: range } });
-        if (!(upstream.ok || upstream.status === 206)) return res.status(502).json({ error: `S3 ${upstream.status}` });
-        const bytes = new Uint8Array(await upstream.arrayBuffer());
-        const { png } = renderField(bytes, msg.variable, bbox, maxW);
-        entry = { png, variable: msg.variable, level: msg.level, legend: legendFor(msg.variable) };
+        const fileUrl = s3KeyUrl(m.bucket, key);
+        const grab = async (mm) => {
+          const range = `bytes=${mm.start}-${mm.end == null ? '' : mm.end}`;
+          const up = await fetch(fileUrl, { headers: { Range: range } });
+          if (!(up.ok || up.status === 206)) throw new Error(`S3 ${up.status}`);
+          return new Uint8Array(await up.arrayBuffer());
+        };
+        if (msg2) {
+          // One request each; they are separate byte ranges of the same object.
+          const [a, b] = await Promise.all([grab(msg), grab(msg2)]);
+          const { png } = renderVectorMagnitude(a, b, msg.variable, bbox, maxW);
+          entry = { png, variable: msg.variable, level: msg.level, legend: legendFor(msg.variable) };
+        } else {
+          const { png } = renderField(await grab(msg), msg.variable, bbox, maxW);
+          entry = { png, variable: msg.variable, level: msg.level, legend: legendFor(msg.variable) };
+        }
         pngSet(cacheKey, entry);
       }
       res.setHeader('Content-Type', 'image/png');

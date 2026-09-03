@@ -35,17 +35,52 @@ const PRESETS = [
   { label: 'Reflectivity', v: 'REFC', lvl: 'entire atmosphere', icon: '📡' },
   { label: 'MSLP', v: 'PRMSL', lvl: 'mean sea level', icon: '🌀' },
   { label: 'Surface CAPE', v: 'CAPE', lvl: 'surface', icon: '⚡' },
+  // Severe-parameter set. CAPE at the mixed-layer (180-0 mb) and most-unstable
+  // (255-0 mb) parcels is what a warning decision actually leans on; surface
+  // CAPE alone overreads a shallow hot layer.
+  { label: 'MLCAPE', v: 'CAPE', lvl: '180-0 mb above ground', icon: '⚡' },
+  { label: 'MUCAPE', v: 'CAPE', lvl: '255-0 mb above ground', icon: '⚡' },
+  // Bulk shear has no single GRIB message — it is the magnitude of the u/v
+  // component pair, so these carry a second variable and the server renders
+  // sqrt(u^2 + v^2). Presets that cannot resolve BOTH halves are hidden.
+  { label: '0–6 km Shear', v: 'VUCSH', v2: 'VVCSH', lvl: '0-6000 m above ground', icon: '🌬️' },
+  { label: '0–1 km Shear', v: 'VUCSH', v2: 'VVCSH', lvl: '0-1000 m above ground', icon: '🌬️' },
+  // Helicity: the rotational half of the shear picture, one message each.
+  { label: '0–3 km SRH', v: 'HLCY', lvl: '3000-0 m above ground', icon: '🌪️' },
+  { label: '0–1 km SRH', v: 'HLCY', lvl: '1000-0 m above ground', icon: '🌪️' },
   { label: 'Precip. Water', v: 'PWAT', lvl: 'entire atmosphere', icon: '💧' },
   { label: '850 mb Temp', v: 'TMP', lvl: '850 mb', icon: '🌡️' },
   { label: '500 mb Temp', v: 'TMP', lvl: '500 mb', icon: '❄️' },
   { label: 'Total Precip', v: 'APCP', lvl: 'surface', icon: '🌧️' },
 ];
 const CONUS_BBOX = '-125,24,-66.5,50';
-// Find the index message matching a preset (variable exact; level starts-with).
+/*
+ * Find the index message matching a preset (variable exact; level starts-with).
+ *
+ * A preset with `v2` is a two-component vector (bulk shear): it resolves to the
+ * u message carrying `n2`, the v message's number, which the caller passes to
+ * the server as msg2 so it can render the magnitude. Both halves must be
+ * present or the preset resolves to null and the card is hidden — half a shear
+ * field is worse than none.
+ *
+ * The preset's label rides along as the overlay/legend title, so a derived
+ * field reads "0–6 km Shear" rather than the raw "VUCSH · 0-6000 m above ground".
+ */
 function resolvePreset(messages, p) {
-  const v = p.v.toUpperCase(), lvl = p.lvl.toLowerCase();
-  return messages.find((m) => m.variable.toUpperCase() === v && m.level.toLowerCase().startsWith(lvl)) || null;
+  const find = (name, lvl) => {
+    const v = String(name).toUpperCase(), L = String(lvl).toLowerCase();
+    return messages.find((m) => m.variable.toUpperCase() === v && m.level.toLowerCase().startsWith(L)) || null;
+  };
+  const msg = find(p.v, p.lvl);
+  if (!msg) return null;
+  if (!p.v2) return Object.assign({}, msg, { label: p.label });
+  const msg2 = find(p.v2, p.lvl2 || p.lvl);
+  if (!msg2) return null;
+  return Object.assign({}, msg, { n2: msg2.n, label: p.label });
 }
+
+// "&msg2=..." for two-component presets; empty for everything else.
+function msg2Param(msg) { return msg && msg.n2 != null ? `&msg2=${msg.n2}` : ''; }
 
 function injectPhase2Styles() {
   if (document.getElementById('vmp-p2-styles')) return;
@@ -176,13 +211,15 @@ function viewBounds() {
 async function plotField(m, msg, btn) {
   const map = mapObj();
   if (!map) { alert('Map is not ready yet.'); return; }
-  if (state.plotted && state.plotted.model === m.id && state.plotted.msg === msg.n) { clearOverlay(); return; }
+  if (state.plotted && state.plotted.model === m.id && state.plotted.msg === msg.n
+      && String(state.plotted.msg2) === String(msg.n2 == null ? null : msg.n2)) { clearOverlay(); return; }
   const { W, E, S, N, bbox } = viewBounds();
-  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${msg.n}&bbox=${bbox}`;
+  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${msg.n}${msg2Param(msg)}&bbox=${bbox}`;
   const label = btn ? btn.textContent : '';
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
   try {
-    await plotOverlayFromUrl(url, W, E, S, N, { model: m.id, msg: msg.n }, `${msg.variable} · ${msg.level}`);
+    await plotOverlayFromUrl(url, W, E, S, N, { model: m.id, msg: msg.n, msg2: msg.n2 == null ? null : msg.n2 },
+      msg.label || `${msg.variable} · ${msg.level}`);
     markActive();
   } catch (e) {
     alert('Could not plot this field:\n' + e.message
@@ -196,7 +233,10 @@ async function plotField(m, msg, btn) {
 function markActive(fallbackLabel) {
   if (!panel) return;
   panel.querySelectorAll('.vmp-row').forEach((row) => {
-    const on = state.plotted && String(row.dataset.msg) === String(state.plotted.msg) && state.model && state.plotted.model === state.model.id;
+    // A two-component overlay shares its msg number with the raw u-component
+    // row, so exclude derived fields or plotting shear would light up VUCSH.
+    const on = state.plotted && state.plotted.msg2 == null
+      && String(row.dataset.msg) === String(state.plotted.msg) && state.model && state.plotted.model === state.model.id;
     const btn = row.querySelector('.vmp-plot');
     if (btn) { btn.textContent = on ? 'On' : 'Plot'; btn.classList.toggle('active', !!on); }
   });
@@ -337,7 +377,7 @@ function loadThumbs(m, thumbs) {
   const worker = async () => {
     while (i < thumbs.length && seq === _thumbSeq) {
       const t = thumbs[i++];
-      const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${t.msg.n}&bbox=${CONUS_BBOX}&w=240`;
+      const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${t.msg.n}${msg2Param(t.msg)}&bbox=${CONUS_BBOX}&w=240`;
       try {
         const res = await fetch(url);
         if (!res.ok || seq !== _thumbSeq) continue;
@@ -378,7 +418,7 @@ function prefetchHour(idx) {
       const map = mapObj(); if (!map) return;
       const b = map.getBounds();
       const bbox = `${Math.max(-179, b.getWest()).toFixed(3)},${Math.max(-85, b.getSouth()).toFixed(3)},${Math.min(179, b.getEast()).toFixed(3)},${Math.min(85, b.getNorth()).toFixed(3)}`;
-      fetch(`${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${fhr}&msg=${msg.n}&bbox=${bbox}`).catch(() => {});
+      fetch(`${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${fhr}&msg=${msg.n}${msg2Param(msg)}&bbox=${bbox}`).catch(() => {});
     }).catch(() => {});
 }
 

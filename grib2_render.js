@@ -45,6 +45,19 @@ const RAMPS = {
     stops: [[250, [90, 150, 210]], [500, [90, 200, 130]], [1000, [230, 220, 90]], [2000, [240, 160, 55]],
       [3000, [230, 90, 55]], [4000, [190, 40, 60]], [5000, [210, 120, 235]]],
   },
+  // bulk wind shear magnitude (kt). Breaks track forecast-desk thresholds:
+  // ~20 kt is marginal, 35-40 kt is the supercell range, 50+ is strong.
+  shear: {
+    underAlpha: true,
+    stops: [[10, [90, 120, 160]], [20, [70, 155, 200]], [30, [60, 195, 145]], [40, [235, 225, 90]],
+      [50, [240, 160, 55]], [60, [230, 90, 55]], [75, [190, 40, 60]], [90, [210, 120, 235]]],
+  },
+  // storm-relative helicity (m^2/s^2)
+  srh: {
+    underAlpha: true,
+    stops: [[50, [90, 130, 190]], [100, [70, 180, 170]], [150, [110, 205, 100]], [250, [235, 220, 90]],
+      [400, [240, 150, 55]], [600, [225, 70, 60]], [800, [205, 110, 230]]],
+  },
   // mean sea-level pressure (hPa) — diverging around 1013
   mslp: {
     underAlpha: true,
@@ -63,6 +76,10 @@ function classify(variable) {
   const v = String(variable).toUpperCase();
   if (/REF|RETOP|REFC|REFD|REFL/.test(v)) return 'refl';
   if (/CAPE/.test(v)) return 'cape';
+  // Before the wind rule: these are shear/helicity fields, not wind speeds, and
+  // without their own cases they fell through to the temperature ramp.
+  if (/^VUCSH|^VVCSH|SHEAR|^BSHR/.test(v)) return 'shear';
+  if (/^HLCY|HELIC|^SRH/.test(v)) return 'srh';
   if (/PRMSL|MSLET|MSLMA|^MSL/.test(v)) return 'mslp';
   if (/RH$|^RH|POP|TCDC|SKY|CLOUD|^RHM/.test(v)) return 'percent';
   if (/WIND|GUST|^UGRD|^VGRD|^VEL|^WS/.test(v)) return 'wind';
@@ -74,13 +91,16 @@ function classify(variable) {
 // Physical value -> ramp units. Temp K->F; wind m/s->kt; mslp Pa->hPa; else raw.
 function toRampUnits(kind, v) {
   if (kind === 'temp') return (v - 273.15) * 9 / 5 + 32;
-  if (kind === 'wind') return v * 1.943844;
+  if (kind === 'wind' || kind === 'shear') return v * 1.943844;
   if (kind === 'mslp') return v / 100;
   return v;
 }
 
 // Units label per kind, for the client legend.
-const KIND_UNIT = { temp: '°F', refl: 'dBZ', precip: 'mm', wind: 'kt', cape: 'J/kg', mslp: 'hPa', percent: '%' };
+const KIND_UNIT = {
+  temp: '°F', refl: 'dBZ', precip: 'mm', wind: 'kt', cape: 'J/kg', mslp: 'hPa',
+  percent: '%', shear: 'kt', srh: 'm²/s²',
+};
 
 // Legend descriptor for a variable: ramp stops (in display units) + unit label.
 function legendFor(variable) {
@@ -155,15 +175,17 @@ function makeSampler(grid) {
   return () => -1;
 }
 
-// Render a decoded field to a PNG buffer over bbox [W,S,E,N] at up to maxW wide.
-function renderField(gribBytes, variable, bbox, maxW = 1400) {
-  const { values, grid } = decodeGrib2Message(gribBytes);
+/*
+ * Shared raster loop. `valueAt(lon, lat)` returns the field's physical value
+ * there, or null/NaN for "no data" (off-grid or missing), which is drawn fully
+ * transparent. Factored out so the single-field and vector-magnitude renderers
+ * cannot drift apart in projection, orientation or transparency handling.
+ */
+function rasterize(valueAt, kind, bbox, maxW) {
   const [W, S, E, N] = bbox;
   const OW = Math.min(maxW, 1600);
   const OH = Math.max(1, Math.round(OW * (N - S) / (E - W)));
-  const kind = classify(variable);
   const ramp = RAMPS[kind];
-  const sample = makeSampler(grid);
 
   const png = new PNG({ width: OW, height: OH });
   const data = png.data;
@@ -172,16 +194,51 @@ function renderField(gribBytes, variable, bbox, maxW = 1400) {
     const lat = N - (py + 0.5) / OH * (N - S);
     for (let px = 0; px < OW; px++) {
       const lon = W + (px + 0.5) / OW * (E - W);
-      const idx = sample(lon, lat);
       const di4 = (py * OW + px) * 4;
-      if (idx < 0) { data[di4 + 3] = 0; continue; }
-      const v = values[idx];
-      if (!Number.isFinite(v)) { data[di4 + 3] = 0; continue; }
+      const v = valueAt(lon, lat);
+      if (v == null || !Number.isFinite(v)) { data[di4 + 3] = 0; continue; }
       rampColor(ramp, toRampUnits(kind, v), col);
       data[di4] = col[0]; data[di4 + 1] = col[1]; data[di4 + 2] = col[2]; data[di4 + 3] = col[3];
     }
   }
   return { png: PNG.sync.write(png), width: OW, height: OH, kind };
+}
+
+// Render a decoded field to a PNG buffer over bbox [W,S,E,N] at up to maxW wide.
+function renderField(gribBytes, variable, bbox, maxW = 1400) {
+  const { values, grid } = decodeGrib2Message(gribBytes);
+  const sample = makeSampler(grid);
+  return rasterize((lon, lat) => {
+    const idx = sample(lon, lat);
+    return idx < 0 ? null : values[idx];
+  }, classify(variable), bbox, maxW);
+}
+
+/*
+ * Render the MAGNITUDE of a two-component vector field: sqrt(u^2 + v^2).
+ *
+ * Bulk wind shear is stored as separate u and v components (VUCSH / VVCSH), so
+ * there is no single GRIB message to colorize — the thing a forecaster wants to
+ * see has to be computed from the pair. Both components are sampled at the same
+ * lon/lat and a pixel is drawn only where both are present, so the edge of one
+ * component's grid cannot leave a fringe of half-valid shear.
+ *
+ * Each component gets its own sampler rather than a shared grid index: they are
+ * the same grid in every file we read, but assuming that would fail silently
+ * and wrongly if it ever stopped being true.
+ */
+function renderVectorMagnitude(uBytes, vBytes, variable, bbox, maxW = 1400) {
+  const u = decodeGrib2Message(uBytes);
+  const v = decodeGrib2Message(vBytes);
+  const sampleU = makeSampler(u.grid);
+  const sampleV = makeSampler(v.grid);
+  return rasterize((lon, lat) => {
+    const iu = sampleU(lon, lat); if (iu < 0) return null;
+    const iv = sampleV(lon, lat); if (iv < 0) return null;
+    const a = u.values[iu], b = v.values[iv];
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    return Math.hypot(a, b);
+  }, classify(variable), bbox, maxW);
 }
 
 // Sample one decoded field at a lon/lat (nearest grid point). Returns null if
@@ -193,4 +250,4 @@ function sampleAt(grid, values, lon, lat) {
   return Number.isFinite(v) ? v : null;
 }
 
-module.exports = { renderField, classify, legendFor, makeSampler, sampleAt };
+module.exports = { renderField, renderVectorMagnitude, classify, legendFor, makeSampler, sampleAt };
