@@ -184,6 +184,50 @@ function decodeData(buf, drs, data, npts) {
   return vals;
 }
 
+/*
+ * Fallback decoder for packings this module does not implement.
+ *
+ * ECMWF packs its open data with CCSDS/AEC (DRS template 42), an entropy codec
+ * that is a substantial project in its own right — NCEP uses simple and
+ * complex packing, which is all the hand-written path above covers. Rather
+ * than reimplement AEC, those messages are handed to gribberish, a compiled
+ * GRIB2 library, for the VALUES only; the grid definition is still parsed
+ * here, so sampling and projection stay on one code path.
+ *
+ * Loaded lazily and tolerated if absent: a host that has not reinstalled
+ * dependencies keeps every NOAA model working and only loses the packings that
+ * need it.
+ */
+let _gribberish;
+function loadGribberish() {
+  if (_gribberish === undefined) {
+    try { _gribberish = require('@mattnucc/gribberish'); }
+    catch (e) { _gribberish = null; }
+  }
+  return _gribberish;
+}
+
+function decodeViaGribberish(buf, npts, tmpl) {
+  const g = loadGribberish();
+  if (!g) {
+    throw new Error(`Unsupported DRS template ${tmpl} (install @mattnucc/gribberish to read this model)`);
+  }
+  const msgs = g.parseMessagesFromBuffer(buf);
+  if (!msgs || !msgs.length) throw new Error(`Could not read DRS template ${tmpl} message`);
+  const data = msgs[0].data;
+  if (!data || data.length !== npts) {
+    // A length mismatch means the two libraries disagree about the grid, and
+    // every value would land in the wrong place. Refuse rather than draw it.
+    throw new Error(`DRS ${tmpl} decode returned ${data ? data.length : 0} values, expected ${npts}`);
+  }
+  const out = new Float32Array(npts);
+  for (let i = 0; i < npts; i++) {
+    const v = data[i];
+    out[i] = (v == null || !Number.isFinite(v)) ? NaN : v;
+  }
+  return out;
+}
+
 function decodeGrib2Message(bytes) {
   const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   if (String.fromCharCode(buf[0], buf[1], buf[2], buf[3]) !== 'GRIB') throw new Error('Not GRIB2');
@@ -191,7 +235,16 @@ function decodeGrib2Message(bytes) {
   if (!sec[3] || !sec[5] || !sec[7]) throw new Error('Missing GRIB2 sections');
   const grid = parseGDS(buf, sec[3]);
   const npts = grid.nx * grid.ny;
-  const packed = decodeData(buf, sec[5], sec[7], npts);
+
+  let packed;
+  try {
+    packed = decodeData(buf, sec[5], sec[7], npts);
+  } catch (e) {
+    const tmpl = u16(buf, sec[5].off + 9);
+    if (!/Unsupported DRS template/.test(String(e.message))) throw e;
+    // gribberish applies the bitmap itself, so this path is already complete.
+    return { values: decodeViaGribberish(buf, npts, tmpl), nx: grid.nx, ny: grid.ny, grid };
+  }
   const bitmap = parseBitmap(buf, sec[6], npts);
 
   let values;

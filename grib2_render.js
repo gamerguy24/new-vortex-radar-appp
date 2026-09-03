@@ -70,20 +70,106 @@ const RAMPS = {
     stops: [[10, [150, 110, 70]], [30, [185, 165, 95]], [50, [120, 185, 120]],
       [70, [70, 185, 150]], [85, [55, 150, 205]], [100, [45, 90, 200]]],
   },
+  /*
+   * Instantaneous precipitation rate. GRIB stores this as kg/m²/s, which for
+   * even heavy rain is ~0.003 — every value fell below the accumulation ramp's
+   * first stop (0.2 mm) and the whole field rendered transparent. Its own kind
+   * exists so toRampUnits can convert to mm/hr, where the numbers mean
+   * something to a forecaster.
+   */
+  prate: {
+    underAlpha: false,
+    stops: [[0.1, [120, 230, 120]], [0.5, [60, 195, 85]], [1, [40, 150, 60]], [2.5, [235, 230, 95]],
+      [5, [235, 170, 50]], [10, [230, 80, 50]], [25, [160, 30, 120]], [50, [210, 150, 230]]],
+  },
+  // convective inhibition (J/kg). GRIB stores CIN negative, so the ramp runs
+  // from strongly capped up to uncapped and the LAST stop is the weakest.
+  cin: {
+    underAlpha: true,
+    stops: [[-300, [80, 20, 90]], [-200, [140, 30, 70]], [-125, [205, 70, 60]],
+      [-75, [235, 150, 60]], [-50, [235, 215, 110]], [-25, [190, 210, 160]], [0, [225, 235, 235]]],
+  },
+  // lifted index (°C) — negative is unstable, so the warm end is the low end.
+  li: {
+    underAlpha: true,
+    stops: [[-12, [150, 40, 170]], [-8, [200, 40, 60]], [-5, [235, 120, 55]], [-2, [235, 215, 100]],
+      [0, [220, 230, 220]], [4, [110, 180, 200]], [10, [60, 100, 190]]],
+  },
+  // environmental lapse rate (°C/km). 6.5 is the standard atmosphere; 8+ is steep.
+  lapse: {
+    underAlpha: true,
+    stops: [[4, [60, 90, 170]], [5.5, [70, 160, 200]], [6.5, [120, 200, 150]], [7, [230, 225, 100]],
+      [7.5, [240, 165, 55]], [8, [225, 75, 55]], [8.5, [175, 30, 55]], [9.5, [215, 130, 235]]],
+  },
+  // energy-helicity index (dimensionless)
+  ehi: {
+    underAlpha: true,
+    stops: [[0.5, [90, 140, 200]], [1, [80, 195, 150]], [1.5, [150, 210, 90]], [2, [235, 220, 90]],
+      [3, [240, 155, 55]], [4, [225, 70, 60]], [6, [205, 110, 230]]],
+  },
+  // supercell composite parameter (dimensionless)
+  scp: {
+    underAlpha: true,
+    stops: [[1, [90, 140, 200]], [2, [80, 195, 150]], [4, [150, 210, 90]], [6, [235, 220, 90]],
+      [8, [240, 155, 55]], [12, [225, 70, 60]], [16, [205, 110, 230]]],
+  },
+  // equivalent potential temperature (K) — moisture + heat in one field
+  thetae: {
+    underAlpha: true,
+    stops: [[275, [110, 70, 200]], [290, [70, 130, 225]], [300, [80, 190, 190]], [310, [110, 200, 110]],
+      [320, [230, 220, 90]], [330, [240, 155, 55]], [340, [225, 70, 60]], [355, [190, 40, 120]]],
+  },
+  // surface visibility (statute miles) — low visibility is the hazard, so the
+  // ramp is inverted: the worst values get the loudest colour.
+  vis: {
+    underAlpha: false,
+    stops: [[0, [150, 40, 170]], [0.25, [210, 40, 60]], [0.5, [240, 130, 50]], [1, [235, 215, 100]],
+      [3, [160, 205, 130]], [6, [110, 180, 200]], [10, [200, 220, 235]]],
+  },
+  // a height above ground (m) — LCL, LFC, equilibrium level, PBL depth
+  height: {
+    underAlpha: true,
+    stops: [[0, [200, 230, 235]], [500, [90, 190, 190]], [1000, [110, 200, 110]], [1500, [230, 220, 90]],
+      [2000, [240, 155, 55]], [3000, [225, 70, 60]], [4500, [150, 40, 120]]],
+  },
+  /*
+   * Categorical precipitation type.
+   *
+   * Not a gradient: the value is an index picked by the derived field from the
+   * four yes/no category flags (CRAIN/CSNOW/CFRZR/CICEP), so interpolating
+   * between stops would invent a colour that means nothing. `discrete` makes
+   * rampColor snap to the stop at or below the value instead of blending.
+   */
+  ptype: {
+    underAlpha: true, discrete: true,
+    stops: [[1, [40, 180, 70]], [2, [70, 145, 235]], [3, [225, 60, 190]], [4, [235, 150, 45]]],
+  },
 };
 
 function classify(variable) {
   const v = String(variable).toUpperCase();
-  if (/REF|RETOP|REFC|REFD|REFL/.test(v)) return 'refl';
+  // RETOP is an echo TOP (a height), not a reflectivity, so it must be tested
+  // before the reflectivity rule that would otherwise swallow it.
+  if (/^RETOP/.test(v)) return 'height';
+  if (/REF|REFC|REFD|REFL/.test(v)) return 'refl';
   if (/CAPE/.test(v)) return 'cape';
+  if (/^CIN/.test(v)) return 'cin';
+  if (/^LFTX|^LI$|^BLI/.test(v)) return 'li';
   // Before the wind rule: these are shear/helicity fields, not wind speeds, and
   // without their own cases they fell through to the temperature ramp.
   if (/^VUCSH|^VVCSH|SHEAR|^BSHR/.test(v)) return 'shear';
   if (/^HLCY|HELIC|^SRH/.test(v)) return 'srh';
+  if (/^VIS$/.test(v)) return 'vis';
+  // Bare HGT is deliberately NOT here. At a pressure level it is geopotential
+  // height (850 mb ~1500 m, 250 mb ~10400 m) and no single ramp covers that
+  // spread; those are contour products anyway. Fields that ARE a height above
+  // ground — LCL, LFC, equilibrium level — say so with an explicit kind.
+  if (/^HPBL/.test(v)) return 'height';
   if (/PRMSL|MSLET|MSLMA|^MSL/.test(v)) return 'mslp';
   if (/RH$|^RH|POP|TCDC|SKY|CLOUD|^RHM/.test(v)) return 'percent';
   if (/WIND|GUST|^UGRD|^VGRD|^VEL|^WS/.test(v)) return 'wind';
-  if (/APCP|PRATE|PWAT|CPRAT|ASNOW|WEASD|SNOD|QPF/.test(v)) return 'precip';
+  if (/^PRATE|^CPRAT/.test(v)) return 'prate';
+  if (/APCP|PWAT|ASNOW|WEASD|SNOD|QPF/.test(v)) return 'precip';
   if (/^T(MP|MAX|MIN)|DPT|APT|POT/.test(v)) return 'temp';
   return 'temp';
 }
@@ -93,28 +179,51 @@ function toRampUnits(kind, v) {
   if (kind === 'temp') return (v - 273.15) * 9 / 5 + 32;
   if (kind === 'wind' || kind === 'shear') return v * 1.943844;
   if (kind === 'mslp') return v / 100;
+  if (kind === 'prate') return v * 3600;      // kg/m²/s -> mm/hr
   return v;
 }
 
 // Units label per kind, for the client legend.
 const KIND_UNIT = {
   temp: '°F', refl: 'dBZ', precip: 'mm', wind: 'kt', cape: 'J/kg', mslp: 'hPa',
-  percent: '%', shear: 'kt', srh: 'm²/s²',
+  percent: '%', shear: 'kt', srh: 'm²/s²', cin: 'J/kg', li: '°C', lapse: '°C/km',
+  ehi: '', scp: '', thetae: 'K', vis: 'mi', height: 'm', ptype: '', prate: 'mm/hr',
 };
 
-// Legend descriptor for a variable: ramp stops (in display units) + unit label.
-function legendFor(variable) {
-  const kind = classify(variable);
-  const ramp = RAMPS[kind];
+// Categorical ramps get names instead of numbers on the legend.
+const KIND_CATEGORIES = { ptype: { 1: 'Rain', 2: 'Snow', 3: 'Frz Rain', 4: 'Sleet' } };
+
+/*
+ * Legend descriptor for a variable: ramp stops (in display units) + unit label.
+ *
+ * `kind` may be given explicitly by a caller that knows better than the name
+ * does — a derived field, or a preset whose variable is ambiguous (HGT is a
+ * height above ground at one level and geopotential height at another).
+ */
+function legendFor(variable, kind) {
+  const k = kind && RAMPS[kind] ? kind : classify(variable);
+  const ramp = RAMPS[k];
   return {
-    kind,
-    unit: KIND_UNIT[kind] || '',
+    kind: k,
+    unit: KIND_UNIT[k] || '',
+    discrete: !!ramp.discrete,
+    categories: KIND_CATEGORIES[k] || null,
     stops: ramp.stops.map(([val, rgb]) => [val, `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`]),
   };
 }
 
 function rampColor(ramp, x, out) {
   const s = ramp.stops;
+  /*
+   * Categorical ramps snap; they never blend. The value is a category index,
+   * so a colour halfway between "snow" and "freezing rain" would be a lie.
+   */
+  if (ramp.discrete) {
+    for (let i = s.length - 1; i >= 0; i--) {
+      if (x >= s[i][0]) { const c = s[i][1]; out[0] = c[0]; out[1] = c[1]; out[2] = c[2]; out[3] = 255; return; }
+    }
+    out[3] = 0; return;
+  }
   if (x < s[0][0]) {
     if (ramp.underAlpha) { out[0] = s[0][1][0]; out[1] = s[0][1][1]; out[2] = s[0][1][2]; out[3] = 255; return; }
     out[3] = 0; return;
@@ -204,14 +313,61 @@ function rasterize(valueAt, kind, bbox, maxW) {
   return { png: PNG.sync.write(png), width: OW, height: OH, kind };
 }
 
-// Render a decoded field to a PNG buffer over bbox [W,S,E,N] at up to maxW wide.
-function renderField(gribBytes, variable, bbox, maxW = 1400) {
+/*
+ * Render a decoded field to a PNG buffer over bbox [W,S,E,N] at up to maxW wide.
+ *
+ * `kind` overrides the name-based classification when the caller knows better.
+ * `scale` converts a centre's units to the ones the ramp expects — ECMWF gives
+ * total precipitation in metres where NOAA gives millimetres, and cloud cover
+ * as a 0-1 fraction where NOAA gives percent. Getting this wrong plots a real
+ * field on a silently wrong scale, which is worse than not plotting it.
+ */
+function renderField(gribBytes, variable, bbox, maxW = 1400, kind = null, scale = 1) {
   const { values, grid } = decodeGrib2Message(gribBytes);
   const sample = makeSampler(grid);
+  const k = scale == null || scale === 1 ? 1 : scale;
   return rasterize((lon, lat) => {
     const idx = sample(lon, lat);
-    return idx < 0 ? null : values[idx];
-  }, classify(variable), bbox, maxW);
+    if (idx < 0) return null;
+    const v = values[idx];
+    return Number.isFinite(v) ? v * k : null;
+  }, (kind && RAMPS[kind]) ? kind : classify(variable), bbox, maxW);
+}
+
+/*
+ * Render a field COMPUTED from several GRIB messages.
+ *
+ * Most of what a forecaster reads off a severe-weather map is not in the file:
+ * bulk shear is a u/v pair, a lapse rate is two temperatures and two heights,
+ * the composite indices are products of three or four fields. `combine`
+ * receives one physical value per input message, in the order given, and
+ * returns the derived value in the ramp's own units — or null where it is not
+ * defined.
+ *
+ * A pixel is drawn only where EVERY input is present. Any input being off-grid
+ * or missing makes the derived value meaningless, and a partially-evaluated
+ * severe parameter is worse than a hole in the map.
+ */
+function renderDerived(messageBytes, combine, kind, bbox, maxW = 1400, scales = null) {
+  const fields = messageBytes.map((b, i) => {
+    const d = decodeGrib2Message(b);
+    return {
+      values: d.values,
+      sample: makeSampler(d.grid),
+      scale: (scales && scales[i] != null) ? scales[i] : 1,
+    };
+  });
+  const args = new Array(fields.length);
+  return rasterize((lon, lat) => {
+    for (let i = 0; i < fields.length; i++) {
+      const idx = fields[i].sample(lon, lat);
+      if (idx < 0) return null;
+      const v = fields[i].values[idx];
+      if (!Number.isFinite(v)) return null;
+      args[i] = v * fields[i].scale;
+    }
+    return combine(args);
+  }, kind, bbox, maxW);
 }
 
 /*
@@ -250,4 +406,7 @@ function sampleAt(grid, values, lon, lat) {
   return Number.isFinite(v) ? v : null;
 }
 
-module.exports = { renderField, renderVectorMagnitude, classify, legendFor, makeSampler, sampleAt };
+module.exports = {
+  renderField, renderVectorMagnitude, renderDerived,
+  classify, legendFor, makeSampler, sampleAt, RAMPS, KIND_UNIT,
+};

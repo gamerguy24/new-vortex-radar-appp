@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@atproto/api": "^0.20.39",
+    "@mattnucc/gribberish": "^1.7.0",
     "@napi-rs/canvas": "^1.0.5",
     "@turf/turf": "^6.5.0",
     "aewx-metar-parser": "^1.0.0",

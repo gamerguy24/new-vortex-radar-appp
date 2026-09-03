@@ -16,7 +16,10 @@
  *   GET /api/models/:id/list?prefix         -> S3 listing (browse; used by NDFD)
  */
 
-const { renderField, renderVectorMagnitude, legendFor } = require('./grib2_render');
+const { renderField, renderVectorMagnitude, renderDerived, legendFor } = require('./grib2_render');
+const { DERIVED } = require('./grib2_derived');
+const { buildCatalog, resolveDerived } = require('./model_products');
+const { ECMWF_MODEL, parseEcmwfIndex } = require('./model_ecmwf');
 const { buildSounding } = require('./soundings_grib');
 const os = require('os');
 const fs = require('fs');
@@ -119,6 +122,7 @@ const MODELS = {
     file: (d, c, f) => `gefs.${d}/${c}/atmos/pgrb2ap5/geavg.t${c}z.pgrb2a.0p50.f${pad3(f)}`,
     fhrRe: () => /geavg\.t\d{2}z\.pgrb2a\.0p50\.f(\d{3})$/,
   },
+  ecmwf: ECMWF_MODEL,
   ndfd: {
     name: 'NDFD (2.5 km gridded forecast)', bucket: 'noaa-ndfd-pds', region: 'us-east-1',
     type: 'browse', root: 'opnl/AR.conus/',
@@ -129,6 +133,28 @@ const MODELS = {
 const cycleList = (m) => (m.hourly ? Array.from({ length: 24 }, (_, i) => i) : (m.cycles || []));
 
 // ─── S3 helpers (public buckets, no signing) ─────────────────────────────────
+/*
+ * HTTP header values must be ASCII (Node rejects anything above Latin-1
+ * outright). Product labels are full of typographic characters — "0–6 km Bulk
+ * Shear" carries an EN DASH, and units read "m²/s²" and "°F" — which made
+ * every derived field 502 with "Invalid character in header content".
+ *
+ * headerText folds a label down to plain ASCII for X-Var. headerJson keeps the
+ * real characters but escapes them as \uXXXX, which is still valid JSON, so
+ * the client's existing JSON.parse of X-Legend gets the units back intact.
+ */
+function headerText(s) {
+  return String(s == null ? '' : s)
+    .replace(/[‐-―]/g, '-')      // hyphens, en/em dashes
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[^\x20-\x7E]/g, '');         // anything left that is not printable ASCII
+}
+function headerJson(obj) {
+  return JSON.stringify(obj)
+    .replace(/[^\x20-\x7E]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+}
+
 function s3Base(bucket) { return `https://${bucket}.s3.amazonaws.com`; }
 function s3KeyUrl(bucket, key) {
   return `${s3Base(bucket)}/${key.split('/').map(encodeURIComponent).join('/')}`;
@@ -155,7 +181,7 @@ async function s3List(bucket, prefix, delimiter, maxPages = 20) {
     const params = new URLSearchParams({ 'list-type': '2', prefix: prefix || '', 'max-keys': '1000' });
     if (delimiter) params.set('delimiter', delimiter);
     if (token) params.set('continuation-token', token);
-    const res = await fetch(`${s3Base(bucket)}/?${params.toString()}`);
+    const res = await fetchRetry(`${s3Base(bucket)}/?${params.toString()}`);
     if (!res.ok) throw new Error(`S3 list ${res.status}`);
     const xml = await res.text();
     for (const m of xml.matchAll(/<Key>([^<]+)<\/Key>/g)) keys.push(m[1]);
@@ -170,15 +196,65 @@ async function s3List(bucket, prefix, delimiter, maxPages = 20) {
   return { keys, prefixes };
 }
 
-async function headOk(url) {
-  try { const r = await fetch(url, { method: 'HEAD' }); return r.ok; } catch { return false; }
+/*
+ * Fetch, retrying the responses that mean "ask again" rather than "no".
+ *
+ * The ECMWF bucket throttles aggressively and answers 503 SlowDown under any
+ * burst — and every probe here comes in bursts, because finding the newest run
+ * means trying several cycles in a row. Treating that 503 as "the run does not
+ * exist" made ECMWF look permanently unavailable even with the data sitting
+ * right there. 404 still means absent and returns immediately; only the
+ * transient statuses are retried, with a widening delay.
+ */
+const RETRY_STATUS = new Set([429, 500, 502, 503, 504]);
+
+/*
+ * Six tries at 600ms doubling (~18s worst case) with jitter. That is a long
+ * time to wait on a web request, but ECMWF routinely answers 503 two or three
+ * times in a row before serving, and the alternative — reporting the field as
+ * missing — is worse than being slow. Rendered PNGs are cached, so a given
+ * field pays this at most once per run and hour.
+ */
+async function fetchRetry(url, opts = {}, tries = 6) {
+  let last = null;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(url, opts);
+      if (!RETRY_STATUS.has(r.status)) return r;
+      last = r;
+    } catch (e) {
+      last = null;
+      if (i === tries - 1) throw e;
+    }
+    // Jitter keeps a burst of parallel requests from retrying in lockstep and
+    // re-triggering the same throttle.
+    const wait = 600 * Math.pow(2, i) * (0.75 + Math.random() * 0.5);
+    await new Promise((res) => setTimeout(res, wait));
+  }
+  return last;
 }
 
-// Parse a GRIB2 `.idx` into messages with computed byte end offsets.
-async function fetchIdx(bucket, key) {
-  const res = await fetch(`${s3KeyUrl(bucket, key)}.idx`);
+// A model's sidecar key: NOAA appends ".idx" to the full filename, ECMWF
+// swaps ".grib2" for ".index". Models say which by supplying idxKey().
+function idxKeyFor(m, key) { return m.idxKey ? m.idxKey(key) : key + '.idx'; }
+
+async function headOk(url) {
+  try { const r = await fetchRetry(url, { method: 'HEAD' }); return !!(r && r.ok); } catch { return false; }
+}
+
+/*
+ * Parse a GRIB2 sidecar into messages with computed byte end offsets.
+ *
+ * `opts` carries the model's dialect: ECMWF names its sidecar `.index` and
+ * writes JSON, so it is normalised by model_ecmwf into the same shape this
+ * function returns for NOAA's `.idx`. Callers downstream cannot tell them
+ * apart, which is the point.
+ */
+async function fetchIdx(bucket, key, opts = {}) {
+  const res = await fetchRetry(s3KeyUrl(bucket, opts.idxKey ? opts.idxKey(key) : key + '.idx'));
   if (!res.ok) return null;
   const text = await res.text();
+  if (opts.indexType === 'ecmwf') return parseEcmwfIndex(text, opts.fhr || 0);
   const rows = text.trim().split('\n').filter(Boolean).map((line) => {
     const p = line.split(':');
     return { n: Number(p[0]), start: Number(p[1]), runTag: p[2], variable: p[3], level: p[4], forecast: p[5] };
@@ -201,7 +277,7 @@ async function latestRun(m, product) {
       .sort((a, b) => b - a);
     for (const c of cycles) {
       const key = m.file(dstr, pad2(c), 0, product);
-      if (await headOk(`${s3KeyUrl(m.bucket, key)}.idx`)) {
+      if (await headOk(s3KeyUrl(m.bucket, idxKeyFor(m, key)))) {
         return { date: dstr, cycle: pad2(c), product, key };
       }
     }
@@ -280,9 +356,33 @@ function attachModels(app, requireAuth) {
     }
     try {
       const key = m.file(date, cycle, fhr, req.query.product || m.defaultProduct);
-      const messages = await fetchIdx(m.bucket, key);
+      const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
       if (!messages) return res.status(404).json({ error: 'No .idx for that file (not posted yet?)' });
       res.json({ key, count: messages.length, messages });
+    } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
+  });
+
+  /*
+   * The product menu for one run, resolved against its actual index.
+   *
+   * The menu lives on the server because only the server has the `.idx` to
+   * check against. The client renders exactly what comes back, so a model that
+   * does not carry a field simply has no card for it rather than offering one
+   * that fails when clicked.
+   */
+  app.get('/api/models/:id/products', guard, async (req, res) => {
+    const m = MODELS[req.params.id];
+    if (!m || m.type !== 'cycle') return res.status(404).json({ error: 'Unknown cycle model' });
+    const { date, cycle } = req.query;
+    const fhr = Number(req.query.fhr || 0);
+    if (!VALID_DATE.test(date || '') || !VALID_CYCLE.test(cycle || '') || !Number.isFinite(fhr)) {
+      return res.status(400).json({ error: 'date=YYYYMMDD & cycle=HH & fhr required' });
+    }
+    try {
+      const key = m.file(date, cycle, fhr, req.query.product || m.defaultProduct);
+      const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
+      if (!messages) return res.status(404).json({ error: 'No .idx for that file' });
+      res.json({ id: req.params.id, date, cycle, fhr, categories: buildCatalog(messages) });
     } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
   });
 
@@ -302,7 +402,7 @@ function attachModels(app, requireAuth) {
         const fhr = Number(req.query.fhr || 0);
         if (!VALID_DATE.test(date || '') || !VALID_CYCLE.test(cycle || '')) return res.status(400).json({ error: 'date & cycle required' });
         key = m.file(date, cycle, fhr, req.query.product || m.defaultProduct);
-        const messages = await fetchIdx(m.bucket, key);
+        const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
         if (!messages) return res.status(404).json({ error: 'No .idx for that file' });
         let msg = null;
         if (req.query.msg != null) {
@@ -348,8 +448,59 @@ function attachModels(app, requireAuth) {
     }
     try {
       const key = m.file(date, cycle, fhr, req.query.product || m.defaultProduct);
-      const messages = await fetchIdx(m.bucket, key);
+      const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
       if (!messages) return res.status(404).json({ error: 'No .idx for that file' });
+
+      const fileUrl0 = s3KeyUrl(m.bucket, key);
+      const grabRange = async (mm) => {
+        const range = `bytes=${mm.start}-${mm.end == null ? '' : mm.end}`;
+        const up = await fetchRetry(fileUrl0, { headers: { Range: range } });
+        if (!(up.ok || up.status === 206)) throw new Error(`S3 ${up.status}`);
+        return new Uint8Array(await up.arrayBuffer());
+      };
+
+      /*
+       * derive=<id> renders a field COMPUTED from several messages — bulk
+       * shear, a lapse rate, EHI, precipitation type. The recipe lives in
+       * grib2_derived.js and is resolved against this run's index here, so a
+       * model missing any ingredient gets a clean 404 instead of a wrong map.
+       */
+      const deriveId = req.query.derive ? String(req.query.derive) : null;
+      if (deriveId) {
+        const def = DERIVED[deriveId];
+        if (!def) return res.status(404).json({ error: `Unknown derived field: ${deriveId}` });
+        const inputs = resolveDerived(messages, def);
+        if (!inputs) return res.status(404).json({ error: `${def.label} is not available in this model run` });
+
+        const maxW = Math.max(60, Math.min(1600, Number(req.query.w) || 1400));
+        const cacheKey = `${req.params.id}:${date}:${cycle}:${fhr}:d=${deriveId}:${bbox.join(',')}:${maxW}`;
+        let entry = pngGet(cacheKey);
+        if (!entry) {
+          /*
+           * Sequential, not Promise.all. A derived field needs up to four byte
+           * ranges, and firing them together is exactly the burst that makes
+           * ECMWF answer 503 — which then costs far more in retries than the
+           * parallelism saved. They are small ranges of one object.
+           */
+          const parts = [];
+          for (const inp of inputs) parts.push(await grabRange(inp));
+          // Per-input unit scales, set by adapters whose centre uses different
+          // units to NOAA's (see model_ecmwf). 1 for every NOAA field.
+          const scales = inputs.map((x) => x.scale == null ? 1 : x.scale);
+          const { png } = renderDerived(parts, def.combine, def.kind, bbox, maxW, scales);
+          entry = { png, variable: def.label, level: '', legend: legendFor(null, def.kind) };
+          pngSet(cacheKey, entry);
+        }
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('X-Bbox', bbox.join(','));
+        res.setHeader('X-Var', headerText(entry.variable));
+        res.setHeader('X-Level', headerText(entry.level));
+        res.setHeader('Access-Control-Expose-Headers', 'X-Legend, X-Var, X-Level, X-Bbox');
+        res.setHeader('X-Legend', headerJson(entry.legend));
+        return res.send(Buffer.from(entry.png));
+      }
+
       let msg = null;
       if (req.query.msg != null) msg = messages.find((x) => x.n === Number(req.query.msg));
       else if (req.query.var) {
@@ -358,6 +509,11 @@ function attachModels(app, requireAuth) {
         msg = messages.find((x) => x.variable.toUpperCase() === v && (!lvl || x.level.toLowerCase() === lvl));
       }
       if (!msg) return res.status(404).json({ error: 'Field not found; check /index' });
+
+      // A product may state the ramp its field should use, for variables whose
+      // name alone is ambiguous (HGT is a cloud base at one level and a
+      // geopotential height at another).
+      const kindOverride = req.query.kind ? String(req.query.kind) : null;
 
       /*
        * Optional SECOND message -> render sqrt(a^2 + b^2) instead of the field
@@ -378,34 +534,28 @@ function attachModels(app, requireAuth) {
 
       // Optional small render for thumbnails (w=180 etc.); default full res.
       const maxW = Math.max(60, Math.min(1600, Number(req.query.w) || 1400));
-      const cacheKey = `${req.params.id}:${date}:${cycle}:${fhr}:${msg.n}${msg2 ? '+' + msg2.n : ''}:${bbox.join(',')}:${maxW}`;
+      const cacheKey = `${req.params.id}:${date}:${cycle}:${fhr}:${msg.n}${msg2 ? '+' + msg2.n : ''}`
+        + `${kindOverride ? ':k=' + kindOverride : ''}:${bbox.join(',')}:${maxW}`;
       let entry = pngGet(cacheKey);
       if (!entry) {
-        const fileUrl = s3KeyUrl(m.bucket, key);
-        const grab = async (mm) => {
-          const range = `bytes=${mm.start}-${mm.end == null ? '' : mm.end}`;
-          const up = await fetch(fileUrl, { headers: { Range: range } });
-          if (!(up.ok || up.status === 206)) throw new Error(`S3 ${up.status}`);
-          return new Uint8Array(await up.arrayBuffer());
-        };
         if (msg2) {
           // One request each; they are separate byte ranges of the same object.
-          const [a, b] = await Promise.all([grab(msg), grab(msg2)]);
+          const [a, b] = await Promise.all([grabRange(msg), grabRange(msg2)]);
           const { png } = renderVectorMagnitude(a, b, msg.variable, bbox, maxW);
           entry = { png, variable: msg.variable, level: msg.level, legend: legendFor(msg.variable) };
         } else {
-          const { png } = renderField(await grab(msg), msg.variable, bbox, maxW);
-          entry = { png, variable: msg.variable, level: msg.level, legend: legendFor(msg.variable) };
+          const { png } = renderField(await grabRange(msg), msg.variable, bbox, maxW, kindOverride, msg.scale);
+          entry = { png, variable: msg.variable, level: msg.level, legend: legendFor(msg.variable, kindOverride) };
         }
         pngSet(cacheKey, entry);
       }
       res.setHeader('Content-Type', 'image/png');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-Bbox', bbox.join(','));
-      res.setHeader('X-Var', entry.variable);
-      res.setHeader('X-Level', entry.level);
+      res.setHeader('X-Var', headerText(entry.variable));
+      res.setHeader('X-Level', headerText(entry.level));
       res.setHeader('Access-Control-Expose-Headers', 'X-Legend, X-Var, X-Level, X-Bbox');
-      res.setHeader('X-Legend', JSON.stringify(entry.legend));
+      res.setHeader('X-Legend', headerJson(entry.legend));
       res.send(Buffer.from(entry.png));
     } catch (e) {
       res.status(502).json({ error: String(e.message || e) });
@@ -429,7 +579,7 @@ function attachModels(app, requireAuth) {
         date = run.date; cycle = run.cycle;
       }
       const key = m.file(date, cycle, fhr, product);
-      const messages = await fetchIdx(m.bucket, key);
+      const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
       if (!messages) return res.status(404).json({ error: 'No .idx for that run/hour yet' });
       const fileUrl = s3KeyUrl(m.bucket, key);
       const header = `${m.name.split(' (')[0]} ${cycle}Z +${fhr}h · ${date}`;
@@ -460,7 +610,7 @@ function attachModels(app, requireAuth) {
       const cached = pngGet(cacheKey);
       if (cached) { res.setHeader('Cache-Control', 'no-store'); res.type('png'); return res.send(cached.png); }
       const key = m.file(date, cycle, fhr, product);
-      const messages = await fetchIdx(m.bucket, key);
+      const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
       if (!messages) return res.status(404).json({ error: 'No .idx for that run/hour yet' });
       const fileUrl = s3KeyUrl(m.bucket, key);
       const header = `${m.name.split(' (')[0]} ${cycle}Z +${fhr}h · ${date}`;

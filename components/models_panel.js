@@ -16,6 +16,9 @@ const state = {
   model: null, run: null, fhr: 0, opacity: 0.8, plotted: null,
   hours: [], hourIdx: 0, messages: [], activePreset: null, playing: false, timer: null,
   ndfdVp: null, ndfdElem: null, ndfdLabel: '', ndfdTimes: [], ndfdTimeIdx: 0,
+  // Server-resolved product menu: the categories for this run, which one is
+  // plotted, and which sections the user left open (kept across hour changes).
+  categories: [], activeProduct: null, openCats: new Set(),
 };
 
 function j(url) {
@@ -131,7 +134,21 @@ function injectPhase2Styles() {
     .vmp-vp{padding:7px 14px;border-radius:var(--vx-r-3);border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.045);
       color:#c4d3e6;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .12s;}
     .vmp-vp:hover{background:var(--vx-accent-soft);color:var(--vx-text);}
-    .vmp-vp.active{background:var(--vx-accent);color:var(--vx-accent-ink);border-color:transparent;box-shadow:var(--vx-shadow);}`;
+    .vmp-vp.active{background:var(--vx-accent);color:var(--vx-accent-ink);border-color:transparent;box-shadow:var(--vx-shadow);}
+    /* Full product menu, grouped by category */
+    .vmp-cat{border:1px solid rgba(255,255,255,.08);border-radius:var(--vx-r-2);margin-bottom:5px;overflow:hidden;}
+    .vmp-cat-head{display:flex;align-items:center;gap:7px;padding:8px 10px;cursor:pointer;user-select:none;
+      font-size:11.5px;font-weight:700;color:#cfdcec;background:rgba(255,255,255,.035);}
+    .vmp-cat-head:hover{background:var(--vx-accent-soft);color:var(--vx-text);}
+    .vmp-cat-chev{transition:transform .15s;display:inline-block;font-size:10px;opacity:.75;}
+    .vmp-cat.open .vmp-cat-chev{transform:rotate(90deg);}
+    .vmp-cat-n{margin-left:auto;font-size:10px;font-weight:700;opacity:.5;}
+    .vmp-cat-body{display:none;}
+    .vmp-cat.open .vmp-cat-body{display:block;}
+    .vmp-prod{padding:7px 10px 7px 24px;font-size:12px;color:#c2d0e2;cursor:pointer;
+      border-top:1px solid rgba(255,255,255,.05);transition:background .1s;}
+    .vmp-prod:hover{background:rgba(255,255,255,.06);color:var(--vx-text);}
+    .vmp-prod.active{background:var(--vx-accent);color:var(--vx-accent-ink);font-weight:700;}`;
   document.head.appendChild(s);
 }
 
@@ -155,6 +172,7 @@ function clearOverlay() {
   clearLegend();
   markActive();
   markNdfdCards();
+  markProducts();
 }
 
 // On-map legend built from the /field response's X-Legend header.
@@ -165,10 +183,28 @@ function drawLegend(legend, title) {
   const stops = legend.stops;
   const min = stops[0][0], max = stops[stops.length - 1][0];
   const span = (max - min) || 1;
-  const grad = stops.map(([val, col]) => `${col} ${((val - min) / span * 100).toFixed(1)}%`).join(', ');
-  const mid = stops[Math.floor(stops.length / 2)][0];
   const el = document.createElement('div');
   el.id = 'vortexModelLegend';
+
+  /*
+   * A categorical field gets named swatches, not a colour bar. Precipitation
+   * type has no scale to read along: a bar implying snow sits "between" rain
+   * and sleet would be meaningless.
+   */
+  if (legend.discrete && legend.categories) {
+    const swatches = stops.map(([val, col]) => {
+      const name = legend.categories[val] || String(val);
+      return `<div style="display:flex;align-items:center;gap:7px;margin-top:5px;font-size:11px">
+        <span style="width:14px;height:14px;border-radius:3px;background:${col};border:1px solid rgba(255,255,255,.25)"></span>
+        <span>${esc(name)}</span></div>`;
+    }).join('');
+    el.innerHTML = `<div class="vml-title">${esc(title)}</div>${swatches}`;
+    document.body.appendChild(el);
+    return;
+  }
+
+  const grad = stops.map(([val, col]) => `${col} ${((val - min) / span * 100).toFixed(1)}%`).join(', ');
+  const mid = stops[Math.floor(stops.length / 2)][0];
   el.innerHTML = `<div class="vml-title">${esc(title)} <span style="opacity:.6">(${esc(legend.unit || '')})</span></div>
     <div class="vml-bar" style="background:linear-gradient(90deg, ${grad})"></div>
     <div class="vml-scale"><span>${min}</span><span>${mid}</span><span>${max}</span></div>`;
@@ -318,6 +354,8 @@ async function selectModel(m) {
       </div>
       <div class="vmp-sub">Quick fields</div>
       <div id="vmpPresets" class="vmp-cards"></div>
+      <div class="vmp-sub" style="margin-top:14px">Products</div>
+      <div id="vmpCats"></div>
       <div class="vmp-adv" id="vmpAdv">
         <div class="vmp-adv-toggle" id="vmpAdvToggle"><span class="vmp-adv-chev">▸</span> All variables</div>
         <div class="vmp-adv-body">
@@ -338,6 +376,91 @@ async function selectModel(m) {
   } catch (e) { status.innerHTML = `<span class="vmp-err">${esc(e.message)}</span>`; }
 }
 
+/*
+ * The full product menu, grouped the way a forecast desk reads it.
+ *
+ * The categories and their contents come from the SERVER (/products), which
+ * resolves them against the run's actual GRIB index. So this renders whatever
+ * came back rather than guessing: a model that does not carry a field has no
+ * row for it, instead of a row that fails when clicked. Nothing here needs to
+ * know which model is selected.
+ */
+async function renderCategories(m) {
+  const wrap = document.getElementById('vmpCats');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="vmp-hint">Loading products…</div>';
+  let cats = [];
+  try {
+    const r = await j(`${API}/${m.id}/products?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}`);
+    cats = r.categories || [];
+  } catch (e) {
+    wrap.innerHTML = `<span class="vmp-err">${esc(e.message)}</span>`;
+    return;
+  }
+  state.categories = cats;
+  wrap.innerHTML = '';
+  if (!cats.length) { wrap.innerHTML = '<div class="vmp-hint">No products for this run.</div>'; return; }
+
+  for (const cat of cats) {
+    const open = state.openCats.has(cat.id);
+    const sec = el(`<div class="vmp-cat${open ? ' open' : ''}" data-cat="${esc(cat.id)}">
+        <div class="vmp-cat-head"><span class="vmp-cat-chev">▸</span>${esc(cat.label)}<span class="vmp-cat-n">${cat.items.length}</span></div>
+        <div class="vmp-cat-body"></div>
+      </div>`);
+    sec.querySelector('.vmp-cat-head').onclick = () => {
+      const nowOpen = !sec.classList.contains('open');
+      sec.classList.toggle('open', nowOpen);
+      if (nowOpen) state.openCats.add(cat.id); else state.openCats.delete(cat.id);
+    };
+    const body = sec.querySelector('.vmp-cat-body');
+    for (const it of cat.items) {
+      const row = el(`<div class="vmp-prod" data-pid="${esc(it.id)}">${esc(it.label)}</div>`);
+      row.onclick = () => {
+        // Clicking the product that is already up turns it off, so a row is a
+        // toggle rather than a one-way switch.
+        if (state.activeProduct === it.id && state.plotted) {
+          state.activeProduct = null; clearOverlay(); markProducts(); return;
+        }
+        state.activeProduct = it.id;
+        state.activePreset = null;          // the two menus drive one overlay
+        plotProduct(m, it);
+      };
+      body.appendChild(row);
+    }
+    wrap.appendChild(sec);
+  }
+  markProducts();
+}
+
+// Build the /field query for a catalog item: derived fields name their recipe,
+// direct ones their message (plus the ramp the product asked for).
+function productQuery(it) {
+  return it.derive
+    ? `derive=${encodeURIComponent(it.derive)}`
+    : `msg=${it.msg}${it.kind ? '&kind=' + encodeURIComponent(it.kind) : ''}`;
+}
+
+async function plotProduct(m, it) {
+  const map = mapObj();
+  if (!map) { alert('Map is not ready yet.'); return; }
+  const { W, E, S, N, bbox } = viewBounds();
+  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&${productQuery(it)}&bbox=${bbox}`;
+  try {
+    await plotOverlayFromUrl(url, W, E, S, N, { model: m.id, msg: null, msg2: null, product: it.id }, it.label);
+  } catch (e) {
+    state.activeProduct = null;
+    alert('Could not plot ' + it.label + ':\n' + e.message);
+  }
+  markProducts();
+}
+
+function markProducts() {
+  if (!panel) return;
+  panel.querySelectorAll('.vmp-prod').forEach((r) => {
+    r.classList.toggle('active', !!state.plotted && r.dataset.pid === state.activeProduct);
+  });
+}
+
 // Curated quick-pick CARDS (with lazy thumbnails) for fields present in the run.
 function renderPresets(m) {
   const wrap = document.getElementById('vmpPresets');
@@ -356,7 +479,8 @@ function renderPresets(m) {
     card.onclick = () => {
       const isOn = state.activePreset && state.activePreset.label === p.label && state.plotted && state.plotted.msg === msg.n;
       if (isOn) { state.activePreset = null; clearOverlay(); renderPresets(m); return; }
-      state.activePreset = p; plotField(m, msg, null); renderPresets(m); prefetchHour(state.hourIdx + 1);
+      state.activePreset = p; state.activeProduct = null;
+      plotField(m, msg, null); renderPresets(m); prefetchHour(state.hourIdx + 1);
     };
     wrap.appendChild(card);
     const img = card.querySelector('.vmp-card-thumb');
@@ -448,6 +572,16 @@ async function loadIndex(m, run, fhr) {
     const idx = await j(`${API}/${m.id}/index?date=${run.date}&cycle=${run.cycle}&fhr=${fhr}`);
     state.messages = idx.messages || [];
     renderPresets(m);
+    // The menu is rebuilt per hour: message numbers shift between forecast
+    // hours, so last hour's ids cannot be reused.
+    renderCategories(m).then(() => {
+      if (!state.activeProduct) return;
+      const it = (state.categories || []).flatMap((c) => c.items)
+        .find((x) => x.id === state.activeProduct);
+      // Gone from this hour's index (an accumulation window that does not exist
+      // at f00, say): drop it rather than leave a stale highlight.
+      if (it) plotProduct(m, it); else { state.activeProduct = null; markProducts(); }
+    });
     // Replot the active preset at the (possibly new) hour.
     if (state.activePreset) {
       const pm = resolvePreset(state.messages, state.activePreset);
