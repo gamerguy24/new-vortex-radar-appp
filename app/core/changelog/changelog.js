@@ -24,6 +24,8 @@ const CHANGELOG = [
     {
         date: 'August 31, 2026',
         items: [
+            { title: 'NAM 3 km CONUS nest', desc: 'The NAM’s high-resolution 3 km CONUS nest joins the model list in Models & Forecast — hourly out to 60 hours, with the full severe set including MLCAPE, MUCAPE and 0–6 km shear at four times the detail of the 12 km NAM.' },
+            { title: 'The NAM’s forecast hours are back', desc: 'Picking the NAM gave you a run with no forecast hours to step through. Its files share a folder with every other NAM product, and the listing was being cut off before reaching them. All 53 hours out to +84 are there again.' },
             { title: 'CAPE and shear in Models & Forecast', desc: 'Six new quick fields for severe setups: MLCAPE and MUCAPE alongside the existing surface CAPE, 0–6 km and 0–1 km bulk shear, and 0–3 km and 0–1 km storm-relative helicity. Bulk shear is computed from the model’s wind-shear components and drawn in knots, so you get the number you actually forecast off rather than two raw component fields. Each card only appears on the models that carry it — HRRR has all six, the NAM and GFS a subset.' },
             { title: 'Cameras & More is one section', desc: 'The menu’s Cameras and More groups are now a single “Cameras & More” section — Live Cameras, Live Cams, BuoyCAMs, Earthquakes, NOAA Weather Radio and Power Outages together, one heading to open instead of two.' },
             { title: 'Drawings show on both panes', desc: 'Mark up a storm in split screen and the same mark appears on the other pane, over the same ground. Draw on either side — it copies to the other. Turn split screen off and the copy goes away, leaving what you actually drew.' },

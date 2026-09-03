@@ -96,8 +96,20 @@ const MODELS = {
     type: 'cycle', cycles: [0, 6, 12, 18], fhrMax: 84, fhrDigits: 2,
     products: { awphys: 'awphys' }, defaultProduct: 'awphys',
     dir: (d) => `nam.${d}/`,
+    hoursPrefix: (d, c) => `nam.${d}/nam.t${c}z.awphys`,
     file: (d, c, f) => `nam.${d}/nam.t${c}z.awphys${pad2(f)}.tm00.grib2`,
     fhrRe: () => /nam\.t\d{2}z\.awphys(\d{2})\.tm00\.grib2$/,
+  },
+  nam3km: {
+    name: 'NAM 3 km CONUS nest', bucket: 'noaa-nam-pds', region: 'us-east-1',
+    type: 'cycle', cycles: [0, 6, 12, 18], fhrMax: 60, fhrDigits: 2,
+    products: { hires: 'conusnest.hires' }, defaultProduct: 'hires',
+    dir: (d) => `nam.${d}/`,
+    // Every NAM product for the day shares one directory, so narrow the hour
+    // scan to this cycle's nest files (see availableHours).
+    hoursPrefix: (d, c) => `nam.${d}/nam.t${c}z.conusnest.hires`,
+    file: (d, c, f) => `nam.${d}/nam.t${c}z.conusnest.hiresf${pad2(f)}.tm00.grib2`,
+    fhrRe: () => /nam\.t\d{2}z\.conusnest\.hiresf(\d{2})\.tm00\.grib2$/,
   },
   gefs: {
     name: 'GEFS (0.5° ensemble mean)', bucket: 'noaa-gefs-pds', region: 'us-east-1',
@@ -122,15 +134,39 @@ function s3KeyUrl(bucket, key) {
   return `${s3Base(bucket)}/${key.split('/').map(encodeURIComponent).join('/')}`;
 }
 
-async function s3List(bucket, prefix, delimiter) {
-  const params = new URLSearchParams({ 'list-type': '2', prefix: prefix || '', 'max-keys': '1000' });
-  if (delimiter) params.set('delimiter', delimiter);
-  const res = await fetch(`${s3Base(bucket)}/?${params.toString()}`);
-  if (!res.ok) throw new Error(`S3 list ${res.status}`);
-  const xml = await res.text();
-  const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1]);
-  const prefixes = [...xml.matchAll(/<Prefix>([^<]+)<\/Prefix>/g)]
-    .map((m) => m[1]).filter((p) => p && p !== prefix);
+/*
+ * List a bucket prefix, following continuation tokens.
+ *
+ * A single ListObjectsV2 call returns at most 1000 keys. That silently
+ * truncated the NAM day directory - which holds every product and cycle for
+ * the day and runs to thousands of keys - so the listing never reached
+ * "awphys" and availableHours() came back EMPTY, leaving the NAM with no
+ * forecast hours to scrub through. Paging is the correctness fix; the narrower
+ * prefixes below are what keep it to one page in practice.
+ *
+ * Capped at 20 pages (20k keys) so a mistakenly broad prefix cannot turn into
+ * an unbounded walk of the bucket.
+ */
+async function s3List(bucket, prefix, delimiter, maxPages = 20) {
+  const keys = [];
+  const prefixes = [];
+  let token = null;
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams({ 'list-type': '2', prefix: prefix || '', 'max-keys': '1000' });
+    if (delimiter) params.set('delimiter', delimiter);
+    if (token) params.set('continuation-token', token);
+    const res = await fetch(`${s3Base(bucket)}/?${params.toString()}`);
+    if (!res.ok) throw new Error(`S3 list ${res.status}`);
+    const xml = await res.text();
+    for (const m of xml.matchAll(/<Key>([^<]+)<\/Key>/g)) keys.push(m[1]);
+    for (const m of xml.matchAll(/<Prefix>([^<]+)<\/Prefix>/g)) {
+      if (m[1] && m[1] !== prefix) prefixes.push(m[1]);
+    }
+    if (!/<IsTruncated>true<\/IsTruncated>/.test(xml)) break;
+    const t = /<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml);
+    if (!t) break;
+    token = t[1];
+  }
   return { keys, prefixes };
 }
 
@@ -173,9 +209,17 @@ async function latestRun(m, product) {
   return null;
 }
 
-// List available forecast hours for a run by scanning the run dir.
+/*
+ * List available forecast hours for a run by scanning the run dir.
+ *
+ * Models that share a directory between products (the NAM keeps every product
+ * for the day in one folder) supply hoursPrefix() so the listing covers only
+ * the cycle and product being asked about. That is both far cheaper and, since
+ * it fits in one page, immune to the truncation that used to empty this list.
+ */
 async function availableHours(m, date, cycle, product) {
-  const { keys } = await s3List(m.bucket, m.dir(date, cycle), null);
+  const prefix = m.hoursPrefix ? m.hoursPrefix(date, cycle, product) : m.dir(date, cycle);
+  const { keys } = await s3List(m.bucket, prefix, null);
   const re = m.fhrRe(product);
   const hours = new Set();
   for (const k of keys) {
