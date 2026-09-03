@@ -435,9 +435,13 @@ async function renderCategories(m) {
 // Build the /field query for a catalog item: derived fields name their recipe,
 // direct ones their message (plus the ramp the product asked for).
 function productQuery(it) {
-  return it.derive
-    ? `derive=${encodeURIComponent(it.derive)}`
-    : `msg=${it.msg}${it.kind ? '&kind=' + encodeURIComponent(it.kind) : ''}`;
+  let q;
+  if (it.qpf) q = `qpf=${encodeURIComponent(it.qpf)}`;
+  else if (it.derive) q = `derive=${encodeURIComponent(it.derive)}`;
+  else q = `msg=${it.msg}${it.kind ? '&kind=' + encodeURIComponent(it.kind) : ''}`;
+  // Combination plots draw barbs over the field above.
+  if (it.overlay) q += `&overlay=${encodeURIComponent(it.overlay)}`;
+  return q;
 }
 
 async function plotProduct(m, it) {

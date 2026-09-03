@@ -107,6 +107,36 @@ const DERIVED = {
         combine: ([u, v]) => Math.hypot(u, v),
     },
 
+    /*
+     * ── Wind barbs ───────────────────────────────────────────────────────────
+     *
+     * Same u/v inputs as the wind-speed fields, but rendered as glyphs rather
+     * than shading (grib2_barbs.js), because a colour ramp cannot show
+     * direction and direction is half of what a wind field means. `barbs: true`
+     * is what routes them to the glyph renderer; there is no combine function
+     * because nothing is being reduced to a single value per pixel.
+     */
+    barbs_10m: {
+        label: '10 m Wind Barbs', kind: 'barb', category: 'surface', barbs: true,
+        inputs: [['UGRD', '10 m above ground'], ['VGRD', '10 m above ground']],
+    },
+    barbs_shear06: {
+        label: '0–6 km Shear Barbs', kind: 'barb', category: 'shear', barbs: true,
+        inputs: [['VUCSH', '0-6000 m above ground'], ['VVCSH', '0-6000 m above ground']],
+    },
+    barbs_850: {
+        label: '850 mb Wind Barbs', kind: 'barb', category: 'dynamics', barbs: true,
+        inputs: [['UGRD', '850 mb'], ['VGRD', '850 mb']],
+    },
+    barbs_500: {
+        label: '500 mb Wind Barbs', kind: 'barb', category: 'dynamics', barbs: true,
+        inputs: [['UGRD', '500 mb'], ['VGRD', '500 mb']],
+    },
+    barbs_250: {
+        label: '250 mb Wind Barbs', kind: 'barb', category: 'dynamics', barbs: true,
+        inputs: [['UGRD', '250 mb'], ['VGRD', '250 mb']],
+    },
+
     // ── Instability ──────────────────────────────────────────────────────────
     /*
      * 700–500 mb lapse rate, in °C per km of ACTUAL thickness rather than an
@@ -182,6 +212,36 @@ const DERIVED = {
             else shearTerm = bwd / 20;
             return (mucape / 1000) * (srh / 50) * shearTerm;
         },
+    },
+
+    /*
+     * ── Anomalies ────────────────────────────────────────────────────────────
+     *
+     * How far the forecast departs from normal, which is often the more useful
+     * question: 25 mm of precipitable water is unremarkable on the Gulf coast
+     * and extraordinary over Montana.
+     *
+     * `climo` names a long-term-mean grid (model_climatology.js). The server
+     * resolves it to a sampler and appends its value to `combine`'s arguments
+     * after the GRIB inputs, so normal arrives as the last argument.
+     *
+     * The normals are the NCEP/NCAR 1981-2010 daily climatology, on a much
+     * coarser grid (2.5° for moisture, ~1.9° Gaussian for temperature) than any
+     * of the forecast models. That is inherent to an anomaly: it compares a
+     * sharp field against a smooth one, and the departure is only as detailed
+     * as the climatology behind it.
+     */
+    pwat_anomaly: {
+        label: 'PWAT Anomaly', kind: 'anom_pwat', category: 'anomaly',
+        inputs: [['PWAT', 'entire atmosphere']],
+        climo: 'pwat',                       // kg/m2, the same unit as GRIB PWAT
+        combine: ([pwat, normal]) => pwat - normal,
+    },
+    t2m_anomaly: {
+        label: '2 m Temp. Anomaly', kind: 'anom_temp', category: 'anomaly',
+        inputs: [['TMP', '2 m above ground']],
+        climo: 't2m',                        // Kelvin, so the difference is °C
+        combine: ([t, normal]) => t - normal,
     },
 
     // ── Precipitation type ───────────────────────────────────────────────────

@@ -36,6 +36,7 @@ const CATEGORIES = [
             { id: 'rh_2m', label: '2 m Relative Humidity', v: 'RH', lvl: '2 m above ground', kind: 'percent' },
             { id: 'theta_e_2m', derive: 'theta_e_2m' },
             { id: 'wind_10m', derive: 'wind_10m' },
+            { id: 'barbs_10m', derive: 'barbs_10m' },
             { id: 'gust', label: '10 m Wind Gusts', v: 'GUST', lvl: 'surface', kind: 'wind' },
             { id: 'mslp', label: 'MSLP', v: 'PRMSL', lvl: 'mean sea level' },
             // HRRR publishes MSLP under MSLMA rather than PRMSL.
@@ -54,6 +55,20 @@ const CATEGORIES = [
     {
         id: 'qpf', label: 'Quantitative Precipitation',
         items: [
+            /*
+             * Named windows. Each is the run-total accumulation here minus the
+             * run-total `win` hours earlier, so it needs BOTH a run-total field
+             * in this file and a forecast hour that far back to exist — hence
+             * `qpf`, which buildCatalog checks against the current hour rather
+             * than against the index. Offering 24-hour QPF at f06 would be a
+             * card that cannot work.
+             */
+            { id: 'qpf_3', label: '3-h QPF', qpf: 3, kind: 'precip' },
+            { id: 'qpf_6', label: '6-h QPF', qpf: 6, kind: 'precip' },
+            { id: 'qpf_12', label: '12-h QPF', qpf: 12, kind: 'precip' },
+            { id: 'qpf_24', label: '24-h QPF', qpf: 24, kind: 'precip' },
+            { id: 'qpf_48', label: '48-h QPF', qpf: 48, kind: 'precip' },
+            { id: 'qpf_120', label: '120-h QPF', qpf: 120, kind: 'precip' },
             { id: 'apcp_total', label: 'Total QPF (run to date)', v: 'APCP', lvl: 'surface', fcst: ACC_TOTAL, kind: 'precip' },
             { id: 'apcp_interval', label: 'QPF (this interval)', v: 'APCP', lvl: 'surface', fcst: ACC_INTERVAL, kind: 'precip' },
         ],
@@ -112,6 +127,31 @@ const CATEGORIES = [
         ],
     },
     {
+        /*
+         * Combination plots: a shaded field with barbs drawn over it, in one
+         * image. CAPE tells you how much energy is there; the barbs tell you
+         * what the wind will do with it, and reading them against each other is
+         * the whole point — flipping between two overlays loses exactly that.
+         */
+        id: 'combo', label: 'Combination Plots',
+        items: [
+            { id: 'combo_sbcape_barbs', label: 'SBCAPE + 10 m Barbs', v: 'CAPE', lvl: 'surface', overlay: 'barbs_10m' },
+            { id: 'combo_mlcape_shear', label: 'MLCAPE + 0-6 km Shear Barbs', v: 'CAPE', lvl: '180-0 mb above ground', overlay: 'barbs_shear06' },
+            { id: 'combo_scp_shear', label: 'Supercell Composite + Shear Barbs', derive: 'scp', overlay: 'barbs_shear06' },
+            { id: 'combo_mslp_wind', label: 'MSLP + 10 m Barbs', v: 'PRMSL', lvl: 'mean sea level', overlay: 'barbs_10m' },
+            { id: 'combo_mslp_wind_ma', label: 'MSLP + 10 m Barbs', v: 'MSLMA', lvl: 'mean sea level', overlay: 'barbs_10m' },
+            { id: 'combo_thetae_barbs', label: 'Theta-e + 10 m Barbs', derive: 'theta_e_2m', overlay: 'barbs_10m' },
+            { id: 'combo_500_barbs', label: '500 mb Wind + Barbs', derive: 'wind_500', overlay: 'barbs_500' },
+        ],
+    },
+    {
+        id: 'anomaly', label: 'Anomalies',
+        items: [
+            { id: 'pwat_anomaly', derive: 'pwat_anomaly' },
+            { id: 't2m_anomaly', derive: 't2m_anomaly' },
+        ],
+    },
+    {
         id: 'ua_moisture', label: 'Upper-Air: Moisture',
         items: [
             { id: 'rh_850', label: '850 mb Relative Humidity', v: 'RH', lvl: '850 mb', kind: 'percent' },
@@ -127,6 +167,9 @@ const CATEGORIES = [
             { id: 'wind_250', derive: 'wind_250' },
             { id: 'wind_500', derive: 'wind_500' },
             { id: 'wind_850', derive: 'wind_850' },
+            { id: 'barbs_250', derive: 'barbs_250' },
+            { id: 'barbs_500', derive: 'barbs_500' },
+            { id: 'barbs_850', derive: 'barbs_850' },
             { id: 'tmp_850', label: '850 mb Temperature', v: 'TMP', lvl: '850 mb' },
             { id: 'tmp_700', label: '700 mb Temperature', v: 'TMP', lvl: '700 mb' },
             { id: 'tmp_500', label: '500 mb Temperature', v: 'TMP', lvl: '500 mb' },
@@ -177,14 +220,32 @@ function resolveDerived(messages, def) {
  * carried both, only the first is kept so the menu never shows the same label
  * twice.
  */
-function buildCatalog(messages) {
+function buildCatalog(messages, opts = {}) {
+    const fhr = Number(opts.fhr || 0);
+    const hours = Array.isArray(opts.hours) ? opts.hours : null;
+    const hasTotalAccum = messages.some((m) => m.variable.toUpperCase() === 'APCP'
+        && ACC_TOTAL.test(m.forecast || ''));
+
     const out = [];
     for (const cat of CATEGORIES) {
         const items = [];
         const seenLabels = new Set();
         for (const item of cat.items) {
             let entry = null;
-            if (item.derive) {
+            if (item.qpf) {
+                /*
+                 * A named window needs the run-total field here AND the same
+                 * field `win` hours back. The start hour must be one the run
+                 * actually publishes — the GFS jumps to 3-hourly then 6-hourly
+                 * output, so f117 exists for a 3-hour window at f120 but f45
+                 * does not for one at f48.
+                 */
+                if (!hasTotalAccum) continue;
+                const start = fhr - item.qpf;
+                if (start < 0) continue;
+                if (start > 0 && hours && !hours.includes(start)) continue;
+                entry = { id: item.id, label: item.label, kind: item.kind || 'precip', qpf: item.qpf };
+            } else if (item.derive) {
                 const def = DERIVED[item.derive];
                 if (!def) continue;
                 const msgs = resolveDerived(messages, def);
@@ -201,6 +262,18 @@ function buildCatalog(messages) {
                     msg: msg.n, variable: msg.variable, level: msg.level, forecast: msg.forecast,
                 };
             }
+            /*
+             * A combination plot needs its overlay as well as its base. If the
+             * barbs cannot resolve on this model, the entry is dropped rather
+             * than silently degrading to the plain shaded field, which already
+             * has its own row elsewhere in the menu.
+             */
+            if (item.overlay) {
+                const ov = DERIVED[item.overlay];
+                if (!ov || !resolveDerived(messages, ov)) continue;
+                entry.overlay = item.overlay;
+            }
+
             if (seenLabels.has(entry.label)) continue;
             seenLabels.add(entry.label);
             items.push(entry);

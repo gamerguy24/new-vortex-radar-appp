@@ -20,6 +20,9 @@ const { renderField, renderVectorMagnitude, renderDerived, legendFor } = require
 const { DERIVED } = require('./grib2_derived');
 const { buildCatalog, resolveDerived } = require('./model_products');
 const { ECMWF_MODEL, parseEcmwfIndex } = require('./model_ecmwf');
+const { climoSampler } = require('./model_climatology');
+const { renderBarbs, drawBarbsOnto } = require('./grib2_barbs');
+const { PNG } = require('pngjs');
 const { buildSounding } = require('./soundings_grib');
 const os = require('os');
 const fs = require('fs');
@@ -82,6 +85,14 @@ const MODELS = {
     products: { sfc: 'wrfsfc', prs: 'wrfprs', nat: 'wrfnat', subh: 'wrfsubh' },
     defaultProduct: 'sfc', soundingProduct: 'prs',
     dir: (d) => `hrrr.${d}/conus/`,
+    /*
+     * All 24 of the day's cycles share one directory, and the filename regex
+     * below deliberately does not pin the cycle (it also matches files listed
+     * from elsewhere). Without this prefix the hour scan returned every hour
+     * that existed for ANY cycle that day, so a run that had just started
+     * advertised forecast hours it had not produced and every one of them 404'd.
+     */
+    hoursPrefix: (d, c, p) => `hrrr.${d}/conus/hrrr.t${c}z.${MODELS.hrrr.products[p || 'sfc']}`,
     file: (d, c, f, p) => `hrrr.${d}/conus/hrrr.t${c}z.${MODELS.hrrr.products[p || 'sfc']}f${pad2(f)}.grib2`,
     // match a product's files in a dir listing -> capture forecast hour
     fhrRe: (p) => new RegExp(`hrrr\\.t\\d{2}z\\.${MODELS.hrrr.products[p || 'sfc']}f(\\d{2})\\.grib2$`),
@@ -238,6 +249,76 @@ async function fetchRetry(url, opts = {}, tries = 6) {
 // swaps ".grib2" for ".index". Models say which by supplying idxKey().
 function idxKeyFor(m, key) { return m.idxKey ? m.idxKey(key) : key + '.idx'; }
 
+/*
+ * Named precipitation windows, in hours. These are the accumulations a desk
+ * asks for by name; anything else is served by Total QPF or the step bucket.
+ */
+const QPF_WINDOWS = [3, 6, 12, 24, 48, 120];
+
+/*
+ * The run-total accumulation message: "0-6 hour acc fcst", "0-1 day acc fcst".
+ * Explicitly NOT the step bucket ("5-6 hour acc"), which is why the leading
+ * "0-" is required — differencing two step buckets would be meaningless.
+ */
+function findAccTotal(messages) {
+  return messages.find((x) => x.variable.toUpperCase() === 'APCP'
+    && /^0-\d+\s+(hour|day)\s+acc/i.test(x.forecast || '')) || null;
+}
+
+// Fetch one message's byte range from an arbitrary file (the QPF window needs
+// a message from a different forecast hour than the one being rendered).
+async function rangeFrom(fileUrl, msg) {
+  const range = `bytes=${msg.start}-${msg.end == null ? '' : msg.end}`;
+  const up = await fetchRetry(fileUrl, { headers: { Range: range } });
+  if (!(up.ok || up.status === 206)) throw new Error(`S3 ${up.status}`);
+  return new Uint8Array(await up.arrayBuffer());
+}
+
+/*
+ * Combination plots: draw a barb field on top of an already-rendered shaded
+ * field, in one image.
+ *
+ * This is what a desk actually reads — CAPE is a number until you can see
+ * which way the wind is taking it, and flipping between two overlays loses the
+ * relationship. Applied after the base render and cached under its own key, so
+ * the plain field and the combined one can both be held without either being
+ * recomputed.
+ *
+ * A barb overlay that cannot resolve is skipped rather than failing the
+ * request: the shaded field underneath is still a correct, useful map.
+ */
+async function withBarbOverlay(entry, overlayId, ctx) {
+  if (!overlayId) return entry;
+  const def = DERIVED[overlayId];
+  if (!def || !def.barbs) return entry;
+
+  const key = `${ctx.cacheKey}|ov=${overlayId}`;
+  const hit = pngGet(key);
+  if (hit) return hit;
+
+  const inputs = resolveDerived(ctx.messages, def);
+  if (!inputs) return entry;
+
+  const parts = [];
+  for (const inp of inputs) parts.push(await ctx.grabRange(inp));
+
+  const png = PNG.sync.read(Buffer.from(entry.png));
+  drawBarbsOnto(png, parts[0], parts[1], ctx.bbox);
+  const combined = {
+    ...entry,
+    png: PNG.sync.write(png),
+    variable: `${entry.variable} + ${def.label}`,
+  };
+  pngSet(key, combined);
+  return combined;
+}
+
+// The UTC time a forecast hour is valid at, from its run date/cycle.
+function validDate(date, cycle, fhr) {
+  const y = +date.slice(0, 4), mo = +date.slice(4, 6) - 1, d = +date.slice(6, 8);
+  return new Date(Date.UTC(y, mo, d, +cycle) + Number(fhr) * 3600000);
+}
+
 async function headOk(url) {
   try { const r = await fetchRetry(url, { method: 'HEAD' }); return !!(r && r.ok); } catch { return false; }
 }
@@ -382,7 +463,21 @@ function attachModels(app, requireAuth) {
       const key = m.file(date, cycle, fhr, req.query.product || m.defaultProduct);
       const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
       if (!messages) return res.status(404).json({ error: 'No .idx for that file' });
-      res.json({ id: req.params.id, date, cycle, fhr, categories: buildCatalog(messages) });
+      /*
+       * The hour list is needed so the named QPF windows only appear when the
+       * forecast hour they measure back to is actually published; output
+       * intervals widen with lead time, so "fhr - 3" is not always a real file.
+       * A listing failure must not take the whole menu down, so it degrades to
+       * offering no windows rather than erroring.
+       */
+      let hours = null;
+      try {
+        hours = await availableHours(m, date, cycle, req.query.product || m.defaultProduct);
+      } catch (e) { hours = null; }
+      res.json({
+        id: req.params.id, date, cycle, fhr,
+        categories: buildCatalog(messages, { fhr, hours }),
+      });
     } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
   });
 
@@ -465,6 +560,80 @@ function attachModels(app, requireAuth) {
        * grib2_derived.js and is resolved against this run's index here, so a
        * model missing any ingredient gets a clean 404 instead of a wrong map.
        */
+      /*
+       * qpf=<hours> renders precipitation accumulated over a NAMED window
+       * (3, 6, 12, 24, 48, 120 h) ending at this forecast hour.
+       *
+       * No single message holds it. Models publish a run-total accumulation
+       * ("0-24 hour acc") and, at best, the bucket for the current step — so a
+       * 12-hour total is the run-total here minus the run-total 12 hours ago,
+       * which lives in a DIFFERENT FILE. That is the one thing the derived-field
+       * machinery cannot express, since it works within one index, so it is
+       * handled directly.
+       *
+       * Subtracting totals rather than summing every intermediate bucket means
+       * two range requests instead of up to twelve, and it cannot drift if a
+       * model's bucket length changes partway through a run.
+       */
+      // overlay=<barb field id> composites barbs onto whatever is rendered.
+      const overlayId = req.query.overlay ? String(req.query.overlay) : null;
+      const qpfWin = req.query.qpf != null ? Number(req.query.qpf) : null;
+      if (qpfWin != null) {
+        if (!QPF_WINDOWS.includes(qpfWin)) {
+          return res.status(400).json({ error: `qpf must be one of ${QPF_WINDOWS.join(', ')}` });
+        }
+        const startFhr = fhr - qpfWin;
+        if (startFhr < 0) {
+          return res.status(404).json({ error: `${qpfWin}-hour QPF needs forecast hour ${qpfWin} or later` });
+        }
+        const here = findAccTotal(messages);
+        if (!here) return res.status(404).json({ error: 'This model has no run-total precipitation field' });
+
+        const maxW = Math.max(60, Math.min(1600, Number(req.query.w) || 1400));
+        const cacheKey = `${req.params.id}:${date}:${cycle}:${fhr}:qpf=${qpfWin}:${bbox.join(',')}:${maxW}`;
+        let entry = pngGet(cacheKey);
+        if (!entry) {
+          let png;
+          if (startFhr === 0) {
+            // The window starts at the run's own start, so the run-total IS the
+            // answer — no second file, and nothing to subtract.
+            png = renderField(await grabRange(here), 'APCP', bbox, maxW, 'precip', here.scale).png;
+          } else {
+            const startKey = m.file(date, cycle, startFhr, req.query.product || m.defaultProduct);
+            const startMsgs = await fetchIdx(m.bucket, startKey, { idxKey: m.idxKey, indexType: m.indexType, fhr: startFhr });
+            if (!startMsgs) return res.status(404).json({ error: `Forecast hour ${startFhr} is not posted yet` });
+            const before = findAccTotal(startMsgs);
+            if (!before) return res.status(404).json({ error: `No run-total precipitation at hour ${startFhr}` });
+
+            const aBytes = await grabRange(here);
+            const bBytes = await rangeFrom(s3KeyUrl(m.bucket, startKey), before);
+            // Later total minus earlier total. Clamped at zero: accumulations
+            // only ever increase, so a negative is decoder noise, not drying.
+            png = renderDerived(
+              [aBytes, bBytes],
+              ([now, then]) => Math.max(0, now - then),
+              'precip', bbox, maxW,
+              [here.scale == null ? 1 : here.scale, before.scale == null ? 1 : before.scale],
+            ).png;
+          }
+          entry = {
+            png, variable: `${qpfWin}-h QPF`, level: 'surface',
+            legend: legendFor('APCP', 'precip'),
+          };
+          pngSet(cacheKey, entry);
+        }
+        // Optional combination plot: barbs drawn over this field.
+        entry = await withBarbOverlay(entry, overlayId, { messages, grabRange, bbox, cacheKey });
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('X-Bbox', bbox.join(','));
+        res.setHeader('X-Var', headerText(entry.variable));
+        res.setHeader('X-Level', headerText(entry.level));
+        res.setHeader('Access-Control-Expose-Headers', 'X-Legend, X-Var, X-Level, X-Bbox');
+        res.setHeader('X-Legend', headerJson(entry.legend));
+        return res.send(Buffer.from(entry.png));
+      }
+
       const deriveId = req.query.derive ? String(req.query.derive) : null;
       if (deriveId) {
         const def = DERIVED[deriveId];
@@ -487,10 +656,29 @@ function attachModels(app, requireAuth) {
           // Per-input unit scales, set by adapters whose centre uses different
           // units to NOAA's (see model_ecmwf). 1 for every NOAA field.
           const scales = inputs.map((x) => x.scale == null ? 1 : x.scale);
-          const { png } = renderDerived(parts, def.combine, def.kind, bbox, maxW, scales);
-          entry = { png, variable: def.label, level: '', legend: legendFor(null, def.kind) };
+
+          if (def.barbs) {
+            // Glyphs rather than a ramp: barbs are drawn straight onto a
+            // transparent canvas, so there is no per-pixel value to colour.
+            const { png } = renderBarbs(parts[0], parts[1], bbox, maxW);
+            entry = { png, variable: def.label, level: '', legend: legendFor(null, 'barb') };
+          } else {
+            /*
+             * Anomaly fields need the long-term normal for the run's VALID
+             * time, not for today: scrubbing to a +120 h forecast must compare
+             * against THAT day's climatology, or a forecast crossing a season
+             * boundary is measured against the wrong normal.
+             */
+            let extras = null;
+            if (def.climo) extras = [await climoSampler(def.climo, validDate(date, cycle, fhr))];
+
+            const { png } = renderDerived(parts, def.combine, def.kind, bbox, maxW, scales, extras);
+            entry = { png, variable: def.label, level: '', legend: legendFor(null, def.kind) };
+          }
           pngSet(cacheKey, entry);
         }
+        // Optional combination plot: barbs drawn over this field.
+        entry = await withBarbOverlay(entry, overlayId, { messages, grabRange, bbox, cacheKey });
         res.setHeader('Content-Type', 'image/png');
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('X-Bbox', bbox.join(','));
@@ -549,6 +737,8 @@ function attachModels(app, requireAuth) {
         }
         pngSet(cacheKey, entry);
       }
+      // Optional combination plot: barbs drawn over this field.
+      entry = await withBarbOverlay(entry, overlayId, { messages, grabRange, bbox, cacheKey });
       res.setHeader('Content-Type', 'image/png');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-Bbox', bbox.join(','));

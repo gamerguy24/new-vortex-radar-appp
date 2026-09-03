@@ -133,6 +133,21 @@ const RAMPS = {
       [2000, [240, 155, 55]], [3000, [225, 70, 60]], [4500, [150, 40, 120]]],
   },
   /*
+   * Departures from the long-term normal. Diverging about zero, with near-
+   * normal deliberately pale so the eye goes to the departures — the whole
+   * point of an anomaly map is which places are unusual.
+   */
+  anom_temp: {                                  // °C from normal
+    underAlpha: true,
+    stops: [[-20, [60, 20, 120]], [-14, [55, 80, 190]], [-8, [80, 150, 220]], [-3, [175, 210, 235]],
+      [0, [242, 242, 240]], [3, [245, 210, 165]], [8, [235, 140, 60]], [14, [205, 50, 45]], [20, [120, 15, 25]]],
+  },
+  anom_pwat: {                                  // mm from normal
+    underAlpha: true,
+    stops: [[-30, [120, 70, 20]], [-20, [180, 130, 60]], [-10, [225, 200, 150]], [-3, [240, 235, 225]],
+      [0, [242, 242, 240]], [3, [200, 235, 225]], [10, [90, 195, 175]], [20, [40, 140, 180]], [30, [25, 70, 150]]],
+  },
+  /*
    * Categorical precipitation type.
    *
    * Not a gradient: the value is an index picked by the derived field from the
@@ -188,6 +203,7 @@ const KIND_UNIT = {
   temp: '°F', refl: 'dBZ', precip: 'mm', wind: 'kt', cape: 'J/kg', mslp: 'hPa',
   percent: '%', shear: 'kt', srh: 'm²/s²', cin: 'J/kg', li: '°C', lapse: '°C/km',
   ehi: '', scp: '', thetae: 'K', vis: 'mi', height: 'm', ptype: '', prate: 'mm/hr',
+  anom_temp: '°C from normal', anom_pwat: 'mm from normal', barb: 'kt',
 };
 
 // Categorical ramps get names instead of numbers on the legend.
@@ -348,7 +364,7 @@ function renderField(gribBytes, variable, bbox, maxW = 1400, kind = null, scale 
  * or missing makes the derived value meaningless, and a partially-evaluated
  * severe parameter is worse than a hole in the map.
  */
-function renderDerived(messageBytes, combine, kind, bbox, maxW = 1400, scales = null) {
+function renderDerived(messageBytes, combine, kind, bbox, maxW = 1400, scales = null, extras = null) {
   const fields = messageBytes.map((b, i) => {
     const d = decodeGrib2Message(b);
     return {
@@ -357,7 +373,11 @@ function renderDerived(messageBytes, combine, kind, bbox, maxW = 1400, scales = 
       scale: (scales && scales[i] != null) ? scales[i] : 1,
     };
   });
-  const args = new Array(fields.length);
+  // Extra inputs that are not GRIB messages — a climatological normal, for the
+  // anomaly fields. They are appended to `args` after the message values, so a
+  // combine function reads its inputs in one consistent order either way.
+  const extraFns = extras || [];
+  const args = new Array(fields.length + extraFns.length);
   return rasterize((lon, lat) => {
     for (let i = 0; i < fields.length; i++) {
       const idx = fields[i].sample(lon, lat);
@@ -365,6 +385,11 @@ function renderDerived(messageBytes, combine, kind, bbox, maxW = 1400, scales = 
       const v = fields[i].values[idx];
       if (!Number.isFinite(v)) return null;
       args[i] = v * fields[i].scale;
+    }
+    for (let k = 0; k < extraFns.length; k++) {
+      const v = extraFns[k](lon, lat);
+      if (v == null || !Number.isFinite(v)) return null;
+      args[fields.length + k] = v;
     }
     return combine(args);
   }, kind, bbox, maxW);
