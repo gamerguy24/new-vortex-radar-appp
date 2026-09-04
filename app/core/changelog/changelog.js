@@ -24,6 +24,7 @@ const CHANGELOG = [
     {
         date: 'August 31, 2026',
         items: [
+            { title: 'Real SHARPpy soundings', desc: 'The forecast sounding now renders the full SounderPy/SHARPpy analysis — the same plot the reference sites publish. Parcel traces for surface, mixed-layer and most-unstable parcels, the Bunkers hodograph with storm-motion vectors, the complete CAPE/CIN/LCL/shear/SRH tables, streamwiseness and storm-relative wind panels. Available on all five models.' },
             { title: 'Soundings on every model', desc: 'The forecast sounding was GFS-only. HRRR, NAM, the NAM 3 km nest and ECMWF are now all available from the model dropdown, out to the same lead times.' },
             { title: 'NAM winds were wrong — fixed', desc: 'Anywhere the NAM or NAM 3 km nest showed wind, it was reading the wrong half of the file: NOAA packs the east and north components into a single record, and both were decoding as the same one. Soundings showed impossible wind speeds. Wind, shear, storm motion and barbs on those two models are all corrected.' },
             { title: 'The sounding tells you what it is showing', desc: 'If the exact SHARPpy plot is unavailable on your server, the panel now says so underneath the built-in one — with the command to install it — instead of quietly drawing something that looks different.' },

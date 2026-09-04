@@ -119,12 +119,29 @@ def main():
         "site_info": site_info,
     }
 
+    # SounderPy's own loaders attach a 'titles' block and its plotter reads it
+    # unconditionally (plot.py: clean_data['titles']['top_title'] and friends).
+    # Building clean_data by hand means building this too; without it every call
+    # died with a bare KeyError: 'titles'.
+    rt, vt = fmt(run_dt), fmt(valid_dt)
+    clean_data["titles"] = {
+        "top_title": "MODEL FORECAST VERTICAL PROFILE | %sZ %s %s"
+                     % (vt[3], model, site_info["fcst-hour"]),
+        "left_title": "%sZ %s %s | VALID: %s/%s/%s %sZ"
+                      % (rt[3], model, site_info["fcst-hour"], vt[1], vt[2], vt[0], vt[3]),
+        "right_title": "%.3f, %.3f    " % (lat, lon),
+    }
+
     # Build the full SHARPpy-style plot. SounderPy's signature has shifted across
     # versions, so try the modern call first, then simpler fallbacks.
     fig = None
     tried = []
+    # SounderPy 3.1.0: build_sounding(clean_data, style, color_blind, dark_mode,
+    # storm_motion, special_parcels, radar, radar_time, map_zoom, modify_sfc,
+    # show_theta, hodo_boundary, save, filename). There is no `show`; passing it
+    # raised TypeError and burned the first attempt on every call.
     for kwargs in (
-        dict(style="full", dark_mode=True, show=False, save=False),
+        dict(style="full", dark_mode=True, save=False),
         dict(style="full", dark_mode=True),
         dict(),
     ):
