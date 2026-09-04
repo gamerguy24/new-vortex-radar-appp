@@ -12,7 +12,10 @@ import openSponsors from './sponsors.js';
 import openCams, { addCamMarkers, removeCamMarkers } from './cams.js';
 import openWeatherReport, { addWeatherReportMarkers, removeWeatherReportMarkers } from './weather_report.js';
 import { addSpotterMarkers, removeSpotterMarkers } from './spotters.js';
-import { addMRMS, removeMRMS } from './mrms.js';
+// Versioned specifiers: an ES import is cached by URL, so a changed module
+// keeps being served from cache until its own URL changes.
+import { addMRMS, removeMRMS, setMRMSProduct, getMRMSProductId } from './mrms.js?v=mrms2';
+import { groupedProducts } from './mrms_products.js';
 import { addEarthquakes, removeEarthquakes } from './earthquakes.js';
 import { addMPING, removeMPING } from './mping.js';
 import { addBuoys, removeBuoys } from './buoys.js';
@@ -92,6 +95,7 @@ function init() {
     onToggle('armrCamerasSwitchElem', (on) => withMap((w) => on ? addCamMarkers(w) : removeCamMarkers(), 'Cameras'));
     onToggle('armrSpottersSwitchElem', (on) => withMap((w) => on ? addSpotterMarkers(w) : removeSpotterMarkers(), 'Spotters'));
     onToggle('armrMRMSSwitchElem', (on) => withMap((w) => on ? addMRMS(w) : removeMRMS(), 'MRMS'));
+    initMrmsProductPicker();
     onToggle('armrEarthquakesSwitchElem', (on) => withMap((w) => on ? addEarthquakes(w) : removeEarthquakes(), 'Earthquakes'));
     onToggle('armrMPINGSwitchElem', (on) => withMap((w) => on ? addMPING(w) : removeMPING(), 'mPING'));
     onToggle('armrBuoysSwitchElem', (on) => withMap((w) => on ? addBuoys(w) : removeBuoys(), 'Buoys'));
@@ -127,4 +131,38 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
     init();
+}
+
+/*
+ * Fill the MRMS product picker from the catalogue and keep it in sync.
+ *
+ * Built here rather than in index.html so the catalogue stays the single source
+ * of truth — adding a product is one entry in mrms_products.js, not an entry
+ * plus a hand-written <option> that can drift out of step with it.
+ *
+ * Changing the field only re-fetches when the layer is on; picking a product
+ * with MRMS switched off just remembers the choice for when it is turned on.
+ */
+function initMrmsProductPicker() {
+    const sel = document.getElementById('armrMRMSProduct');
+    if (!sel || sel.dataset.built) return;
+    sel.dataset.built = '1';
+
+    for (const { group, items } of groupedProducts()) {
+        const og = document.createElement('optgroup');
+        og.label = group;
+        for (const it of items) {
+            const o = document.createElement('option');
+            o.value = it.id;
+            o.textContent = it.label;
+            og.appendChild(o);
+        }
+        sel.appendChild(og);
+    }
+    try { sel.value = getMRMSProductId(); } catch (e) { /* keep the first option */ }
+
+    sel.addEventListener('change', () => {
+        Promise.resolve(setMRMSProduct(sel.value))
+            .catch((e) => console.warn('[MRMS] could not switch product:', e));
+    });
 }

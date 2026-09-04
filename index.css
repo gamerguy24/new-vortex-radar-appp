@@ -1648,6 +1648,30 @@ td.day.active, span.month.active, span.year.active {
 }
 
 /*
+ * A <select> living inside a menu row (MRMS product picker). It takes the rest
+ * of the row so long product names are not clipped, and stays visually a row
+ * control rather than a form field dropped into the list.
+ */
+.armrInlineSelect {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: 2px;
+    padding: 5px 8px;
+    border-radius: var(--vx-r-2, 6px);
+    background: var(--vx-surface-2, #16181d);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--vx-text, #dfe3e8);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.armrInlineSelect:hover { border-color: rgba(255, 255, 255, 0.26); }
+.armrInlineSelect:focus { outline: none; border-color: var(--vx-accent, #e8862b); }
+/* The row is a flex line; without this the select pushes the icon around. */
+#armrMRMSProductRow { display: flex; align-items: center; gap: 8px; }
+
+/*
  * Dropdowns: keep the OPEN list dark too.
  *
  * A styled <select> only skins the closed control. The popup it opens is drawn

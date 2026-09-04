@@ -1,19 +1,28 @@
 /*
  * MRMS (Multi-Radar Multi-Sensor) Layer
  *
- * Renders MRMS base reflectivity from the NOAA MRMS Public Data Set on AWS S3
- * (noaa-mrms-pds) directly, using the REF color table. Data is fetched as
- * .grib2.gz, decompressed and parsed in the browser, painted onto a Canvas
- * with the active palette, and overlaid on the map as an image source.
+ * Renders any of the curated MRMS grids from the NOAA MRMS Public Data Set on
+ * AWS S3 (noaa-mrms-pds). Files are fetched as .grib2.gz, gunzipped, GRIB2-
+ * parsed and PNG-unpacked in the browser, painted onto a Canvas and overlaid
+ * on the map as an image source.
  *
- * S3 bucket:  noaa-mrms-pds
- * Product:    CONUS/MergedBaseReflectivityQC_00.50  (~1.5 MB compressed)
+ * This used to be one hardcoded field — base reflectivity — with the dBZ colour
+ * ramp baked into the painter. The bucket carries 243 CONUS products, so the
+ * field is now chosen from a catalogue (mrms_products.js) that supplies its own
+ * colour ramp, units, no-data floor and paint decimation.
+ *
+ * Reflectivity products deliberately keep using the app's REF colour table
+ * rather than a ramp of their own, so MRMS and the single-site radar agree and
+ * a user's custom palette applies to both.
+ *
+ * S3 bucket: noaa-mrms-pds  (us-east-1, public, no signing)
  */
 
 import Palettes from './palettes.js';
+import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms2';
 
 const MRMS_BUCKET  = 'https://noaa-mrms-pds.s3.amazonaws.com';
-const MRMS_PRODUCT = 'CONUS/MergedBaseReflectivityQC_00.50';
+const DEFAULT_PRODUCT_ID = 'ref_base';
 
 const SOURCE_ID = 'mrms-img-src';
 const LAYER_ID  = 'mrms-img-layer';
@@ -23,7 +32,9 @@ const REFRESH_INTERVAL_MS = 120000;  // 2 min auto-refresh
 const FETCH_TIMEOUT_MS    = 20000;   // 20 s per file
 
 const MRMS_MISSING = -999;
-const GATE_FILTER = -30;
+// Superseded by each product's own `floor` (see mrms_products.js); kept only
+// as the fallback for a product that does not declare one.
+const DEFAULT_FLOOR = -30;
 
 let _mapWrapper      = null;
 let _active          = false;
@@ -32,10 +43,13 @@ let _listCache       = null;
 let _currentFrameKey = null;
 let _rendering       = false;
 let _lastRenderedKey = null;
+let _productId       = DEFAULT_PRODUCT_ID;
+
+function _product() { return getProduct(_productId); }
 
 document.addEventListener('paletteUpdated', (e) => {
     const name = e.detail?.paletteName;
-    if ((name === 'MRMS_REF' || name === 'REF') && _active && _lastRenderedKey) {
+    if ((name === 'MRMS_REF' || name === 'REF') && _active && _lastRenderedKey && _product().reflectivity) {
         _rendering = false;
         _fetchAndRender(_lastRenderedKey);
     }
@@ -309,11 +323,30 @@ function buildPaletteLUT() {
 
 function dbzToLutIdx(dbz) { return Math.max(0, Math.min(280, Math.round((dbz + 40) * 2))); }
 
+/*
+ * Paint a decoded grid using the ACTIVE product's colours.
+ *
+ * Two colour paths, on purpose:
+ *   - reflectivity products go through the app's REF palette, so MRMS matches
+ *     the single-site radar and honours a user's custom colour table;
+ *   - everything else uses the ramp declared in the catalogue, sampled once
+ *     into a 256-entry table. A CONUS grid is 24.5 million points (98 million
+ *     for the rotation grids), so per-pixel work has to be an array index, not
+ *     an interpolation.
+ *
+ * STEP comes from the product too. The rotation grids are 14000x7000 and would
+ * otherwise produce a canvas four times the area of every other field.
+ */
 function paintToCanvas(values, grid) {
     const { nx, ny, scanMode } = grid;
-    const lut = buildPaletteLUT();
+    const product = _product();
+    const isRef = !!product.reflectivity;
 
-    const STEP = 2;
+    const lut = isRef ? buildPaletteLUT() : null;
+    const ramp = isRef ? null : buildRampLUT(product);
+    const floor = product.floor != null ? product.floor : DEFAULT_FLOOR;
+
+    const STEP = product.step || 2;
     const cw = Math.ceil(nx / STEP);
     const ch = Math.ceil(ny / STEP);
 
@@ -329,17 +362,29 @@ function paintToCanvas(values, grid) {
         for (let cx = 0; cx < cw; cx++) {
             const gx = cx * STEP;
             const srcRow = flipJ ? (ny - 1 - gy) : gy;
-            const dbz = values[srcRow * nx + gx];
+            const v = values[srcRow * nx + gx];
             const po = (cy * cw + cx) * 4;
-            if (dbz <= MRMS_MISSING + 1 || dbz < GATE_FILTER || !Number.isFinite(dbz)) {
+            // -999 is missing and -3 is "no radar coverage"; the per-product
+            // floor covers both plus fields that legitimately reach zero.
+            if (!Number.isFinite(v) || v <= MRMS_MISSING + 1 || v < floor) {
                 pix[po + 3] = 0;
                 continue;
             }
-            const li = dbzToLutIdx(dbz) * 4;
-            pix[po]   = lut[li];
-            pix[po+1] = lut[li+1];
-            pix[po+2] = lut[li+2];
-            pix[po+3] = lut[li+3];
+            let li;
+            if (isRef) {
+                li = dbzToLutIdx(v) * 4;
+                pix[po]   = lut[li];
+                pix[po+1] = lut[li+1];
+                pix[po+2] = lut[li+2];
+                pix[po+3] = lut[li+3];
+            } else {
+                const t = (v - ramp.min) / ((ramp.max - ramp.min) || 1);
+                li = Math.max(0, Math.min(255, Math.round(t * 255))) * 4;
+                pix[po]   = ramp.lut[li];
+                pix[po+1] = ramp.lut[li+1];
+                pix[po+2] = ramp.lut[li+2];
+                pix[po+3] = ramp.lut[li+3];
+            }
         }
     }
 
@@ -429,7 +474,7 @@ async function _getLatestKey() {
         const d = new Date(now);
         d.setUTCDate(d.getUTCDate() - i);
         const ds = `${d.getUTCFullYear()}${_pad(d.getUTCMonth()+1)}${_pad(d.getUTCDate())}`;
-        const prefix = `${MRMS_PRODUCT}/${ds}/`;
+        const prefix = `${_product().path}/${ds}/`;
         try {
             const keys = await _fetchS3Keys(prefix);
             if (keys.length) { keys.sort(); return keys[keys.length - 1]; }
@@ -439,7 +484,10 @@ async function _getLatestKey() {
 }
 
 export async function listMRMSFrames(count = 12) {
-    if (_listCache && (Date.now() - _listCache.ts) < LIST_CACHE_TTL_MS) {
+    // Keyed by product: the cached frame list belongs to the field it was built
+    // for, and serving it after a switch would animate the wrong data.
+    if (_listCache && _listCache.productId === _productId
+        && (Date.now() - _listCache.ts) < LIST_CACHE_TTL_MS) {
         return _listCache.frames.slice(-count);
     }
     const frames = [];
@@ -448,7 +496,7 @@ export async function listMRMSFrames(count = 12) {
         const d = new Date(now);
         d.setUTCDate(d.getUTCDate() - i);
         const ds = `${d.getUTCFullYear()}${_pad(d.getUTCMonth()+1)}${_pad(d.getUTCDate())}`;
-        const prefix = `${MRMS_PRODUCT}/${ds}/`;
+        const prefix = `${_product().path}/${ds}/`;
         try {
             const keys = await _fetchS3Keys(prefix);
             for (const key of keys) {
@@ -458,7 +506,7 @@ export async function listMRMSFrames(count = 12) {
         } catch (e) { console.warn(`[MRMS] S3 list failed for ${prefix}:`, e); }
     }
     frames.sort((a, b) => a.dateTime.localeCompare(b.dateTime));
-    _listCache = { frames, ts: Date.now() };
+    _listCache = { frames, ts: Date.now(), productId: _productId };
     return frames.slice(-count);
 }
 
@@ -503,3 +551,25 @@ export async function clearMRMSFrame() {
 export function isMRMSActive() {
     return _active;
 }
+
+/**
+ * Switch the field being shown.
+ *
+ * Clears the cached frame list and the current frame, because both belong to
+ * the product they were fetched for — reusing them across a switch would paint
+ * the old field's data under the new field's colours.
+ */
+export async function setMRMSProduct(id) {
+    const next = getProduct(id);
+    if (!next || next.id === _productId) return;
+    _productId = next.id;
+    _listCache = null;
+    _currentFrameKey = null;
+    _lastRenderedKey = null;
+    if (!_active || !_mapWrapper) return;
+    _rendering = false;
+    const key = await _getLatestKey();
+    if (key && _active) await _fetchAndRender(key);
+}
+
+export function getMRMSProductId() { return _productId; }
