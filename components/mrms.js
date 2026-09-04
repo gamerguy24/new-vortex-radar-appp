@@ -19,7 +19,7 @@
  */
 
 import Palettes from './palettes.js';
-import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms2';
+import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms3';
 
 const MRMS_BUCKET  = 'https://noaa-mrms-pds.s3.amazonaws.com';
 const DEFAULT_PRODUCT_ID = 'ref_base';
@@ -392,6 +392,78 @@ function paintToCanvas(values, grid) {
     return canvas.toDataURL('image/png');
 }
 
+const LEGEND_ID = 'vortexMrmsLegend';
+// Beyond this, a frame is called out as stale instead of being presented as
+// current. MRMS updates every ~2 minutes, so a quarter hour is well past "the
+// feed hiccupped" and into "do not trust this".
+const STALE_AFTER_MIN = 15;
+
+function _removeLegend() {
+    const el = document.getElementById(LEGEND_ID);
+    if (el) el.remove();
+}
+
+/*
+ * On-map legend for the MRMS layer.
+ *
+ * The layer used to paint with no label at all, which is how a national
+ * mosaic ends up indistinguishable from a model forecast overlay covering the
+ * same area — and left "is this live?" as something you could only answer by
+ * reading the console. It now states the product, its units, the frame's valid
+ * time and how old that frame is, and says so plainly when the feed is stale.
+ */
+function _drawLegend(s3Key) {
+    _removeLegend();
+    const product = _product();
+
+    // Sample the same colours the painter uses, so the bar cannot disagree
+    // with the map.
+    const stops = [];
+    if (product.reflectivity) {
+        const lut = buildPaletteLUT();
+        for (let i = 0; i <= 16; i++) {
+            const dbz = -30 + (i / 16) * 105;
+            const li = dbzToLutIdx(dbz) * 4;
+            stops.push(`rgb(${lut[li]},${lut[li+1]},${lut[li+2]}) ${(i / 16 * 100).toFixed(0)}%`);
+        }
+    } else {
+        const r = buildRampLUT(product);
+        for (let i = 0; i <= 16; i++) {
+            const li = Math.round((i / 16) * 255) * 4;
+            stops.push(`rgb(${r.lut[li]},${r.lut[li+1]},${r.lut[li+2]}) ${(i / 16 * 100).toFixed(0)}%`);
+        }
+    }
+
+    const iso = _parseTimestamp(s3Key);
+    let ageMin = null, timeLabel = '—';
+    if (iso) {
+        const t = Date.parse(iso);
+        if (Number.isFinite(t)) {
+            ageMin = Math.round((Date.now() - t) / 60000);
+            timeLabel = iso.slice(11, 16) + 'Z';
+        }
+    }
+    const stale = ageMin != null && ageMin > STALE_AFTER_MIN;
+    const ageText = ageMin == null ? 'unknown age'
+        : ageMin < 1 ? 'just now'
+        : ageMin === 1 ? '1 min ago'
+        : `${ageMin} min ago`;
+
+    let lo, hi;
+    if (product.reflectivity) { lo = -30; hi = 75; }
+    else { const r = buildRampLUT(product); lo = r.min; hi = r.max; }
+    const fmt = (v) => (Math.abs(v) >= 100 || Number.isInteger(v) ? String(Math.round(v)) : v.toFixed(1));
+
+    const el = document.createElement('div');
+    el.id = LEGEND_ID;
+    el.innerHTML = `
+        <div class="vml-title">MRMS · ${product.label}${product.unit ? ` <span style="opacity:.6">(${product.unit})</span>` : ''}</div>
+        <div class="vml-bar" style="background:linear-gradient(90deg, ${stops.join(', ')})"></div>
+        <div class="vml-scale"><span>${fmt(lo)}</span><span>${fmt((lo + hi) / 2)}</span><span>${fmt(hi)}</span></div>
+        <div class="vml-age${stale ? ' stale' : ''}">${stale ? '⚠ STALE — ' : ''}${timeLabel} · ${ageText}</div>`;
+    document.body.appendChild(el);
+}
+
 async function _fetchAndRender(s3Key) {
     if (_rendering) return;
     _rendering = true;
@@ -437,6 +509,7 @@ async function _fetchAndRender(s3Key) {
 
         _addImageToMap(dataUrl, [[lonW, latN], [lonE, latN], [lonE, latS], [lonW, latS]]);
         _lastRenderedKey = s3Key;
+        _drawLegend(s3Key);
         console.log(`[MRMS] Rendered frame: ${_parseTimestamp(s3Key) || 'latest'}`);
     } catch (err) {
         console.error('[MRMS] Fetch/render failed:', err);
@@ -529,6 +602,7 @@ export async function addMRMS(mapWrapper) {
 
 export function removeMRMS() {
     _active = false;
+    _removeLegend();
     _currentFrameKey = null;
     if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
     _removeFromMap();

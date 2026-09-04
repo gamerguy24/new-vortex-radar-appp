@@ -130,6 +130,9 @@ function injectPhase2Styles() {
     #vortexModelLegend .vml-title{font-size:12px;font-weight:800;margin-bottom:8px;letter-spacing:.2px;}
     #vortexModelLegend .vml-bar{height:13px;border-radius:var(--vx-r-2);border:1px solid rgba(255,255,255,.18);box-shadow:inset 0 1px 2px rgba(0,0,0,.35);}
     #vortexModelLegend .vml-scale{display:flex;justify-content:space-between;font-size:10px;opacity:.72;margin-top:5px;font-weight:600;}
+    /* Amber is interface state, and "this has not happened yet" is exactly that. */
+    #vortexModelLegend .vml-fcst{margin-top:7px;padding-top:6px;border-top:1px solid rgba(255,255,255,.09);
+      font-size:10.5px;font-weight:800;letter-spacing:.04em;color:var(--vx-accent,#e8862b);}
     .vmp-vps{display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 13px;}
     .vmp-vp{padding:7px 14px;border-radius:var(--vx-r-3);border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.045);
       color:#c4d3e6;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .12s;}
@@ -187,6 +190,19 @@ function drawLegend(legend, title) {
   el.id = 'vortexModelLegend';
 
   /*
+   * Model fields are FORECASTS, and several of them — composite reflectivity
+   * above all — look exactly like observed radar over exactly the same ground.
+   * Without the model and valid time on the legend there is nothing on screen
+   * to say that the rain being shown has not happened yet, which is how a
+   * forecast overlay gets mistaken for a live mosaic.
+   */
+  const runLine = (state.model && state.run)
+    ? esc(state.model.name.split(' (')[0]) + ' · F' + String(state.fhr).padStart(2, '0')
+      + ' · valid ' + esc(validTime(state.run, state.fhr))
+    : 'model forecast';
+  const fcstNote = '<div class="vml-fcst">FORECAST · ' + runLine + '</div>';
+
+  /*
    * A categorical field gets named swatches, not a colour bar. Precipitation
    * type has no scale to read along: a bar implying snow sits "between" rain
    * and sleet would be meaningless.
@@ -198,7 +214,7 @@ function drawLegend(legend, title) {
         <span style="width:14px;height:14px;border-radius:3px;background:${col};border:1px solid rgba(255,255,255,.25)"></span>
         <span>${esc(name)}</span></div>`;
     }).join('');
-    el.innerHTML = `<div class="vml-title">${esc(title)}</div>${swatches}`;
+    el.innerHTML = `<div class="vml-title">${esc(title)}</div>${swatches}` + fcstNote;
     document.body.appendChild(el);
     return;
   }
@@ -207,7 +223,7 @@ function drawLegend(legend, title) {
   const mid = stops[Math.floor(stops.length / 2)][0];
   el.innerHTML = `<div class="vml-title">${esc(title)} <span style="opacity:.6">(${esc(legend.unit || '')})</span></div>
     <div class="vml-bar" style="background:linear-gradient(90deg, ${grad})"></div>
-    <div class="vml-scale"><span>${min}</span><span>${mid}</span><span>${max}</span></div>`;
+    <div class="vml-scale"><span>${min}</span><span>${mid}</span><span>${max}</span></div>` + fcstNote;
   document.body.appendChild(el);
 }
 
