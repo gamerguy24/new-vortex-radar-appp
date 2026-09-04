@@ -338,8 +338,8 @@ function rasterize(valueAt, kind, bbox, maxW) {
  * as a 0-1 fraction where NOAA gives percent. Getting this wrong plots a real
  * field on a silently wrong scale, which is worse than not plotting it.
  */
-function renderField(gribBytes, variable, bbox, maxW = 1400, kind = null, scale = 1) {
-  const { values, grid } = decodeGrib2Message(gribBytes);
+function renderField(gribBytes, variable, bbox, maxW = 1400, kind = null, scale = 1, sub = 1) {
+  const { values, grid } = decodeGrib2Message(gribBytes, sub);
   const sample = makeSampler(grid);
   const k = scale == null || scale === 1 ? 1 : scale;
   return rasterize((lon, lat) => {
@@ -364,9 +364,11 @@ function renderField(gribBytes, variable, bbox, maxW = 1400, kind = null, scale 
  * or missing makes the derived value meaningless, and a partially-evaluated
  * severe parameter is worse than a hole in the map.
  */
-function renderDerived(messageBytes, combine, kind, bbox, maxW = 1400, scales = null, extras = null) {
+function renderDerived(messageBytes, combine, kind, bbox, maxW = 1400, scales = null, extras = null, subs = null) {
   const fields = messageBytes.map((b, i) => {
-    const d = decodeGrib2Message(b);
+    // `subs` picks the field inside each message, for the u/v pairs NCEP packs
+    // together (see grib2_decode parseSections).
+    const d = decodeGrib2Message(b, (subs && subs[i]) || 1);
     return {
       values: d.values,
       sample: makeSampler(d.grid),
@@ -408,9 +410,9 @@ function renderDerived(messageBytes, combine, kind, bbox, maxW = 1400, scales = 
  * the same grid in every file we read, but assuming that would fail silently
  * and wrongly if it ever stopped being true.
  */
-function renderVectorMagnitude(uBytes, vBytes, variable, bbox, maxW = 1400) {
-  const u = decodeGrib2Message(uBytes);
-  const v = decodeGrib2Message(vBytes);
+function renderVectorMagnitude(uBytes, vBytes, variable, bbox, maxW = 1400, subU = 1, subV = 1) {
+  const u = decodeGrib2Message(uBytes, subU);
+  const v = decodeGrib2Message(vBytes, subV);
   const sampleU = makeSampler(u.grid);
   const sampleV = makeSampler(v.grid);
   return rasterize((lon, lat) => {

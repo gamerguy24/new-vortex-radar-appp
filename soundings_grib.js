@@ -39,6 +39,8 @@ const CACHE = new ByteLRU(300 * 1024 * 1024); // ~300 MB of raw message bytes
 
 // Fetch (or cache-hit) one message's bytes, decode, and sample the point.
 async function pointValue(msg, fileUrl, lat, lon) {
+    // Keyed by the record number, which already distinguishes the sub-messages
+    // that share a byte range ("147.1" vs "147.2").
     const key = fileUrl + ':' + msg.n;
     let bytes = CACHE.get(key);
     if (!bytes) {
@@ -48,7 +50,12 @@ async function pointValue(msg, fileUrl, lat, lon) {
         bytes = Buffer.from(await r.arrayBuffer());
         CACHE.set(key, bytes);
     }
-    const { values, grid } = decodeGrib2Message(bytes); // may throw on unsupported packing
+    /*
+     * msg.sub selects which field inside the message. NCEP packs u and v wind
+     * into ONE message, and without this every wind level decoded the same
+     * component — which is what made the NAM's winds unusable.
+     */
+    const { values, grid } = decodeGrib2Message(bytes, msg.sub || 1); // may throw on unsupported packing
     return sampleAt(grid, values, lon, lat);
 }
 

@@ -37,8 +37,22 @@ class BitReader {
   align() { if (this.bit) { this.bit = 0; this.byte++; } }
 }
 
+/*
+ * Walk a GRIB2 message's sections.
+ *
+ * A single message may carry SEVERAL fields: sections 4-7 repeat, once per
+ * field, sharing one grid definition. NCEP does this for wind, packing u and v
+ * together — which is why the NAM's `.idx` lists them as "147.1" and "147.2"
+ * at one byte offset.
+ *
+ * This used to store sections in a flat map keyed by number, so a repeat
+ * silently overwrote its predecessor and every u/v message decoded as v. The
+ * repeats are now kept as a list, and the caller picks which field it wants.
+ */
 function parseSections(buf) {
-  const sec = {};
+  const shared = {};
+  const groups = [];
+  let cur = null;
   let off = 16; // skip section 0 (16 bytes)
   let len = u32(buf, off); off += len; // skip section 1
   while (off < buf.length - 4) {
@@ -47,10 +61,14 @@ function parseSections(buf) {
     len = u32(buf, off);
     if (len < 5 || len > buf.length - off) break;
     const num = buf[off + 4];
-    sec[num] = { off, len };
+    // Section 4 opens a new field; 5-7 belong to whichever 4 preceded them.
+    if (num === 4) { if (cur) groups.push(cur); cur = {}; }
+    if (cur && num >= 4) cur[num] = { off, len };
+    else shared[num] = { off, len };
     off += len;
   }
-  return sec;
+  if (cur) groups.push(cur);
+  return { shared, groups };
 }
 
 function parseGDS(buf, s) {
@@ -207,14 +225,15 @@ function loadGribberish() {
   return _gribberish;
 }
 
-function decodeViaGribberish(buf, npts, tmpl) {
+function decodeViaGribberish(buf, npts, tmpl, idx = 0) {
   const g = loadGribberish();
   if (!g) {
     throw new Error(`Unsupported DRS template ${tmpl} (install @mattnucc/gribberish to read this model)`);
   }
   const msgs = g.parseMessagesFromBuffer(buf);
   if (!msgs || !msgs.length) throw new Error(`Could not read DRS template ${tmpl} message`);
-  const data = msgs[0].data;
+  // Multi-field messages come back as separate entries here too.
+  const data = (msgs[idx] || msgs[0]).data;
   if (!data || data.length !== npts) {
     // A length mismatch means the two libraries disagree about the grid, and
     // every value would land in the wrong place. Refuse rather than draw it.
@@ -228,24 +247,36 @@ function decodeViaGribberish(buf, npts, tmpl) {
   return out;
 }
 
-function decodeGrib2Message(bytes) {
+/**
+ * Decode one field from a GRIB2 message.
+ *
+ * `sub` is 1-based and selects which field, for messages that pack more than
+ * one (NCEP's u/v wind pairs). It corresponds to the ".1" / ".2" suffix on the
+ * record number in the `.idx`.
+ */
+function decodeGrib2Message(bytes, sub = 1) {
   const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   if (String.fromCharCode(buf[0], buf[1], buf[2], buf[3]) !== 'GRIB') throw new Error('Not GRIB2');
-  const sec = parseSections(buf);
-  if (!sec[3] || !sec[5] || !sec[7]) throw new Error('Missing GRIB2 sections');
-  const grid = parseGDS(buf, sec[3]);
+  const { shared, groups } = parseSections(buf);
+  const idx = Math.max(0, (Number(sub) || 1) - 1);
+  const g = groups[idx] || groups[0];
+  if (!shared[3] || !g || !g[5] || !g[7]) throw new Error('Missing GRIB2 sections');
+  if (idx >= groups.length) {
+    throw new Error(`GRIB2 message has ${groups.length} field(s); sub-message ${sub} requested`);
+  }
+  const grid = parseGDS(buf, shared[3]);
   const npts = grid.nx * grid.ny;
 
   let packed;
   try {
-    packed = decodeData(buf, sec[5], sec[7], npts);
+    packed = decodeData(buf, g[5], g[7], npts);
   } catch (e) {
-    const tmpl = u16(buf, sec[5].off + 9);
+    const tmpl = u16(buf, g[5].off + 9);
     if (!/Unsupported DRS template/.test(String(e.message))) throw e;
     // gribberish applies the bitmap itself, so this path is already complete.
-    return { values: decodeViaGribberish(buf, npts, tmpl), nx: grid.nx, ny: grid.ny, grid };
+    return { values: decodeViaGribberish(buf, npts, tmpl, idx), nx: grid.nx, ny: grid.ny, grid };
   }
-  const bitmap = parseBitmap(buf, sec[6], npts);
+  const bitmap = parseBitmap(buf, g[6], npts);
 
   let values;
   if (bitmap) {

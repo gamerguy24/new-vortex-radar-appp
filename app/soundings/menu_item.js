@@ -11,12 +11,23 @@ const { renderSounding } = require('./skewt');
 
 const icon = '#soundingMenuItemIcon';
 
-// Models served by the raw-GRIB sounding endpoint (server: soundings_grib.js).
-// GFS decodes cleanly (incl. winds) with the pure-JS decoder. NAM is deferred:
-// its UGRD complex-packing reconstruction is wrong in grib2_decode.js (winds
-// come out garbage); HRRR is deferred too (JPEG2000). Both need a decoder fix.
+/*
+ * Models served by the raw-GRIB sounding endpoint (server: soundings_grib.js).
+ *
+ * This list was GFS-only for two reasons, both since fixed. The NAM's winds
+ * came out as six-figure nonsense because NCEP packs u and v into a SINGLE
+ * GRIB message and the decoder was reading the wrong one from a byte range
+ * computed backwards; HRRR and ECMWF use packings the hand-written decoder
+ * does not implement (JPEG2000 and CCSDS) and now fall back to a compiled
+ * decoder for those. All five verified to give plausible profiles: winds
+ * within 0-250 kt and temperature decreasing with height.
+ */
 const MODELS = [
+    { id: 'hrrr', label: 'HRRR (3 km)' },
+    { id: 'nam3km', label: 'NAM 3 km nest' },
+    { id: 'nam', label: 'NAM (12 km)' },
     { id: 'gfs', label: 'GFS (0.25°)' },
+    { id: 'ecmwf', label: 'ECMWF (0.25°)' },
 ];
 
 // forecast lead times offered, in hours (0 = analysis)
@@ -151,6 +162,26 @@ function openSoundingModal(lat, lon) {
     bg.querySelector('#snd-close').onclick = close;
     bg.addEventListener('mousedown', (e) => { if (e.target === bg) close(); });
 
+    /*
+     * Explain, in the panel, why this is the built-in plot rather than the
+     * SHARPpy one — with the exact command that fixes it. "sounderpy is not
+     * installed" is a one-line fix that is invisible without being told.
+     */
+    function buildSounderpyNote(reason) {
+        const missing = /No module named|not available|ModuleNotFound/i.test(reason);
+        const box = document.createElement('div');
+        box.style.cssText = 'margin:10px 2px 0;padding:9px 11px;border-radius:8px;font-size:11.5px;line-height:1.45;'
+            + 'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#9fb2c9;';
+        box.innerHTML = missing
+            ? 'Showing the built-in sounding. For the exact SHARPpy plot, install the renderer on the server:'
+                + '<br><code style="display:inline-block;margin-top:5px;padding:3px 6px;border-radius:4px;'
+                + 'background:rgba(0,0,0,.35);color:#cfe2f5;font-size:11px">pip install sounderpy metpy matplotlib numpy</code>'
+                + '<br><span style="opacity:.7">then restart the server.</span>'
+            : 'Showing the built-in sounding — the SHARPpy renderer failed: '
+                + '<span style="opacity:.8">' + reason.replace(/[<>&]/g, '') + '</span>';
+        return box;
+    }
+
     async function load() {
         wrap.innerHTML = '<div class="snd-spinner"></div>';
         canvas = null; imageBlob = null;
@@ -158,8 +189,16 @@ function openSoundingModal(lat, lon) {
         const fcst = fcstEl.value;
         const qs = `lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&fhr=${encodeURIComponent(fcst)}`;
 
-        // 1) Prefer the exact SharpPy/SounderPy image. If SounderPy isn't set up
-        // on the server the endpoint returns non-image (501) and we fall back.
+        /*
+         * 1) Prefer the exact SHARPpy/SounderPy image — the same renderer the
+         * reference sites use. It needs Python packages on the SERVER, and when
+         * they are missing the endpoint answers 501 and we fall back.
+         *
+         * The reason is captured and shown below the fallback rather than
+         * swallowed: silently serving a different-looking plot leaves you
+         * wondering why it does not match, with nothing on screen to explain it.
+         */
+        let sounderpyNote = null;
         try {
             const imgRes = await fetch(`/api/models/${model}/sounding/image?${qs}`);
             if (imgRes.ok && (imgRes.headers.get('content-type') || '').indexOf('image') !== -1) {
@@ -172,7 +211,11 @@ function openSoundingModal(lat, lon) {
                 wrap.appendChild(img);
                 return;
             }
-        } catch (e) { /* fall back to the built-in renderer */ }
+            const why = await imgRes.json().catch(() => ({}));
+            sounderpyNote = String(why.error || ('HTTP ' + imgRes.status));
+        } catch (e) {
+            sounderpyNote = e.message || 'request failed';
+        }
 
         // 2) Built-in Skew-T / hodograph / parameter panel (always available).
         try {
@@ -187,6 +230,7 @@ function openSoundingModal(lat, lon) {
             });
             wrap.innerHTML = '';
             wrap.appendChild(canvas);
+            if (sounderpyNote) wrap.appendChild(buildSounderpyNote(sounderpyNote));
         } catch (err) {
             wrap.innerHTML = `<div class="snd-msg">${(err && err.message) || 'Could not load the sounding.'}</div>`;
             canvas = null;

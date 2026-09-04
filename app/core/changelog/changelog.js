@@ -24,6 +24,9 @@ const CHANGELOG = [
     {
         date: 'August 31, 2026',
         items: [
+            { title: 'Soundings on every model', desc: 'The forecast sounding was GFS-only. HRRR, NAM, the NAM 3 km nest and ECMWF are now all available from the model dropdown, out to the same lead times.' },
+            { title: 'NAM winds were wrong — fixed', desc: 'Anywhere the NAM or NAM 3 km nest showed wind, it was reading the wrong half of the file: NOAA packs the east and north components into a single record, and both were decoding as the same one. Soundings showed impossible wind speeds. Wind, shear, storm motion and barbs on those two models are all corrected.' },
+            { title: 'The sounding tells you what it is showing', desc: 'If the exact SHARPpy plot is unavailable on your server, the panel now says so underneath the built-in one — with the command to install it — instead of quietly drawing something that looks different.' },
             { title: 'Named QPF windows', desc: '3, 6, 12, 24, 48 and 120-hour precipitation totals ending at whichever forecast hour you are on. A window only appears once the run has gone far enough to compute it, so there is never a button that cannot work.' },
             { title: 'Wind barbs', desc: 'Wind at 10 m, 850, 500 and 250 mb drawn as proper barbs — pennants, full and half barbs, and an open circle for calm — so you can read direction as well as speed. A shaded map can only ever show you speed.' },
             { title: 'Anomalies', desc: 'Precipitable water and 2 m temperature as a departure from normal, against the 1981–2010 daily climatology for that forecast’s valid date. 25 mm of moisture is unremarkable on the Gulf coast and extraordinary over Montana; this is the map that tells them apart.' },

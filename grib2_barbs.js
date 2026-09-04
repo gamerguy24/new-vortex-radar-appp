@@ -187,13 +187,13 @@ function drawBarb(png, x, y, u, v, col, halo) {
  * grid point: at continental scale a 3 km model would put millions of barbs on
  * the image and draw solid ink. `spacing` is that pixel pitch.
  */
-function renderBarbs(uBytes, vBytes, bbox, maxW = 1400, spacing = 46) {
+function renderBarbs(uBytes, vBytes, bbox, maxW = 1400, spacing = 46, subU = 1, subV = 1) {
     const [W, S, E, N] = bbox;
     const OW = Math.min(maxW, 1600);
     const OH = Math.max(1, Math.round(OW * (N - S) / (E - W)));
     const png = new PNG({ width: OW, height: OH });
     png.data.fill(0);
-    drawBarbsOnto(png, uBytes, vBytes, bbox, spacing);
+    drawBarbsOnto(png, uBytes, vBytes, bbox, spacing, subU, subV);
     return { png: PNG.sync.write(png), width: OW, height: OH, kind: 'barb' };
 }
 
@@ -209,9 +209,9 @@ function renderBarbs(uBytes, vBytes, bbox, maxW = 1400, spacing = 46) {
  * from the same bbox — so nothing here needs to agree with the base renderer
  * beyond being handed the same rectangle.
  */
-function drawBarbsOnto(png, uBytes, vBytes, bbox, spacing = 46) {
-    const u = decodeGrib2Message(uBytes);
-    const v = decodeGrib2Message(vBytes);
+function drawBarbsOnto(png, uBytes, vBytes, bbox, spacing = 46, subU = 1, subV = 1) {
+    const u = decodeGrib2Message(uBytes, subU);
+    const v = decodeGrib2Message(vBytes, subV);
     const su = makeSampler(u.grid), sv = makeSampler(v.grid);
 
     const [W, S, E, N] = bbox;

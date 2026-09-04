@@ -303,7 +303,7 @@ async function withBarbOverlay(entry, overlayId, ctx) {
   for (const inp of inputs) parts.push(await ctx.grabRange(inp));
 
   const png = PNG.sync.read(Buffer.from(entry.png));
-  drawBarbsOnto(png, parts[0], parts[1], ctx.bbox);
+  drawBarbsOnto(png, parts[0], parts[1], ctx.bbox, 46, inputs[0].sub || 1, inputs[1].sub || 1);
   const combined = {
     ...entry,
     png: PNG.sync.write(png),
@@ -338,10 +338,32 @@ async function fetchIdx(bucket, key, opts = {}) {
   if (opts.indexType === 'ecmwf') return parseEcmwfIndex(text, opts.fhr || 0);
   const rows = text.trim().split('\n').filter(Boolean).map((line) => {
     const p = line.split(':');
-    return { n: Number(p[0]), start: Number(p[1]), runTag: p[2], variable: p[3], level: p[4], forecast: p[5] };
+    /*
+     * A record number may carry a sub-message suffix — "147.1", "147.2" — when
+     * one GRIB2 message packs several fields. NCEP does this for wind, so the
+     * u and v components share a single byte offset and are told apart only by
+     * that suffix. `sub` is 1-based and selects the field within the message.
+     */
+    const dot = p[0].indexOf('.');
+    const sub = dot >= 0 ? Number(p[0].slice(dot + 1)) : 1;
+    return {
+      n: Number(p[0]), sub: Number.isFinite(sub) && sub > 0 ? sub : 1,
+      start: Number(p[1]), runTag: p[2], variable: p[3], level: p[4], forecast: p[5],
+    };
   });
+  /*
+   * A record ends where the next DIFFERENT offset begins.
+   *
+   * Using the next row's offset unconditionally produced an inverted range for
+   * sub-messages (start > end, since the sibling shares the offset), so every
+   * NAM wind request asked S3 for a backwards byte range and got something
+   * else entirely. Scanning forward to a genuinely later offset gives both
+   * siblings the whole message, which is correct — they are both inside it.
+   */
   for (let i = 0; i < rows.length; i++) {
-    rows[i].end = i + 1 < rows.length ? rows[i + 1].start - 1 : null; // null => to EOF
+    let j = i + 1;
+    while (j < rows.length && rows[j].start <= rows[i].start) j++;
+    rows[i].end = j < rows.length ? rows[j].start - 1 : null; // null => to EOF
   }
   return rows;
 }
@@ -597,7 +619,7 @@ function attachModels(app, requireAuth) {
           if (startFhr === 0) {
             // The window starts at the run's own start, so the run-total IS the
             // answer — no second file, and nothing to subtract.
-            png = renderField(await grabRange(here), 'APCP', bbox, maxW, 'precip', here.scale).png;
+            png = renderField(await grabRange(here), 'APCP', bbox, maxW, 'precip', here.scale, here.sub || 1).png;
           } else {
             const startKey = m.file(date, cycle, startFhr, req.query.product || m.defaultProduct);
             const startMsgs = await fetchIdx(m.bucket, startKey, { idxKey: m.idxKey, indexType: m.indexType, fhr: startFhr });
@@ -614,6 +636,7 @@ function attachModels(app, requireAuth) {
               ([now, then]) => Math.max(0, now - then),
               'precip', bbox, maxW,
               [here.scale == null ? 1 : here.scale, before.scale == null ? 1 : before.scale],
+              null, [here.sub || 1, before.sub || 1],
             ).png;
           }
           entry = {
@@ -656,11 +679,13 @@ function attachModels(app, requireAuth) {
           // Per-input unit scales, set by adapters whose centre uses different
           // units to NOAA's (see model_ecmwf). 1 for every NOAA field.
           const scales = inputs.map((x) => x.scale == null ? 1 : x.scale);
+          // Which field inside each message (u/v pairs share one message).
+          const subs = inputs.map((x) => x.sub || 1);
 
           if (def.barbs) {
             // Glyphs rather than a ramp: barbs are drawn straight onto a
             // transparent canvas, so there is no per-pixel value to colour.
-            const { png } = renderBarbs(parts[0], parts[1], bbox, maxW);
+            const { png } = renderBarbs(parts[0], parts[1], bbox, maxW, 46, subs[0], subs[1]);
             entry = { png, variable: def.label, level: '', legend: legendFor(null, 'barb') };
           } else {
             /*
@@ -672,7 +697,7 @@ function attachModels(app, requireAuth) {
             let extras = null;
             if (def.climo) extras = [await climoSampler(def.climo, validDate(date, cycle, fhr))];
 
-            const { png } = renderDerived(parts, def.combine, def.kind, bbox, maxW, scales, extras);
+            const { png } = renderDerived(parts, def.combine, def.kind, bbox, maxW, scales, extras, subs);
             entry = { png, variable: def.label, level: '', legend: legendFor(null, def.kind) };
           }
           pngSet(cacheKey, entry);
@@ -729,10 +754,10 @@ function attachModels(app, requireAuth) {
         if (msg2) {
           // One request each; they are separate byte ranges of the same object.
           const [a, b] = await Promise.all([grabRange(msg), grabRange(msg2)]);
-          const { png } = renderVectorMagnitude(a, b, msg.variable, bbox, maxW);
+          const { png } = renderVectorMagnitude(a, b, msg.variable, bbox, maxW, msg.sub || 1, msg2.sub || 1);
           entry = { png, variable: msg.variable, level: msg.level, legend: legendFor(msg.variable) };
         } else {
-          const { png } = renderField(await grabRange(msg), msg.variable, bbox, maxW, kindOverride, msg.scale);
+          const { png } = renderField(await grabRange(msg), msg.variable, bbox, maxW, kindOverride, msg.scale, msg.sub || 1);
           entry = { png, variable: msg.variable, level: msg.level, legend: legendFor(msg.variable, kindOverride) };
         }
         pngSet(cacheKey, entry);
