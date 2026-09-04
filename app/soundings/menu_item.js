@@ -30,12 +30,34 @@ const MODELS = [
     { id: 'ecmwf', label: 'ECMWF (0.25°)' },
 ];
 
-// forecast lead times offered, in hours (0 = analysis)
-const FCST = [
-    { v: '0', label: 'Analysis' },
-    { v: '3', label: '+3 h' }, { v: '6', label: '+6 h' }, { v: '12', label: '+12 h' },
-    { v: '24', label: '+24 h' }, { v: '48', label: '+48 h' },
-];
+/*
+ * Forecast lead times, per model (0 = analysis).
+ *
+ * These were one fixed list for every model, which was harmless while GFS was
+ * the only choice. It is not harmless now: the HRRR stops at +48, the NAM 3 km
+ * nest at +60, and asking a model for an hour it does not run just errors. Each
+ * model offers only hours it actually publishes.
+ */
+const FCST_BY_MODEL = {
+    /*
+     * HRRR runs 48 hours only on the 00/06/12/18Z cycles; every other hour
+     * stops at +18. The sounding always uses the LATEST run, which is usually
+     * one of the short ones, so offering 24-48 h produced "not posted yet" most
+     * of the day. +18 is what is reliably there.
+     */
+    hrrr: [0, 1, 2, 3, 4, 6, 9, 12, 15, 18],
+    nam3km: [0, 1, 3, 6, 9, 12, 18, 24, 36, 48, 60],
+    nam: [0, 3, 6, 12, 18, 24, 36, 48, 60, 84],
+    gfs: [0, 3, 6, 12, 24, 48, 72, 120, 180, 240],
+    // ECMWF open data is 3-hourly to +144, then 6-hourly.
+    ecmwf: [0, 3, 6, 12, 24, 48, 72, 120, 144],
+};
+const DEFAULT_FCST = [0, 3, 6, 12, 24, 48];
+
+function fcstFor(modelId) {
+    return (FCST_BY_MODEL[modelId] || DEFAULT_FCST)
+        .map((h) => ({ v: String(h), label: h === 0 ? 'Analysis' : '+' + h + ' h' }));
+}
 
 let armed = false;
 
@@ -135,7 +157,7 @@ function openSoundingModal(lat, lon) {
                         <select class="snd-select" id="snd-model">${MODELS.map((m) => `<option value="${m.id}">${m.label}</option>`).join('')}</select>
                     </label>
                     <label class="snd-fieldgrp">Forecast hour
-                        <select class="snd-select" id="snd-fcst">${FCST.map((f) => `<option value="${f.v}">${f.label}</option>`).join('')}</select>
+                        <select class="snd-select" id="snd-fcst">${fcstFor(MODELS[0].id).map((f) => `<option value="${f.v}">${f.label}</option>`).join('')}</select>
                     </label>
                     <button class="snd-x" id="snd-close" title="Close">&times;</button>
                 </div>
@@ -223,7 +245,7 @@ function openSoundingModal(lat, lon) {
             const snd = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(snd.error || ('HTTP ' + res.status));
             canvas = document.createElement('canvas');
-            const fLabel = (FCST.find((f) => f.v === fcst) || {}).label || '';
+            const fLabel = (fcstFor(model).find((f) => f.v === fcst) || {}).label || '';
             renderSounding(canvas, snd, {
                 title: `${(MODELS.find((m) => m.id === model) || {}).label || model} · ${fLabel}`,
                 sub: `${lat.toFixed(2)}, ${lon.toFixed(2)}${snd.header ? '  ·  ' + snd.header : ''}`,
@@ -237,7 +259,18 @@ function openSoundingModal(lat, lon) {
         }
     }
 
-    modelEl.onchange = load;
+    modelEl.onchange = () => {
+        /*
+         * Rebuild the hour list for the newly chosen model, keeping the current
+         * lead time when that model also runs it — switching HRRR -> NAM to
+         * compare the same hour should not silently jump you back to analysis.
+         */
+        const want = fcstEl.value;
+        const hours = fcstFor(modelEl.value);
+        fcstEl.innerHTML = hours.map((f) => `<option value="${f.v}">${f.label}</option>`).join('');
+        fcstEl.value = hours.some((f) => f.v === want) ? want : '0';
+        load();
+    };
     fcstEl.onchange = load;
     // Current image bytes — the SounderPy PNG when present, else the canvas.
     const currentBlob = async () => {
