@@ -24,6 +24,7 @@ const CHANGELOG = [
     {
         date: 'August 31, 2026',
         items: [
+            { title: 'Dropdowns are readable', desc: 'Opening a dropdown showed a white sheet with near-white text on it — the list a select opens is drawn by the operating system, and it was ignoring the app’s dark theme. Every dropdown in the app now opens dark and legible, not just the ones on the sounding.' },
             { title: 'Forecast hours match the model', desc: 'The sounding offered the same lead times whatever model you picked, so half of them failed on the short-range ones. Each model now lists only hours it actually runs — hourly detail for the HRRR and NAM 3 km nest, out to 10 days on the GFS — and switching models keeps the hour you were on when the new one has it.' },
             { title: 'Real SHARPpy soundings', desc: 'The forecast sounding now renders the full SounderPy/SHARPpy analysis — the same plot the reference sites publish. Parcel traces for surface, mixed-layer and most-unstable parcels, the Bunkers hodograph with storm-motion vectors, the complete CAPE/CIN/LCL/shear/SRH tables, streamwiseness and storm-relative wind panels. Available on all five models.' },
             { title: 'Soundings on every model', desc: 'The forecast sounding was GFS-only. HRRR, NAM, the NAM 3 km nest and ECMWF are now all available from the model dropdown, out to the same lead times.' },

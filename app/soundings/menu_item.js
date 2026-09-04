@@ -114,8 +114,13 @@ function injectStyles() {
     .snd-hsub{font-size:11.5px;color:var(--vx-text-2);font-weight:600;margin-top:1px;}
     .snd-controls{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
     .snd-fieldgrp{display:flex;flex-direction:column;gap:4px;font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--vx-text-2);}
-    .snd-select{padding:8px 11px;border-radius:var(--vx-r-3);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.13);
-        color:var(--vx-text);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+    /* Solid, not translucent: the open list is opaque, and a see-through
+       closed control next to it read as a different colour. color-scheme keeps
+       the native popup dark (see the global select rule in index.css). */
+    .snd-select{padding:8px 11px;border-radius:var(--vx-r-3);background:var(--vx-surface-2,#161d29);border:1px solid rgba(255,255,255,.13);
+        color:var(--vx-text);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color-scheme:dark;}
+    .snd-select option{background:var(--vx-surface-2,#161d29);color:var(--vx-text,#e8eef7);}
+    .snd-select:hover{border-color:rgba(255,255,255,.24);}
     .snd-select:focus{outline:none;border-color:var(--vx-accent);}
     .snd-x{width:34px;height:34px;border-radius:var(--vx-r-3);border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);
         color:var(--vx-text-2);cursor:pointer;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;align-self:center;transition:all .12s;}

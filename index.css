@@ -1647,6 +1647,39 @@ td.day.active, span.month.active, span.year.active {
     color: rgb(140, 140, 140);
 }
 
+/*
+ * Dropdowns: keep the OPEN list dark too.
+ *
+ * A styled <select> only skins the closed control. The popup it opens is drawn
+ * by the operating system, which defaults to a white sheet — and since the
+ * light text colour is inherited into the <option> elements, the choices came
+ * out white-on-white and unreadable in every dropdown in the app.
+ *
+ * color-scheme is the part that actually fixes the popup: it tells the browser
+ * to render native UI in dark, so the list, its scrollbar and the highlight all
+ * follow. The explicit option colours are the belt-and-braces for engines that
+ * paint options from the page's own styles instead.
+ *
+ * Global on purpose. There are sixteen selects across the app and they all had
+ * this; fixing them one panel at a time would leave the next one to be found by
+ * a user rather than by us.
+ */
+select {
+    color-scheme: dark;
+}
+select option,
+select optgroup {
+    background-color: var(--vx-surface-2, #161d29);
+    color: var(--vx-text, #e8eef7);
+}
+/*
+ * The highlight on the hovered/selected row is deliberately left to the
+ * browser. Under color-scheme:dark it already draws an accessible one, and
+ * overriding it with a translucent accent would tint against a backdrop we do
+ * not control — risking a selection you cannot see, which is worse than a
+ * selection that is not on-brand.
+ */
+
 #attributionDiv {
     color: #a0a0a0;
     font-size: 13px;
