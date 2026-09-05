@@ -33,7 +33,7 @@
  */
 
 import Palettes from './palettes.js';
-import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms5';
+import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms6';
 
 const MRMS_BUCKET  = 'https://noaa-mrms-pds.s3.amazonaws.com';
 const DEFAULT_PRODUCT_ID = 'ref_base';
@@ -373,6 +373,32 @@ function dbzToLutIdx(dbz) { return Math.max(0, Math.min(280, Math.round((dbz + 4
  * STEP comes from the product too. The rotation grids are 14000x7000 and would
  * otherwise produce a canvas four times the area of every other field.
  */
+/*
+ * WEB MERCATOR ROW MAPPING — the reason this is not a straight copy.
+ *
+ * A Mapbox `image` source stretches the picture linearly in Web Mercator Y
+ * between the corner coordinates it is given. The MRMS grid is
+ * EQUIRECTANGULAR: a fixed 0.01 degrees of latitude per row, linear in
+ * latitude, not in Mercator.
+ *
+ * Painting the grid row-for-row and handing Mapbox the bounding box therefore
+ * puts every row at the wrong latitude, and the error is worst in the middle
+ * of the box — for the CONUS grid (55N to 20N) that is up to 2.2 degrees, about
+ * 240 km, pushing everything NORTHWARD. Storms in south Georgia were drawn over
+ * central Georgia; echoes off the Carolina coast were drawn over Virginia and
+ * DC. It looks like plausible weather in the wrong place, which is exactly the
+ * kind of wrong that goes unnoticed until someone looks out of the window.
+ *
+ * So the canvas is painted in MERCATOR space: for each output row we work out
+ * the latitude Mapbox will place it at, then sample the grid row that actually
+ * covers that latitude. Longitude needs no such treatment — Mercator X is
+ * linear in longitude.
+ */
+const D2R = Math.PI / 180;
+const R2D = 180 / Math.PI;
+function _mercY(lat) { return Math.log(Math.tan(Math.PI / 4 + (lat * D2R) / 2)); }
+function _invMercY(y) { return (2 * (Math.atan(Math.exp(y)) - Math.PI / 4)) * R2D; }
+
 function paintToCanvas(values, grid) {
     const { nx, ny, scanMode } = grid;
     const product = _product();
@@ -393,11 +419,30 @@ function paintToCanvas(values, grid) {
     const pix = imgData.data;
     const flipJ = (scanMode & 0x40) !== 0;
 
+    /*
+     * Precompute the grid row for each canvas row, in Mercator (see above).
+     * Done once per frame rather than per pixel: it is a log/atan per row, and
+     * there are 3.5 thousand rows against 6 million pixels.
+     */
+    const latTop = Math.max(grid.lat1, grid.lat2);
+    const latBot = Math.min(grid.lat1, grid.lat2);
+    const yTop = _mercY(latTop);
+    const yBot = _mercY(latBot);
+    const dj = grid.dj || ((latTop - latBot) / (ny - 1));
+    const rowFor = new Int32Array(ch);
     for (let cy = 0; cy < ch; cy++) {
-        const gy = cy * STEP;
+        // Centre of this output row, as a fraction down the Mercator box.
+        const f = (cy + 0.5) / ch;
+        const lat = _invMercY(yTop + f * (yBot - yTop));
+        let j = Math.round((latTop - lat) / dj);      // rows counted from the north
+        if (flipJ) j = ny - 1 - j;                    // ...unless the grid scans south-up
+        rowFor[cy] = j < 0 ? 0 : (j > ny - 1 ? ny - 1 : j);
+    }
+
+    for (let cy = 0; cy < ch; cy++) {
+        const srcRow = rowFor[cy];
         for (let cx = 0; cx < cw; cx++) {
             const gx = cx * STEP;
-            const srcRow = flipJ ? (ny - 1 - gy) : gy;
             const v = values[srcRow * nx + gx];
             const po = (cy * cw + cx) * 4;
             // -999 is missing and -3 is "no radar coverage"; the per-product

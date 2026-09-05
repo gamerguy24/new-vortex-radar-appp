@@ -306,17 +306,34 @@ function makeSampler(grid) {
  * transparent. Factored out so the single-field and vector-magnitude renderers
  * cannot drift apart in projection, orientation or transparency handling.
  */
+/*
+ * Row latitudes are spaced in WEB MERCATOR, not evenly in latitude.
+ *
+ * The client hands this PNG to a Mapbox `image` source with the bbox corners,
+ * and Mapbox stretches it linearly in Mercator Y. Emitting rows evenly spaced
+ * in latitude therefore puts every row at the wrong place, worst in the middle
+ * of the box — over a CONUS-wide view that is a couple of degrees, enough to
+ * paint a field over the wrong states. Same defect, and same fix, as the MRMS
+ * national mosaic (components/mrms.js).
+ */
+const _mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * D2R) / 2));
+const _invMercY = (y) => (2 * (Math.atan(Math.exp(y)) - Math.PI / 4)) / D2R;
+
 function rasterize(valueAt, kind, bbox, maxW) {
   const [W, S, E, N] = bbox;
   const OW = Math.min(maxW, 1600);
   const OH = Math.max(1, Math.round(OW * (N - S) / (E - W)));
   const ramp = RAMPS[kind];
 
+  // Clamped away from the poles, where Mercator Y runs to infinity.
+  const yN = _mercY(Math.min(85, Math.max(-85, N)));
+  const yS = _mercY(Math.min(85, Math.max(-85, S)));
+
   const png = new PNG({ width: OW, height: OH });
   const data = png.data;
   const col = [0, 0, 0, 0];
   for (let py = 0; py < OH; py++) {
-    const lat = N - (py + 0.5) / OH * (N - S);
+    const lat = _invMercY(yN + ((py + 0.5) / OH) * (yS - yN));
     for (let px = 0; px < OW; px++) {
       const lon = W + (px + 0.5) / OW * (E - W);
       const di4 = (py * OW + px) * 4;
