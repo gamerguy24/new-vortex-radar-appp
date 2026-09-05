@@ -33,7 +33,7 @@
  */
 
 import Palettes from './palettes.js';
-import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms8';
+import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms9';
 
 const MRMS_BUCKET  = 'https://noaa-mrms-pds.s3.amazonaws.com';
 const DEFAULT_PRODUCT_ID = 'ref_base';
@@ -461,6 +461,11 @@ function _invMercY(y) { return (2 * (Math.atan(Math.exp(y)) - Math.PI / 4)) * R2
  * 7000x3500 canvas is 98 MB of RGBA and not something to hand a phone.
  */
 const MAX_CANVAS_PX = 3600;
+// How far past one pixel per grid cell we are willing to draw. The data is
+// 1 km; rendering it at three times that lets a colour boundary land on a
+// pixel instead of being stretched, without pretending to detail that is not
+// there.
+const SUPERSAMPLE = 3;
 const VIEW_PAD = 0.25;            // fraction of the view added on each side
 
 function _gridWindow(grid) {
@@ -503,6 +508,62 @@ function _gridWindow(grid) {
     };
 }
 
+/*
+ * Paint the window at the SCREEN's resolution, sampling the data smoothly.
+ *
+ * Two things made this look soft, and only one of them was the window size.
+ *
+ * The canvas used to hold at most one pixel per grid cell. At a county zoom
+ * that image still has to be magnified to fill the screen, and - worse -
+ * colour was assigned per CELL and the finished picture then stretched, so
+ * every boundary between two colours got smeared across however many screen
+ * pixels the magnification covered. Bands of colour with soft edges is exactly
+ * what "blurry" looks like.
+ *
+ * So the canvas is now sized to the screen, and the DATA is interpolated to
+ * each output pixel BEFORE any colour is chosen. Colour boundaries then land
+ * on a single pixel and stay crisp while the field varies smoothly - the same
+ * trick the single-site radar uses when its smoothing is on.
+ *
+ * Sampling adapts to which way we are scaling:
+ *   - more than one cell per output pixel (zoomed out): box-average, the
+ *     correct downsample, which also avoids the shimmer of point-sampling;
+ *   - otherwise (zoomed in): bilinear between the four surrounding cells.
+ * With smoothing off both become nearest-neighbour, giving honest hard cells.
+ *
+ * No-data is never mixed in as a value: it simply loses its weight, and a
+ * pixel with no valid neighbours stays transparent. Averaging "no echo" into
+ * a real value would drag every storm edge down and ring it with invented
+ * weak returns.
+ */
+/*
+ * Paint the window at the SCREEN's resolution, sampling the data smoothly.
+ *
+ * Two things made this look soft, and only one of them was the window size.
+ *
+ * The canvas used to hold at most one pixel per grid cell. At a county zoom
+ * that image still has to be magnified to fill the screen, and - worse -
+ * colour was assigned per CELL and the finished picture then stretched, so
+ * every boundary between two colours got smeared across however many screen
+ * pixels the magnification covered. Bands of colour with soft edges is exactly
+ * what "blurry" looks like.
+ *
+ * So the canvas is now sized to the screen, and the DATA is interpolated to
+ * each output pixel BEFORE any colour is chosen. Colour boundaries then land
+ * on a single pixel and stay crisp while the field varies smoothly - the same
+ * trick the single-site radar uses when its smoothing is on.
+ *
+ * Sampling adapts to which way we are scaling:
+ *   - more than one cell per output pixel (zoomed out): box-average, the
+ *     correct downsample, which also avoids the shimmer of point-sampling;
+ *   - otherwise (zoomed in): bilinear between the four surrounding cells.
+ * With smoothing off both become nearest-neighbour, giving honest hard cells.
+ *
+ * No-data is never mixed in as a value: it simply loses its weight, and a
+ * pixel with no valid neighbours stays transparent. Averaging "no echo" into
+ * a real value would drag every storm edge down and ring it with invented
+ * weak returns.
+ */
 function paintToCanvas(values, grid, win) {
     const { nx, ny, scanMode } = grid;
     const product = _product();
@@ -511,24 +572,33 @@ function paintToCanvas(values, grid, win) {
     const lut = isRef ? buildPaletteLUT() : null;
     const ramp = isRef ? null : buildRampLUT(product);
     const floor = product.floor != null ? product.floor : DEFAULT_FLOOR;
+    const smooth = (typeof window === 'undefined') || window.vortexSmoothing !== false;
 
-    /*
-     * Decimation is chosen from the WINDOW, not fixed per product. Zoomed in,
-     * the visible span is small enough to draw every cell (step 1 — full 1 km
-     * detail); zoomed out, the step rises until the canvas fits the cap.
-     * `product.step` is the coarsest we will go, which is what keeps the
-     * 14000x7000 rotation grids affordable at continental zoom.
-     */
     const winCols = win.i1 - win.i0 + 1;
     const winRows = win.j1 - win.j0 + 1;
-    // The coarsest the window forces us to be, and no coarser: 1 when the view
-    // is small enough to draw every cell. The window's own size already keeps
-    // the big 14000x7000 rotation grids in hand, so no per-product floor is
-    // needed here.
-    const STEP = Math.max(1, Math.ceil(Math.max(winCols, winRows) / MAX_CANVAS_PX));
 
-    const cw = Math.max(1, Math.ceil(winCols / STEP));
-    const ch = Math.max(1, Math.ceil(winRows / STEP));
+    /*
+     * Target size: how many device pixels the map will actually give this
+     * window. Capped both ways - never past MAX_CANVAS_PX, and never more than
+     * SUPERSAMPLE times the cell count, beyond which we would only be
+     * interpolating our own interpolation.
+     */
+    let targetW = winCols;
+    const map = _getMap();
+    try {
+        if (map && typeof map.getCanvas === 'function' && typeof map.getBounds === 'function') {
+            const b = map.getBounds();
+            const viewLon = b.getEast() - b.getWest();
+            const winLon = win.east - win.west;
+            if (viewLon > 0 && winLon > 0) {
+                targetW = Math.round(map.getCanvas().width * (winLon / viewLon));
+            }
+        }
+    } catch (e) { /* keep the cell-count default */ }
+
+    const cw = Math.max(1, Math.min(MAX_CANVAS_PX, Math.round(
+        Math.min(Math.max(targetW, 1), winCols * SUPERSAMPLE))));
+    const ch = Math.max(1, Math.round(cw * (winRows / winCols)));
 
     const canvas = document.createElement('canvas');
     canvas.width = cw; canvas.height = ch;
@@ -537,100 +607,101 @@ function paintToCanvas(values, grid, win) {
     const pix = imgData.data;
     const flipJ = (scanMode & 0x40) !== 0;
 
-    /*
-     * Precompute the grid row for each canvas row, in Mercator (see above).
-     * Done once per frame rather than per pixel: it is a log/atan per row, and
-     * there are thousands of rows against millions of pixels.
-     *
-     * The Mercator span is the WINDOW's, not the whole grid's — the image is
-     * placed at the window's corners, so that is the box Mapbox will stretch.
-     */
     const latTop = Math.max(grid.lat1, grid.lat2);
-    const latBot = Math.min(grid.lat1, grid.lat2);
+    const dj = grid.dj || ((latTop - Math.min(grid.lat1, grid.lat2)) / (ny - 1));
     const yTop = _mercY(win.north);
     const yBot = _mercY(win.south);
-    const dj = grid.dj || ((latTop - latBot) / (ny - 1));
-    const rowFor = new Int32Array(ch);
+
+    // Grid row for each output row, as a FRACTION so it can be interpolated.
+    const rowAt = new Float32Array(ch);
     for (let cy = 0; cy < ch; cy++) {
-        // Centre of this output row, as a fraction down the Mercator box.
-        const f = (cy + 0.5) / ch;
-        const lat = _invMercY(yTop + f * (yBot - yTop));
-        let j = Math.round((latTop - lat) / dj);      // rows counted from the north
-        j = Math.max(win.j0, Math.min(win.j1, j));    // stay inside the window
-        if (flipJ) j = ny - 1 - j;                    // ...unless the grid scans south-up
-        rowFor[cy] = j < 0 ? 0 : (j > ny - 1 ? ny - 1 : j);
+        const lat = _invMercY(yTop + ((cy + 0.5) / ch) * (yBot - yTop));
+        rowAt[cy] = (latTop - lat) / dj;
     }
+    const cellsPerPixelX = winCols / cw;
+    const cellsPerPixelY = winRows / ch;
+    const downsampling = smooth && (cellsPerPixelX > 1.2 || cellsPerPixelY > 1.2);
 
-    /*
-     * SMOOTHING — the app-wide setting, which this layer used to ignore.
-     *
-     * window.vortexSmoothing (default on) already governs the single-site
-     * radar; the national mosaic took every output pixel from a single grid
-     * cell regardless, so it stayed visibly blockier than the radar beside it.
-     *
-     * On: average the block of source cells this output pixel actually covers,
-     * which is proper area-averaging for a downsample — the grid is 1 km and
-     * we are drawing it at 2 km or coarser, so a single sample throws away
-     * three quarters of the data and aliases the edges.
-     *
-     * Cells with no data are left OUT of the average rather than counted as
-     * zero: averaging "no echo here" into a real value would drag the edge of
-     * every storm down and paint a halo of weak returns around it. A block with
-     * nothing valid in it stays transparent.
-     */
-    const smooth = (typeof window === 'undefined') || window.vortexSmoothing !== false;
+    const rowIndex = (j) => (flipJ ? ny - 1 - j : j);
 
-    const sampleBlock = (cy, gx) => {
-        const rowA = rowFor[cy];
-        // The rows this output pixel spans, in grid terms.
-        const rowB = cy + 1 < ch ? rowFor[cy + 1] : rowA + (flipJ ? -STEP : STEP);
-        const r0 = Math.max(0, Math.min(rowA, rowB));
-        const r1 = Math.min(ny - 1, Math.max(rowA, rowB));
+    const valueAtCell = (j, i) => {
+        if (j < 0 || j > ny - 1 || i < 0 || i > nx - 1) return NaN;
+        const v = values[rowIndex(j) * nx + i];
+        return (!Number.isFinite(v) || v <= MRMS_MISSING + 1 || v < floor) ? NaN : v;
+    };
+
+    // Zoomed out: average the cells this pixel covers.
+    const boxAt = (fj, fi) => {
+        const j0 = Math.max(win.j0, Math.round(fj - cellsPerPixelY / 2));
+        const j1 = Math.min(win.j1, Math.round(fj + cellsPerPixelY / 2));
+        const i0 = Math.max(win.i0, Math.round(fi - cellsPerPixelX / 2));
+        const i1 = Math.min(win.i1, Math.round(fi + cellsPerPixelX / 2));
         let sum = 0, n = 0;
-        for (let r = r0; r <= r1; r++) {
-            const base = r * nx;
-            for (let c = gx; c < gx + STEP && c <= win.i1 && c < nx; c++) {
-                const s = values[base + c];
-                if (!Number.isFinite(s) || s <= MRMS_MISSING + 1 || s < floor) continue;
-                sum += s; n++;
+        for (let j = j0; j <= j1; j++) {
+            for (let i = i0; i <= i1; i++) {
+                const v = valueAtCell(j, i);
+                if (Number.isFinite(v)) { sum += v; n++; }
             }
         }
         return n ? sum / n : NaN;
     };
 
-    for (let cy = 0; cy < ch; cy++) {
-        const srcRow = rowFor[cy];
-        for (let cx = 0; cx < cw; cx++) {
-            // Columns are relative to the window's left edge.
-            const gx = win.i0 + cx * STEP;
-            const v = smooth ? sampleBlock(cy, gx) : values[srcRow * nx + gx];
-            const po = (cy * cw + cx) * 4;
-            // -999 is missing and -3 is "no radar coverage"; the per-product
-            // floor covers both plus fields that legitimately reach zero.
-            if (!Number.isFinite(v) || v <= MRMS_MISSING + 1 || v < floor) {
-                pix[po + 3] = 0;
-                continue;
+    // Zoomed in: bilinear across the four surrounding cells, weighting only
+    // the ones that actually hold data.
+    /*
+     * Anchored to the NEAREST cell first. Interpolating wherever any of the
+     * four neighbours held data would paint a pixel just for being next to an
+     * echo, growing every storm by a cell - measured at 27% more painted
+     * area, which reads as light returns that are not there. Requiring the
+     * nearest cell to be real keeps the footprint identical to
+     * nearest-neighbour and lets the interpolation do only what it is for:
+     * smooth the values inside.
+     */
+    const bilinearAt = (fj, fi) => {
+        if (!Number.isFinite(valueAtCell(Math.round(fj), Math.round(fi)))) return NaN;
+        const j0 = Math.floor(fj), i0 = Math.floor(fi);
+        const tj = fj - j0, ti = fi - i0;
+        let sum = 0, wsum = 0;
+        for (let dj2 = 0; dj2 <= 1; dj2++) {
+            for (let di2 = 0; di2 <= 1; di2++) {
+                const v = valueAtCell(j0 + dj2, i0 + di2);
+                if (!Number.isFinite(v)) continue;
+                const w = (dj2 ? tj : 1 - tj) * (di2 ? ti : 1 - ti);
+                if (w <= 0) continue;
+                sum += v * w; wsum += w;
             }
+        }
+        return wsum > 0 ? sum / wsum : NaN;
+    };
+
+    for (let cy = 0; cy < ch; cy++) {
+        const fj = rowAt[cy];
+        for (let cx = 0; cx < cw; cx++) {
+            const fi = win.i0 + ((cx + 0.5) / cw) * winCols - 0.5;
+            let v;
+            if (!smooth) v = valueAtCell(Math.round(fj), Math.round(fi));
+            else if (downsampling) v = boxAt(fj, fi);
+            else v = bilinearAt(fj, fi);
+
+            const po = (cy * cw + cx) * 4;
+            if (!Number.isFinite(v)) { pix[po + 3] = 0; continue; }
+
             let li;
             if (isRef) {
                 li = dbzToLutIdx(v) * 4;
-                pix[po]   = lut[li];
-                pix[po+1] = lut[li+1];
-                pix[po+2] = lut[li+2];
-                pix[po+3] = lut[li+3];
+                pix[po] = lut[li]; pix[po + 1] = lut[li + 1];
+                pix[po + 2] = lut[li + 2]; pix[po + 3] = lut[li + 3];
             } else {
                 const t = (v - ramp.min) / ((ramp.max - ramp.min) || 1);
                 li = Math.max(0, Math.min(255, Math.round(t * 255))) * 4;
-                pix[po]   = ramp.lut[li];
-                pix[po+1] = ramp.lut[li+1];
-                pix[po+2] = ramp.lut[li+2];
-                pix[po+3] = ramp.lut[li+3];
+                pix[po] = ramp.lut[li]; pix[po + 1] = ramp.lut[li + 1];
+                pix[po + 2] = ramp.lut[li + 2]; pix[po + 3] = ramp.lut[li + 3];
             }
         }
     }
 
     ctx.putImageData(imgData, 0, 0);
-    return canvas.toDataURL('image/png');
+    return canvas;
 }
 
 const LEGEND_ID = 'vortexMrmsLegend';
@@ -742,7 +813,7 @@ async function _fetchAndRender(s3Key) {
         const values = await unpackGrib2Data(drs, dataBytes, grid.numPoints, grid.nx, grid.ny);
 
         _frame = { key: s3Key, values, grid };
-        _repaint();
+        await _repaint();
         _hookMapMove();
         _lastRenderedKey = s3Key;
         _drawLegend(s3Key);
@@ -761,12 +832,37 @@ async function _fetchAndRender(s3Key) {
  * grid we need and how finely, but not which frame, so this runs on its own
  * without touching the network.
  */
-function _repaint() {
+/*
+ * Turn the painted canvas into something an image source will take.
+ *
+ * toDataURL base64-encodes a PNG synchronously on the main thread. At a county
+ * zoom this canvas is three million pixels, so doing that on every repaint —
+ * and a repaint follows every zoom — is a visible hitch. toBlob does the same
+ * work off-thread and skips the base64 inflation entirely; the object URL is
+ * revoked when the next one replaces it so the blobs do not accumulate.
+ */
+let _objectUrl = null;
+function _canvasUrl(canvas) {
+    return new Promise((resolve) => {
+        if (typeof canvas.toBlob !== 'function') { resolve(canvas.toDataURL('image/png')); return; }
+        canvas.toBlob((blob) => {
+            if (!blob) { resolve(canvas.toDataURL('image/png')); return; }
+            const url = URL.createObjectURL(blob);
+            if (_objectUrl) { try { URL.revokeObjectURL(_objectUrl); } catch (e) {} }
+            _objectUrl = url;
+            resolve(url);
+        }, 'image/png');
+    });
+}
+
+async function _repaint() {
     if (!_frame || !_active) return;
     const { values, grid } = _frame;
     const win = _gridWindow(grid);
     if (!win) { _removeFromMap(); return; }   // map is off the grid entirely
-    const dataUrl = paintToCanvas(values, grid, win);
+    const canvas = paintToCanvas(values, grid, win);
+    const dataUrl = await _canvasUrl(canvas);
+    if (!_active) return;                    // switched off while encoding
     _addImageToMap(dataUrl, [
         [win.west, win.north], [win.east, win.north],
         [win.east, win.south], [win.west, win.south],
@@ -785,7 +881,9 @@ function _hookMapMove() {
     map.on('moveend', () => {
         if (!_active) return;
         clearTimeout(_moveTimer);
-        _moveTimer = setTimeout(() => { try { _repaint(); } catch (e) { console.warn('[MRMS] repaint failed:', e); } }, 140);
+        _moveTimer = setTimeout(() => {
+            Promise.resolve(_repaint()).catch((e) => console.warn('[MRMS] repaint failed:', e));
+        }, 140);
     });
 }
 
@@ -798,9 +896,29 @@ function _removeFromMap() {
     if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
 }
 
+/*
+ * Put the painted frame on the map.
+ *
+ * Every repaint used to remove the layer and add it back, which is a destroy
+ * and recreate of the source, the layer and its GL texture — and on a zoom,
+ * where a repaint follows every gesture, that is what made the mosaic flash
+ * and stutter. An image source can be updated in place, so the existing one is
+ * reused whenever it is still there and only its picture and corners change.
+ */
 function _addImageToMap(dataUrl, coordinates) {
     const map = _getMap();
     if (!map) return;
+
+    const existing = map.getSource(SOURCE_ID);
+    if (existing && typeof existing.updateImage === 'function' && map.getLayer(LAYER_ID)) {
+        try {
+            existing.updateImage({ url: dataUrl, coordinates });
+            return;
+        } catch (e) {
+            // Fall through to a clean rebuild if the update is refused.
+        }
+    }
+
     _removeFromMap();
     map.addSource(SOURCE_ID, { type: 'image', url: dataUrl, coordinates });
     const before = map.getLayer('radar-webgl') ? 'radar-webgl' : undefined;
@@ -885,6 +1003,7 @@ export async function addMRMS(mapWrapper) {
 export function removeMRMS() {
     _active = false;
     _frame = null;
+    if (_objectUrl) { try { URL.revokeObjectURL(_objectUrl); } catch (e) {} _objectUrl = null; }
     clearTimeout(_moveTimer);
     _removeLegend();
     _currentFrameKey = null;
