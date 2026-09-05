@@ -1687,6 +1687,18 @@ const product_colors = {
     DVL1: vertically_integrated_liquid,
 }
 
+/*
+ * Published on window as well as exported.
+ *
+ * The national-radar layer (components/mrms.js) is a standalone ES module
+ * outside this bundle and cannot require() in, but it must colour reflectivity
+ * with the SAME table as the single-site radar — otherwise the mosaic and the
+ * site disagree, and an uploaded colortable applies to one and not the other.
+ */
+if (typeof window !== 'undefined') {
+    window.vortexColormaps = product_colors;
+}
+
 module.exports = product_colors;
 },{"./colortable_parser":3}],3:[function(require,module,exports){
 // https://www.grlevelx.com/manuals/color_tables/files_color_table.htm

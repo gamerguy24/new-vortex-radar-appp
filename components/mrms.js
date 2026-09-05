@@ -33,7 +33,7 @@
  */
 
 import Palettes from './palettes.js';
-import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms6';
+import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms7';
 
 const MRMS_BUCKET  = 'https://noaa-mrms-pds.s3.amazonaws.com';
 const DEFAULT_PRODUCT_ID = 'ref_base';
@@ -319,16 +319,50 @@ async function unpackGrib2Data(drs, dataBytes, numPoints, nx, ny) {
     throw new Error(`Unsupported GRIB2 DRS template: ${drs.template}`);
 }
 
+function _parseRgb(str) {
+    const m = String(str).match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/);
+    if (!m) return null;
+    const a = m[4] !== undefined ? Number(m[4]) : 1;
+    return { r: +m[1], g: +m[2], b: +m[3], a: Math.round(a <= 1 ? a * 255 : a) };
+}
+
+/*
+ * Reflectivity colours come from the APP's colortable, not a table of our own.
+ *
+ * This layer used to carry a hardcoded fifteen-stop NWS ramp in
+ * components/palettes.js, entirely separate from app/radar/colormaps. So the
+ * national mosaic and the single-site radar coloured the same dBZ differently,
+ * and a colortable the user uploaded changed one and not the other — the two
+ * radars visibly disagreeing about the same storm.
+ *
+ * window.vortexColormaps is published by the bundle (colormaps.js). N0B is the
+ * base-reflectivity table, and it is what the colortable menu rewrites in place
+ * when a different table is picked, so reading it here means MRMS follows every
+ * choice automatically. The bundled palette stays as the fallback for the
+ * moment before the bundle has loaded.
+ *
+ * The table's `values` deliberately contain REPEATED entries (…25, 25, 30…) to
+ * make hard band edges. Array.prototype.sort is stable, so equal values keep
+ * their order and those edges survive; the interpolation below guards the
+ * zero-width segment they create.
+ */
 function buildPaletteLUT() {
-    const pal = new Palettes();
-    const palArray = pal.palettes['MRMS_REF'] ? pal.getPalette('MRMS_REF') : pal.getPalette('REF');
     const stops = [];
-    for (let i = 0; i < palArray.length; i += 2) {
-        const val = Number(palArray[i]);
-        const m = String(palArray[i + 1]).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-        if (!m) continue;
-        const a = m[4] !== undefined ? Number(m[4]) : 1;
-        stops.push({ val, r: +m[1], g: +m[2], b: +m[3], a: Math.round(a <= 1 ? a * 255 : a) });
+    const app = (typeof window !== 'undefined') && window.vortexColormaps && window.vortexColormaps.N0B;
+
+    if (app && Array.isArray(app.values) && Array.isArray(app.colors) && app.values.length) {
+        for (let i = 0; i < app.values.length && i < app.colors.length; i++) {
+            const c = _parseRgb(app.colors[i]);
+            if (c) stops.push({ val: Number(app.values[i]), ...c });
+        }
+    }
+    if (!stops.length) {
+        const pal = new Palettes();
+        const palArray = pal.palettes['MRMS_REF'] ? pal.getPalette('MRMS_REF') : pal.getPalette('REF');
+        for (let i = 0; i < palArray.length; i += 2) {
+            const c = _parseRgb(palArray[i + 1]);
+            if (c) stops.push({ val: Number(palArray[i]), ...c });
+        }
     }
     stops.sort((a, b) => a.val - b.val);
 
@@ -439,11 +473,48 @@ function paintToCanvas(values, grid) {
         rowFor[cy] = j < 0 ? 0 : (j > ny - 1 ? ny - 1 : j);
     }
 
+    /*
+     * SMOOTHING — the app-wide setting, which this layer used to ignore.
+     *
+     * window.vortexSmoothing (default on) already governs the single-site
+     * radar; the national mosaic took every output pixel from a single grid
+     * cell regardless, so it stayed visibly blockier than the radar beside it.
+     *
+     * On: average the block of source cells this output pixel actually covers,
+     * which is proper area-averaging for a downsample — the grid is 1 km and
+     * we are drawing it at 2 km or coarser, so a single sample throws away
+     * three quarters of the data and aliases the edges.
+     *
+     * Cells with no data are left OUT of the average rather than counted as
+     * zero: averaging "no echo here" into a real value would drag the edge of
+     * every storm down and paint a halo of weak returns around it. A block with
+     * nothing valid in it stays transparent.
+     */
+    const smooth = (typeof window === 'undefined') || window.vortexSmoothing !== false;
+
+    const sampleBlock = (cy, gx) => {
+        const rowA = rowFor[cy];
+        // The rows this output pixel spans, in grid terms.
+        const rowB = cy + 1 < ch ? rowFor[cy + 1] : rowA + (flipJ ? -STEP : STEP);
+        const r0 = Math.max(0, Math.min(rowA, rowB));
+        const r1 = Math.min(ny - 1, Math.max(rowA, rowB));
+        let sum = 0, n = 0;
+        for (let r = r0; r <= r1; r++) {
+            const base = r * nx;
+            for (let c = gx; c < gx + STEP && c < nx; c++) {
+                const s = values[base + c];
+                if (!Number.isFinite(s) || s <= MRMS_MISSING + 1 || s < floor) continue;
+                sum += s; n++;
+            }
+        }
+        return n ? sum / n : NaN;
+    };
+
     for (let cy = 0; cy < ch; cy++) {
         const srcRow = rowFor[cy];
         for (let cx = 0; cx < cw; cx++) {
             const gx = cx * STEP;
-            const v = values[srcRow * nx + gx];
+            const v = smooth ? sampleBlock(cy, gx) : values[srcRow * nx + gx];
             const po = (cy * cw + cx) * 4;
             // -999 is missing and -3 is "no radar coverage"; the per-product
             // floor covers both plus fields that legitimately reach zero.
@@ -618,7 +689,18 @@ function _addImageToMap(dataUrl, coordinates) {
         id: LAYER_ID,
         type: 'raster',
         source: SOURCE_ID,
-        paint: { 'raster-opacity': 0.7, 'raster-fade-duration': 0 },
+        paint: {
+            'raster-opacity': 0.7,
+            'raster-fade-duration': 0,
+            /*
+             * Match the app's smoothing setting on the UPSCALE too. The canvas
+             * is coarser than the screen when zoomed in, so this is what decides
+             * whether cells read as soft blobs or as crisp squares — the same
+             * choice the setting makes for the single-site radar.
+             */
+            'raster-resampling': (typeof window !== 'undefined' && window.vortexSmoothing === false)
+                ? 'nearest' : 'linear',
+        },
     }, before);
 }
 

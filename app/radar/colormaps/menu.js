@@ -126,6 +126,17 @@ function change_colortable(product, new_ctable) {
 
     _saveChoice(product, new_ctable);   // remember this pick across refreshes
 
+    /*
+     * Announce the change so layers outside this bundle repaint. The national
+     * radar has listened for 'paletteUpdated' since it was written, but nothing
+     * had ever dispatched it, so MRMS kept whatever colours it started with.
+     */
+    try {
+        document.dispatchEvent(new CustomEvent('paletteUpdated', {
+            detail: { paletteName: product, colortable: new_ctable },
+        }));
+    } catch (e) { /* cosmetic; never worth breaking a colortable change over */ }
+
     var a_d = window.vortexData;
     if (a_d?.nexrad_factory != undefined) {
         if (a_d.nexrad_factory.nexrad_level == 3) {
