@@ -15,11 +15,20 @@
  * rather than a ramp of their own, so MRMS and the single-site radar agree and
  * a user's custom palette applies to both.
  *
- * S3 bucket: noaa-mrms-pds  (us-east-1, public, no signing)
+ * DATA SOURCE — the only one:
+ *   arn:aws:s3:::noaa-mrms-pds   (us-east-1, public, unsigned)
+ *   equivalent to: aws s3 ls --no-sign-request s3://noaa-mrms-pds/
+ * Every request is built by _bucketUrl(), which refuses anything outside that
+ * bucket, so the national mosaic cannot silently acquire a second provider.
+ *
+ * A note on time: the bucket is laid out by UTC day, and the eastern evening
+ * crosses that boundary — 8pm EDT is 00:00 UTC the FOLLOWING day, when the new
+ * folder holds only its first file or two. _getLatestKey walks back a day when
+ * the current one is thin, which is what keeps the layer live across the flip.
  */
 
 import Palettes from './palettes.js';
-import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms3';
+import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms4';
 
 const MRMS_BUCKET  = 'https://noaa-mrms-pds.s3.amazonaws.com';
 const DEFAULT_PRODUCT_ID = 'ref_base';
@@ -64,12 +73,34 @@ function _parseTimestamp(key) {
     return `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}T${t.slice(0,2)}:${t.slice(2,4)}:${t.slice(4,6)}Z`;
 }
 
+/*
+ * Every request this layer makes goes through here, and nothing else builds a
+ * URL for it.
+ *
+ * noaa-mrms-pds is the SOLE data provider for the MRMS national mosaic — no
+ * mirror, no proxy, no tile service standing in for it. That is a property
+ * worth enforcing rather than trusting: mosaics are the kind of layer that
+ * quietly acquires a "temporary" fallback, and a second source would mean two
+ * different national radars that disagree with each other and with the
+ * single-site radar.
+ *
+ * The origin check is deliberately paranoid about a path that tries to climb
+ * out of the bucket, since keys come from a listing response.
+ */
+function _bucketUrl(pathAndQuery) {
+    const url = `${MRMS_BUCKET}/${String(pathAndQuery).replace(/^\/+/, '')}`;
+    if (!url.startsWith(`${MRMS_BUCKET}/`) || url.includes('..')) {
+        throw new Error(`[MRMS] refusing a request outside ${MRMS_BUCKET}: ${url}`);
+    }
+    return url;
+}
+
 async function _fetchS3Keys(prefix) {
     const keys = [];
     let token = null;
     do {
         const tp = token ? `&continuation-token=${encodeURIComponent(token)}` : '';
-        const url = `${MRMS_BUCKET}/?list-type=2&prefix=${encodeURIComponent(prefix)}${tp}`;
+        const url = _bucketUrl(`?list-type=2&prefix=${encodeURIComponent(prefix)}${tp}`);
         const resp = await fetch(url, { cache: 'no-store' });
         const xml  = await resp.text();
         const re = /<Key>([^<]+)<\/Key>/g;
@@ -468,7 +499,7 @@ async function _fetchAndRender(s3Key) {
     if (_rendering) return;
     _rendering = true;
     try {
-        const url = `${MRMS_BUCKET}/${s3Key}`;
+        const url = _bucketUrl(s3Key);
         console.log(`[MRMS] Fetching ${s3Key}`);
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
