@@ -1,5 +1,10 @@
 /*
- * MRMS (Multi-Radar Multi-Sensor) Layer
+ * NATIONAL RADAR — the MRMS (Multi-Radar Multi-Sensor) mosaic.
+ *
+ * This is the app's national radar view: one seamless picture of the whole
+ * CONUS built by NOAA from every WSR-88D, as opposed to the single-site radar
+ * the rest of the app plots. It is not a model and not a forecast — every
+ * frame is observed data, updated about every two minutes.
  *
  * Renders any of the curated MRMS grids from the NOAA MRMS Public Data Set on
  * AWS S3 (noaa-mrms-pds). Files are fetched as .grib2.gz, gunzipped, GRIB2-
@@ -28,7 +33,7 @@
  */
 
 import Palettes from './palettes.js';
-import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms4';
+import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms5';
 
 const MRMS_BUCKET  = 'https://noaa-mrms-pds.s3.amazonaws.com';
 const DEFAULT_PRODUCT_ID = 'ref_base';

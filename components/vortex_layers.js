@@ -14,7 +14,7 @@ import openWeatherReport, { addWeatherReportMarkers, removeWeatherReportMarkers 
 import { addSpotterMarkers, removeSpotterMarkers } from './spotters.js';
 // Versioned specifiers: an ES import is cached by URL, so a changed module
 // keeps being served from cache until its own URL changes.
-import { addMRMS, removeMRMS, setMRMSProduct, getMRMSProductId } from './mrms.js?v=mrms4';
+import { addMRMS, removeMRMS, setMRMSProduct, getMRMSProductId } from './mrms.js?v=mrms5';
 import { groupedProducts } from './mrms_products.js';
 import { addEarthquakes, removeEarthquakes } from './earthquakes.js';
 import { addMPING, removeMPING } from './mping.js';
