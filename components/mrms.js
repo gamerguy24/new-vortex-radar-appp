@@ -33,7 +33,7 @@
  */
 
 import Palettes from './palettes.js';
-import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms7';
+import { getProduct, buildRampLUT } from './mrms_products.js?v=mrms8';
 
 const MRMS_BUCKET  = 'https://noaa-mrms-pds.s3.amazonaws.com';
 const DEFAULT_PRODUCT_ID = 'ref_base';
@@ -58,6 +58,15 @@ let _currentFrameKey = null;
 let _rendering       = false;
 let _lastRenderedKey = null;
 let _productId       = DEFAULT_PRODUCT_ID;
+/*
+ * The decoded frame, kept so panning and zooming can repaint at the new
+ * resolution without re-fetching. Decoding is 24.5 million points and a third
+ * of a second; the download is a megabyte and a half. Neither should happen
+ * again just because the map moved a little.
+ */
+let _frame           = null;   // { key, values, grid }
+let _moveTimer       = null;
+let _moveHooked      = false;
 
 function _product() { return getProduct(_productId); }
 
@@ -433,7 +442,68 @@ const R2D = 180 / Math.PI;
 function _mercY(lat) { return Math.log(Math.tan(Math.PI / 4 + (lat * D2R) / 2)); }
 function _invMercY(y) { return (2 * (Math.atan(Math.exp(y)) - Math.PI / 4)) * R2D; }
 
-function paintToCanvas(values, grid) {
+/*
+ * WHICH PART OF THE GRID TO DRAW, AND HOW FINELY.
+ *
+ * Painting the whole CONUS grid into one image is what made this look blurry.
+ * The mosaic spans 70 degrees of longitude; at the old fixed decimation that
+ * was 3500 pixels across, about 2.2 km per pixel. Zoomed into a county the
+ * screen is nearer 0.15 km per pixel, so Mapbox was upscaling the picture some
+ * fifteen times — soft blobs, no matter how good the data underneath.
+ *
+ * So the layer now paints only the visible window, at the finest resolution
+ * that window needs, exactly as the model overlay does. Zoomed out you get the
+ * whole country decimated; zoomed in you get the grid's native 1 km detail
+ * over the part you are actually looking at.
+ *
+ * The window is padded so a small pan does not immediately expose an edge, and
+ * the step is chosen so the canvas never exceeds MAX_CANVAS_PX across — a
+ * 7000x3500 canvas is 98 MB of RGBA and not something to hand a phone.
+ */
+const MAX_CANVAS_PX = 3600;
+const VIEW_PAD = 0.25;            // fraction of the view added on each side
+
+function _gridWindow(grid) {
+    const lonW0 = grid.lon1 > 180 ? grid.lon1 - 360 : grid.lon1;
+    const latTop = Math.max(grid.lat1, grid.lat2);
+    const latBot = Math.min(grid.lat1, grid.lat2);
+    const full = {
+        i0: 0, i1: grid.nx - 1, j0: 0, j1: grid.ny - 1,
+        west: lonW0, east: lonW0 + (grid.nx - 1) * grid.di,
+        north: latTop, south: latBot,
+    };
+
+    const map = _getMap();
+    if (!map || typeof map.getBounds !== 'function') return full;
+    let b;
+    try { b = map.getBounds(); } catch (e) { return full; }
+    if (!b) return full;
+
+    const padLon = (b.getEast() - b.getWest()) * VIEW_PAD;
+    const padLat = (b.getNorth() - b.getSouth()) * VIEW_PAD;
+    const west = Math.max(full.west, b.getWest() - padLon);
+    const east = Math.min(full.east, b.getEast() + padLon);
+    const south = Math.max(full.south, b.getSouth() - padLat);
+    const north = Math.min(full.north, b.getNorth() + padLat);
+    // Off the grid entirely (looking at Europe, say): nothing to draw.
+    if (!(east > west) || !(north > south)) return null;
+
+    const i0 = Math.max(0, Math.floor((west - full.west) / grid.di));
+    const i1 = Math.min(grid.nx - 1, Math.ceil((east - full.west) / grid.di));
+    const j0 = Math.max(0, Math.floor((latTop - north) / grid.dj));
+    const j1 = Math.min(grid.ny - 1, Math.ceil((latTop - south) / grid.dj));
+    if (i1 <= i0 || j1 <= j0) return null;
+
+    return {
+        i0, i1, j0, j1,
+        west: full.west + i0 * grid.di,
+        east: full.west + i1 * grid.di,
+        north: latTop - j0 * grid.dj,
+        south: latTop - j1 * grid.dj,
+    };
+}
+
+function paintToCanvas(values, grid, win) {
     const { nx, ny, scanMode } = grid;
     const product = _product();
     const isRef = !!product.reflectivity;
@@ -442,9 +512,23 @@ function paintToCanvas(values, grid) {
     const ramp = isRef ? null : buildRampLUT(product);
     const floor = product.floor != null ? product.floor : DEFAULT_FLOOR;
 
-    const STEP = product.step || 2;
-    const cw = Math.ceil(nx / STEP);
-    const ch = Math.ceil(ny / STEP);
+    /*
+     * Decimation is chosen from the WINDOW, not fixed per product. Zoomed in,
+     * the visible span is small enough to draw every cell (step 1 — full 1 km
+     * detail); zoomed out, the step rises until the canvas fits the cap.
+     * `product.step` is the coarsest we will go, which is what keeps the
+     * 14000x7000 rotation grids affordable at continental zoom.
+     */
+    const winCols = win.i1 - win.i0 + 1;
+    const winRows = win.j1 - win.j0 + 1;
+    // The coarsest the window forces us to be, and no coarser: 1 when the view
+    // is small enough to draw every cell. The window's own size already keeps
+    // the big 14000x7000 rotation grids in hand, so no per-product floor is
+    // needed here.
+    const STEP = Math.max(1, Math.ceil(Math.max(winCols, winRows) / MAX_CANVAS_PX));
+
+    const cw = Math.max(1, Math.ceil(winCols / STEP));
+    const ch = Math.max(1, Math.ceil(winRows / STEP));
 
     const canvas = document.createElement('canvas');
     canvas.width = cw; canvas.height = ch;
@@ -456,12 +540,15 @@ function paintToCanvas(values, grid) {
     /*
      * Precompute the grid row for each canvas row, in Mercator (see above).
      * Done once per frame rather than per pixel: it is a log/atan per row, and
-     * there are 3.5 thousand rows against 6 million pixels.
+     * there are thousands of rows against millions of pixels.
+     *
+     * The Mercator span is the WINDOW's, not the whole grid's — the image is
+     * placed at the window's corners, so that is the box Mapbox will stretch.
      */
     const latTop = Math.max(grid.lat1, grid.lat2);
     const latBot = Math.min(grid.lat1, grid.lat2);
-    const yTop = _mercY(latTop);
-    const yBot = _mercY(latBot);
+    const yTop = _mercY(win.north);
+    const yBot = _mercY(win.south);
     const dj = grid.dj || ((latTop - latBot) / (ny - 1));
     const rowFor = new Int32Array(ch);
     for (let cy = 0; cy < ch; cy++) {
@@ -469,6 +556,7 @@ function paintToCanvas(values, grid) {
         const f = (cy + 0.5) / ch;
         const lat = _invMercY(yTop + f * (yBot - yTop));
         let j = Math.round((latTop - lat) / dj);      // rows counted from the north
+        j = Math.max(win.j0, Math.min(win.j1, j));    // stay inside the window
         if (flipJ) j = ny - 1 - j;                    // ...unless the grid scans south-up
         rowFor[cy] = j < 0 ? 0 : (j > ny - 1 ? ny - 1 : j);
     }
@@ -501,7 +589,7 @@ function paintToCanvas(values, grid) {
         let sum = 0, n = 0;
         for (let r = r0; r <= r1; r++) {
             const base = r * nx;
-            for (let c = gx; c < gx + STEP && c < nx; c++) {
+            for (let c = gx; c < gx + STEP && c <= win.i1 && c < nx; c++) {
                 const s = values[base + c];
                 if (!Number.isFinite(s) || s <= MRMS_MISSING + 1 || s < floor) continue;
                 sum += s; n++;
@@ -513,7 +601,8 @@ function paintToCanvas(values, grid) {
     for (let cy = 0; cy < ch; cy++) {
         const srcRow = rowFor[cy];
         for (let cx = 0; cx < cw; cx++) {
-            const gx = cx * STEP;
+            // Columns are relative to the window's left edge.
+            const gx = win.i0 + cx * STEP;
             const v = smooth ? sampleBlock(cy, gx) : values[srcRow * nx + gx];
             const po = (cy * cw + cx) * 4;
             // -999 is missing and -3 is "no radar coverage"; the per-product
@@ -652,14 +741,9 @@ async function _fetchAndRender(s3Key) {
 
         const values = await unpackGrib2Data(drs, dataBytes, grid.numPoints, grid.nx, grid.ny);
 
-        const dataUrl = paintToCanvas(values, grid);
-
-        let lonW = grid.lon1 > 180 ? grid.lon1 - 360 : grid.lon1;
-        let lonE = grid.lon2 > 180 ? grid.lon2 - 360 : grid.lon2;
-        const latN = Math.max(grid.lat1, grid.lat2);
-        const latS = Math.min(grid.lat1, grid.lat2);
-
-        _addImageToMap(dataUrl, [[lonW, latN], [lonE, latN], [lonE, latS], [lonW, latS]]);
+        _frame = { key: s3Key, values, grid };
+        _repaint();
+        _hookMapMove();
         _lastRenderedKey = s3Key;
         _drawLegend(s3Key);
         console.log(`[MRMS] Rendered frame: ${_parseTimestamp(s3Key) || 'latest'}`);
@@ -668,6 +752,41 @@ async function _fetchAndRender(s3Key) {
     } finally {
         _rendering = false;
     }
+}
+
+/*
+ * Paint the frame we already have for wherever the map is now.
+ *
+ * Separate from fetching on purpose: a pan or a zoom changes which part of the
+ * grid we need and how finely, but not which frame, so this runs on its own
+ * without touching the network.
+ */
+function _repaint() {
+    if (!_frame || !_active) return;
+    const { values, grid } = _frame;
+    const win = _gridWindow(grid);
+    if (!win) { _removeFromMap(); return; }   // map is off the grid entirely
+    const dataUrl = paintToCanvas(values, grid, win);
+    _addImageToMap(dataUrl, [
+        [win.west, win.north], [win.east, win.north],
+        [win.east, win.south], [win.west, win.south],
+    ]);
+}
+
+/*
+ * Repaint after the map settles. Debounced, and only on 'moveend' — repainting
+ * mid-gesture would re-encode a canvas on every frame of a drag.
+ */
+function _hookMapMove() {
+    if (_moveHooked) return;
+    const map = _getMap();
+    if (!map || typeof map.on !== 'function') return;
+    _moveHooked = true;
+    map.on('moveend', () => {
+        if (!_active) return;
+        clearTimeout(_moveTimer);
+        _moveTimer = setTimeout(() => { try { _repaint(); } catch (e) { console.warn('[MRMS] repaint failed:', e); } }, 140);
+    });
 }
 
 function _getMap() { return _mapWrapper?.map; }
@@ -765,6 +884,8 @@ export async function addMRMS(mapWrapper) {
 
 export function removeMRMS() {
     _active = false;
+    _frame = null;
+    clearTimeout(_moveTimer);
     _removeLegend();
     _currentFrameKey = null;
     if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
@@ -800,6 +921,7 @@ export async function setMRMSProduct(id) {
     const next = getProduct(id);
     if (!next || next.id === _productId) return;
     _productId = next.id;
+    _frame = null;                 // the cached grid belongs to the old product
     _listCache = null;
     _currentFrameKey = null;
     _lastRenderedKey = null;
