@@ -11,8 +11,24 @@
 
 const loaders = require('../libnexrad/loaders_nexrad');
 
-// How many recent scans to load into the loop.
-const NUM_FRAMES = 10;
+/*
+ * How many recent scans to hold.
+ *
+ * Every frame is a parsed Level 3 factory kept in memory at once, and on a
+ * phone ten super-res sweeps is enough to exhaust the tab and take the browser
+ * — sometimes the phone — down with it. Desktop keeps the full loop; phones get
+ * a shorter one, which is also all that fits on a small timeline usefully.
+ */
+const NUM_FRAMES_DESKTOP = 10;
+const NUM_FRAMES_MOBILE = 5;
+
+// Read once: this decides a memory budget, not a layout, so it does not need to
+// react to rotation.
+const IS_MOBILE = (typeof window !== 'undefined')
+    && (window.innerWidth <= 760
+        || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+
+function frameBudget() { return IS_MOBILE ? NUM_FRAMES_MOBILE : NUM_FRAMES_DESKTOP; }
 
 let frames = [];        // array of L3Factory instances, ordered oldest -> newest
 let idx = 0;            // index of the currently shown frame
@@ -21,6 +37,16 @@ let loading = false;
 let timer = null;
 let speed = 1;
 let loadedKey = null;   // station+product the current frames belong to
+
+/*
+ * Bumped whenever the loop is reset, stopped or retargeted. A preload in
+ * flight compares its own token before doing anything, so a run the user has
+ * moved on from cannot push stale frames in or keep fetching in the background.
+ * Without this, tapping play, pausing, and changing product left the old
+ * request chain running and racing the new one — a fast route to a frozen tab
+ * on a phone, where the downloads are slow enough to overlap.
+ */
+let generation = 0;
 
 function $play() { return $('#vortexPlayBtn'); }
 function frameDelayMs() { return Math.round(750 / speed); }
@@ -48,7 +74,17 @@ function updateSlider() {
 }
 
 function showFrame(i) {
-    if (frames[i]) { frames[i].plot(); }
+    if (!frames[i]) return;
+    /*
+     * A single frame that fails to plot should cost that frame, not the whole
+     * loop. Before this, one bad sweep threw out of the timer callback and
+     * playback stopped with the button still showing pause.
+     */
+    try {
+        frames[i].plot();
+    } catch (e) {
+        console.warn('[loop] frame ' + i + ' failed to plot:', e);
+    }
 }
 
 function currentTarget() {
@@ -62,8 +98,9 @@ function targetKey() {
 }
 
 function stop() {
-    if (timer) { clearInterval(timer); timer = null; }
+    if (timer) { clearTimeout(timer); timer = null; }
     playing = false;
+    generation++;              // abandon any preload still running
     setIcon(false);
 }
 
@@ -73,6 +110,10 @@ function stop() {
  */
 function reset() {
     stop();
+    // Drop the references explicitly: these are the largest objects the app
+    // holds, and on a phone the difference between releasing them now and at
+    // the next collection is the difference between playing and crashing.
+    frames.length = 0;
     frames = [];
     idx = 0;
     loadedKey = null;
@@ -80,11 +121,24 @@ function reset() {
     $('#vortexTimeline').val(100);
 }
 
+/*
+ * Advance one frame, then schedule the next AFTER this one has been drawn.
+ *
+ * This used to be a setInterval. Plotting a sweep on a phone can take longer
+ * than the frame delay, and setInterval does not care — it keeps firing, the
+ * callbacks pile up behind each other, and the tab locks solid. Chaining a
+ * timeout means a slow device simply plays slower, which is the correct way to
+ * degrade.
+ */
 function tick() {
+    if (!playing) return;
     idx++;
     if (idx >= frames.length) { idx = 0; }
     showFrame(idx);
     updateSlider();
+    if (playing) {
+        timer = setTimeout(tick, frameDelayMs());
+    }
 }
 
 function play() {
@@ -94,47 +148,73 @@ function play() {
     if (a && a.current_RadarUpdater) { try { a.current_RadarUpdater.disable(); } catch (e) {} }
     playing = true;
     setIcon(true);
-    if (timer) { clearInterval(timer); }
-    timer = setInterval(tick, frameDelayMs());
+    if (timer) { clearTimeout(timer); timer = null; }
+    timer = setTimeout(tick, frameDelayMs());
 }
 
 /**
- * Fetch + parse the most recent NUM_FRAMES scans, oldest first, then call cb(ok).
+ * Fetch + parse the most recent frameBudget() scans, oldest first, then
+ * call cb(ok). Cancellable: see `generation`.
  */
 function preload(cb) {
     const { station, product } = currentTarget();
     if (!station || !product) { cb(false); return; }
 
+    // Release the previous loop's frames BEFORE pulling a new set in, so the
+    // two sets are never both resident. On a phone holding both is what
+    // pushed the tab over the edge.
+    frames.length = 0;
+    frames = [];
+
+    const myGeneration = ++generation;
+    const stale = () => myGeneration !== generation;
+
     setLoading(true);
     const collected = [];
-    let i = NUM_FRAMES - 1; // oldest first
+    let i = frameBudget() - 1; // oldest first
+
+    function finish(ok) {
+        if (stale()) return;      // a newer run owns the UI now
+        setLoading(false);
+        cb(ok);
+    }
 
     function next() {
+        if (stale()) { return; }  // abandoned: stop fetching, touch nothing
         if (i < 0) {
             frames = collected;
             idx = Math.max(0, frames.length - 1); // start on the newest frame
             loadedKey = station + ':' + product;
-            setLoading(false);
             updateSlider();
-            cb(frames.length > 0);
+            finish(frames.length > 0);
             return;
         }
         loaders.get_latest_level_3_url(station, product, i, function (url) {
-            if (url) {
-                loaders.return_level_3_factory_from_url(url, function (factory) {
-                    collected.push(factory);
-                    i--; next();
-                });
-            } else {
+            if (stale()) { return; }
+            if (!url) { i--; next(); return; }
+            loaders.return_level_3_factory_from_url(url, function (factory) {
+                if (stale()) { return; }
+                if (factory) collected.push(factory);
                 i--; next();
-            }
+            });
         });
     }
     next();
 }
 
 function onPlayClick() {
-    if (loading) { return; }
+    /*
+     * Tapping while it is still loading cancels, rather than doing nothing.
+     * Ten sequential downloads on a phone connection take long enough that an
+     * unresponsive button reads as a frozen app — and the old code gave no way
+     * to stop the fetch it had started.
+     */
+    if (loading) {
+        generation++;
+        setLoading(false);
+        setIcon(false);
+        return;
+    }
     if (playing) { stop(); return; }
 
     const key = targetKey();
@@ -172,8 +252,11 @@ function onSliderInput() {
 function onSpeedChange() {
     speed = parseFloat($('#vortexSpeed').val()) || 1;
     if (playing) {
-        clearInterval(timer);
-        timer = setInterval(tick, frameDelayMs());
+        // Reschedule on the new delay. Changing speed mid-play used to leave an
+        // interval running as well as start another, so the loop ran at both
+        // speeds at once and drew twice per frame.
+        clearTimeout(timer);
+        timer = setTimeout(tick, frameDelayMs());
     }
 }
 

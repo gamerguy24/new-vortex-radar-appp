@@ -4,6 +4,8 @@
  * + Three.js only when first opened, for the currently selected radar station.
  */
 
+import { desktopOnly } from './platform.js?v=plat1';
+
 let _viewer = null;
 
 async function open3D() {
@@ -24,6 +26,12 @@ async function open3D() {
 }
 
 function init() {
+    /*
+     * Desktop only, for the same reason as the Studio: this volume-renders a
+     * whole sweep in WebGL, which a phone GPU will not survive.
+     */
+    if (!desktopOnly(['#armrStorm3DBtn'], '3D Storm View')) return;
+
     const btn = document.getElementById('armrStorm3DBtn');
     if (btn) btn.addEventListener('click', open3D);
 }

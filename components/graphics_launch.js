@@ -9,6 +9,8 @@
  * Each tool is a standalone static page, so we just open it in a new tab.
  */
 
+import { desktopOnly } from './platform.js?v=plat1';
+
 // The Studio is fully self-contained (static + local geo data) and works behind
 // the radar login as-is. (The Dome "Dashboard"/"Overlay" tools are intentionally
 // not bundled here — they need a separate backend and aren't part of this app.)
@@ -83,6 +85,13 @@ function togglePopup() {
 }
 
 function init() {
+    /*
+     * Desktop only. The Studio decodes super-res Level 2 in the browser and
+     * composites it at print resolution; on a phone that reliably exhausts the
+     * tab. Its entry points are hidden rather than left to be tapped and crash.
+     */
+    if (!desktopOnly(['#vortexGraphicsBtn', '#armrGraphicsStudioBtn'], 'Graphics Studio')) return;
+
     const footBtn = document.getElementById('vortexGraphicsBtn');
     // One tool -> open it directly; multiple -> show the chooser popup.
     if (footBtn) footBtn.addEventListener('click',
