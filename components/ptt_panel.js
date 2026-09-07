@@ -72,6 +72,9 @@ class VortexPTT {
     this.pttKey = localStorage.getItem('vortexPttKey') || ' ';
     this.outputVolume = Number(localStorage.getItem('vortexPttVolume') || 1);
     this.audioEls = new Map();
+    // Elements the browser refused to start; replayed on the next gesture.
+    this.blockedAudio = new Set();
+    this._audioUnlockArmed = false;
 
     this.buildUI();
     // On the radar page the panel starts as a small widget so it never covers
@@ -434,7 +437,13 @@ class VortexPTT {
   press() {
     if (this.pressed) return;
     if (!this.channel) { this.ui.hint.textContent = 'Join a channel first'; this.buzz(); return; }
-    if (!this.caps.speak) { this.buzz(); return; }
+    if (!this.caps.speak) {
+      // A silent buzz is indistinguishable from a broken microphone. Say it.
+      this.ui.hint.textContent = 'You do not have permission to transmit on this channel';
+      this.ui.hint.classList.add('vptt-err');
+      this.buzz();
+      return;
+    }
 
     this.pressed = true;
     this.root.classList.add('vptt-pressed');
@@ -839,25 +848,106 @@ class VortexPTT {
     try { await p.pc.addIceCandidate(new RTCIceCandidate(m.payload)); } catch (e) {}
   }
 
+  /*
+   * Play a peer's audio.
+   *
+   * Two things here were the reason nobody could be heard.
+   *
+   * The element was never added to the document. A detached media element is
+   * allowed to have its playback suspended, and Chromium does exactly that —
+   * the track arrives, the connection reports healthy, and there is silence.
+   * It lives in the DOM now, hidden.
+   *
+   * And the play() rejection was swallowed with a comment claiming it would
+   * "resolve on first interaction". Nothing retried it. Autoplay policy blocks
+   * the first play whenever the stream arrives before the user has clicked
+   * anything — which is the normal case, since a peer can join and start
+   * talking while the panel simply sits there. That was permanent silence, and
+   * it is why the radio worked for whoever had clicked something and not for
+   * anyone who had not.
+   */
   playRemote(connId, stream) {
     let a = this.audioEls.get(connId);
     if (!a) {
       a = new Audio();
       a.autoplay = true;
+      a.playsInline = true;
       a.volume = this.outputVolume;
+      // In the document, or the browser may suspend it. Hidden, not
+      // display:none — some engines skip rendering-suppressed media entirely.
+      a.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
+      (document.body || document.documentElement).appendChild(a);
       this.audioEls.set(connId, a);
       const spk = localStorage.getItem('vortexPttSpeaker');
       if (spk && a.setSinkId) a.setSinkId(spk).catch(() => {});
     }
     a.srcObject = stream;
-    a.play().catch(() => { /* autoplay policy — resolves on first interaction */ });
+    this.tryPlay(a);
+  }
+
+  /*
+   * Start an element, and remember it if the browser refuses.
+   *
+   * Anything blocked is replayed by armAudioUnlock() on the next real user
+   * gesture, so the radio comes alive the moment the operator touches
+   * anything rather than staying mute for the session.
+   */
+  tryPlay(a) {
+    const attempt = a.play();
+    if (!attempt || typeof attempt.catch !== 'function') return;
+    attempt.then(() => {
+      this.blockedAudio.delete(a);
+      this.updateAudioBlockedHint();
+    }).catch((err) => {
+      console.warn('[PTT] audio blocked (' + (err && err.name) + '); will retry on first interaction');
+      this.blockedAudio.add(a);
+      this.updateAudioBlockedHint();
+      this.armAudioUnlock();
+    });
+  }
+
+  /*
+   * One-shot listeners that replay whatever was blocked.
+   *
+   * Bound on the window in the capture phase so any click, key or touch counts,
+   * not only one aimed at the panel — the operator's first action is usually
+   * somewhere on the map.
+   */
+  armAudioUnlock() {
+    if (this._audioUnlockArmed) return;
+    this._audioUnlockArmed = true;
+    const unlock = () => {
+      this._audioUnlockArmed = false;
+      for (const t of ['pointerdown', 'keydown', 'touchstart']) {
+        window.removeEventListener(t, unlock, true);
+      }
+      const blocked = [...this.blockedAudio];
+      this.blockedAudio.clear();
+      for (const a of blocked) this.tryPlay(a);
+    };
+    for (const t of ['pointerdown', 'keydown', 'touchstart']) {
+      window.addEventListener(t, unlock, true);
+    }
+  }
+
+  updateAudioBlockedHint() {
+    if (!this.ui || !this.ui.hint) return;
+    if (this.blockedAudio.size && !this.pressed) {
+      this.ui.hint.textContent = 'Click anywhere to enable audio';
+    }
+    this.renderNet();
   }
 
   closePeer(connId) {
     const p = this.peers.get(connId);
     if (p) { try { p.pc.close(); } catch (e) {} this.peers.delete(connId); }
     const a = this.audioEls.get(connId);
-    if (a) { a.srcObject = null; this.audioEls.delete(connId); }
+    if (a) {
+      a.srcObject = null;
+      this.blockedAudio.delete(a);
+      if (a.parentNode) a.parentNode.removeChild(a);
+      this.audioEls.delete(connId);
+    }
   }
 
   teardownPeers() {
@@ -920,7 +1010,9 @@ class VortexPTT {
       if (p.remoteTrack && /connected|completed/.test(st)) live++;
     }
     const mic = this.micTrack && this.micTrack.readyState === 'live' ? 'mic ready' : 'mic not started';
-    this.ui.net.textContent = 'Audio ' + live + '/' + total + ' · ' + mic;
+    const blocked = this.blockedAudio && this.blockedAudio.size
+      ? ' · speaker blocked — click to enable' : '';
+    this.ui.net.textContent = 'Audio ' + live + '/' + total + ' · ' + mic + blocked;
     this.ui.net.classList.toggle('vptt-warn', live < total);
   }
 
