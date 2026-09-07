@@ -72,6 +72,11 @@ class VortexPTT {
     this.pttKey = localStorage.getItem('vortexPttKey') || ' ';
     this.outputVolume = Number(localStorage.getItem('vortexPttVolume') || 1);
     this.audioEls = new Map();
+    // ICE candidates that arrived before their peer was ready to take them.
+    this.pendingIce = new Map();
+    // Set when a peer connection gives up entirely: the two networks
+    // could not reach each other directly.
+    this.connectFailed = false;
     // Elements the browser refused to start; replayed on the next gesture.
     this.blockedAudio = new Set();
     this._audioUnlockArmed = false;
@@ -367,6 +372,7 @@ class VortexPTT {
         this.renderNet();
         // Connect to peers for LISTENING. Receiving audio needs no microphone,
         // so joining never prompts for one — that happens on the first press.
+        this.connectFailed = false;
         for (const p of (m.peers || [])) this.openPeer(p.connId, true);
         this.sendLocation();
         break;
@@ -807,8 +813,23 @@ class VortexPTT {
       this.renderNet();
     };
     pc.onconnectionstatechange = () => {
+      console.log('[PTT] peer ' + connId + ' -> ' + pc.connectionState);
+      /*
+       * A failed connection is reported, not silently swept away. Every
+       * candidate pair having failed means the two ends could not reach each
+       * other directly — the usual cause when one party is on another network,
+       * and something no amount of retrying fixes without a relay.
+       */
+      if (pc.connectionState === 'failed') {
+        this.connectFailed = true;
+        this.renderNet();
+      }
       if (/failed|closed/.test(pc.connectionState)) this.closePeer(connId);
       this.reportQuality();
+    };
+    pc.oniceconnectionstatechange = () => {
+      console.log('[PTT] ice ' + connId + ' -> ' + pc.iceConnectionState);
+      this.renderNet();
     };
     return p;
   }
@@ -830,22 +851,63 @@ class VortexPTT {
     const { pc } = this.peerConn(m.from);
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(m.payload));
+      await this.flushIce(m.from);            // anything that arrived early
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       this.send('webrtc:answer', { to: m.from, payload: answer });
-    } catch (e) { /* ignore a malformed offer */ }
+    } catch (e) { console.warn('[PTT] offer failed:', e && e.message); }
   }
 
   async onAnswer(m) {
     const p = this.peers.get(m.from);
     if (!p) return;
-    try { await p.pc.setRemoteDescription(new RTCSessionDescription(m.payload)); } catch (e) {}
+    try {
+      await p.pc.setRemoteDescription(new RTCSessionDescription(m.payload));
+      await this.flushIce(m.from);            // anything that arrived early
+    } catch (e) { console.warn('[PTT] answer failed:', e && e.message); }
+  }
+
+  /*
+   * ICE candidates, queued rather than dropped.
+   *
+   * THIS is why connections sat at 0/1. Candidates trickle in as soon as the
+   * far side starts gathering, which routinely beats the offer through the
+   * signalling socket. The old code dropped a candidate outright if the peer
+   * object did not exist yet, and swallowed the rejection when it did exist but
+   * had no remote description — addIceCandidate is invalid before then. Between
+   * the two, most or all of a peer's candidates were discarded, so ICE had
+   * nothing to check and never connected. The socket was healthy, the peer
+   * object existed, and the state machine simply stalled.
+   *
+   * Now every candidate is buffered against its connection id and flushed the
+   * moment a remote description lands.
+   */
+  queueIce(connId, candidate) {
+    if (!this.pendingIce.has(connId)) this.pendingIce.set(connId, []);
+    this.pendingIce.get(connId).push(candidate);
+  }
+
+  async flushIce(connId) {
+    const p = this.peers.get(connId);
+    const queued = this.pendingIce.get(connId);
+    if (!p || !queued || !queued.length) return;
+    if (!p.pc.remoteDescription) return;     // still too early; try again later
+    this.pendingIce.delete(connId);
+    for (const c of queued) {
+      try { await p.pc.addIceCandidate(new RTCIceCandidate(c)); }
+      catch (e) { console.warn('[PTT] ICE candidate rejected:', e && e.message); }
+    }
   }
 
   async onIce(m) {
     const p = this.peers.get(m.from);
-    if (!p) return;
-    try { await p.pc.addIceCandidate(new RTCIceCandidate(m.payload)); } catch (e) {}
+    // No peer yet, or no remote description yet: hold it, do not bin it.
+    if (!p || !p.pc.remoteDescription) {
+      this.queueIce(m.from, m.payload);
+      return;
+    }
+    try { await p.pc.addIceCandidate(new RTCIceCandidate(m.payload)); }
+    catch (e) { console.warn('[PTT] ICE candidate rejected:', e && e.message); }
   }
 
   /*
@@ -941,6 +1003,7 @@ class VortexPTT {
   closePeer(connId) {
     const p = this.peers.get(connId);
     if (p) { try { p.pc.close(); } catch (e) {} this.peers.delete(connId); }
+    this.pendingIce.delete(connId);
     const a = this.audioEls.get(connId);
     if (a) {
       a.srcObject = null;
@@ -1012,7 +1075,14 @@ class VortexPTT {
     const mic = this.micTrack && this.micTrack.readyState === 'live' ? 'mic ready' : 'mic not started';
     const blocked = this.blockedAudio && this.blockedAudio.size
       ? ' · speaker blocked — click to enable' : '';
-    this.ui.net.textContent = 'Audio ' + live + '/' + total + ' · ' + mic + blocked;
+    // What the connection is doing, so a stall is diagnosable from the panel
+    // instead of only from the console.
+    let states = [];
+    for (const p of this.peers.values()) states.push(p.pc.iceConnectionState || '?');
+    const detail = live < total ? ' · ' + states.join(',') : '';
+    const relay = this.connectFailed
+      ? ' · direct connection blocked — a relay (TURN) is needed between these networks' : '';
+    this.ui.net.textContent = 'Audio ' + live + '/' + total + ' · ' + mic + blocked + detail + relay;
     this.ui.net.classList.toggle('vptt-warn', live < total);
   }
 
