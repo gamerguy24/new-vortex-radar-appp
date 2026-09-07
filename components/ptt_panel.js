@@ -374,6 +374,21 @@ class VortexPTT {
         // so joining never prompts for one — that happens on the first press.
         this.connectFailed = false;
         for (const p of (m.peers || [])) this.openPeer(p.connId, true);
+        /*
+         * Reconcile every few seconds while joined.
+         *
+         * ontrack is an event and connectionstatechange is an event; either can
+         * be missed, and a missed one used to mean silence for the rest of the
+         * session with nothing to recover it. Re-reading the receivers is cheap
+         * and idempotent — it does nothing when a peer is already bound — so
+         * the radio repairs itself instead of needing a rejoin.
+         */
+        clearInterval(this.bindTimer);
+        this.bindTimer = setInterval(() => {
+          for (const [connId, peer] of this.peers) {
+            if (!peer.remoteTrack) this.bindReceivers(connId);
+          }
+        }, 3000);
         this.sendLocation();
         break;
 
@@ -490,6 +505,9 @@ class VortexPTT {
     if (why && why !== 'released') this.ui.hint.textContent = `Transmission ended (${why})`;
     else if (this.channel) this.ui.hint.textContent = 'Listening';
   }
+
+  /** Stop the reconcile loop (leaving a channel, or tearing the panel down). */
+  stopReconcile() { clearInterval(this.bindTimer); this.bindTimer = null; }
 
   setMic(on) {
     if (this.micTrack) this.micTrack.enabled = !!on;
@@ -802,14 +820,28 @@ class VortexPTT {
     p = { pc, tx };
     this.peers.set(connId, p);
 
+    // Attach the microphone if we already have one. replaceTrack keeps the
+    // negotiated m-line, so no renegotiation is needed.
     if (this.micTrack) tx.sender.replaceTrack(this.micTrack).catch(() => {});
 
     pc.onicecandidate = (e) => {
       if (e.candidate) this.send('webrtc:ice', { to: connId, payload: e.candidate });
     };
+    /*
+     * A track can arrive with NO stream attached.
+     *
+     * addTransceiver() + replaceTrack() — which is how the microphone is fitted
+     * into an already-negotiated channel — puts no msid in the SDP, because the
+     * sender's track belongs to no MediaStream. The receiving end then gets an
+     * ontrack event whose e.streams is an EMPTY ARRAY. e.streams[0] was
+     * undefined, srcObject was set to undefined, and the element played
+     * nothing: a healthy connection, a real track, and silence.
+     */
     pc.ontrack = (e) => {
-      p.remoteTrack = true;        // proof the audio channel really negotiated
-      this.playRemote(connId, e.streams[0]);
+      console.log('[PTT] ontrack ' + connId + ' streams=' + (e.streams ? e.streams.length : 0));
+      p.remoteTrack = true;
+      const stream = (e.streams && e.streams[0]) || new MediaStream([e.track]);
+      this.playRemote(connId, stream);
       this.renderNet();
     };
     pc.onconnectionstatechange = () => {
@@ -824,6 +856,9 @@ class VortexPTT {
         this.connectFailed = true;
         this.renderNet();
       }
+      // Once the transport is up, take the audio from the receivers directly.
+      // See bindReceivers: ontrack is a notification, not the only way in.
+      if (pc.connectionState === 'connected') this.bindReceivers(connId);
       if (/failed|closed/.test(pc.connectionState)) this.closePeer(connId);
       this.reportQuality();
     };
@@ -928,6 +963,43 @@ class VortexPTT {
    * it is why the radio worked for whoever had clicked something and not for
    * anyone who had not.
    */
+  /*
+   * Pull the remote audio straight off the peer connection's receivers.
+   *
+   * ontrack is an event, and events can be missed: fired before a handler is
+   * attached, or not fired at all for an m-line the far end negotiated without
+   * a track on it. The receivers are STATE, and once the connection is up they
+   * are the truth about what is being received — so this is called on connect
+   * as well, and reconciles whatever ontrack did or did not do.
+   *
+   * This is what was actually broken: the log showed ice connected, peer
+   * connected, and no ontrack at all, so nothing ever reached an audio element.
+   */
+  bindReceivers(connId) {
+    const p = this.peers.get(connId);
+    if (!p) return;
+    let tracks = [];
+    try {
+      tracks = p.pc.getReceivers()
+        .map((r) => r.track)
+        .filter((t) => t && t.kind === 'audio');
+    } catch (e) { return; }
+    if (!tracks.length) {
+      console.warn('[PTT] peer ' + connId + ' connected but is receiving no audio track');
+      return;
+    }
+    p.remoteTrack = true;
+    const existing = this.audioEls.get(connId);
+    // Do not rebuild a stream that is already playing this same track.
+    if (existing && existing.srcObject) {
+      const cur = existing.srcObject.getAudioTracks ? existing.srcObject.getAudioTracks() : [];
+      if (cur.length && cur[0].id === tracks[0].id) { this.tryPlay(existing); this.renderNet(); return; }
+    }
+    console.log('[PTT] binding ' + tracks.length + ' receiver track(s) for ' + connId);
+    this.playRemote(connId, new MediaStream(tracks));
+    this.renderNet();
+  }
+
   playRemote(connId, stream) {
     let a = this.audioEls.get(connId);
     if (!a) {
@@ -943,6 +1015,7 @@ class VortexPTT {
       const spk = localStorage.getItem('vortexPttSpeaker');
       if (spk && a.setSinkId) a.setSinkId(spk).catch(() => {});
     }
+    if (!stream) { console.warn('[PTT] no stream to play for ' + connId); return; }
     a.srcObject = stream;
     this.tryPlay(a);
   }
