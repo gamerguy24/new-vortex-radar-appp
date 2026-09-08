@@ -22,10 +22,25 @@
  * because it can only re-home controls that are already on the page.
  */
 
-import { installRadarFurniture } from './pro_radar.js?v=proui2';
+import { installRadarFurniture } from './pro_radar.js?v=proui3';
 
 const CLASS = 'vx-pro';
 const REMEMBER = 'vortex_pro_ui';     // last known answer, to avoid a flash
+
+/*
+ * Labels for the tools the consumer UI never had to name, because they were
+ * icons in a row with a tooltip at most. In a written list they need words.
+ * Keyed by element id so this survives the icons being restyled.
+ */
+const TOOL_NAMES = {
+  stationMenuItemDiv: 'Radar Sites',
+  alertMenuItemDiv: 'Warnings & Watches',
+  metarStationMenuItemDiv: 'Surface Observations',
+  colorPickerItemDiv: 'Colour Tables',
+  drawMenuItemDiv: 'Draw',
+  settingsItemDiv: 'Settings',
+};
+
 
 /* ── who is looking ───────────────────────────────────────────────────────── */
 
@@ -76,7 +91,11 @@ function field(id, key, value) {
 }
 const setField = (id, v) => {
   const n = document.querySelector('#' + id + ' .v');
-  if (n && n.textContent !== v) n.textContent = v;
+  if (!n) return;
+  if (n.textContent !== v) n.textContent = v;
+  // Dim a readout that has nothing in it yet, so a waiting instrument does not
+  // look like a broken one.
+  n.classList.toggle('vxpro-empty', !v || v === '—');
 };
 
 function waitFor(test, timeoutMs = 20000) {
@@ -106,9 +125,16 @@ function buildTop() {
   meta.appendChild(field('vxpro-vcp', 'VCP', '—'));
   meta.appendChild(field('vxpro-elev', 'Elev', '—'));
   meta.appendChild(field('vxpro-product', 'Product', '—'));
-  const grow = field('vxpro-loc', 'Location', '');
-  grow.classList.add('grow');
-  meta.appendChild(grow);
+  meta.appendChild(field('vxpro-loc', 'Location', ''));
+  /*
+   * A spacer AFTER the fields rather than a growing last field. Letting
+   * Location stretch put a 900px gap inside a bordered cell, which read as a
+   * broken layout; the readouts now sit tight against each other on the left,
+   * the way a console's menu bar does, and the empty space is plainly empty.
+   */
+  const gap = el('div');
+  gap.id = 'vxpro-topgap';
+  meta.appendChild(gap);
   top.appendChild(meta);
 
   document.body.appendChild(top);
@@ -124,8 +150,8 @@ function buildDock() {
   const dock = el('div');
   dock.id = 'vxpro-dock';
 
-  const section = (caption, grows) => {
-    const s = el('div', 'vxpro-sec' + (grows ? ' grow' : ''));
+  const section = (caption, grows, cls) => {
+    const s = el('div', 'vxpro-sec' + (grows ? ' grow' : '') + (cls ? ' ' + cls : ''));
     const c = el('div', 'vxpro-cap');
     c.textContent = caption;
     const b = el('div', 'vxpro-body');
@@ -135,9 +161,9 @@ function buildDock() {
     return b;
   };
 
-  const source = section('Radar');
-  const tools = section('Tools', true);
-  const scale = section('Colour Scale');
+  const source = section('Radar', false, 'vxpro-sec-radar');
+  const tools = section('Tools', true, 'vxpro-sec-tools');
+  const scale = section('Colour Scale', false, 'vxpro-sec-scale');
 
   document.body.appendChild(dock);
 
@@ -158,14 +184,20 @@ function buildDock() {
   }
 
   /*
-   * The tool rail, relabelled. Each button's own title attribute is the label
-   * — the app already wrote a good one for every icon, and reusing it means a
-   * tool added later shows up here correctly with no change to this file.
+   * The tool rail, relabelled.
+   *
+   * Most buttons carry a title attribute and that is the label. Six do not —
+   * they were only ever meant to be icons in a row — and they came through as
+   * blank rows, two of them showing as a bare coloured blob because the app
+   * marks them active. Those six are named here. A tool added later without a
+   * title lands in this same gap, so it falls back to its element id rather
+   * than to nothing, which is ugly but findable.
    */
   const rail = document.getElementById('vortexBarIcons');
   if (rail) {
     for (const item of [...rail.children]) {
-      const label = (item.getAttribute('title') || item.textContent || '').trim();
+      const named = TOOL_NAMES[item.id];
+      const label = (named || item.getAttribute('title') || item.textContent || item.id || '').trim();
       item.removeAttribute('title');           // the row now says it in words
       item.classList.add('vxpro-tool');
       if (label) {
@@ -324,7 +356,7 @@ function loadStylesheet() {
   link.rel = 'stylesheet';
   // Appended to head last, so it lands after index.css and can override the
   // mobile geometry rules at the end of that file.
-  link.href = './components/pro_skin.css?v=proui2';
+  link.href = './components/pro_skin.css?v=proui3';
   document.head.appendChild(link);
 
   // The radar furniture's own sheet, loaded after so its re-cut of the frame
@@ -333,7 +365,7 @@ function loadStylesheet() {
   const radar = document.createElement('link');
   radar.id = 'vxpro-radar-css';
   radar.rel = 'stylesheet';
-  radar.href = './components/pro_radar.css?v=proui2';
+  radar.href = './components/pro_radar.css?v=proui3';
   document.head.appendChild(radar);
 }
 

@@ -88,8 +88,69 @@ function buildMoments() {
     bar.appendChild(b);
   }
 
+  /*
+   * Elevation. GRLevel3 gives the tilt its own control because it is changed
+   * as often as the moment is, and burying it in a per-row dropdown inside a
+   * menu — where the consumer UI keeps it — makes a routine action a
+   * three-click one.
+   *
+   * The app reads the tilt off the .psmRowTiltSelect text inside the product
+   * row it is about to load, so setting that text and clicking the row goes
+   * through exactly the same path as choosing it by hand.
+   */
+  const tilts = el('div');
+  tilts.id = 'vxpro-tilts';
+  tilts.appendChild(el('span', 'vxpro-tilt-cap', 'TILT'));
+  for (let i = 1; i <= 4; i++) {
+    const t = el('button', 'vxpro-tilt');
+    t.textContent = String(i);
+    t.title = 'Elevation tilt ' + i;
+    t.dataset.tilt = String(i);
+    t.addEventListener('click', () => setTilt(i));
+    tilts.appendChild(t);
+  }
+  bar.appendChild(tilts);
+
   document.body.appendChild(bar);
   return bar;
+}
+
+/* Switch the loaded product to a different tilt, through the app's own row. */
+function setTilt(n) {
+  const active = document.querySelector('.vxpro-moment-on');
+  const value = active ? active.dataset.value : 'ref';
+  const row = document.querySelector('.psmRow[value="' + value + '"]');
+  if (!row) return;
+  const sel = row.querySelector('.psmRowTiltSelect');
+  if (!sel) return;
+  sel.textContent = 'Tilt ' + n;
+  row.click();
+}
+
+/* Light the tilt actually in use, read back from the product row. */
+function syncTilts() {
+  const active = document.querySelector('.vxpro-moment-on');
+  const value = active ? active.dataset.value : null;
+  const row = value ? document.querySelector('.psmRow[value="' + value + '"]') : null;
+  const sel = row ? row.querySelector('.psmRowTiltSelect') : null;
+  const cur = sel ? (sel.textContent || '').split(' ')[1] : null;
+  for (const b of document.querySelectorAll('.vxpro-tilt')) {
+    b.classList.toggle('vxpro-tilt-on', !!cur && b.dataset.tilt === cur);
+  }
+}
+
+/*
+ * The warning search floats over the middle of the map in the consumer UI. In
+ * a docked frame a box hanging in mid-air is the one thing that still looks
+ * like a web page, so it is moved into the strip and given a fixed width.
+ */
+function dockSearch() {
+  const box = document.getElementById('vwsearch');
+  const bar = document.getElementById('vxpro-moments');
+  if (!box || !bar || box.dataset.vxproDocked) return !!box;
+  box.dataset.vxproDocked = '1';
+  bar.appendChild(box);
+  return true;
 }
 
 /*
@@ -131,10 +192,14 @@ function syncMoments() {
 function buildColourBar() {
   const wrap = el('div');
   wrap.id = 'vxpro-cbar';
+  // The ticks live INSIDE the track. As a sibling they were positioned
+  // against the whole strip, so the top number sat on top of the unit label.
   wrap.innerHTML =
     '<div id="vxpro-cbar-title"></div>' +
-    '<div id="vxpro-cbar-track"><div id="vxpro-cbar-canvas"></div></div>' +
-    '<div id="vxpro-cbar-ticks"></div>';
+    '<div id="vxpro-cbar-track">' +
+      '<div id="vxpro-cbar-canvas"></div>' +
+      '<div id="vxpro-cbar-ticks"></div>' +
+    '</div>';
   document.body.appendChild(wrap);
 
   const canvas = document.getElementById('mapColorScale');
@@ -429,7 +494,7 @@ export function installRadarFurniture({ setField, field }) {
     }
   }
 
-  const tick = () => { syncMoments(); syncColourBar(); syncOverlay(); sizeColourBar(); };
+  const tick = () => { syncMoments(); syncTilts(); syncColourBar(); syncOverlay(); sizeColourBar(); dockSearch(); };
   tick();
   setInterval(tick, 1000);
 

@@ -12,7 +12,7 @@
 
 html.vx-pro {
   --p-moments: 27px;    /* the BR / BV / SRV strip */
-  --p-cbar: 56px;       /* the vertical colour scale at the image edge */
+  --p-cbar: 48px;       /* the vertical colour scale at the image edge */
 }
 
 /* The frame from pro_skin.css, re-cut to make room for both. */
@@ -67,50 +67,61 @@ html.vx-pro.vx-pro-split #map {
   background: var(--p-bg);
   border-right: 1px solid var(--p-line);
   display: flex; flex-direction: column;
-  padding: 5px 0 5px 0;
+  padding: 4px 4px 6px 6px;
 }
 #vxpro-cbar-title {
-  flex: none; text-align: center;
+  flex: none; text-align: left;
   font-family: var(--p-mono); font-size: 9px; font-weight: 700;
-  letter-spacing: 0.08em; color: var(--p-dim);
-  padding-bottom: 4px;
+  letter-spacing: 0.1em; color: var(--p-dim);
+  padding-bottom: 5px; height: 13px; overflow: hidden;
 }
-/* The bar and its numbers share a row: bar hard left, numbers beside it. */
-#vxpro-cbar-track {
-  flex: 1; min-height: 0; position: relative;
-  margin-left: 8px; width: 20px;
-  border: 1px solid var(--p-line);
-}
-#vxpro-cbar-canvas { position: absolute; inset: 0; overflow: hidden; }
+/* Everything below the caption. The ticks are positioned against THIS, not
+   against the whole strip, which is what kept the top number off the caption. */
+#vxpro-cbar-track { flex: 1; min-height: 0; position: relative; }
+
 /*
- * The canvas is drawn horizontally by the app. Rotating it a quarter turn
- * anticlockwise puts the high end at the top. Its CSS width is set from JS to
- * the strip's height, because a rotated element is still laid out by its
- * unrotated box and the height is only known at runtime.
+ * The colour strip. It keeps its frame when no product is loaded, so the
+ * instrument still reads as an instrument that is waiting rather than as a
+ * gap in the layout.
+ */
+#vxpro-cbar-canvas {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 16px;
+  overflow: hidden;
+  border: 1px solid var(--p-line-hi);
+  background: repeating-linear-gradient(
+    135deg, #12161b, #12161b 3px, #171c22 3px, #171c22 6px);
+}
+/*
+ * The app draws this canvas horizontally, low value at the left. A quarter
+ * turn anticlockwise puts high at the top, which is the convention on every
+ * radar console. Its CSS width is set from JS to the track's height, because a
+ * rotated element is still laid out by its unrotated box.
  */
 html.vx-pro #vxpro-cbar-canvas #mapColorScale {
   position: absolute; top: 50%; left: 50%;
-  height: 20px !important;
-  max-width: none !important;
+  height: 16px !important;
+  min-width: 0 !important; max-width: none !important;
+  bottom: auto !important; right: auto !important;
+  margin: 0 !important;
   transform: translate(-50%, -50%) rotate(-90deg);
   transform-origin: center center;
-  image-rendering: auto;
+  display: block !important;
 }
 #vxpro-cbar-ticks {
-  position: absolute; top: 0; bottom: 0; left: 30px; right: 0;
+  position: absolute; top: 0; bottom: 0; left: 21px; right: 0;
   display: flex; flex-direction: column; justify-content: space-between;
   align-items: flex-start;
   font-family: var(--p-mono); font-size: 9px; color: var(--p-dim);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
-/* The ticks sit inside the track's row, so give that row the full width and
-   let the bar keep its 20px. */
-#vxpro-cbar-track { width: auto; margin-right: 4px; border: none; }
-#vxpro-cbar-canvas { right: auto; width: 20px; border: 1px solid var(--p-line); }
+/* First and last sit at the very ends of the bar, so pull them inward by half
+   a line to line up with the colour they label rather than overhang it. */
+#vxpro-cbar-ticks span:first-child { margin-top: -1px; }
+#vxpro-cbar-ticks span:last-child { margin-bottom: -1px; }
 
 /* The dock's own horizontal legend is redundant once the bar is at the edge. */
-html.vx-pro #vxpro-dock .vxpro-sec:last-child { display: none; }
+html.vx-pro #vxpro-dock .vxpro-sec-scale { display: none; }
 
 /* ── on-image annotation ──────────────────────────────────────────────────── */
 /*
@@ -155,3 +166,91 @@ html.vx-pro #vxpro-cursor { display: none; }
   html.vx-pro #map { left: 0 !important; }
   html.vx-pro #vxpro-overlay { left: 0; }
 }
+
+/* ── tilt selector ────────────────────────────────────────────────────────── */
+/*
+ * Elevation, beside the moments. Pushed to the right of the strip with the
+ * search, so the left third reads as "what am I looking at" and the right as
+ * "how am I looking at it" — which is the split GRLevel3's toolbar makes.
+ */
+#vxpro-tilts {
+  display: flex; align-items: center; gap: 2px;
+  margin-left: 14px; padding-left: 12px;
+  border-left: 1px solid rgba(255,255,255,0.07);
+}
+.vxpro-tilt-cap {
+  font-size: 8.5px; letter-spacing: 0.14em; color: var(--p-faint);
+  margin-right: 4px;
+}
+.vxpro-tilt {
+  appearance: none;
+  width: 22px; height: 18px; padding: 0;
+  background: #12161c; color: var(--p-dim);
+  border: 1px solid var(--p-line); border-radius: 0;
+  font-family: var(--p-mono); font-size: 10px; cursor: pointer;
+}
+.vxpro-tilt:hover { border-color: var(--p-line-hi); color: var(--p-text); }
+.vxpro-tilt-on { background: var(--p-accent); border-color: var(--p-accent); color: #0b131c; font-weight: 700; }
+
+/* ── docked search ────────────────────────────────────────────────────────── */
+/*
+ * The consumer search box floats over the middle of the map. In a docked frame
+ * that is the one element still behaving like a web page, so it is re-homed
+ * into the strip and stripped of its own positioning.
+ */
+html.vx-pro #vxpro-moments #vwsearch {
+  position: static !important;
+  top: auto !important; left: auto !important; right: auto !important;
+  bottom: auto !important; transform: none !important;
+  margin: 0 0 0 auto !important;
+  width: 300px !important; max-width: 34vw !important;
+  z-index: auto !important;
+}
+html.vx-pro #vxpro-moments #vwsearch input {
+  height: 21px !important; font-size: 11px !important;
+  border-radius: 0 !important;
+  background: #12161c !important;
+  border: 1px solid var(--p-line) !important;
+  color: var(--p-text) !important;
+}
+html.vx-pro #vxpro-moments #vwsearch input:focus { border-color: var(--p-accent) !important; }
+/* Its results panel still has to escape the strip, so it is pinned below it. */
+html.vx-pro #vxpro-moments #vwsearch > div:not(:first-child) {
+  position: absolute !important;
+  top: calc(var(--p-moments) - 2px) !important;
+  right: 0 !important; left: auto !important;
+  border-radius: 0 !important;
+}
+
+/* ── dock: the tool list scrolls instead of running off the bottom ────────── */
+html.vx-pro #vxpro-dock .vxpro-sec-tools { flex: 1 1 auto; min-height: 0; }
+html.vx-pro #vxpro-dock .vxpro-sec-tools .vxpro-body {
+  overflow-y: auto; overscroll-behavior: contain;
+}
+/* A thin scrollbar, so a list that scrolls does not lose 15px of label to a
+   desktop-width one. */
+html.vx-pro #vxpro-dock .vxpro-body { scrollbar-width: thin; scrollbar-color: #39414c transparent; }
+html.vx-pro #vxpro-dock .vxpro-body::-webkit-scrollbar { width: 7px; }
+html.vx-pro #vxpro-dock .vxpro-body::-webkit-scrollbar-thumb { background: #39414c; }
+html.vx-pro #vxpro-dock .vxpro-body::-webkit-scrollbar-track { background: transparent; }
+
+/*
+ * Toggle tools carry the app's own "selected" pill, which in a written list
+ * reads as a stray coloured blob beside the text. Squared off and pulled back
+ * to a left marker instead, the way a checked item reads in a menu.
+ */
+html.vx-pro #vxpro-dock .vxpro-tool > .menu_item_selected,
+html.vx-pro #vxpro-dock .vxpro-tool > span.menu_item_selected {
+  border-radius: 0 !important;
+  background: none !important;
+  color: var(--p-accent) !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* ── top strip density ────────────────────────────────────────────────────── */
+#vxpro-topgap { flex: 1; min-width: 0; }
+/* A readout with no value yet should look absent, not broken. The class is
+   set in setField, because CSS cannot select on text content. */
+html.vx-pro .vxpro-field .v.vxpro-empty { color: var(--p-faint); }
+html.vx-pro #vxpro-topmeta .vxpro-field .v { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
