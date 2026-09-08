@@ -43,6 +43,35 @@ const MOMENTS = [
   { code: 'VIL', value: 'vil',   name: 'Vertically Integrated Liquid' },
 ];
 
+
+/*
+ * The menus, and what goes in each.
+ *
+ * GRLevel3 has NO left sidebar. Its whole interface is a menu bar, the colour
+ * scale against the image, and a status bar — which is why a 234px dock of
+ * icon-and-label rows was the last thing making this read as a web app, no
+ * matter how the rows were styled.
+ *
+ * Every entry here is an element id from the app's own tool rail. The nodes are
+ * MOVED into these dropdowns, so each keeps the click handler, tier gate and
+ * active-state class it already had. Anything in the rail that is not listed
+ * lands in Tools, so a tool added later appears in a menu rather than vanishing
+ * with the dock.
+ */
+const MENUS = [
+  { label: 'Site', items: ['stationMenuItemDiv', 'vortexLocateBtn', 'vortexLocationsBtn'] },
+  { label: 'View', items: ['alertMenuItemDiv', 'metarStationMenuItemDiv', 'colorPickerItemDiv', 'drawMenuItemDiv'] },
+  { label: 'Tools', items: ['mstMenuItemDiv', 'vortexSplitBtn', 'soundingMenuItemDiv', 'vortexModelsBtn'] },
+  { label: 'Graphics', items: ['vortexGraphicsBtn', 'warnGraphicBtn'] },
+  { label: 'Comms', items: ['streamHubMenuItemDiv', 'vortexScannerBtn', 'vortexFeaturedBtn'] },
+  {
+    label: 'Window',
+    // The desk is the other half of this licence and nothing else points at it.
+    links: [{ label: 'Warning Desk', href: '/pro', icon: 'fa-table-columns' }],
+    items: ['settingsItemDiv'],
+  },
+];
+
 const RINGS_NM = [50, 100, 150, 200];
 const NM_TO_M = 1852;
 
@@ -105,14 +134,18 @@ function buildMoments() {
   }
 
   const products = el('div', 'vxpro-menuitem');
-  products.textContent = 'Products';
+  products.textContent = 'All Products';
   products.addEventListener('click', () => {
     const t = document.getElementById('productsDropdownTrigger');
     if (t) t.click();
   });
   menu.appendChild(products);
 
+  // The dropdown menus that replace the dock.
+  for (const def of MENUS) menu.appendChild(buildMenu(def));
+
   document.body.appendChild(menu);
+  installMenuDismiss();
 
   /* ── toolbar ── */
   const bar = el('div');
@@ -142,7 +175,117 @@ function buildMoments() {
   bar.appendChild(tilts);
 
   document.body.appendChild(bar);
+  sweepUnclaimed();
   return menu;
+}
+
+/*
+ * One drop-down. The tools are moved into it, not copied — appendChild keeps
+ * every listener attached, so a menu entry behaves exactly as the dock row did
+ * and as the footer icon did before that.
+ */
+function buildMenu(def) {
+  const root = el('div', 'vxpro-menuitem vxpro-hasmenu');
+  root.textContent = def.label;
+
+  const pop = el('div', 'vxpro-popup');
+  // Entries that are not app tools but pages of our own.
+  for (const extra of def.links || []) {
+    const row = el('div', 'vxpro-mi');
+    row.innerHTML = '<span class="fa ' + extra.icon + '"></span>';
+    const t = el('span', 'vxpro-mi-label');
+    t.textContent = extra.label;
+    row.appendChild(t);
+    row.addEventListener('click', () => { window.location.href = extra.href; });
+    pop.appendChild(row);
+  }
+  for (const id of def.items) {
+    const node = document.getElementById(id);
+    if (!node) continue;
+    node.classList.add('vxpro-mi');
+    labelFor(node);
+    pop.appendChild(node);
+  }
+  root.appendChild(pop);
+
+  root.addEventListener('click', (e) => {
+    // A click on an item inside must not re-toggle the menu it came from.
+    if (e.target !== root) { closeMenus(); return; }
+    const open = root.classList.contains('vxpro-open');
+    closeMenus();
+    if (!open) root.classList.add('vxpro-open');
+  });
+  // Once one menu is open, sliding across the bar opens the next, the way a
+  // real menu bar behaves.
+  root.addEventListener('mouseenter', () => {
+    if (document.querySelector('.vxpro-open') && !root.classList.contains('vxpro-open')) {
+      closeMenus();
+      root.classList.add('vxpro-open');
+    }
+  });
+  return root;
+}
+
+/* Give a moved tool a text label, from its title or the explicit name table. */
+function labelFor(node) {
+  if (node.querySelector('.vxpro-mi-label')) return;
+  const name = MENU_NAMES[node.id] || (node.getAttribute('title') || '').trim() || node.id;
+  node.removeAttribute('title');
+  const t = el('span', 'vxpro-mi-label');
+  t.textContent = name;
+  node.appendChild(t);
+}
+
+const MENU_NAMES = {
+  stationMenuItemDiv: 'Radar Sites…',
+  vortexLocateBtn: 'Go to My Location',
+  vortexLocationsBtn: 'My Locations…',
+  alertMenuItemDiv: 'Warnings & Watches',
+  metarStationMenuItemDiv: 'Surface Observations',
+  colorPickerItemDiv: 'Colour Tables…',
+  drawMenuItemDiv: 'Draw',
+  mstMenuItemDiv: 'Manual Storm Track',
+  vortexSplitBtn: 'Split Screen',
+  soundingMenuItemDiv: 'Sounding',
+  vortexModelsBtn: 'Models & Forecast…',
+  vortexGraphicsBtn: 'Vortex Graphics…',
+  warnGraphicBtn: 'Warning Graphic…',
+  streamHubMenuItemDiv: 'Chase Stream Hub…',
+  vortexScannerBtn: 'Global PTT',
+  vortexFeaturedBtn: 'Featured Streams…',
+  settingsItemDiv: 'Settings…',
+};
+
+function closeMenus() {
+  for (const m of document.querySelectorAll('.vxpro-open')) m.classList.remove('vxpro-open');
+}
+
+function installMenuDismiss() {
+  if (installMenuDismiss.done) return;
+  installMenuDismiss.done = true;
+  // Anywhere outside the bar closes it, as does Escape.
+  document.addEventListener('mousedown', (e) => {
+    if (!e.target.closest || !e.target.closest('#vxpro-menu')) closeMenus();
+  }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
+}
+
+/*
+ * Anything in the rail that no menu claimed still needs a home, or a tool
+ * added later would disappear when the dock went. They are appended to Tools.
+ */
+function sweepUnclaimed() {
+  const rail = document.getElementById('vortexBarIcons');
+  if (!rail || !rail.children.length) return;
+  const tools = [...document.querySelectorAll('.vxpro-hasmenu')]
+    .find((m) => m.firstChild && m.firstChild.textContent === 'Tools');
+  const pop = tools ? tools.querySelector('.vxpro-popup') : null;
+  if (!pop) return;
+  for (const node of [...rail.children]) {
+    node.classList.add('vxpro-mi');
+    labelFor(node);
+    pop.appendChild(node);
+  }
 }
 
 /* Switch the loaded product to a different tilt, through the app's own row. */

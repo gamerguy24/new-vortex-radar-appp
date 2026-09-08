@@ -28,37 +28,9 @@ html.vx-pro.vx-pro-split #map {
   width: calc((100% - var(--p-dock) - var(--p-cbar)) / 2) !important;
 }
 
-/* ── moment strip ─────────────────────────────────────────────────────────── */
-#vxpro-moments {
-  position: fixed; left: 0; right: 0; top: var(--p-top);
-  height: var(--p-moments); z-index: 40;
-  display: flex; align-items: stretch;
-  background: #1b2028;
-  border-bottom: 1px solid var(--p-line);
-  padding-left: 6px;
-}
-.vxpro-moment {
-  appearance: none;
-  min-width: 46px; padding: 0 10px;
-  background: transparent;
-  border: none; border-right: 1px solid rgba(255,255,255,0.05);
-  color: var(--p-dim);
-  font-family: var(--p-mono); font-size: 11px; font-weight: 700;
-  letter-spacing: 0.06em; cursor: pointer;
-}
-.vxpro-moment:hover { background: #232a34; color: var(--p-text); }
-/*
- * The loaded product. A filled block rather than a tint: this is the single
- * most important piece of state on the screen, and it has to be readable at a
- * glance from across a desk.
- */
-.vxpro-moment-on {
-  background: var(--p-accent); color: #0b131c;
-}
-.vxpro-moment-on:hover { background: #6fa9dd; color: #0b131c; }
-/* Flashed when the product menu has no row for that moment — the button is
-   not broken, this radar simply is not carrying it. */
-.vxpro-moment-missing { background: rgba(232,87,74,0.35); color: #ffd7d3; }
+/* The moment strip styling lived here. It is gone: these are menu-bar items
+   now, styled in pro_chrome.css. The min-width:46px it carried was still
+   applying and spreading the menu items ~65px apart. */
 
 /* ── vertical colour scale ────────────────────────────────────────────────── */
 #vxpro-cbar {
@@ -192,35 +164,9 @@ html.vx-pro #vxpro-cursor { display: none; }
 .vxpro-tilt:hover { border-color: var(--p-line-hi); color: var(--p-text); }
 .vxpro-tilt-on { background: var(--p-accent); border-color: var(--p-accent); color: #0b131c; font-weight: 700; }
 
-/* ── docked search ────────────────────────────────────────────────────────── */
-/*
- * The consumer search box floats over the middle of the map. In a docked frame
- * that is the one element still behaving like a web page, so it is re-homed
- * into the strip and stripped of its own positioning.
- */
-html.vx-pro #vxpro-moments #vwsearch {
-  position: static !important;
-  top: auto !important; left: auto !important; right: auto !important;
-  bottom: auto !important; transform: none !important;
-  margin: 0 0 0 auto !important;
-  width: 300px !important; max-width: 34vw !important;
-  z-index: auto !important;
-}
-html.vx-pro #vxpro-moments #vwsearch input {
-  height: 21px !important; font-size: 11px !important;
-  border-radius: 0 !important;
-  background: #12161c !important;
-  border: 1px solid var(--p-line) !important;
-  color: var(--p-text) !important;
-}
-html.vx-pro #vxpro-moments #vwsearch input:focus { border-color: var(--p-accent) !important; }
-/* Its results panel still has to escape the strip, so it is pinned below it. */
-html.vx-pro #vxpro-moments #vwsearch > div:not(:first-child) {
-  position: absolute !important;
-  top: calc(var(--p-moments) - 2px) !important;
-  right: 0 !important; left: auto !important;
-  border-radius: 0 !important;
-}
+/* The search docking rules lived here, aimed at #vxpro-moments. That element
+   no longer exists — the search sits in the toolbar now, styled in
+   pro_chrome.css — so they matched nothing. */
 
 /* ── dock: the tool list scrolls instead of running off the bottom ────────── */
 html.vx-pro #vxpro-dock .vxpro-sec-tools { flex: 1 1 auto; min-height: 0; }

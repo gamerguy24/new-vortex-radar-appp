@@ -22,25 +22,13 @@
  * because it can only re-home controls that are already on the page.
  */
 
-import { installRadarFurniture } from './pro_radar.js?v=proui4';
+import { installRadarFurniture } from './pro_radar.js?v=proui5';
 
 const CLASS = 'vx-pro';
 const REMEMBER = 'vortex_pro_ui';     // last known answer, to avoid a flash
 
-/*
- * Labels for the tools the consumer UI never had to name, because they were
- * icons in a row with a tooltip at most. In a written list they need words.
- * Keyed by element id so this survives the icons being restyled.
- */
-const TOOL_NAMES = {
-  stationMenuItemDiv: 'Radar Sites',
-  alertMenuItemDiv: 'Warnings & Watches',
-  metarStationMenuItemDiv: 'Surface Observations',
-  colorPickerItemDiv: 'Colour Tables',
-  drawMenuItemDiv: 'Draw',
-  settingsItemDiv: 'Settings',
-};
-
+/* The tool-name table moved to pro_radar.js as MENU_NAMES, alongside the
+   menus that now hold those tools. */
 
 /* ── who is looking ───────────────────────────────────────────────────────── */
 
@@ -137,84 +125,34 @@ function buildTop() {
   return top;
 }
 
+/*
+ * There is no dock any more.
+ *
+ * A 234px column of icon-and-label rows was the last thing making this read as
+ * a web application: GRLevel3 has no left sidebar at all — menu bar, colour
+ * scale against the image, status bar, and the image gets everything else.
+ * The tools that lived here are now in the menu-bar drop-downs built by
+ * pro_radar.js, which MOVES the same nodes and so keeps their handlers.
+ *
+ * What is still needed from the old dock is the site/product picker, which
+ * goes to the toolbar where a console keeps it.
+ */
 function buildDock() {
-  const dock = el('div');
-  dock.id = 'vxpro-dock';
-
-  const section = (caption, grows, cls) => {
-    const s = el('div', 'vxpro-sec' + (grows ? ' grow' : '') + (cls ? ' ' + cls : ''));
-    const c = el('div', 'vxpro-cap');
-    c.textContent = caption;
-    const b = el('div', 'vxpro-body');
-    s.appendChild(c);
-    s.appendChild(b);
-    dock.appendChild(s);
-    return b;
-  };
-
-  const source = section('Radar', false, 'vxpro-sec-radar');
-  const tools = section('Tools', true, 'vxpro-sec-tools');
-  const scale = section('Colour Scale', false, 'vxpro-sec-scale');
-
-  document.body.appendChild(dock);
-
-  /*
-   * Site and product pickers. These live inside the floating footer in the
-   * consumer UI; here they become the top of the dock, which is where an
-   * operator looks first — what am I pointed at, and at what.
-   */
   const trigger = document.getElementById('productsDropdownTrigger');
-  if (trigger) {
-    trigger.classList.add('vxpro-pick');
-    source.appendChild(trigger);
-  }
   const dateTime = document.getElementById('radarDateTime');
-  if (dateTime) {
-    dateTime.classList.add('vxpro-pick');
-    source.appendChild(dateTime);
-  }
+  const bar = document.getElementById('vxpro-toolbar');
+  if (!bar) return null;
 
-  /*
-   * The tool rail, relabelled.
-   *
-   * Most buttons carry a title attribute and that is the label. Six do not —
-   * they were only ever meant to be icons in a row — and they came through as
-   * blank rows, two of them showing as a bare coloured blob because the app
-   * marks them active. Those six are named here. A tool added later without a
-   * title lands in this same gap, so it falls back to its element id rather
-   * than to nothing, which is ugly but findable.
-   */
-  const rail = document.getElementById('vortexBarIcons');
-  if (rail) {
-    for (const item of [...rail.children]) {
-      const named = TOOL_NAMES[item.id];
-      const label = (named || item.getAttribute('title') || item.textContent || item.id || '').trim();
-      item.removeAttribute('title');           // the row now says it in words
-      item.classList.add('vxpro-tool');
-      if (label) {
-        const t = el('span', 'vxpro-tool-label');
-        t.textContent = label;
-        item.appendChild(t);
-      }
-      tools.appendChild(item);
-    }
-  }
-
-  /*
-   * The warning desk at /pro is the other half of this licence, and nothing in
-   * the radar app pointed at it — an operator had to be told the URL. It goes
-   * at the foot of the tool list, styled as a tool because that is what it is.
-   */
-  const desk = el('div', 'vxpro-tool vxpro-desk',
-    '<span class="fa fa-table-columns"></span><span class="vxpro-tool-label">Warning Desk</span>');
-  desk.title = '';
-  desk.addEventListener('click', () => { window.location.href = '/pro'; });
-  tools.appendChild(desk);
+  const group = el('div', 'vxpro-tgroup');
+  group.id = 'vxpro-sitegroup';
+  if (trigger) { trigger.classList.add('vxpro-pick'); group.appendChild(trigger); }
+  if (dateTime) { dateTime.classList.add('vxpro-stamp'); group.appendChild(dateTime); }
+  bar.insertBefore(group, bar.firstChild);
+  bar.insertBefore(el('div', 'vxpro-sep'), group.nextSibling);
 
   const legend = document.getElementById('vortexLegend');
-  if (legend) scale.appendChild(legend);
-
-  return dock;
+  if (legend) legend.style.display = 'none';   // its canvas is re-homed by pro_radar
+  return group;
 }
 
 /*
@@ -353,7 +291,7 @@ function loadStylesheet() {
   link.rel = 'stylesheet';
   // Appended to head last, so it lands after index.css and can override the
   // mobile geometry rules at the end of that file.
-  link.href = './components/pro_skin.css?v=proui4';
+  link.href = './components/pro_skin.css?v=proui5';
   document.head.appendChild(link);
 
   // The radar furniture's own sheet, loaded after so its re-cut of the frame
@@ -362,7 +300,7 @@ function loadStylesheet() {
   const radar = document.createElement('link');
   radar.id = 'vxpro-radar-css';
   radar.rel = 'stylesheet';
-  radar.href = './components/pro_radar.css?v=proui4';
+  radar.href = './components/pro_radar.css?v=proui5';
   document.head.appendChild(radar);
 
   // The window chrome, last: it supersedes the header and status styling in
@@ -370,7 +308,7 @@ function loadStylesheet() {
   const chrome = document.createElement('link');
   chrome.id = 'vxpro-chrome-css';
   chrome.rel = 'stylesheet';
-  chrome.href = './components/pro_chrome.css?v=proui4';
+  chrome.href = './components/pro_chrome.css?v=proui5';
   document.head.appendChild(chrome);
 }
 
@@ -384,7 +322,6 @@ async function build(orgName) {
   await waitFor(() => document.getElementById('vortexBarIcons') && document.getElementById('vortexPlayBtn'));
 
   buildTop();
-  buildDock();
   buildStatus();
 
   const org = document.getElementById('vxpro-org');
@@ -399,6 +336,9 @@ async function build(orgName) {
    */
   try {
     installRadarFurniture({ setField, cell });
+    // After the furniture, because the site picker lands in the toolbar it
+    // builds and the menus have to exist before the tools are moved into them.
+    buildDock();
   } catch (e) {
     console.error('[PRO] radar furniture failed to install:', e);
   }
