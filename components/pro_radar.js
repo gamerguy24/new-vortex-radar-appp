@@ -320,8 +320,16 @@ function syncTilts() {
 function dockSearch() {
   const box = document.getElementById('vwsearch');
   const bar = document.getElementById('vxpro-toolbar');
-  if (!box || !bar || box.dataset.vxproDocked) return !!box;
-  box.dataset.vxproDocked = '1';
+  if (!box || !bar) return false;
+  /*
+   * Re-parent whenever it is not already ours, rather than once behind a flag.
+   * The box is built by components/warning_search.js on its own schedule, and a
+   * one-shot guard meant that if it was rebuilt — or if it was created after
+   * the flag had been set on an earlier instance — it went back to floating
+   * over the middle of the map and stayed there. Checking the parent instead
+   * of a flag makes this self-repairing and costs one comparison a second.
+   */
+  if (box.parentElement === bar) return true;
   bar.appendChild(box);
   return true;
 }
@@ -354,73 +362,121 @@ function syncMoments() {
 
 /*
  * GRLevel3 stands its colour scale on end against the left edge of the image,
- * and that is not decoration: a radar operator reads a value by eye off the
- * bar beside the pixel they are looking at, and both the bar and the storm are
- * then in the same glance. A horizontal bar under the map is a legend; a
- * vertical one at the edge is an instrument.
+ * and that is not decoration: an operator reads a value off the bar beside the
+ * pixel they are looking at, so the bar and the storm are in one glance.
  *
- * The app's canvas is drawn horizontally, low value at the left. Rotating it a
- * quarter turn anticlockwise puts high at the top, which is the convention.
+ * WHY THIS PAINTS ITS OWN CANVAS INSTEAD OF ROTATING THE APP'S
+ * create_and_show_colorbar sizes its drawing buffer from the element's CSS
+ * width at the moment it draws:
+ *
+ *     visualCanvas.width = jQuery('#mapColorScale').width();
+ *
+ * Standing that canvas up meant setting its CSS width from JavaScript, which
+ * cannot be guaranteed to have happened before the app next draws — so the
+ * buffer came out a few pixels wide and the whole scale rendered as a small
+ * coloured square. Any fix that keeps rotating that element is a race with the
+ * app's own redraw.
+ *
+ * So the app's canvas is left alone and hidden, and this paints from
+ * #texturecolorbar instead — the 1500x1 true gradient the app fills on every
+ * product load. It is a stable source with no layout dependency, so the scale
+ * is correct whatever order things happen in.
  */
 function buildColourBar() {
   const wrap = el('div');
   wrap.id = 'vxpro-cbar';
-  // The ticks live INSIDE the track. As a sibling they were positioned
-  // against the whole strip, so the top number sat on top of the unit label.
   wrap.innerHTML =
     '<div id="vxpro-cbar-title"></div>' +
     '<div id="vxpro-cbar-track">' +
-      '<div id="vxpro-cbar-canvas"></div>' +
+      '<canvas id="vxpro-cbar-render"></canvas>' +
       '<div id="vxpro-cbar-ticks"></div>' +
     '</div>';
   document.body.appendChild(wrap);
 
-  const canvas = document.getElementById('mapColorScale');
-  if (canvas) document.getElementById('vxpro-cbar-canvas').appendChild(canvas);
-
-  sizeColourBar();
-  window.addEventListener('resize', sizeColourBar);
+  paintColourBar();
+  window.addEventListener('resize', paintColourBar);
   return wrap;
 }
 
 /*
- * The rotated canvas is laid out by its unrotated box, so its CSS width has to
- * be set to the height of the strip it is standing in. That is a measurement,
- * not a constant, so it is redone whenever the window changes.
+ * Redraw the vertical scale. Cheap enough to run on the tick: it is one
+ * drawImage of a 1500x1 source, and it has to be repeated because the app
+ * refills the source whenever the product or the colour table changes.
  */
-function sizeColourBar() {
+function paintColourBar() {
+  const dst = document.getElementById('vxpro-cbar-render');
   const track = document.getElementById('vxpro-cbar-track');
-  const canvas = document.getElementById('mapColorScale');
-  if (!track || !canvas) return;
+  const src = document.getElementById('texturecolorbar');
+  if (!dst || !track) return;
+
+  const w = 16;
   const h = track.clientHeight;
-  if (h > 0) canvas.style.width = h + 'px';
+  if (h <= 0) return;
+
+  // Match the device pixel ratio, or the ramp is visibly banded on a HiDPI
+  // screen — which is the sort of thing that reads as a rendering bug on an
+  // instrument whose whole job is showing colour accurately.
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  if (dst.width !== w * dpr || dst.height !== h * dpr) {
+    dst.width = w * dpr;
+    dst.height = h * dpr;
+  }
+  dst.style.width = w + 'px';
+  dst.style.height = h + 'px';
+
+  const ctx = dst.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, dst.width, dst.height);
+
+  // Nothing loaded yet: leave the well empty rather than drawing a stale ramp.
+  if (!src || !src.width) return;
+
+  ctx.scale(dpr, dpr);
+  /*
+   * The source runs low value on the left. Translating to the bottom and
+   * rotating a quarter turn anticlockwise points the source's x-axis upward,
+   * so low ends up at the bottom and high at the top — the convention on
+   * every radar console.
+   */
+  ctx.save();
+  ctx.translate(0, h);
+  ctx.rotate(-Math.PI / 2);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(src, 0, 0, h, w);
+  ctx.restore();
 }
 
+/*
+ * The unit, not the product name. "SUPER-RES BASE REFLECTIVITY" does not fit
+ * a 48px column and was rendering as "REFLECTIVI"; GRLevel3 simply says DBZ.
+ */
+const UNITS = { ref: 'DBZ', vel: 'KTS', srvel: 'KTS', rho: 'CC', zdr: 'DB', kdp: 'DEG/KM', hyc: 'CLASS', vil: 'KG/M2' };
+
 function syncColourBar() {
+  const active = document.querySelector('.vxpro-moment-on');
+  const unit = active ? UNITS[active.dataset.value] : null;
   const title = document.getElementById('vxpro-cbar-title');
-  const src = document.getElementById('vortexLegendTitle');
-  if (title && src) {
-    // "SUPER-RES BASE REFLECTIVITY (DBZ)" -> "DBZ" where a unit is given,
-    // because the product name is already in the top strip and on the map.
-    const t = (src.textContent || '').trim();
-    const unit = (t.match(/\(([^)]+)\)\s*$/) || [])[1];
-    title.textContent = unit || t.split(' ').pop() || '';
+  if (title) {
+    const t = unit || '';
+    if (title.textContent !== t) title.textContent = t;
   }
 
   const ticks = document.getElementById('vxpro-cbar-ticks');
   const scale = document.getElementById('vortexLegendScale');
   if (!ticks || !scale) return;
-  // Bottom-to-top, so the numbers run the same way as the rotated bar.
+  // Bottom-to-top, so the numbers run the same way as the painted bar.
   const vals = [...scale.children].map((s) => (s.textContent || '').trim());
   const want = vals.slice().reverse().join('|');
-  if (ticks.dataset.sig === want) return;
-  ticks.dataset.sig = want;
-  ticks.innerHTML = '';
-  for (const v of vals.slice().reverse()) {
-    const t = el('span');
-    t.textContent = v;
-    ticks.appendChild(t);
+  if (ticks.dataset.sig !== want) {
+    ticks.dataset.sig = want;
+    ticks.innerHTML = '';
+    for (const v of vals.slice().reverse()) {
+      const t = el('span');
+      t.textContent = v;
+      ticks.appendChild(t);
+    }
   }
+  paintColourBar();
 }
 
 /* ── on-image annotation ──────────────────────────────────────────────────── */
@@ -672,7 +728,7 @@ export function installRadarFurniture({ setField, cell }) {
     }
   }
 
-  const tick = () => { syncMoments(); syncTilts(); syncColourBar(); syncOverlay(); sizeColourBar(); dockSearch(); };
+  const tick = () => { syncMoments(); syncTilts(); syncColourBar(); syncOverlay(); dockSearch(); };
   tick();
   setInterval(tick, 1000);
 

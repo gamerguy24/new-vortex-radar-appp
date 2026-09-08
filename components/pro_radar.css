@@ -51,34 +51,9 @@ html.vx-pro.vx-pro-split #map {
    against the whole strip, which is what kept the top number off the caption. */
 #vxpro-cbar-track { flex: 1; min-height: 0; position: relative; }
 
-/*
- * The colour strip. It keeps its frame when no product is loaded, so the
- * instrument still reads as an instrument that is waiting rather than as a
- * gap in the layout.
- */
-#vxpro-cbar-canvas {
-  position: absolute; top: 0; bottom: 0; left: 0; width: 16px;
-  overflow: hidden;
-  border: 1px solid var(--p-line-hi);
-  background: repeating-linear-gradient(
-    135deg, #12161b, #12161b 3px, #171c22 3px, #171c22 6px);
-}
-/*
- * The app draws this canvas horizontally, low value at the left. A quarter
- * turn anticlockwise puts high at the top, which is the convention on every
- * radar console. Its CSS width is set from JS to the track's height, because a
- * rotated element is still laid out by its unrotated box.
- */
-html.vx-pro #vxpro-cbar-canvas #mapColorScale {
-  position: absolute; top: 50%; left: 50%;
-  height: 16px !important;
-  min-width: 0 !important; max-width: none !important;
-  bottom: auto !important; right: auto !important;
-  margin: 0 !important;
-  transform: translate(-50%, -50%) rotate(-90deg);
-  transform-origin: center center;
-  display: block !important;
-}
+/* The rotated-canvas rules lived here. The scale paints its own canvas now,
+   because sizing the app's canvas from JS raced its redraw. */
+
 #vxpro-cbar-ticks {
   position: absolute; top: 0; bottom: 0; left: 21px; right: 0;
   display: flex; flex-direction: column; justify-content: space-between;

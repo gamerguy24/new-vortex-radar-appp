@@ -164,8 +164,8 @@ html.vx-pro #vxpro-toolbar #vwsearch {
   position: static !important;
   top: auto !important; left: auto !important; right: auto !important;
   bottom: auto !important; transform: none !important;
-  margin: 0 0 0 auto !important;
-  width: 280px !important; max-width: 30vw !important;
+  margin: 0 0 0 4px !important;
+  width: 250px !important; max-width: 26vw !important;
   z-index: auto !important;
 }
 html.vx-pro #vxpro-toolbar #vwsearch input {
@@ -340,3 +340,25 @@ html.vx-pro #vxpro-toolbar .vxpro-stamp {
   color: #98a2ad !important; font-size: 11px !important;
   font-family: ui-monospace, Consolas, monospace;
 }
+
+/* ── the app's horizontal legend stays down ─────────────────────────────── */
+/*
+ * create_and_show_colorbar calls .show() on these every time a product loads,
+ * which beats an inline display:none set once at startup — that is why the old
+ * legend reappeared along the bottom of the image. The vertical scale at the
+ * left edge replaces it, so it is held down from the stylesheet where .show()
+ * cannot reach it.
+ */
+html.vx-pro #vortexLegend,
+html.vx-pro #mapColorScale { display: none !important; }
+
+/* ── the vertical scale ──────────────────────────────────────────────────── */
+html.vx-pro #vxpro-cbar-render {
+  position: absolute; top: 0; left: 0;
+  border-top: 1px solid var(--p-sunk-dark);
+  border-left: 1px solid var(--p-sunk-dark);
+  border-bottom: 1px solid var(--p-sunk-light);
+  border-right: 1px solid var(--p-sunk-light);
+  background: #0e1116;
+}
+html.vx-pro #vxpro-cbar-title { height: auto; white-space: nowrap; }
