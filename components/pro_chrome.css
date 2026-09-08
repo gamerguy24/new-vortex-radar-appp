@@ -1,0 +1,260 @@
+/*
+ * pro_chrome.css — the window chrome, in the Win32 idiom.
+ *
+ * Loaded after pro_skin.css and pro_radar.css, and it supersedes their header
+ * and status-bar styling. Those two built a modern dashboard header: uppercase
+ * micro-captions over every value, filled pill buttons for the products, soft
+ * borders. That is the visual language of an analytics page, and it is what
+ * made the interface read as generic.
+ *
+ * A radar console is a Win32 application, and its chrome has four parts in a
+ * fixed order — title bar, menu bar, toolbar, status bar. The rules below are
+ * the specific things that make that read as native rather than as a website:
+ *
+ *   · menu items are plain text with a hover fill and NO border or radius
+ *   · readouts sit in sunken cells with a dark top-left and light bottom-right
+ *     edge, and carry no caption — the value is the whole content
+ *   · one system font at one size; no letter-spaced small caps anywhere
+ *   · separators are a 1px dark line with a 1px light line beside it
+ *
+ * Scoping rule is unchanged: every selector is either prefixed html.vx-pro or
+ * targets a #vxpro-* / .vxpro-* element this code created.
+ */
+
+html.vx-pro {
+  --p-title: 24px;
+  --p-menu: 22px;
+  --p-toolbar: 28px;
+  --p-status: 22px;
+
+  /* The chrome is a shade lighter than the image, the way a window frame is. */
+  --p-chrome: #22262c;
+  --p-chrome-hi: #2b3037;
+  --p-sunk-dark: #12151a;
+  --p-sunk-light: #3d444d;
+}
+
+/* Total header height is the three bars stacked. */
+html.vx-pro #vxpro-dock,
+html.vx-pro #vxpro-cbar,
+html.vx-pro #vxpro-overlay,
+html.vx-pro #map,
+html.vx-pro #mapDual {
+  top: calc(var(--p-title) + var(--p-menu) + var(--p-toolbar)) !important;
+}
+
+/* ── title bar ────────────────────────────────────────────────────────────── */
+#vxpro-title {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--p-title);
+  z-index: 42;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 8px;
+  background: linear-gradient(180deg, #2c323a, #21252b);
+  border-bottom: 1px solid #14171b;
+  font-size: 12px; color: #d8dee6;
+}
+#vxpro-titletext { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+#vxpro-tsite { font-weight: 700; color: #ffffff; }
+#vxpro-tloc { color: #b3bcc6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The application name last, after a dash, the way a window title reads. */
+.vxpro-tapp { color: #7d8894; }
+.vxpro-tapp::before { content: '\2014\00a0'; }
+#vxpro-titleright { display: flex; align-items: center; gap: 10px; flex: none; }
+#vxpro-titleright .vxpro-org { font-size: 11px; color: #8c96a1; }
+
+html.vx-pro #vortexAlertPill {
+  position: static !important; transform: none !important; box-shadow: none !important;
+  display: flex !important; align-items: center; gap: 5px;
+  height: 17px; padding: 0 7px !important; margin: 0 !important;
+  background: #3a3f47 !important; border: 1px solid #14171b !important;
+  border-radius: 2px !important;
+  color: #cfd6de !important; font-size: 11px !important; font-family: inherit;
+}
+html.vx-pro #vortexAlertPill.vxpro-hot { background: #8f2f28 !important; color: #ffe2de !important; }
+
+/* ── menu bar ─────────────────────────────────────────────────────────────── */
+/*
+ * Plain text items. No border, no radius, no fill until hover — this is the
+ * single biggest difference between a menu bar and a row of buttons, and it is
+ * what the moments looked wrong as before.
+ */
+#vxpro-menu {
+  position: fixed; top: var(--p-title); left: 0; right: 0; height: var(--p-menu);
+  z-index: 42;
+  display: flex; align-items: stretch;
+  background: var(--p-chrome);
+  border-bottom: 1px solid #14171b;
+  padding-left: 2px;
+}
+.vxpro-menuitem {
+  display: flex; align-items: center;
+  padding: 0 9px;
+  font-size: 12px; color: #ccd3db;
+  cursor: default; user-select: none;
+  border: 1px solid transparent;
+}
+.vxpro-menuitem:hover { background: var(--p-chrome-hi); border-color: #3d444d; }
+.vxpro-menuitem:active { background: #1b1f24; }
+/*
+ * The loaded product. A menu bar shows a pressed item as an inset well, not as
+ * a coloured chip.
+ */
+.vxpro-moment-on {
+  background: #171b20;
+  border-color: #14171b #3d444d #3d444d #14171b;
+  color: #ffffff; font-weight: 600;
+}
+.vxpro-moment-on:hover { background: #171b20; }
+.vxpro-moment-missing { background: #7a2f28; color: #ffd9d4; }
+
+/* ── toolbar ──────────────────────────────────────────────────────────────── */
+#vxpro-toolbar {
+  position: fixed; top: calc(var(--p-title) + var(--p-menu)); left: 0; right: 0;
+  height: var(--p-toolbar); z-index: 42;
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 6px;
+  background: var(--p-chrome);
+  border-bottom: 1px solid #14171b;
+}
+.vxpro-tgroup { display: flex; align-items: center; gap: 4px; }
+/* The classic two-tone toolbar separator. */
+.vxpro-sep {
+  width: 2px; height: 18px; flex: none;
+  border-left: 1px solid #14171b; border-right: 1px solid #3d444d;
+}
+
+html.vx-pro #vxpro-toolbar #vortexPlayBtn {
+  position: static !important; margin: 0 !important;
+  width: 23px !important; height: 21px !important;
+  min-width: 0 !important; min-height: 0 !important;
+  display: flex !important; align-items: center; justify-content: center;
+  background: #343a42 !important;
+  border: 1px solid #14171b !important; border-radius: 2px !important;
+  color: #e2e8ef !important; font-size: 10px !important; flex: none;
+}
+html.vx-pro #vxpro-toolbar #vortexPlayBtn:hover { background: #414852 !important; }
+html.vx-pro #vxpro-toolbar #vortexTimeline {
+  position: static !important; margin: 0 4px !important;
+  width: 190px !important; flex: none; height: 16px !important;
+  accent-color: #8fa8c2;
+}
+html.vx-pro #vxpro-toolbar #vortexSpeedWrap { position: static !important; margin: 0 !important; flex: none; }
+html.vx-pro #vxpro-toolbar #vortexSpeed {
+  background: #171b20 !important; color: #dbe2ea !important;
+  border: 1px solid #14171b !important; border-radius: 2px !important;
+  font-size: 11px !important; padding: 1px 3px !important; height: 20px !important;
+}
+
+.vxpro-tilt-cap { font-size: 11px; color: #9aa4af; margin-right: 3px; }
+.vxpro-tilt {
+  appearance: none;
+  width: 23px; height: 21px; padding: 0;
+  background: #343a42; color: #dbe2ea;
+  border: 1px solid #14171b; border-radius: 2px;
+  font-size: 11px; cursor: pointer;
+}
+.vxpro-tilt:hover { background: #414852; }
+.vxpro-tilt-on {
+  background: #171b20; color: #ffffff; font-weight: 700;
+  border-color: #14171b #3d444d #3d444d #14171b;
+}
+
+/* The search sits at the right-hand end of the toolbar. */
+html.vx-pro #vxpro-toolbar #vwsearch {
+  position: static !important;
+  top: auto !important; left: auto !important; right: auto !important;
+  bottom: auto !important; transform: none !important;
+  margin: 0 0 0 auto !important;
+  width: 280px !important; max-width: 30vw !important;
+  z-index: auto !important;
+}
+html.vx-pro #vxpro-toolbar #vwsearch input {
+  height: 21px !important; font-size: 11.5px !important;
+  border-radius: 2px !important;
+  background: #171b20 !important;
+  border: 1px solid #14171b !important;
+  box-shadow: none !important;
+  color: #dbe2ea !important;
+}
+html.vx-pro #vxpro-toolbar #vwsearch > div:not(:first-child) {
+  position: absolute !important;
+  top: var(--p-toolbar) !important;
+  right: 0 !important; left: auto !important;
+  border-radius: 0 !important;
+}
+
+/* ── status bar ───────────────────────────────────────────────────────────── */
+/*
+ * Sunken cells carrying values only. The inset edge is the whole trick: dark
+ * on the top and left, light on the bottom and right, which is what a Win32
+ * status panel does and what makes a readout look recessed into the frame
+ * rather than drawn on top of it.
+ */
+#vxpro-status {
+  position: fixed; left: 0; right: 0; bottom: 0; height: var(--p-status);
+  z-index: 42;
+  display: flex; align-items: center; gap: 3px;
+  padding: 0 4px;
+  background: var(--p-chrome);
+  border-top: 1px solid #3d444d;
+}
+#vxpro-spacer { flex: 1; min-width: 0; }
+.vxpro-cell {
+  display: flex; align-items: center;
+  height: 17px; padding: 0 6px; flex: none;
+  background: #1b1f24;
+  border-top: 1px solid var(--p-sunk-dark);
+  border-left: 1px solid var(--p-sunk-dark);
+  border-bottom: 1px solid var(--p-sunk-light);
+  border-right: 1px solid var(--p-sunk-light);
+  overflow: hidden;
+}
+.vxpro-cell .v {
+  font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  font-size: 11px; color: #d5dce4;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vxpro-cell .v.vxpro-empty { color: #6c7681; }
+
+/* ── dock, brought into the same language ─────────────────────────────────── */
+html.vx-pro #vxpro-dock { background: var(--p-chrome); border-right: 1px solid #14171b; }
+html.vx-pro .vxpro-cap {
+  background: #2b3037; border-top: 1px solid #3d444d; border-bottom: 1px solid #14171b;
+  color: #b6bfc9; font-size: 11px; font-weight: 600;
+  letter-spacing: 0; text-transform: none; padding: 3px 8px;
+}
+html.vx-pro #vxpro-dock .vxpro-tool { color: #c8cfd8; font-size: 12px; padding: 3px 7px; }
+html.vx-pro #vxpro-dock .vxpro-tool:hover { background: var(--p-chrome-hi); border-color: #3d444d; }
+html.vx-pro #vxpro-dock .vxpro-pick {
+  background: #1b1f24;
+  border-top: 1px solid var(--p-sunk-dark); border-left: 1px solid var(--p-sunk-dark);
+  border-bottom: 1px solid var(--p-sunk-light); border-right: 1px solid var(--p-sunk-light);
+  border-radius: 0; color: #dbe2ea; font-size: 12px;
+}
+
+/* ── colour scale ─────────────────────────────────────────────────────────── */
+html.vx-pro #vxpro-cbar { background: var(--p-chrome); border-right: 1px solid #14171b; }
+html.vx-pro #vxpro-cbar-title {
+  font-family: inherit; font-size: 11px; font-weight: 600;
+  letter-spacing: 0; color: #b6bfc9; text-transform: none;
+}
+html.vx-pro #vxpro-cbar-ticks { font-size: 10px; color: #aab3bd; }
+html.vx-pro #vxpro-cbar-canvas {
+  border-top: 1px solid var(--p-sunk-dark); border-left: 1px solid var(--p-sunk-dark);
+  border-bottom: 1px solid var(--p-sunk-light); border-right: 1px solid var(--p-sunk-light);
+}
+
+/* ── on-image annotation ──────────────────────────────────────────────────── */
+/* GR3 draws these in a light cyan-white with a hard shadow, at a readable size
+   — they are part of the image, not part of the frame. */
+html.vx-pro .vxpro-ov {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px; color: #e8f2ff;
+  text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+}
+html.vx-pro .vxpro-ov b { font-size: 13px; color: #ffffff; }
+
+@media (max-width: 1100px) {
+  html.vx-pro #vxpro-toolbar #vwsearch { width: 180px !important; }
+}

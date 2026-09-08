@@ -69,46 +69,8 @@ html.vx-pro #mapDual {
 
 html.vx-pro body { background: var(--p-bg); font-family: var(--p-sans); }
 
-/* ── top strip ────────────────────────────────────────────────────────────── */
-#vxpro-top {
-  position: fixed; top: 0; left: 0; right: 0; height: var(--p-top);
-  z-index: 40;
-  display: flex; align-items: center; gap: 0;
-  background: linear-gradient(180deg, #232830, #1a1e24);
-  border-bottom: 1px solid var(--p-line);
-  font-size: 11px;
-}
-#vxpro-brand {
-  display: flex; align-items: center; gap: 6px;
-  width: var(--p-dock); flex: none;
-  padding: 0 10px; height: 100%;
-  border-right: 1px solid var(--p-line);
-  letter-spacing: 0.15em; font-weight: 700; font-size: 10.5px;
-}
-#vxpro-brand b { color: var(--p-accent); font-weight: 800; }
-#vxpro-brand .vxpro-org {
-  margin-left: auto; letter-spacing: 0; font-weight: 400;
-  color: var(--p-faint); font-size: 10px;
-  max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-/* Readouts that live in the top strip: product, then site metadata. */
-#vxpro-topmeta { display: flex; align-items: center; gap: 0; height: 100%; flex: 1; min-width: 0; }
-.vxpro-field {
-  display: flex; align-items: baseline; gap: 6px;
-  height: 100%; padding: 0 11px;
-  border-right: 1px solid var(--p-line);
-  white-space: nowrap;
-}
-.vxpro-field .k {
-  font-size: 8.5px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--p-faint);
-}
-.vxpro-field .v {
-  font-family: var(--p-mono); font-size: 11px; color: var(--p-text);
-  font-variant-numeric: tabular-nums;
-}
-.vxpro-field.grow { flex: 1; min-width: 0; border-right: none; }
-.vxpro-field.grow .v { overflow: hidden; text-overflow: ellipsis; }
+/* The old caption strip lived here. It is gone: pro_chrome.css replaces it
+   with a title bar, and none of those rules matched anything any more. */
 
 /* ── left dock ────────────────────────────────────────────────────────────── */
 #vxpro-dock {

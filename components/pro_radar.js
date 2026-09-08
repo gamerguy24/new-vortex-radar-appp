@@ -56,21 +56,37 @@ const el = (tag, cls, html) => {
 /* ── moment bar ───────────────────────────────────────────────────────────── */
 
 /*
- * The moment bar is its own fixed strip under the readout strip, rather than a
- * second row inside it. GRLevel3 separates them the same way — menu line, then
- * toolbar — and keeping them as separate elements means neither has to know
- * the other's height.
+ * The menu bar and the toolbar, as two rows, the way a Win32 application
+ * stacks them.
+ *
+ * GRLevel3's menu bar IS the product list — File View Site BR BV SRV SW ZDR CC
+ * KDP HCA — plain text items with a hover highlight and no borders. The filled
+ * blue buttons this had before were the single most "web app" thing on the
+ * screen; a menu bar does not have buttons in it.
+ *
+ * The toolbar underneath carries what you operate rather than what you choose:
+ * frame transport, elevation, and the search.
  */
 function buildMoments() {
-  const bar = el('div');
-  bar.id = 'vxpro-moments';
+  const menu = el('div');
+  menu.id = 'vxpro-menu';
+
+  // A Site item first, opening the app's own radar-site picker, so the menu
+  // bar reads the way GR3's does rather than starting abruptly at BR.
+  const site = el('div', 'vxpro-menuitem');
+  site.textContent = 'Site';
+  site.addEventListener('click', () => {
+    const b2 = document.getElementById('stationMenuItemDiv');
+    if (b2) b2.click();
+  });
+  menu.appendChild(site);
 
   for (const m of MOMENTS) {
-    const b = el('button', 'vxpro-moment');
-    b.textContent = m.code;
-    b.title = m.name;
-    b.dataset.value = m.value;
-    b.addEventListener('click', () => {
+    const it = el('div', 'vxpro-menuitem vxpro-moment');
+    it.textContent = m.code;
+    it.title = m.name;
+    it.dataset.value = m.value;
+    it.addEventListener('click', () => {
       /*
        * Drive the app's own product row. jQuery binds with addEventListener,
        * so a native .click() reaches its handler — and that handler tests
@@ -79,28 +95,42 @@ function buildMoments() {
        */
       const row = document.querySelector('.psmRow[value="' + m.value + '"]');
       if (!row) {
-        b.classList.add('vxpro-moment-missing');
-        setTimeout(() => b.classList.remove('vxpro-moment-missing'), 800);
+        it.classList.add('vxpro-moment-missing');
+        setTimeout(() => it.classList.remove('vxpro-moment-missing'), 800);
         return;
       }
       row.click();
     });
-    bar.appendChild(b);
+    menu.appendChild(it);
   }
 
-  /*
-   * Elevation. GRLevel3 gives the tilt its own control because it is changed
-   * as often as the moment is, and burying it in a per-row dropdown inside a
-   * menu — where the consumer UI keeps it — makes a routine action a
-   * three-click one.
-   *
-   * The app reads the tilt off the .psmRowTiltSelect text inside the product
-   * row it is about to load, so setting that text and clicking the row goes
-   * through exactly the same path as choosing it by hand.
-   */
-  const tilts = el('div');
+  const products = el('div', 'vxpro-menuitem');
+  products.textContent = 'Products';
+  products.addEventListener('click', () => {
+    const t = document.getElementById('productsDropdownTrigger');
+    if (t) t.click();
+  });
+  menu.appendChild(products);
+
+  document.body.appendChild(menu);
+
+  /* ── toolbar ── */
+  const bar = el('div');
+  bar.id = 'vxpro-toolbar';
+
+  // Frame transport, moved up out of the status bar: GR3 keeps its animation
+  // controls on the toolbar, and a status bar is for reading, not operating.
+  const transport = el('div', 'vxpro-tgroup');
+  for (const id of ['vortexPlayBtn', 'vortexTimeline', 'vortexSpeedWrap']) {
+    const n = document.getElementById(id);
+    if (n) transport.appendChild(n);
+  }
+  bar.appendChild(transport);
+  bar.appendChild(el('div', 'vxpro-sep'));
+
+  const tilts = el('div', 'vxpro-tgroup');
   tilts.id = 'vxpro-tilts';
-  tilts.appendChild(el('span', 'vxpro-tilt-cap', 'TILT'));
+  tilts.appendChild(el('span', 'vxpro-tilt-cap', 'Tilt'));
   for (let i = 1; i <= 4; i++) {
     const t = el('button', 'vxpro-tilt');
     t.textContent = String(i);
@@ -112,7 +142,7 @@ function buildMoments() {
   bar.appendChild(tilts);
 
   document.body.appendChild(bar);
-  return bar;
+  return menu;
 }
 
 /* Switch the loaded product to a different tilt, through the app's own row. */
@@ -146,7 +176,7 @@ function syncTilts() {
  */
 function dockSearch() {
   const box = document.getElementById('vwsearch');
-  const bar = document.getElementById('vxpro-moments');
+  const bar = document.getElementById('vxpro-toolbar');
   if (!box || !bar || box.dataset.vxproDocked) return !!box;
   box.dataset.vxproDocked = '1';
   bar.appendChild(box);
@@ -475,22 +505,27 @@ function wireCursor(map, setField) {
 
 /* ── entry point ──────────────────────────────────────────────────────────── */
 
-export function installRadarFurniture({ setField, field }) {
+export function installRadarFurniture({ setField, cell }) {
   buildMoments();
   buildColourBar();
   buildOverlay();
 
   // Status-bar readouts that belong to the radar rather than the frame.
+  /*
+   * The cursor readouts, in the order GRLevel3 puts them: what is under the
+   * pointer relative to the antenna, then how high the beam is there, then
+   * where it is on the earth, then the scale of the image.
+   */
   const status = document.getElementById('vxpro-status');
-  const spacer = document.getElementById('vxpro-spacer');
-  if (status && spacer) {
-    for (const [id, key] of [
-      ['vxpro-azran', 'Az / Range'],
-      ['vxpro-beam', 'Beam'],
-      ['vxpro-scale', 'Scale'],
-      ['vxpro-latlon', 'Lat / Lon'],
+  if (status) {
+    for (const [id, title, w] of [
+      ['vxpro-azran', 'Azimuth / range from the radar', 132],
+      ['vxpro-beam', 'Height of the beam centre', 84],
+      ['vxpro-latlon', 'Cursor latitude, longitude', 150],
+      ['vxpro-scale', 'Image scale', 106],
+      ['vxpro-clock', 'UTC', 84],
     ]) {
-      status.insertBefore(field(id, key, '—'), document.getElementById('vxpro-clock'));
+      status.appendChild(cell(id, title, w));
     }
   }
 

@@ -22,7 +22,7 @@
  * because it can only re-home controls that are already on the page.
  */
 
-import { installRadarFurniture } from './pro_radar.js?v=proui3';
+import { installRadarFurniture } from './pro_radar.js?v=proui4';
 
 const CLASS = 'vx-pro';
 const REMEMBER = 'vortex_pro_ui';     // last known answer, to avoid a flash
@@ -81,14 +81,6 @@ const el = (tag, cls, html) => {
   return n;
 };
 
-function field(id, key, value) {
-  const f = el('div', 'vxpro-field');
-  if (id) f.id = id;
-  f.innerHTML = '<span class="k"></span><span class="v"></span>';
-  f.querySelector('.k').textContent = key;
-  f.querySelector('.v').textContent = value == null ? '—' : value;
-  return f;
-}
 const setField = (id, v) => {
   const n = document.querySelector('#' + id + ' .v');
   if (!n) return;
@@ -111,37 +103,36 @@ function waitFor(test, timeoutMs = 20000) {
 
 /* ── the frame ────────────────────────────────────────────────────────────── */
 
+/*
+ * The title bar.
+ *
+ * GRLevel3 puts the site and its location in the window title — "KEWX San
+ * Antonio, TX - GRLevel3" — not in a strip of captioned readout cells. The
+ * captions were the thing that made this read as a web dashboard: five
+ * uppercase micro-labels across the top is a design language from analytics
+ * pages, and no radar console has ever had one. The same facts are already
+ * burned into the corners of the image, which is where an operator reads them.
+ */
 function buildTop() {
   const top = el('div');
-  top.id = 'vxpro-top';
+  top.id = 'vxpro-title';
 
-  const brand = el('div', null, 'VORTEX <b>PRO</b><span class="vxpro-org" id="vxpro-org"></span>');
-  brand.id = 'vxpro-brand';
-  top.appendChild(brand);
+  const name = el('div');
+  name.id = 'vxpro-titletext';
+  name.innerHTML = '<b id="vxpro-tsite"></b><span id="vxpro-tloc"></span>' +
+    '<span class="vxpro-tapp">Vortex Pro</span>';
+  top.appendChild(name);
 
-  const meta = el('div');
-  meta.id = 'vxpro-topmeta';
-  meta.appendChild(field('vxpro-site', 'Site', '—'));
-  meta.appendChild(field('vxpro-vcp', 'VCP', '—'));
-  meta.appendChild(field('vxpro-elev', 'Elev', '—'));
-  meta.appendChild(field('vxpro-product', 'Product', '—'));
-  meta.appendChild(field('vxpro-loc', 'Location', ''));
-  /*
-   * A spacer AFTER the fields rather than a growing last field. Letting
-   * Location stretch put a 900px gap inside a bordered cell, which read as a
-   * broken layout; the readouts now sit tight against each other on the left,
-   * the way a console's menu bar does, and the empty space is plainly empty.
-   */
-  const gap = el('div');
-  gap.id = 'vxpro-topgap';
-  meta.appendChild(gap);
-  top.appendChild(meta);
+  const right = el('div');
+  right.id = 'vxpro-titleright';
+  right.innerHTML = '<span class="vxpro-org" id="vxpro-org"></span>';
+  top.appendChild(right);
 
   document.body.appendChild(top);
 
-  // The alert counter belongs in the top strip, not floating over the map.
+  // The alert counter is a title-bar indicator, not a floating pill.
   const pill = document.getElementById('vortexAlertPill');
-  if (pill) top.appendChild(pill);
+  if (pill) right.appendChild(pill);
 
   return top;
 }
@@ -226,29 +217,43 @@ function buildDock() {
   return dock;
 }
 
+/*
+ * The status bar.
+ *
+ * GRLevel3's is a row of sunken Win32 cells carrying values and nothing else:
+ * "304.2° / 144.8 nm", "21609 ft", "912 meters/pixel". No captions — the
+ * operator knows what an azimuth looks like, and a caption on every cell is
+ * six words of chrome competing with the six numbers that matter. Each cell
+ * carries its label as a tooltip instead.
+ */
 function buildStatus() {
   const bar = el('div');
   bar.id = 'vxpro-status';
 
-  const transport = el('div');
-  transport.id = 'vxpro-transport';
-  bar.appendChild(transport);
+  bar.appendChild(cell('vxpro-frame-n', 'Frame', 86));
+  bar.appendChild(cell('vxpro-scan', 'Time since scan', 96));
 
-  for (const id of ['vortexPlayBtn', 'vortexTimeline', 'vortexSpeedWrap']) {
-    const n = document.getElementById(id);
-    if (n) transport.appendChild(n);
-  }
-
-  bar.appendChild(field('vxpro-frame-n', 'Frame', '—'));
-  bar.appendChild(field('vxpro-scan', 'Scan', '—'));
   const spacer = el('div');
   spacer.id = 'vxpro-spacer';
   bar.appendChild(spacer);
-  bar.appendChild(field('vxpro-cursor', 'Cursor', '—'));
-  bar.appendChild(field('vxpro-clock', 'UTC', '—'));
 
   document.body.appendChild(bar);
   return bar;
+}
+
+/*
+ * One sunken readout cell. Fixed width, monospaced and tabular, so a value
+ * that changes every frame does not shuffle its neighbours along the bar.
+ */
+function cell(id, title, width) {
+  const c = el('div', 'vxpro-cell');
+  c.id = id;
+  c.title = title;
+  if (width) c.style.width = width + 'px';
+  const v = el('span', 'v');
+  v.textContent = '—';
+  c.appendChild(v);
+  return c;
 }
 
 /* ── live readouts ────────────────────────────────────────────────────────── */
@@ -264,21 +269,19 @@ function pumpReadouts() {
   const text = (id) => {
     const n = document.getElementById(id);
     const t = n ? (n.textContent || '').trim() : '';
-    return t || '—';
+    return t;
   };
 
-  setField('vxpro-site', text('radarStation'));
-  setField('vxpro-loc', text('radarLocation') === '—' ? '' : text('radarLocation'));
-  setField('vxpro-vcp', text('radarVCP'));
-  setField('vxpro-product', text('headerProductName'));
+  // Title bar: "KFFC  Atlanta   Vortex Pro", the way a console names its window.
+  const site = text('radarStation');
+  const loc = text('radarLocation');
+  const ts = document.getElementById('vxpro-tsite');
+  const tl = document.getElementById('vxpro-tloc');
+  if (ts && ts.textContent !== site) ts.textContent = site;
+  if (tl && tl.textContent !== loc) tl.textContent = loc;
 
-  // Elevation is written into the footer's product info as "ELEVATION: 0.5°".
-  const info = document.getElementById('extraProductInfo');
-  const raw = info ? (info.textContent || '') : '';
-  const m = raw.match(/([-\d.]+)\s*°/);
-  setField('vxpro-elev', m ? m[1] + '°' : '—');
-
-  setField('vxpro-scan', text('top-right'));
+  setField('vxpro-frame-n', frameText());
+  setField('vxpro-scan', text('top-right') || '—');
 
   const pill = document.getElementById('vortexAlertPill');
   const count = document.getElementById('vortexAlertCount');
@@ -286,6 +289,15 @@ function pumpReadouts() {
     const n = parseInt((count.textContent || '').replace(/[^0-9]/g, ''), 10);
     pill.classList.toggle('vxpro-hot', Number.isFinite(n) && n > 0);
   }
+}
+
+/* "4 / 10" — how far through the loop, not what percent the slider is at. */
+function frameText() {
+  const slider = document.getElementById('vortexTimeline');
+  if (!slider) return '—';
+  const max = Number(slider.max) || 0;
+  const val = Number(slider.value) || 0;
+  return max > 0 ? (val + 1) + ' / ' + (max + 1) : '—';
 }
 
 function pumpClock() {
@@ -319,21 +331,6 @@ function wireCursor() {
  * "4 / 10" because during a loop the question is how far through it is, not
  * what percentage the slider is at.
  */
-function wireFrames() {
-  const slider = document.getElementById('vortexTimeline');
-  if (!slider) return;
-  const show = () => {
-    const max = Number(slider.max) || 0;
-    const val = Number(slider.value) || 0;
-    setField('vxpro-frame-n', max > 0 ? (val + 1) + ' / ' + (max + 1) : '—');
-  };
-  slider.addEventListener('input', show);
-  slider.addEventListener('change', show);
-  // The player moves the slider programmatically, which fires no event.
-  setInterval(show, 500);
-  show();
-}
-
 /*
  * Mapbox measures its canvas when the window resizes. The frame changes the
  * map's rectangle without a resize event, so it has to be told, or the canvas
@@ -356,7 +353,7 @@ function loadStylesheet() {
   link.rel = 'stylesheet';
   // Appended to head last, so it lands after index.css and can override the
   // mobile geometry rules at the end of that file.
-  link.href = './components/pro_skin.css?v=proui3';
+  link.href = './components/pro_skin.css?v=proui4';
   document.head.appendChild(link);
 
   // The radar furniture's own sheet, loaded after so its re-cut of the frame
@@ -365,8 +362,16 @@ function loadStylesheet() {
   const radar = document.createElement('link');
   radar.id = 'vxpro-radar-css';
   radar.rel = 'stylesheet';
-  radar.href = './components/pro_radar.css?v=proui3';
+  radar.href = './components/pro_radar.css?v=proui4';
   document.head.appendChild(radar);
+
+  // The window chrome, last: it supersedes the header and status styling in
+  // both sheets above with the Win32 idiom a radar console actually uses.
+  const chrome = document.createElement('link');
+  chrome.id = 'vxpro-chrome-css';
+  chrome.rel = 'stylesheet';
+  chrome.href = './components/pro_chrome.css?v=proui4';
+  document.head.appendChild(chrome);
 }
 
 let built = false;
@@ -393,7 +398,7 @@ async function build(orgName) {
    * rather than take the whole interface down with it.
    */
   try {
-    installRadarFurniture({ setField, field });
+    installRadarFurniture({ setField, cell });
   } catch (e) {
     console.error('[PRO] radar furniture failed to install:', e);
   }
@@ -402,7 +407,6 @@ async function build(orgName) {
   pumpClock();
   setInterval(pumpReadouts, 1000);
   setInterval(pumpClock, 1000);
-  wireFrames();
 
   // The map may not be constructed yet when this runs.
   if (!wireCursor()) waitFor(() => window.vortexMap && window.vortexMap.map).then(wireCursor);
@@ -437,7 +441,7 @@ async function init() {
   if (!ok) {
     // Not licensed (or no longer): make sure nothing from the guess is left.
     document.documentElement.classList.remove(CLASS);
-    for (const id of ['vxpro-css', 'vxpro-radar-css']) {
+    for (const id of ['vxpro-css', 'vxpro-radar-css', 'vxpro-chrome-css']) {
       const n2 = document.getElementById(id);
       if (n2) n2.remove();
     }
