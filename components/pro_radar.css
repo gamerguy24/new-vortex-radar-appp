@@ -1,0 +1,157 @@
+/*
+ * pro_radar.css — the radar-analysis furniture.
+ *
+ * Companion to pro_skin.css. Same rules apply: every selector is either
+ * prefixed html.vx-pro or targets only a #vxpro-* / .vxpro-* element this code
+ * created, so nothing can reach an unlicensed viewer.
+ *
+ * The geometry variables live here rather than in pro_skin.css because they
+ * are what these elements occupy: the moment strip's height and the colour
+ * bar's width are the reason the map sits where it does.
+ */
+
+html.vx-pro {
+  --p-moments: 27px;    /* the BR / BV / SRV strip */
+  --p-cbar: 56px;       /* the vertical colour scale at the image edge */
+}
+
+/* The frame from pro_skin.css, re-cut to make room for both. */
+html.vx-pro #vxpro-dock,
+html.vx-pro #vxpro-cbar { top: calc(var(--p-top) + var(--p-moments)); }
+
+html.vx-pro #map {
+  top: calc(var(--p-top) + var(--p-moments)) !important;
+  left: calc(var(--p-dock) + var(--p-cbar)) !important;
+}
+html.vx-pro #mapDual { top: calc(var(--p-top) + var(--p-moments)) !important; }
+html.vx-pro.vx-pro-split #map {
+  width: calc((100% - var(--p-dock) - var(--p-cbar)) / 2) !important;
+}
+
+/* ── moment strip ─────────────────────────────────────────────────────────── */
+#vxpro-moments {
+  position: fixed; left: 0; right: 0; top: var(--p-top);
+  height: var(--p-moments); z-index: 40;
+  display: flex; align-items: stretch;
+  background: #1b2028;
+  border-bottom: 1px solid var(--p-line);
+  padding-left: 6px;
+}
+.vxpro-moment {
+  appearance: none;
+  min-width: 46px; padding: 0 10px;
+  background: transparent;
+  border: none; border-right: 1px solid rgba(255,255,255,0.05);
+  color: var(--p-dim);
+  font-family: var(--p-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em; cursor: pointer;
+}
+.vxpro-moment:hover { background: #232a34; color: var(--p-text); }
+/*
+ * The loaded product. A filled block rather than a tint: this is the single
+ * most important piece of state on the screen, and it has to be readable at a
+ * glance from across a desk.
+ */
+.vxpro-moment-on {
+  background: var(--p-accent); color: #0b131c;
+}
+.vxpro-moment-on:hover { background: #6fa9dd; color: #0b131c; }
+/* Flashed when the product menu has no row for that moment — the button is
+   not broken, this radar simply is not carrying it. */
+.vxpro-moment-missing { background: rgba(232,87,74,0.35); color: #ffd7d3; }
+
+/* ── vertical colour scale ────────────────────────────────────────────────── */
+#vxpro-cbar {
+  position: fixed; bottom: var(--p-status); left: var(--p-dock);
+  width: var(--p-cbar); z-index: 38;
+  background: var(--p-bg);
+  border-right: 1px solid var(--p-line);
+  display: flex; flex-direction: column;
+  padding: 5px 0 5px 0;
+}
+#vxpro-cbar-title {
+  flex: none; text-align: center;
+  font-family: var(--p-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.08em; color: var(--p-dim);
+  padding-bottom: 4px;
+}
+/* The bar and its numbers share a row: bar hard left, numbers beside it. */
+#vxpro-cbar-track {
+  flex: 1; min-height: 0; position: relative;
+  margin-left: 8px; width: 20px;
+  border: 1px solid var(--p-line);
+}
+#vxpro-cbar-canvas { position: absolute; inset: 0; overflow: hidden; }
+/*
+ * The canvas is drawn horizontally by the app. Rotating it a quarter turn
+ * anticlockwise puts the high end at the top. Its CSS width is set from JS to
+ * the strip's height, because a rotated element is still laid out by its
+ * unrotated box and the height is only known at runtime.
+ */
+html.vx-pro #vxpro-cbar-canvas #mapColorScale {
+  position: absolute; top: 50%; left: 50%;
+  height: 20px !important;
+  max-width: none !important;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  transform-origin: center center;
+  image-rendering: auto;
+}
+#vxpro-cbar-ticks {
+  position: absolute; top: 0; bottom: 0; left: 30px; right: 0;
+  display: flex; flex-direction: column; justify-content: space-between;
+  align-items: flex-start;
+  font-family: var(--p-mono); font-size: 9px; color: var(--p-dim);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+/* The ticks sit inside the track's row, so give that row the full width and
+   let the bar keep its 20px. */
+#vxpro-cbar-track { width: auto; margin-right: 4px; border: none; }
+#vxpro-cbar-canvas { right: auto; width: 20px; border: 1px solid var(--p-line); }
+
+/* The dock's own horizontal legend is redundant once the bar is at the edge. */
+html.vx-pro #vxpro-dock .vxpro-sec:last-child { display: none; }
+
+/* ── on-image annotation ──────────────────────────────────────────────────── */
+/*
+ * Burned into the corners of the image, the way a radar console does it. Not
+ * interactive and never intercepting a click — an operator dragging the map
+ * must not catch a label instead.
+ */
+#vxpro-overlay {
+  position: fixed;
+  top: calc(var(--p-top) + var(--p-moments));
+  left: calc(var(--p-dock) + var(--p-cbar));
+  right: 0; bottom: var(--p-status);
+  z-index: 6; pointer-events: none;
+}
+.vxpro-ov {
+  position: absolute;
+  font-family: var(--p-mono); font-size: 11px; line-height: 1.35;
+  color: #cfe0f0;
+  text-shadow: 0 0 3px rgba(0,0,0,0.95), 0 1px 2px rgba(0,0,0,0.9);
+  white-space: pre;
+}
+.vxpro-ov b { display: block; font-size: 12.5px; font-weight: 700; color: #eaf2fa; }
+.vxpro-ov-tl { top: 8px; left: 10px; }
+.vxpro-ov-tr { top: 8px; right: 10px; text-align: right; }
+.vxpro-ov-bl { bottom: 8px; left: 10px; font-size: 12px; font-weight: 700; }
+
+/* ── status bar additions ─────────────────────────────────────────────────── */
+#vxpro-azran .v { min-width: 104px; display: inline-block; }
+#vxpro-beam .v { min-width: 58px; display: inline-block; }
+#vxpro-scale .v { min-width: 74px; display: inline-block; }
+#vxpro-latlon .v { min-width: 132px; display: inline-block; }
+/* The frame's own generic cursor field is replaced by the radar readouts. */
+html.vx-pro #vxpro-cursor { display: none; }
+
+/*
+ * Narrow windows: pro_skin.css already drops the dock here. Drop the colour
+ * bar with it and let the map have the width, rather than keeping a 56px
+ * instrument beside a 400px image.
+ */
+@media (max-width: 1100px) {
+  html.vx-pro #vxpro-cbar { display: none; }
+  html.vx-pro #map { left: 0 !important; }
+  html.vx-pro #vxpro-overlay { left: 0; }
+}

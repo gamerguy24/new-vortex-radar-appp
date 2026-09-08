@@ -22,6 +22,8 @@
  * because it can only re-home controls that are already on the page.
  */
 
+import { installRadarFurniture } from './pro_radar.js?v=proui2';
+
 const CLASS = 'vx-pro';
 const REMEMBER = 'vortex_pro_ui';     // last known answer, to avoid a flash
 
@@ -322,8 +324,17 @@ function loadStylesheet() {
   link.rel = 'stylesheet';
   // Appended to head last, so it lands after index.css and can override the
   // mobile geometry rules at the end of that file.
-  link.href = './components/pro_skin.css?v=proui1';
+  link.href = './components/pro_skin.css?v=proui2';
   document.head.appendChild(link);
+
+  // The radar furniture's own sheet, loaded after so its re-cut of the frame
+  // geometry (it takes height for the moment strip and width for the colour
+  // bar) lands on top of pro_skin.css rather than under it.
+  const radar = document.createElement('link');
+  radar.id = 'vxpro-radar-css';
+  radar.rel = 'stylesheet';
+  radar.href = './components/pro_radar.css?v=proui2';
+  document.head.appendChild(radar);
 }
 
 let built = false;
@@ -341,6 +352,19 @@ async function build(orgName) {
 
   const org = document.getElementById('vxpro-org');
   if (org && orgName) org.textContent = orgName;
+
+  /*
+   * The radar furniture — moment bar, vertical colour scale, on-image
+   * annotation, range rings, azimuth/range readouts. Kept in its own module
+   * because it is about reading a radar, while everything above is about
+   * framing a window. Guarded: a failure there must leave the frame standing
+   * rather than take the whole interface down with it.
+   */
+  try {
+    installRadarFurniture({ setField, field });
+  } catch (e) {
+    console.error('[PRO] radar furniture failed to install:', e);
+  }
 
   pumpReadouts();
   pumpClock();
@@ -381,8 +405,10 @@ async function init() {
   if (!ok) {
     // Not licensed (or no longer): make sure nothing from the guess is left.
     document.documentElement.classList.remove(CLASS);
-    const css = document.getElementById('vxpro-css');
-    if (css) css.remove();
+    for (const id of ['vxpro-css', 'vxpro-radar-css']) {
+      const n2 = document.getElementById(id);
+      if (n2) n2.remove();
+    }
     return;
   }
 
