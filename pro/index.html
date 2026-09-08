@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vortex Pro</title>
+  <link rel="stylesheet" href="../components/tokens.css" />
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css" />
+  <link rel="stylesheet" href="pro.css?v=1" />
+</head>
+<body>
+
+<!-- ── cut-in banner ────────────────────────────────────────────────────────
+     The one thing on this page that interrupts. It appears only when a
+     tornado warning is issued for a county in the coverage area, because that
+     is the event a newsroom breaks programming for. Anything that fired for
+     lesser warnings would be ignored within a week, and then ignored on the
+     day it mattered. -->
+<div class="cutin" id="cutin" hidden>
+  <div class="cutin-word">CUT IN</div>
+  <div class="cutin-body">
+    <div class="cutin-event" id="cutin-event">Tornado Warning</div>
+    <div class="cutin-where" id="cutin-where">—</div>
+  </div>
+  <button class="cutin-ack" id="cutin-ack">Acknowledge</button>
+</div>
+
+<!-- ── identity strip ───────────────────────────────────────────────────── -->
+<header class="pro-bar">
+  <div class="pro-ident">
+    <span class="pro-dot" id="feed-dot" title="Warning feed status"></span>
+    <span class="pro-name">VORTEX <b>PRO</b></span>
+    <span class="pro-org" id="org-name">—</span>
+  </div>
+
+  <div class="pro-stats">
+    <div class="stat stat-major">
+      <div class="stat-num" id="stat-inarea">—</div>
+      <div class="stat-lbl">In coverage</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-tor">—</div>
+      <div class="stat-lbl">Tornado warnings</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-pop">—</div>
+      <div class="stat-lbl">People affected</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-counties">—</div>
+      <div class="stat-lbl">Counties hit</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-national">—</div>
+      <div class="stat-lbl">Nationwide</div>
+    </div>
+  </div>
+
+  <div class="pro-clock">
+    <div class="clock-local" id="clock-local">--:--:--</div>
+    <div class="clock-utc" id="clock-utc">--:--Z</div>
+  </div>
+
+  <div class="pro-actions">
+    <button class="btn" id="btn-coverage" title="Choose the counties this operation covers">Coverage</button>
+    <button class="btn" id="btn-onair" title="Full-bleed map with no interface (Esc to exit)">On air</button>
+    <a class="btn" href="/" title="Back to the radar app">Radar &#8599;</a>
+  </div>
+</header>
+
+<div class="pro-stale" id="stale-banner" hidden></div>
+
+<main class="pro-grid">
+
+  <!-- ── left: the coverage board ── -->
+  <section class="col col-left">
+    <div class="panel panel-grow">
+      <div class="panel-head">
+        <h2>Coverage Area</h2>
+        <span class="panel-count" id="inarea-count">0</span>
+      </div>
+      <div class="panel-body" id="inarea-body">
+        <div class="empty">Loading&#8230;</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Outside Coverage</h2>
+        <span class="panel-count" id="outside-count">0</span>
+      </div>
+      <div class="panel-body panel-body-short" id="outside-body">
+        <div class="empty">&#8212;</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── centre: the map ── -->
+  <section class="col col-map">
+    <div id="pro-map"></div>
+    <div class="map-legend" id="map-legend">
+      <span><i class="sw sw-tor"></i>Tornado</span>
+      <span><i class="sw sw-svr"></i>Severe T-storm</span>
+      <span><i class="sw sw-ffw"></i>Flash Flood</span>
+      <span><i class="sw sw-cov"></i>Your coverage</span>
+    </div>
+  </section>
+
+  <!-- ── right: what goes on air ── -->
+  <section class="col col-right">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>On-Air Crawl</h2>
+        <button class="btn btn-sm" id="btn-copy-crawl">Copy</button>
+      </div>
+      <div class="panel-body">
+        <textarea class="crawl" id="crawl-text" spellcheck="false" readonly></textarea>
+        <div class="crawl-meta" id="crawl-meta">&#8212;</div>
+      </div>
+    </div>
+
+    <div class="panel panel-grow">
+      <div class="panel-head">
+        <h2>Expiring Soon</h2>
+        <span class="panel-count" id="expiry-count">0</span>
+      </div>
+      <div class="panel-body" id="expiry-body">
+        <div class="empty">&#8212;</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ── coverage picker ──────────────────────────────────────────────────── -->
+<div class="modal-bg" id="coverage-modal" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Coverage Area</h2>
+      <button class="modal-x" id="coverage-close">&#215;</button>
+    </div>
+    <p class="modal-note">
+      The counties this operation is responsible for. Warnings touching any of
+      them are promoted to the top of the board and drive the cut-in alert.
+      Counties are used rather than a map radius because nearly every NWS
+      warning names counties, while only about one in ten carries a polygon.
+    </p>
+    <input class="modal-search" id="coverage-search" type="text" autocomplete="off"
+           placeholder="Search a county or a state&#8230;" />
+    <div class="modal-results" id="coverage-results"></div>
+    <div class="modal-chosen">
+      <div class="modal-chosen-head">
+        Selected <span id="coverage-chosen-count">0</span>
+        <button class="btn btn-sm" id="coverage-clear">Clear all</button>
+      </div>
+      <div class="chips" id="coverage-chips"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="modal-status" id="coverage-status"></span>
+      <button class="btn btn-primary" id="coverage-save">Save coverage</button>
+    </div>
+  </div>
+</div>
+
+<script>window.MAPBOX_TOKEN = 'pk.eyJ1IjoiZGF2aWR3YWxsaXMwMCIsImEiOiJjbHlpNHJvZ2QwYzduMmpvZmdjejlkYjAxIn0.JNNcliJC4EFmok7iT5I6MQ';</script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js"></script>
+<!-- Vendored rather than loaded from /graphics/studio/vendor: that path sits
+     behind the consumer Pro paywall, and an org licence deliberately does not
+     grant a consumer tier, so a licensed newsroom would have been served a
+     redirect instead of a library. -->
+<script src="vendor/topojson-client.min.js"></script>
+<script type="module" src="pro.js?v=1"></script>
+</body>
+</html>

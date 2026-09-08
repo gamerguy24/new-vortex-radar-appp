@@ -1,0 +1,354 @@
+/*
+ * pro.css — VORTEX PRO
+ *
+ * The licensed workspace for newsrooms, districts and agencies. Three surfaces
+ * now exist and they are deliberately different animals:
+ *
+ *   the radar app  a map you fly around, with tools floating over it
+ *   /eoc           a wall board, read from across a room, nothing interactive
+ *   /pro           a DESK. Someone sits at this for a shift and works from it.
+ *
+ * So this is denser than EOC and calmer than the radar app: a fixed three
+ * column frame, no floating chrome, and type sized for a monitor at arm's
+ * length rather than a projector.
+ *
+ * The palette is cooler than both. EOC leans on orange because everything on
+ * it is an emergency; here most of the day is quiet, so the resting state is
+ * near-monochrome and colour is spent only on severity and on the two controls
+ * that put something on air. When this page turns red it means something.
+ *
+ * Tokens come from components/tokens.css so it stays part of the product.
+ */
+
+:root {
+  --pro-bg: #06080b;
+  --pro-panel: #0e1218;
+  --pro-panel-2: #141a22;
+  --pro-line: #1e2732;
+  --pro-line-2: #2b3745;
+  --pro-text: #e8eef5;
+  --pro-dim: #8a97a7;
+  --pro-faint: #5a6675;
+
+  /* Severity. The only saturated colours on the page. */
+  --sev-tor: #ff2d55;
+  --sev-svr: #ff8c1a;
+  --sev-ffw: #35d07f;
+  --sev-other: #4da3ff;
+  --sev-ok: #35d07f;
+  --sev-warn: #ffd23f;
+
+  /* Coverage area — steel, so it never competes with a severity colour. */
+  --pro-cov: #7fa8d4;
+
+  --pro-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --pro-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; height: 100%;
+  background: var(--pro-bg);
+  color: var(--pro-text);
+  font-family: var(--pro-sans);
+  overflow: hidden;
+}
+
+button { font-family: inherit; }
+
+/* ── identity strip ───────────────────────────────────────────────────────── */
+.pro-bar {
+  display: flex; align-items: center; gap: 24px;
+  height: 60px; padding: 0 16px;
+  background: linear-gradient(180deg, #0f151d, #0a0e14);
+  border-bottom: 1px solid var(--pro-line);
+}
+.pro-ident { display: flex; align-items: center; gap: 10px; min-width: 260px; }
+.pro-name { font-size: 16px; letter-spacing: 0.15em; font-weight: 600; white-space: nowrap; }
+.pro-name b { font-weight: 800; color: var(--pro-cov); }
+.pro-org {
+  font-size: 11px; letter-spacing: 0.04em;
+  color: var(--pro-dim);
+  border-left: 1px solid var(--pro-line-2); padding-left: 10px;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Feed health. Never green unless the last fetch actually succeeded. */
+.pro-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--pro-faint); flex: none; }
+.pro-dot.live { background: var(--sev-ok); box-shadow: 0 0 9px rgba(53, 208, 127, 0.7); }
+.pro-dot.stale { background: var(--sev-warn); box-shadow: 0 0 9px rgba(255, 210, 63, 0.6); }
+.pro-dot.down { background: var(--sev-tor); box-shadow: 0 0 9px rgba(255, 45, 85, 0.7); }
+
+.pro-stats { display: flex; gap: 24px; flex: 1; }
+.stat { min-width: 84px; }
+.stat-num {
+  font-family: var(--pro-mono); font-size: 20px; font-weight: 700;
+  line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.stat-major .stat-num { font-size: 28px; }
+/* Only lights up when there is something in the market to light up for. */
+.stat-major.hot .stat-num { color: var(--sev-tor); }
+.stat-lbl {
+  font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--pro-faint); margin-top: 3px; white-space: nowrap;
+}
+
+.pro-clock { text-align: right; font-family: var(--pro-mono); }
+.clock-local { font-size: 18px; font-variant-numeric: tabular-nums; }
+.clock-utc { font-size: 10px; color: var(--pro-faint); }
+
+.pro-actions { display: flex; gap: 6px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--pro-dim); text-decoration: none;
+  font-size: 11.5px; font-weight: 500;
+  background: var(--pro-panel-2);
+  border: 1px solid var(--pro-line-2); border-radius: 5px;
+  padding: 7px 11px; cursor: pointer;
+}
+.btn:hover { color: var(--pro-text); border-color: var(--pro-dim); }
+.btn-sm { padding: 3px 8px; font-size: 10.5px; }
+.btn-primary {
+  background: var(--pro-cov); border-color: var(--pro-cov); color: #08101a; font-weight: 700;
+}
+.btn-primary:hover { background: #96bce3; color: #08101a; }
+/* On-air is armed rather than pretty: it looks like a switch you mean to hit. */
+#btn-onair { border-color: rgba(255, 45, 85, 0.5); color: #ff8fa5; }
+#btn-onair:hover { background: rgba(255, 45, 85, 0.14); color: #ffc2ce; }
+
+/* Shown only when the warning feed could not be refreshed. */
+.pro-stale {
+  background: rgba(255, 210, 63, 0.13);
+  border-bottom: 1px solid rgba(255, 210, 63, 0.38);
+  color: var(--sev-warn);
+  font-size: 11.5px; padding: 6px 16px;
+}
+
+/* ── frame ────────────────────────────────────────────────────────────────── */
+.pro-grid {
+  display: grid;
+  grid-template-columns: 330px 1fr 320px;
+  gap: 1px;
+  background: var(--pro-line);
+  height: calc(100% - 60px);
+}
+.col { display: flex; flex-direction: column; gap: 1px; overflow: hidden; background: var(--pro-line); }
+.col-map { position: relative; background: var(--pro-bg); }
+#pro-map { position: absolute; inset: 0; }
+
+.panel { background: var(--pro-panel); display: flex; flex-direction: column; min-height: 0; }
+.panel-grow { flex: 1; min-height: 0; }
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 9px 12px; border-bottom: 1px solid var(--pro-line);
+  background: var(--pro-panel-2);
+}
+.panel-head h2 {
+  margin: 0; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.13em; text-transform: uppercase; color: var(--pro-dim);
+}
+.panel-count {
+  font-family: var(--pro-mono); font-size: 12px; color: var(--pro-text);
+  background: var(--pro-bg); border: 1px solid var(--pro-line-2);
+  border-radius: 4px; padding: 1px 7px; font-variant-numeric: tabular-nums;
+}
+.panel-body { overflow-y: auto; padding: 8px; flex: 1; min-height: 0; }
+.panel-body-short { max-height: 210px; }
+.empty { color: var(--pro-faint); font-size: 11.5px; padding: 10px 4px; }
+
+/* ── a warning row ────────────────────────────────────────────────────────── */
+.warn {
+  border: 1px solid var(--pro-line);
+  border-left: 3px solid var(--sev-other);
+  border-radius: 4px;
+  background: var(--pro-panel-2);
+  padding: 8px 10px; margin-bottom: 6px;
+  cursor: pointer;
+}
+.warn:hover { border-color: var(--pro-line-2); }
+/* Flashed when a row has no polygon to fly to, so the click reads as
+   "nothing to show" rather than as a dead control. */
+.warn.no-shape { border-color: var(--pro-line-2); opacity: 0.55; }
+.warn.tor { border-left-color: var(--sev-tor); }
+.warn.svr { border-left-color: var(--sev-svr); }
+.warn.ffw { border-left-color: var(--sev-ffw); }
+/* A confirmed or PDS tornado warning is not the same object as a radar
+   indicated one, and the board should not make a producer read the tags to
+   find out which it is. */
+.warn.emergency {
+  border-color: var(--sev-tor);
+  background: rgba(255, 45, 85, 0.09);
+  box-shadow: inset 0 0 0 1px rgba(255, 45, 85, 0.25);
+}
+
+.warn-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.warn-event { font-size: 12.5px; font-weight: 700; letter-spacing: 0.01em; }
+.warn.tor .warn-event { color: #ff7d96; }
+.warn.svr .warn-event { color: #ffb066; }
+.warn-expires {
+  font-family: var(--pro-mono); font-size: 10.5px; color: var(--pro-dim);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.warn-expires.soon { color: var(--sev-warn); }
+.warn-expires.gone { color: var(--pro-faint); }
+.warn-where {
+  font-size: 11px; color: var(--pro-dim); margin-top: 3px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.warn-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tag {
+  font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+  border: 1px solid var(--pro-line-2); border-radius: 3px;
+  padding: 1px 5px; color: var(--pro-dim);
+}
+.tag.new { border-color: var(--sev-tor); color: #ff8fa5; }
+.tag.confirmed { border-color: var(--sev-tor); background: rgba(255,45,85,0.15); color: #ffb3c1; }
+.tag.pds { border-color: var(--sev-tor); background: var(--sev-tor); color: #12060a; font-weight: 700; }
+.tag.pop { border-color: var(--pro-line-2); color: var(--pro-text); font-family: var(--pro-mono); }
+
+/* ── crawl ────────────────────────────────────────────────────────────────── */
+.crawl {
+  width: 100%; height: 120px; resize: vertical;
+  background: var(--pro-bg); color: var(--pro-text);
+  border: 1px solid var(--pro-line-2); border-radius: 4px;
+  font-family: var(--pro-mono); font-size: 11px; line-height: 1.55;
+  padding: 8px;
+}
+.crawl:focus { outline: none; border-color: var(--pro-cov); }
+.crawl-meta { font-size: 10px; color: var(--pro-faint); margin-top: 6px; }
+
+/* ── cut-in ───────────────────────────────────────────────────────────────── */
+.cutin {
+  position: fixed; inset: 0 0 auto 0; z-index: 60;
+  display: flex; align-items: center; gap: 18px;
+  padding: 14px 18px;
+  background: var(--sev-tor); color: #12060a;
+  box-shadow: 0 6px 30px rgba(255, 45, 85, 0.45);
+  animation: cutin-in 180ms ease-out;
+}
+@keyframes cutin-in { from { transform: translateY(-100%); } to { transform: none; } }
+.cutin-word {
+  font-size: 22px; font-weight: 900; letter-spacing: 0.16em;
+  border-right: 2px solid rgba(0,0,0,0.35); padding-right: 18px;
+}
+.cutin-body { flex: 1; }
+.cutin-event { font-size: 15px; font-weight: 800; }
+.cutin-where { font-size: 12px; opacity: 0.85; }
+.cutin-ack {
+  background: #12060a; color: #ffd7de; border: none; border-radius: 5px;
+  padding: 9px 16px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+/* Respect a reduced-motion preference: the banner still appears, it just does
+   not slide. Someone who has asked the OS to stop animations has asked. */
+@media (prefers-reduced-motion: reduce) { .cutin { animation: none; } }
+
+/* ── map ──────────────────────────────────────────────────────────────────── */
+.map-legend {
+  position: absolute; left: 10px; bottom: 10px; z-index: 5;
+  display: flex; gap: 12px; flex-wrap: wrap;
+  background: rgba(6, 8, 11, 0.82);
+  border: 1px solid var(--pro-line); border-radius: 5px;
+  padding: 6px 10px; font-size: 10.5px; color: var(--pro-dim);
+}
+.map-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.sw-tor { background: var(--sev-tor); }
+.sw-svr { background: var(--sev-svr); }
+.sw-ffw { background: var(--sev-ffw); }
+.sw-cov { background: transparent; border: 1.5px solid var(--pro-cov); }
+
+/*
+ * ON AIR. Everything except the map is removed from the layout, not merely
+ * hidden behind an overlay: a camera pointed at this screen, or a window
+ * capture in the switcher, must not catch a panel edge at the frame boundary.
+ */
+body.onair .pro-bar,
+body.onair .pro-stale,
+body.onair .col-left,
+body.onair .col-right,
+body.onair .map-legend { display: none; }
+body.onair .pro-grid { grid-template-columns: 1fr; height: 100%; }
+body.onair .cutin { display: none; }
+.onair-hint {
+  position: fixed; right: 12px; bottom: 12px; z-index: 40;
+  font-size: 10.5px; color: rgba(255,255,255,0.35);
+  background: rgba(6,8,11,0.6); border-radius: 4px; padding: 4px 8px;
+  pointer-events: none; transition: opacity 400ms ease;
+}
+
+/* ── coverage picker ──────────────────────────────────────────────────────── */
+.modal-bg {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(4, 6, 9, 0.76);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  width: min(620px, 92vw); max-height: 86vh;
+  display: flex; flex-direction: column;
+  background: var(--pro-panel); border: 1px solid var(--pro-line-2);
+  border-radius: 8px; box-shadow: 0 24px 70px rgba(0,0,0,0.7);
+  padding: 16px;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; }
+.modal-head h2 { margin: 0; font-size: 14px; letter-spacing: 0.06em; }
+.modal-x {
+  background: none; border: none; color: var(--pro-dim);
+  font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+.modal-x:hover { color: var(--pro-text); }
+.modal-note { font-size: 11.5px; color: var(--pro-dim); line-height: 1.5; margin: 8px 0 12px; }
+.modal-search {
+  width: 100%; padding: 9px 11px;
+  background: var(--pro-bg); color: var(--pro-text);
+  border: 1px solid var(--pro-line-2); border-radius: 5px; font-size: 13px;
+}
+.modal-search:focus { outline: none; border-color: var(--pro-cov); }
+.modal-results { max-height: 190px; overflow-y: auto; margin-top: 8px; }
+.result {
+  padding: 7px 10px; font-size: 12px; border-radius: 4px; cursor: pointer;
+  display: flex; justify-content: space-between; gap: 10px;
+}
+.result:hover { background: var(--pro-panel-2); }
+.result.on { color: var(--pro-faint); cursor: default; }
+.result.on:hover { background: none; }
+.result-fips { font-family: var(--pro-mono); font-size: 10.5px; color: var(--pro-faint); }
+
+.modal-chosen { margin-top: 12px; border-top: 1px solid var(--pro-line); padding-top: 10px; }
+.modal-chosen-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--pro-faint);
+  margin-bottom: 8px;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 5px; max-height: 150px; overflow-y: auto; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--pro-panel-2); border: 1px solid var(--pro-line-2);
+  border-radius: 12px; padding: 3px 6px 3px 9px; font-size: 11px;
+}
+.chip button {
+  background: none; border: none; color: var(--pro-faint);
+  cursor: pointer; font-size: 13px; line-height: 1; padding: 0 2px;
+}
+.chip button:hover { color: var(--sev-tor); }
+.modal-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--pro-line);
+}
+.modal-status { font-size: 11px; color: var(--pro-dim); }
+
+/*
+ * A narrow window collapses to one column rather than crushing three. This is
+ * a desk tool and is not pretending to be a phone app, but a producer with the
+ * window docked to half a screen should still get something usable.
+ */
+@media (max-width: 1180px) {
+  .pro-grid { grid-template-columns: 300px 1fr; }
+  .col-right { display: none; }
+}
+@media (max-width: 860px) {
+  .pro-grid { grid-template-columns: 1fr; grid-template-rows: 260px 1fr; }
+  .col-left { display: none; }
+  .pro-stats .stat:nth-child(n+4) { display: none; }
+}

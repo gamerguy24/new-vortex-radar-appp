@@ -21,6 +21,10 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const { createBilling } = require('./billing');
+// Vortex Pro organisation licences. Required at the top rather than inside the
+// guarded attach block below because publicUser() reports the licence on every
+// user payload, so this one has to exist before the first request is served.
+const pro = require('./backend/pro');
 
 const ROOT = __dirname;
 // Where users/sessions/reports are stored. Override with DATA_DIR to point at a
@@ -295,6 +299,10 @@ function publicUser(u) {
         mustChangePassword: !!u.mustChangePassword,
         tier: u.tier || 'free',
         tierLevel: billing.billingState(u).tierLevel,
+        // Vortex Pro organisation licence. A separate axis from `tier`: it is
+        // granted by an admin under a contract, never bought in checkout, and
+        // it neither grants nor implies a consumer tier. See backend/pro.
+        org: pro.orgOf(u),
         // Chase-stream access: only the super admin streams without approval.
         canStream: !!(u.isSuperAdmin || u.streamApproved),
         streamApproved: !!u.streamApproved,
@@ -667,6 +675,44 @@ app.post('/admin/users/:id/tier', requireAdmin, (req, res) => {
         return res.status(400).json({ error: 'Invalid tier.' });
     }
     user.tier = tier;
+    saveUsers();
+    res.json({ user: publicUser(user) });
+});
+
+/*
+ * Grant or revoke a Vortex Pro organisation licence.
+ *
+ * POST { type: 'media'|'school'|'agency', name: 'KXAS-TV' }  grants
+ * POST { type: null }                                         revokes
+ *
+ * This is the ONLY way into /pro. There is no checkout for it on purpose: a
+ * station or district is signed up under a contract, so an admin turning it on
+ * here is the moment the licence begins. The grant records who did it and
+ * when, because "who gave this newsroom access" is a question that gets asked
+ * later and a bare boolean cannot answer it.
+ */
+app.post('/admin/users/:id/org', requireAdmin, (req, res) => {
+    const user = findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    const type = req.body.type ? String(req.body.type).toLowerCase() : null;
+    if (!type) {
+        delete user.org;
+        saveUsers();
+        return res.json({ user: publicUser(user) });
+    }
+    if (!pro.ORG_TYPES[type]) {
+        return res.status(400).json({ error: 'Invalid organisation type.' });
+    }
+    const name = String(req.body.name || '').trim().slice(0, 120);
+    if (!name) return res.status(400).json({ error: 'An organisation name is required.' });
+
+    user.org = {
+        type,
+        name,
+        grantedAt: new Date().toISOString(),
+        grantedBy: req.user.email,
+    };
     saveUsers();
     res.json({ user: publicUser(user) });
 });
@@ -2228,6 +2274,17 @@ try {
     console.error('[EOC] failed to attach (feature disabled):', e.message);
 }
 
+// ─── VORTEX PRO (licensed workspace at /pro) ─────────────────────────────────
+// The newsroom / district / agency edition. Gated by an admin-granted org
+// licence rather than by Stripe — see the header of backend/pro/index.js for
+// why that is a separate axis from the consumer tiers. Wrapped like the rest:
+// a failure here must never stop the radar serving.
+try {
+    require('./backend/pro').attachPro({ app, requireAuth, DATA_DIR, readJson, writeJson });
+} catch (e) {
+    console.error('[PRO] failed to attach (feature disabled):', e.message);
+}
+
 // ─── Live wildfire data (NIFC WFIGS) ─────────────────────────────────────────
 // Burned-area perimeters and incident points. Complements components/fire_weather.js,
 // which draws fire danger, the SPC fire outlooks and InciWeb POINTS but carries no
@@ -2319,6 +2376,16 @@ app.use('/eoc', (req, res, next) => {
     next();
 });
 app.get(['/eoc', '/eoc/'], sendFile(path.join('eoc', 'index.html')));
+
+// Vortex Pro, served the same way: plain ESM that must always revalidate, plus
+// a real index route because express.static runs with index:false. The licence
+// gate itself is mounted in backend/pro (app.use('/pro', requireOrgPage)), so
+// it already covers this route and every asset under it.
+app.use('/pro', (req, res, next) => {
+    if (/\.(js|css|html)$/.test(req.path)) res.setHeader('Cache-Control', 'no-cache');
+    next();
+});
+app.get(['/pro', '/pro/'], sendFile(path.join('pro', 'index.html')));
 
 // The standalone radio page. Signed-in users only — the panel is also embedded
 // in the radar itself, so this is for anyone who wants it on its own screen.

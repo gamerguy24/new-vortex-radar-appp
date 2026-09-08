@@ -22,6 +22,13 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'September 8, 2026',
+        items: [
+            { title: 'Vortex Pro — a workspace built for newsrooms', desc: 'A new professional edition at /pro, for television and radio stations, school districts and emergency management agencies. It is a different screen from the radar, not a reskin of it: you set the counties your operation covers, and warnings for those counties are promoted to the top of the board with the population affected, how long each has left, and whether a tornado warning is radar indicated or confirmed on the ground. It writes your on-air crawl copy for you, groups warnings the way you would read them out, and puts a full-screen banner up the moment a tornado warning is issued inside your coverage area. An On Air button strips the interface away to a clean full-bleed map for a camera shot. Access is granted per organisation by an administrator — it is not something a consumer account can buy into.' },
+            { title: 'Crawl times now read in the warning\'s own time zone', desc: 'Expiry times are written in the time zone of the office that issued the warning, taken from the warning itself, rather than in whatever zone the computer happens to be set to. A producer covering a market from out of state was previously being shown a time that was an hour or more wrong, with a confident time zone label attached to it, in the box designed to be copied straight onto air.' },
+        ],
+    },
+    {
         date: 'August 31, 2026',
         items: [
             { title: 'PTT audio finally reaches the speaker', desc: 'The connection was coming up healthy while no sound could arrive. The incoming voice was being handed over without the wrapper the player expects, so it was dropped on the floor. The radio now takes the audio directly off the connection once it is up, rechecks every few seconds, and repairs itself instead of staying silent until you rejoin.' },

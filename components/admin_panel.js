@@ -67,6 +67,9 @@ export const adminPanelStyles = `
 .admin-panel-badge.must-change { background: rgba(250,204,21,0.18); color: var(--vx-warn); }
 .admin-panel-badge.tier { background: rgba(52,211,153,0.18); color: var(--vx-ok); }
 .admin-panel-badge.stream { background: rgba(255,59,48,0.18); color: #ff8f88; }
+/* Vortex Pro organisation licence. Steel rather than green so it never reads
+   as another rung on the consumer tier ladder — it is a different axis. */
+.admin-panel-badge.org { background: rgba(127,168,212,0.2); color: #a8c6e4; }
 .admin-panel-badge.stream-pending { background: rgba(250,204,21,0.16); color: var(--vx-warn); }
 .admin-panel-tier {
     background: rgba(255,255,255,0.06); color: var(--vx-text);
@@ -131,11 +134,17 @@ export const adminPanelStyles = `
 .admin-panel-modal p { color: rgba(255,255,255,0.6); margin: 0 0 12px; font-size: 0.88em; }
 .admin-panel-modal label { display: block; font-size: 0.82em; color: rgba(255,255,255,0.6); margin: 8px 0 4px; }
 .admin-panel-modal input[type="text"],
-.admin-panel-modal input[type="email"] {
+.admin-panel-modal input[type="email"],
+.admin-panel-modal select {
     width: 100%; padding: 9px 10px; border-radius:var(--vx-r-2);
     background: rgba(0,0,0,0.4); border: 1px solid var(--border-color);
     color: white; font-family: inherit; font-size: 1em;
 }
+/* The open dropdown list is painted by the OS, not by the rule above, and its
+   default is white-on-white against this dark modal — unreadable. Both the
+   select and its options need the colour set explicitly. */
+.admin-panel-modal select { cursor: pointer; }
+.admin-panel-modal select option { background: #12151c; color: var(--vx-text); }
 .admin-panel-modal-actions {
     display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px;
 }
@@ -291,6 +300,13 @@ export function initAdminPanel(root) {
             const TIER_LABELS = { free: 'Free', tier1: 'Tier One', tier2: 'Tier Two', tier3: 'Tier Three' };
             const curTier = (u.tier === 'pro' ? 'tier3' : (u.tier || 'free'));
             if (curTier !== 'free') badges.push(`<span class="admin-panel-badge tier">${TIER_LABELS[curTier] || curTier}</span>`);
+            // Vortex Pro licence. Shows the organisation's own name, not the
+            // type: "KXAS-TV" is what an admin is looking for in this list,
+            // and "media" tells them nothing they cannot already guess.
+            const ORG_LABELS = { media: 'Media', school: 'School District', agency: 'Agency' };
+            if (u.org && u.org.type) {
+                badges.push(`<span class="admin-panel-badge org" title="Vortex Pro — ${escapeHtml(ORG_LABELS[u.org.type] || u.org.type)}">PRO · ${escapeHtml(u.org.name)}</span>`);
+            }
             if (u.streamApproved) badges.push('<span class="admin-panel-badge stream">can stream</span>');
             else if (u.streamRequest && u.streamRequest.status === 'pending') badges.push('<span class="admin-panel-badge stream-pending">stream requested</span>');
             const tierSelect = `<select class="admin-panel-tier" data-id="${u.id}" data-email="${escapeHtml(u.email)}" title="Subscription tier">
@@ -300,6 +316,7 @@ export function initAdminPanel(root) {
                 ? '<span style="color: rgba(255,255,255,0.4); font-size: 0.85em;">Protected</span>'
                 : `
                     ${tierSelect}
+                    <button data-action="${u.org && u.org.type ? 'org-revoke' : 'org-grant'}" data-id="${u.id}" data-email="${escapeHtml(u.email)}" title="Vortex Pro licence for newsrooms, districts and agencies">${u.org && u.org.type ? 'Revoke Pro' : 'Grant Pro'}</button>
                     <button data-action="reset-password" data-id="${u.id}" data-email="${escapeHtml(u.email)}">Reset password</button>
                     <button data-action="${u.isAdmin ? 'revoke-admin' : 'make-admin'}" data-id="${u.id}" data-email="${escapeHtml(u.email)}">${u.isAdmin ? 'Revoke admin' : 'Make admin'}</button>
                     <button data-action="${u.streamApproved ? 'stream-revoke' : 'stream-approve'}" data-id="${u.id}" data-email="${escapeHtml(u.email)}">${u.streamApproved ? 'Revoke stream' : 'Allow stream'}</button>
@@ -448,6 +465,45 @@ export function initAdminPanel(root) {
                         : `Admin revoked from ${email}.`,
                     'success'
                 );
+                loadUsers();
+            } catch (err) {
+                flash(err.message, 'error');
+            }
+        } else if (action === 'org-grant') {
+            /*
+             * Grant a Vortex Pro organisation licence. This is the only way
+             * into /pro — there is no checkout for it, because a station or a
+             * district signs a contract rather than entering a card. The
+             * organisation NAME is required rather than optional: it is what
+             * the workspace puts in its header, and an unnamed licence is one
+             * nobody can later account for.
+             */
+            openModal({
+                title: `Grant Vortex Pro to ${email}`,
+                desc: 'Licenses this account for the professional workspace at /pro. Separate from the consumer tiers — it neither grants nor requires one.',
+                fields: `
+                    <label>Organisation type</label>
+                    <select id="ap-org-type">
+                        <option value="media">Media — television, radio, digital newsroom</option>
+                        <option value="school">School District — districts, campuses, universities</option>
+                        <option value="agency">Agency — emergency management, public safety</option>
+                    </select>
+                    <label style="margin-top:10px;display:block;">Organisation name</label>
+                    <input id="ap-org-name" type="text" autocomplete="off" placeholder="e.g. KXAS-TV, Dallas ISD" />`,
+                onSubmit: async () => {
+                    const type = root.querySelector('#ap-org-type').value;
+                    const name = root.querySelector('#ap-org-name').value.trim();
+                    if (!name) throw new Error('An organisation name is required.');
+                    await api('POST', `/admin/users/${id}/org`, { type, name });
+                    flash(`${email} licensed for Vortex Pro as ${name}. They must sign out and back in.`, 'success');
+                    loadUsers();
+                }
+            });
+        } else if (action === 'org-revoke') {
+            if (!confirm(`Revoke the Vortex Pro licence from ${email}? They lose access to /pro immediately.`)) return;
+            try {
+                await api('POST', `/admin/users/${id}/org`, { type: null });
+                flash(`Vortex Pro licence revoked from ${email}.`, 'success');
                 loadUsers();
             } catch (err) {
                 flash(err.message, 'error');
