@@ -302,7 +302,16 @@ function publicUser(u) {
         // Vortex Pro organisation licence. A separate axis from `tier`: it is
         // granted by an admin under a contract, never bought in checkout, and
         // it neither grants nor implies a consumer tier. See backend/pro.
+        //
+        // Two fields, because two questions get asked and they have different
+        // answers for an admin:
+        //   org    the licence actually held. Null for an admin, so the admin
+        //          panel does not badge every administrator as a customer.
+        //   proUi  whether this session should GET the professional interface.
+        //          Admins do — they can already open /pro, and an admin who
+        //          sees the consumer UI cannot support what they just granted.
         org: pro.orgOf(u),
+        proUi: pro.effectiveOrg(u),
         // Chase-stream access: only the super admin streams without approval.
         canStream: !!(u.isSuperAdmin || u.streamApproved),
         streamApproved: !!u.streamApproved,

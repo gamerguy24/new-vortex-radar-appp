@@ -1,0 +1,315 @@
+/*
+ * pro_skin.css — the professional interface for licensed operators.
+ *
+ * WHAT THIS IS
+ * The consumer radar is a map you fly around, with rounded controls floating
+ * over it. That is right for a chaser on a phone and wrong for someone who
+ * sits in front of it for an eight hour shift. This turns the same app into a
+ * DOCKED WORKSTATION in the GRLevel3 idiom: a fixed frame around the map, a
+ * tool dock down the left, a status bar along the bottom, square corners,
+ * hairline borders, dense type, and every number in a monospaced column that
+ * does not jump as it updates.
+ *
+ * NOTHING HERE MAY REACH AN UNLICENSED USER
+ * A user without an organisation licence must get the consumer interface, byte
+ * for byte. Two things enforce that, and every rule added here must satisfy
+ * one of them:
+ *
+ *   - it is prefixed html.vx-pro, which only a licensed session carries; or
+ *   - it targets only a #vxpro-* / .vxpro-* element, which exists solely
+ *     because this skin built it.
+ *
+ * The file is also injected by pro_skin.js rather than linked from index.html,
+ * so an unlicensed browser never downloads it at all. That is a convenience,
+ * not the guarantee — the selector discipline above is the guarantee.
+ *
+ * WHY THE !important ON MAP GEOMETRY
+ * index.css ends with a block of mobile rules carrying !important (see the note
+ * at the end of that file), and they set the map's own top and bottom. Moving
+ * the map's edges means answering in kind. Note where !important is NOT used:
+ * on the display of any control the app hides itself — see the tool rules.
+ */
+
+html.vx-pro {
+  --p-bg: #14171c;            /* frame */
+  --p-panel: #1a1e24;         /* dock body */
+  --p-well: #0f1216;          /* sunken content */
+  --p-head: #232830;          /* panel captions */
+  --p-line: #333a44;          /* hairline */
+  --p-line-hi: #454e5a;
+  --p-text: #dfe4ea;
+  --p-dim: #949daa;
+  --p-faint: #6a7481;
+  --p-accent: #5b9bd5;        /* selection / focus. Steel, not amber. */
+  --p-hot: #e8574a;
+  --p-mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  --p-sans: "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
+
+  --p-top: 30px;
+  --p-dock: 234px;
+  --p-status: 26px;
+}
+
+/* ── the frame ────────────────────────────────────────────────────────────
+ * The map is INSET rather than moved. Relocating a Mapbox container in the
+ * DOM tears down its GL context; giving it different edges does not.
+ */
+html.vx-pro #map {
+  top: var(--p-top) !important;
+  bottom: var(--p-status) !important;
+  left: var(--p-dock) !important;
+  width: auto !important;
+  right: 0 !important;
+}
+html.vx-pro.vx-pro-split #map { width: calc((100% - var(--p-dock)) / 2) !important; }
+html.vx-pro #mapDual {
+  top: var(--p-top) !important;
+  bottom: var(--p-status) !important;
+}
+
+html.vx-pro body { background: var(--p-bg); font-family: var(--p-sans); }
+
+/* ── top strip ────────────────────────────────────────────────────────────── */
+#vxpro-top {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--p-top);
+  z-index: 40;
+  display: flex; align-items: center; gap: 0;
+  background: linear-gradient(180deg, #232830, #1a1e24);
+  border-bottom: 1px solid var(--p-line);
+  font-size: 11px;
+}
+#vxpro-brand {
+  display: flex; align-items: center; gap: 6px;
+  width: var(--p-dock); flex: none;
+  padding: 0 10px; height: 100%;
+  border-right: 1px solid var(--p-line);
+  letter-spacing: 0.15em; font-weight: 700; font-size: 10.5px;
+}
+#vxpro-brand b { color: var(--p-accent); font-weight: 800; }
+#vxpro-brand .vxpro-org {
+  margin-left: auto; letter-spacing: 0; font-weight: 400;
+  color: var(--p-faint); font-size: 10px;
+  max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Readouts that live in the top strip: product, then site metadata. */
+#vxpro-topmeta { display: flex; align-items: center; gap: 0; height: 100%; flex: 1; min-width: 0; }
+.vxpro-field {
+  display: flex; align-items: baseline; gap: 6px;
+  height: 100%; padding: 0 11px;
+  border-right: 1px solid var(--p-line);
+  white-space: nowrap;
+}
+.vxpro-field .k {
+  font-size: 8.5px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--p-faint);
+}
+.vxpro-field .v {
+  font-family: var(--p-mono); font-size: 11px; color: var(--p-text);
+  font-variant-numeric: tabular-nums;
+}
+.vxpro-field.grow { flex: 1; min-width: 0; border-right: none; }
+.vxpro-field.grow .v { overflow: hidden; text-overflow: ellipsis; }
+
+/* ── left dock ────────────────────────────────────────────────────────────── */
+#vxpro-dock {
+  position: fixed; top: var(--p-top); bottom: var(--p-status); left: 0;
+  width: var(--p-dock); z-index: 39;
+  background: var(--p-panel);
+  border-right: 1px solid var(--p-line);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.vxpro-sec { display: flex; flex-direction: column; min-height: 0; }
+.vxpro-sec.grow { flex: 1; min-height: 0; }
+.vxpro-cap {
+  font-size: 8.5px; letter-spacing: 0.15em; text-transform: uppercase;
+  color: var(--p-faint);
+  background: var(--p-head);
+  border-top: 1px solid var(--p-line); border-bottom: 1px solid var(--p-line);
+  padding: 4px 9px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.vxpro-body { padding: 7px 8px; overflow-y: auto; }
+.vxpro-sec.grow .vxpro-body { flex: 1; min-height: 0; }
+
+/*
+ * The tool list. In the consumer UI these are a horizontal rail of unlabelled
+ * icons, which is fine when there are six and unusable when there are fifteen
+ * — the screenshot that started this shows a row of pictograms with no way to
+ * tell them apart. Docked and labelled, they become a menu you can read.
+ */
+/*
+ * NOTE ON display: it is deliberately NOT !important here.
+ *
+ * components/platform.js hides desktop-only entry points (Graphics Studio, 3D
+ * Storm View) with an inline style.display = 'none'. An !important display in
+ * a stylesheet beats a plain inline style, so marking this rule important
+ * would have un-hidden those tools on exactly the phones they were hidden
+ * from. The rules that follow only need to out-specify .mapFooterMenuItem,
+ * which carries no !important of its own — and the one rule that does
+ * (#vortexBarIcons .mapFooterMenuItem) stops matching the moment these nodes
+ * are moved out of that rail.
+ */
+html.vx-pro #vxpro-dock .vxpro-tool {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 4px 7px; margin: 0;
+  border: 1px solid transparent; border-radius: 0;
+  color: var(--p-dim); font-size: 11.5px; line-height: 1.5;
+  cursor: pointer; background: none;
+  height: auto; min-height: 0; min-width: 0;
+  transform: none;
+}
+/* Whatever the app hides stays hidden, by either mechanism it uses. */
+html.vx-pro #vxpro-dock .vxpro-tool[hidden],
+html.vx-pro #vxpro-dock .vxpro-tool[aria-hidden="true"] { display: none; }
+html.vx-pro #vxpro-dock .vxpro-tool:hover {
+  background: var(--p-well); border-color: var(--p-line); color: var(--p-text);
+  transform: none;
+}
+html.vx-pro #vxpro-dock .vxpro-tool > span:first-child,
+html.vx-pro #vxpro-dock .vxpro-tool > i:first-child,
+html.vx-pro #vxpro-dock .vxpro-tool > .fa { width: 15px; text-align: center; flex: none; font-size: 12.5px; }
+html.vx-pro .vxpro-tool-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The link across to the warning desk, set off from the map tools above it. */
+html.vx-pro #vxpro-dock .vxpro-desk {
+  margin-top: 6px; border-top: 1px solid var(--p-line); padding-top: 6px;
+  color: var(--p-accent);
+}
+html.vx-pro #vxpro-dock .vxpro-desk:hover { color: #8fc0e8; }
+
+/* The app marks an active tool with this class; make that state legible in a
+   list, where a subtle icon tint is not enough. */
+html.vx-pro #vxpro-dock .vxpro-tool.vxpro-on { background: rgba(91,155,213,0.14); border-color: rgba(91,155,213,0.5); color: var(--p-text); }
+
+/* Site and product pickers, re-homed out of the floating footer. */
+html.vx-pro #vxpro-dock .vxpro-pick {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; margin: 0 0 5px 0;
+  background: var(--p-well);
+  border: 1px solid var(--p-line); border-radius: 0;
+  color: var(--p-text); font-size: 12px;
+  cursor: pointer; white-space: nowrap; overflow: hidden;
+  height: auto; width: auto; position: static; inset: auto; transform: none;
+}
+html.vx-pro #vxpro-dock .vxpro-pick[hidden] { display: none; }
+html.vx-pro #vxpro-dock .vxpro-pick:hover { border-color: var(--p-line-hi); }
+html.vx-pro #vxpro-dock .vxpro-pick > * { float: none; margin: 0; }
+
+/* The colour scale, docked at the foot of the tool column. */
+#vxpro-dock #vortexLegend {
+  position: static !important; inset: auto !important;
+  width: 100% !important; max-width: none !important;
+  margin: 0 !important; padding: 7px 8px !important;
+  background: var(--p-well) !important;
+  border: none !important; border-radius: 0 !important;
+  box-shadow: none !important; transform: none !important;
+}
+#vxpro-dock #vortexLegend #vortexLegendTitle {
+  font-size: 8.5px !important; letter-spacing: 0.11em; color: var(--p-faint) !important;
+  margin-bottom: 5px !important;
+}
+#vxpro-dock #vortexLegend canvas { width: 100% !important; }
+#vxpro-dock #vortexLegend #vortexLegendScale {
+  font-family: var(--p-mono); font-size: 9px !important; color: var(--p-dim) !important;
+}
+
+/* ── status bar ───────────────────────────────────────────────────────────── */
+#vxpro-status {
+  position: fixed; left: 0; right: 0; bottom: 0; height: var(--p-status);
+  z-index: 40;
+  display: flex; align-items: center;
+  background: linear-gradient(180deg, #1a1e24, #14171c);
+  border-top: 1px solid var(--p-line);
+  font-size: 10.5px;
+}
+#vxpro-transport {
+  display: flex; align-items: center; gap: 8px;
+  height: 100%; padding: 0 10px;
+  border-right: 1px solid var(--p-line);
+  width: var(--p-dock); flex: none; box-sizing: border-box;
+}
+#vxpro-status .vxpro-field { border-right: 1px solid var(--p-line); }
+#vxpro-status .vxpro-field .v { font-size: 10.5px; }
+#vxpro-spacer { flex: 1; }
+
+/* The cursor readout. Monospaced and fixed-width so the numbers do not shuffle
+   the bar sideways as the pointer moves — the single most distracting thing a
+   live readout can do. */
+#vxpro-cursor .v { min-width: 148px; display: inline-block; }
+#vxpro-clock .v { min-width: 62px; display: inline-block; }
+
+/* ── controls re-homed into the bars ──────────────────────────────────────── */
+html.vx-pro #vortexPlayBtn {
+  position: static !important; margin: 0 !important;
+  width: 22px !important; height: 18px !important;
+  min-width: 0 !important; min-height: 0 !important;
+  display: flex !important; align-items: center; justify-content: center;
+  background: var(--p-well) !important;
+  border: 1px solid var(--p-line) !important; border-radius: 0 !important;
+  color: var(--p-text) !important; font-size: 10px !important;
+  flex: none;
+}
+html.vx-pro #vortexPlayBtn:hover { border-color: var(--p-accent) !important; }
+html.vx-pro #vortexTimeline {
+  position: static !important; margin: 0 !important;
+  flex: 1; min-width: 0; height: 16px !important;
+  accent-color: var(--p-accent);
+}
+html.vx-pro #vortexSpeedWrap { position: static !important; margin: 0 !important; flex: none; }
+html.vx-pro #vortexSpeed {
+  background: var(--p-well) !important; color: var(--p-text) !important;
+  border: 1px solid var(--p-line) !important; border-radius: 0 !important;
+  font-size: 10px !important; padding: 1px 3px !important; height: 18px !important;
+}
+html.vx-pro #vortexSpeed option { background: #12151c; color: var(--p-text); }
+
+/* The alert pill becomes a plain counter button in the top strip. */
+html.vx-pro #vortexAlertPill {
+  position: static !important; inset: auto !important;
+  display: flex !important; align-items: center; gap: 6px;
+  height: 100%; padding: 0 11px !important; margin: 0 !important;
+  background: none !important; border: none !important;
+  border-left: 1px solid var(--p-line) !important;
+  border-radius: 0 !important; box-shadow: none !important;
+  color: var(--p-dim) !important; font-family: var(--p-mono); font-size: 11px !important;
+  transform: none !important;
+}
+html.vx-pro #vortexAlertPill:hover { background: var(--p-head) !important; color: var(--p-text) !important; }
+/* Red only when there is actually something to be red about. */
+html.vx-pro #vortexAlertPill.vxpro-hot { color: var(--p-hot) !important; }
+
+/* ── things the docked frame replaces ─────────────────────────────────────── */
+html.vx-pro #mapFooter,
+html.vx-pro #mapFooterCollapse,
+html.vx-pro #radarHeader,
+html.vx-pro #vortexProBadge { display: none !important; }
+
+/* Mapbox's own chrome is re-anchored inside the new map rectangle. */
+html.vx-pro #attributionDiv { bottom: calc(var(--p-status) + 4px) !important; }
+html.vx-pro .mapboxgl-ctrl-bottom-left,
+html.vx-pro .mapboxgl-ctrl-bottom-right { bottom: var(--p-status) !important; }
+html.vx-pro .mapboxgl-ctrl-top-right { top: var(--p-top) !important; }
+
+/*
+ * Floating panels the app opens over the map (menus, product picker, dialogs)
+ * keep working untouched — they are positioned against the viewport and the
+ * viewport has not changed. Only their corner rounding is squared off so they
+ * sit in the same visual language as the frame.
+ */
+html.vx-pro #vortexRadarMenu,
+html.vx-pro #productSelectionMenu,
+html.vx-pro #optionsBox,
+html.vx-pro .vortex-panel { border-radius: 0 !important; }
+
+/*
+ * Below this width the dock costs more map than it earns. The frame collapses
+ * back to the consumer layout rather than shipping a cramped imitation of a
+ * workstation — an operator on a laptop is better served by the app they
+ * already know than by a 234px dock over a 500px map.
+ */
+@media (max-width: 1100px) {
+  html.vx-pro #vxpro-dock { display: none; }
+  html.vx-pro #map { left: 0 !important; }
+  html.vx-pro #vxpro-brand { width: auto; }
+  html.vx-pro #vxpro-transport { width: auto; }
+}
