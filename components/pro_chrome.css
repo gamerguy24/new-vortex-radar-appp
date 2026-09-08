@@ -159,30 +159,55 @@ html.vx-pro #vxpro-toolbar #vortexSpeed {
   border-color: #14171b #3d444d #3d444d #14171b;
 }
 
-/* The search sits at the right-hand end of the toolbar. */
+/* ── search, in the toolbar ───────────────────────────────────────────────── */
+/*
+ * The visible box is #vwsearch .vws-box, NOT the wrapper: it carries
+ * padding:8px 12px, a radius and a drop shadow, which made it about 37px tall
+ * inside a 28px bar — so it hung below the toolbar and covered the tilt
+ * buttons and the top of the image. Styling the wrapper and the input while
+ * leaving that box alone is what broke it; all three are set here.
+ */
 html.vx-pro #vxpro-toolbar #vwsearch {
-  position: static !important;
+  position: relative !important;
   top: auto !important; left: auto !important; right: auto !important;
   bottom: auto !important; transform: none !important;
   margin: 0 0 0 4px !important;
   width: 250px !important; max-width: 26vw !important;
-  z-index: auto !important;
+  z-index: auto !important; font-family: inherit !important;
+}
+html.vx-pro #vxpro-toolbar #vwsearch .vws-box {
+  height: 21px !important;
+  padding: 0 7px !important;
+  gap: 6px !important;
+  background: #171b20 !important;
+  border-radius: 2px !important;
+  border-top: 1px solid var(--p-sunk-dark) !important;
+  border-left: 1px solid var(--p-sunk-dark) !important;
+  border-bottom: 1px solid var(--p-sunk-light) !important;
+  border-right: 1px solid var(--p-sunk-light) !important;
+  box-shadow: none !important;
+}
+html.vx-pro #vxpro-toolbar #vwsearch .vws-ico { width: 12px !important; height: 12px !important; }
+/* The clear button sets font-size:16px, which is taller than the 21px box
+   allows once its line box is counted. */
+html.vx-pro #vxpro-toolbar #vwsearch .vws-clear {
+  font-size: 13px !important; line-height: 1 !important;
+  padding: 0 1px !important; height: 15px !important;
 }
 html.vx-pro #vxpro-toolbar #vwsearch input {
-  height: 21px !important; font-size: 11.5px !important;
-  border-radius: 2px !important;
-  background: #171b20 !important;
-  border: 1px solid #14171b !important;
-  box-shadow: none !important;
-  color: #dbe2ea !important;
+  font-size: 11.5px !important; height: 17px !important;
+  background: none !important; border: none !important; box-shadow: none !important;
+  color: #dbe2ea !important; padding: 0 !important;
 }
-html.vx-pro #vxpro-toolbar #vwsearch > div:not(:first-child) {
+/* The results panel hangs below the box, anchored to it rather than to the
+   viewport, and is allowed out of the toolbar. */
+html.vx-pro #vxpro-toolbar #vwsearch .vws-results {
   position: absolute !important;
-  top: var(--p-toolbar) !important;
-  right: 0 !important; left: auto !important;
-  border-radius: 0 !important;
+  top: 100% !important; left: 0 !important; right: 0 !important;
+  margin-top: 2px !important;
+  border-radius: 2px !important;
+  z-index: 70 !important;
 }
-
 /* ── status bar ───────────────────────────────────────────────────────────── */
 /*
  * Sunken cells carrying values only. The inset edge is the whole trick: dark
