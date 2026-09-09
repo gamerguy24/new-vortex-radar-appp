@@ -403,3 +403,38 @@ html.vx-pro .vxpro-tilt-na:hover { background: #343a42; }
 /* Flashed if one is clicked anyway — the button is not dead, the product
    simply is not scanned there. */
 html.vx-pro .vxpro-tilt-missing { background: #7a2f28; color: #ffd9d4; }
+
+/* ── the app's full product menu, re-anchored ─────────────────────────────── */
+/*
+ * #productSelectionMenu is positioned bottom:50px left:10px — under the
+ * floating footer it belonged to. That footer is gone here and its trigger now
+ * sits in the top toolbar, so the menu was opening at the bottom-left of the
+ * screen, nowhere near the control that opened it and partly behind the colour
+ * scale.
+ *
+ * The bottom is overridden with !important because the app rewrites it inline
+ * on every open (psm.css('bottom', ...)), and an inline style beats an
+ * ordinary rule.
+ */
+html.vx-pro #productSelectionMenu {
+  top: calc(var(--p-title) + var(--p-menu) + var(--p-toolbar)) !important;
+  bottom: auto !important;
+  left: 6px !important;
+  max-height: min(62vh, 560px) !important;
+  border-radius: 0 !important;
+  border: 1px solid #14171b !important;
+  background-color: var(--p-chrome) !important;
+  box-shadow: 2px 3px 12px rgba(0, 0, 0, 0.6);
+  z-index: 60 !important;
+}
+html.vx-pro #productSelectionMenu .psmSectionTitle {
+  color: #b6bfc9; font-size: 11px; font-weight: 600;
+  letter-spacing: 0; text-transform: none;
+}
+html.vx-pro #productSelectionMenu .psmRow {
+  border-radius: 0 !important;
+  font-size: 12px;
+}
+html.vx-pro #productSelectionMenu .psmRow:hover { background: #33566f !important; }
+/* The tilt dropdown it opens has to clear the menu itself. */
+html.vx-pro #psmTiltDropdown { z-index: 61 !important; border-radius: 0 !important; }

@@ -119,9 +119,26 @@ function buildMoments() {
     menu.appendChild(it);
   }
 
+  /*
+   * All Products — opens the app's own full product menu.
+   *
+   * The click has to be STOPPED here, and that is not tidiness. The app's
+   * handler opens the menu and then binds a body-click listener to close it
+   * again, guarded by hasClass('pdt') so that clicking the trigger itself does
+   * not immediately shut what it just opened. The trigger carries that class;
+   * this menu item does not. Without stopPropagation the click that opened the
+   * menu keeps bubbling, reaches body after the closer is bound, fails the
+   * guard, and closes the menu in the same event — so it looked like the item
+   * did nothing, when in fact it opened and shut within a millisecond.
+   *
+   * The inner click dispatched below is fine: its target IS the trigger, so it
+   * passes the guard.
+   */
   const products = el('div', 'vxpro-menuitem');
   products.textContent = 'All Products';
-  products.addEventListener('click', () => {
+  products.classList.add('pdt');          // belt and braces for the same guard
+  products.addEventListener('click', (e) => {
+    e.stopPropagation();
     const t = document.getElementById('productsDropdownTrigger');
     if (t) t.click();
   });
