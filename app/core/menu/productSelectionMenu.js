@@ -62,6 +62,20 @@ var productLookup = {
 }
 
 
+/*
+ * Which products exist at which tilt, published for the professional
+ * interface (components/pro_radar.js).
+ *
+ * The table above is not rectangular: VIL exists only at tilt 1, and base and
+ * storm-relative velocity stop at tilt 3. Asking for a combination that is not
+ * in it resolves to undefined, and the loader then does nothing at all — no
+ * error, no change on screen. That is fine for the menu below, which only ever
+ * offers tilts that exist for the row being clicked, but the Pro menu bar
+ * chooses a moment and an elevation independently, so it has to be able to see
+ * which pairs are real.
+ */
+window.vortexProductLookup = productLookup;
+
 $('#productsDropdownTrigger').click(function() {
     var psm = $('#productSelectionMenu');
     psm.css('bottom', parseInt($('#map').css('bottom')) + 5);

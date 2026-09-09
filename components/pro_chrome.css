@@ -387,3 +387,19 @@ html.vx-pro #vxpro-cbar-render {
   background: #0e1116;
 }
 html.vx-pro #vxpro-cbar-title { height: auto; white-space: nowrap; }
+
+/* ── elevations a product is not scanned at ───────────────────────────────── */
+/*
+ * VIL exists only at tilt 1; base and storm-relative velocity stop at tilt 3.
+ * Those combinations resolve to nothing in the app's product table, so the
+ * buttons are greyed rather than left looking live and doing nothing.
+ */
+html.vx-pro .vxpro-tilt-na {
+  opacity: 0.38;
+  color: #7c848d;
+  cursor: default;
+}
+html.vx-pro .vxpro-tilt-na:hover { background: #343a42; }
+/* Flashed if one is clicked anyway — the button is not dead, the product
+   simply is not scanned there. */
+html.vx-pro .vxpro-tilt-missing { background: #7a2f28; color: #ffd9d4; }

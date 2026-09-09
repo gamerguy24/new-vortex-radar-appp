@@ -115,21 +115,7 @@ function buildMoments() {
     it.textContent = m.code;
     it.title = m.name;
     it.dataset.value = m.value;
-    it.addEventListener('click', () => {
-      /*
-       * Drive the app's own product row. jQuery binds with addEventListener,
-       * so a native .click() reaches its handler — and that handler tests
-       * e.target against the row itself, which is why the row is clicked
-       * rather than anything inside it.
-       */
-      const row = document.querySelector('.psmRow[value="' + m.value + '"]');
-      if (!row) {
-        it.classList.add('vxpro-moment-missing');
-        setTimeout(() => it.classList.remove('vxpro-moment-missing'), 800);
-        return;
-      }
-      row.click();
-    });
+    it.addEventListener('click', () => selectMoment(m.value, it));
     menu.appendChild(it);
   }
 
@@ -288,12 +274,91 @@ function sweepUnclaimed() {
   }
 }
 
+/*
+ * Which elevations a moment actually exists at.
+ *
+ * productLookup in the app's product menu is NOT rectangular: VIL exists only
+ * at tilt 1, and base and storm-relative velocity stop at tilt 3. Asking for a
+ * pair that is not in the table resolves to undefined and the loader then does
+ * nothing whatsoever — no error, nothing on screen. The app's own menu never
+ * hits this because it only offers the tilts that exist for the row you
+ * clicked; the Pro menu bar picks a moment and an elevation separately, so it
+ * has to check.
+ *
+ * Falls back to [1] if the table is not published, which keeps a stale cached
+ * bundle working rather than disabling every product.
+ */
+function tiltsFor(value) {
+  const table = window.vortexProductLookup;
+  if (!table) return [1];
+  const out = [];
+  for (const t of Object.keys(table)) {
+    if (table[t] && table[t][value]) out.push(Number(t));
+  }
+  return out.length ? out.sort((a, b) => a - b) : [];
+}
+
+/** The tilt currently written on a product row, as a number. */
+function rowTilt(row) {
+  const sel = row ? row.querySelector('.psmRowTiltSelect') : null;
+  const n = sel ? parseInt((sel.textContent || '').split(' ')[1], 10) : NaN;
+  return Number.isFinite(n) ? n : 1;
+}
+
+/*
+ * Load a moment, choosing an elevation it actually has.
+ *
+ * If the tilt currently set on the row does not exist for this product, the
+ * nearest one that does is used instead of letting the click evaporate. That
+ * is the whole bug behind "the products do not work": on tilt 2 or higher, VIL
+ * did nothing at all, and on tilt 4 neither did BV or SRV.
+ */
+function selectMoment(value, el) {
+  const row = document.querySelector('.psmRow[value="' + value + '"]');
+  const avail = tiltsFor(value);
+
+  if (!row || !avail.length) {
+    if (el) {
+      el.classList.add('vxpro-moment-missing');
+      setTimeout(() => el.classList.remove('vxpro-moment-missing'), 800);
+    }
+    return false;
+  }
+
+  const want = rowTilt(row);
+  if (!avail.includes(want)) {
+    // Nearest available elevation, preferring lower (closer to the ground,
+    // which is what an operator switching products almost always wants).
+    let best = avail[0];
+    for (const t of avail) {
+      if (Math.abs(t - want) < Math.abs(best - want)) best = t;
+    }
+    const sel = row.querySelector('.psmRowTiltSelect');
+    if (sel) sel.textContent = 'Tilt ' + best;
+  }
+
+  row.click();
+  return true;
+}
+
 /* Switch the loaded product to a different tilt, through the app's own row. */
 function setTilt(n) {
   const active = document.querySelector('.vxpro-moment-on');
   const value = active ? active.dataset.value : 'ref';
   const row = document.querySelector('.psmRow[value="' + value + '"]');
   if (!row) return;
+
+  // This product may not be scanned at that elevation. Say so instead of
+  // writing a tilt the loader will resolve to undefined and drop.
+  if (!tiltsFor(value).includes(n)) {
+    const btn = document.querySelector('.vxpro-tilt[data-tilt="' + n + '"]');
+    if (btn) {
+      btn.classList.add('vxpro-tilt-missing');
+      setTimeout(() => btn.classList.remove('vxpro-tilt-missing'), 800);
+    }
+    return;
+  }
+
   const sel = row.querySelector('.psmRowTiltSelect');
   if (!sel) return;
   sel.textContent = 'Tilt ' + n;
@@ -307,8 +372,18 @@ function syncTilts() {
   const row = value ? document.querySelector('.psmRow[value="' + value + '"]') : null;
   const sel = row ? row.querySelector('.psmRowTiltSelect') : null;
   const cur = sel ? (sel.textContent || '').split(' ')[1] : null;
+
+  // Grey the elevations this product is not scanned at, so an operator can see
+  // that VIL is tilt 1 only rather than discovering it by clicking and getting
+  // nothing.
+  const avail = value ? tiltsFor(value) : [];
   for (const b of document.querySelectorAll('.vxpro-tilt')) {
     b.classList.toggle('vxpro-tilt-on', !!cur && b.dataset.tilt === cur);
+    const has = !value || avail.includes(Number(b.dataset.tilt));
+    b.classList.toggle('vxpro-tilt-na', !has);
+    b.title = has
+      ? 'Elevation tilt ' + b.dataset.tilt
+      : 'Not scanned at tilt ' + b.dataset.tilt + ' for this product';
   }
 }
 
