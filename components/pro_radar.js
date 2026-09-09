@@ -100,16 +100,16 @@ function buildMoments() {
   const menu = el('div');
   menu.id = 'vxpro-menu';
 
-  // A Site item first, opening the app's own radar-site picker, so the menu
-  // bar reads the way GR3's does rather than starting abruptly at BR.
-  const site = el('div', 'vxpro-menuitem');
-  site.textContent = 'Site';
-  site.addEventListener('click', () => {
-    const b2 = document.getElementById('stationMenuItemDiv');
-    if (b2) b2.click();
-  });
-  menu.appendChild(site);
-
+  /*
+   * There is no standalone Site item here.
+   *
+   * There used to be, and it produced TWO "Site" entries in the bar: this one,
+   * plus the Site drop-down built from MENUS below. Worse, this one clicked
+   * #stationMenuItemDiv — a node the drop-down MOVES into its own popup — so
+   * it was reaching into a hidden menu to click something that, as it turns
+   * out, has no handler on it at all (see clickTool). The drop-down does the
+   * job properly.
+   */
   for (const m of MOMENTS) {
     const it = el('div', 'vxpro-menuitem vxpro-moment');
     it.textContent = m.code;
@@ -237,6 +237,45 @@ function labelFor(node) {
   const t = el('span', 'vxpro-mi-label');
   t.textContent = name;
   node.appendChild(t);
+  routeToIcon(node);
+}
+
+/*
+ * Send a menu row's click to the element that actually owns the handler.
+ *
+ * These tools do not agree on where their listener lives. Some bind to the
+ * outer div — $('#colorPickerItemDiv').on('click', ...) — and others bind to
+ * the icon INSIDE it:
+ *
+ *     const iconElem = '#stationMenuItemIcon';
+ *     $(iconElem).on('click', function() { ... })
+ *
+ * As a rail of bare icons that distinction never mattered, because the icon
+ * was the only thing there to click. In a menu row with a text label beside
+ * it, clicking the words misses the icon entirely and every icon-bound tool
+ * does nothing at all. Sixteen of the seventeen tools have an inner icon, so
+ * that was most of the menu.
+ *
+ * Clicking the icon satisfies both kinds: an icon-bound listener fires
+ * directly, and a div-bound one fires as the event bubbles up through it. That
+ * only holds because no tool handler tests e.target identity — the three
+ * places in the app that do are all in the product menu, which is not routed
+ * through here.
+ *
+ * Done in the capture phase so the original click is stopped before anything
+ * sees it, otherwise a div-bound tool would receive both the real click and
+ * the synthetic one and toggle itself straight back off.
+ */
+function routeToIcon(node) {
+  const icon = node.querySelector('[id$="Icon"]');
+  if (!icon || node.dataset.vxproRouted) return;
+  node.dataset.vxproRouted = '1';
+  node.addEventListener('click', (e) => {
+    if (e.target === icon || icon.contains(e.target)) return;  // already on target
+    e.stopPropagation();
+    e.preventDefault();
+    icon.click();
+  }, true);
 }
 
 const MENU_NAMES = {

@@ -22,7 +22,7 @@
  * because it can only re-home controls that are already on the page.
  */
 
-import { installRadarFurniture } from './pro_radar.js?v=proui9';
+import { installRadarFurniture } from './pro_radar.js?v=proui10';
 
 const CLASS = 'vx-pro';
 const REMEMBER = 'vortex_pro_ui';     // last known answer, to avoid a flash
@@ -291,7 +291,7 @@ function loadStylesheet() {
   link.rel = 'stylesheet';
   // Appended to head last, so it lands after index.css and can override the
   // mobile geometry rules at the end of that file.
-  link.href = './components/pro_skin.css?v=proui9';
+  link.href = './components/pro_skin.css?v=proui10';
   document.head.appendChild(link);
 
   // The radar furniture's own sheet, loaded after so its re-cut of the frame
@@ -300,7 +300,7 @@ function loadStylesheet() {
   const radar = document.createElement('link');
   radar.id = 'vxpro-radar-css';
   radar.rel = 'stylesheet';
-  radar.href = './components/pro_radar.css?v=proui9';
+  radar.href = './components/pro_radar.css?v=proui10';
   document.head.appendChild(radar);
 
   // The window chrome, last: it supersedes the header and status styling in
@@ -308,7 +308,7 @@ function loadStylesheet() {
   const chrome = document.createElement('link');
   chrome.id = 'vxpro-chrome-css';
   chrome.rel = 'stylesheet';
-  chrome.href = './components/pro_chrome.css?v=proui9';
+  chrome.href = './components/pro_chrome.css?v=proui10';
   document.head.appendChild(chrome);
 }
 
