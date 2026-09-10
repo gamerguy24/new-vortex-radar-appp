@@ -22,6 +22,12 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'September 9, 2026',
+        items: [
+            { title: 'The Graphics Studio now looks like a graphics application', desc: 'The Studio has been rebuilt around the way broadcast graphics software actually works. There is a menu bar and a ribbon of tools across the top, and the workspace is divided into named panels you can collapse or close: your Project list on the left, the Preview in the middle on a transparency checkerboard, a Program Monitor on the right, and the properties for whatever you are editing along the bottom. Your templates all appear in the project list with a thumbnail of what each one currently produces, so you pick a graphic by looking at it rather than by reading names. And there is now a proper Take: the Preview is what you are building, the Program Monitor is what you have sent out, and editing after a take no longer changes what you already put on air.' },
+        ],
+    },
+    {
         date: 'September 8, 2026',
         items: [
             { title: 'The professional radar reads like a radar console', desc: 'The licensed interface now carries the instruments an analyst expects. Products sit across the top as the codes they are known by — BR, BV, SRV, CC, ZDR, KDP, HCA, VIL — and one click switches to them, with the loaded one filled in so you can see at a glance what you are looking at. The colour scale stands on its end against the left edge of the image, where you can read a value off it in the same glance as the storm. The site, VCP, product and elevation are written into the corners of the image itself, so you never have to look away from the weather to check which tilt you are on. Range rings mark 50, 100, 150 and 200 nautical miles from the antenna. And the status bar answers the question a radar operator actually asks: the azimuth and range of whatever is under the cursor, the height of the beam at that range, the exact latitude and longitude, and the scale of the image in metres per pixel.' },
