@@ -324,3 +324,53 @@
   }
   .vgs-p-program { display: none; }
 }
+
+/* ── tool belt, docked above the preview ──────────────────────────────────── */
+/*
+ * Floating, this bar could only be dragged WITHIN the stage — so it always sat
+ * on top of the graphic, and at preview width it wrapped onto two rows and
+ * covered even more. Docked into its own strip it covers nothing.
+ *
+ * The strip scrolls sideways rather than wrapping: a second row would push the
+ * canvas down every time a template revealed another tool group, and a toolbar
+ * that changes height as you work is worse than one you occasionally scroll.
+ */
+.vgs-toolsdock {
+  flex: none;
+  background: #1d2024;
+  border-bottom: 1px solid var(--g-line);
+  min-height: 0;
+}
+.vgs-toolsdock:empty { display: none; }
+
+.vgs .toolbelt.vgs-docked {
+  position: static !important;
+  left: auto !important; top: auto !important; right: auto !important; bottom: auto !important;
+  transform: none !important;
+  margin: 0 !important;
+  width: auto !important; max-width: none !important;
+  border: none !important; border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px !important;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin; scrollbar-color: #3a3f46 transparent;
+}
+.vgs .toolbelt.vgs-docked::-webkit-scrollbar { height: 6px; }
+.vgs .toolbelt.vgs-docked::-webkit-scrollbar-thumb { background: #3a3f46; }
+.vgs .toolbelt.vgs-docked > * { flex: none; }
+/* Nothing in a single-row toolbar should be able to squash its neighbours. */
+.vgs .toolbelt.vgs-docked .tb-group { display: flex; align-items: center; gap: 4px; flex: none; }
+.vgs .toolbelt.vgs-docked .tb-field { flex: none; }
+
+/* The handle stays a handle: it is now the dock/float switch as well. */
+.vgs .toolbelt.vgs-docked .tb-drag { cursor: grab; opacity: 0.55; }
+.vgs .toolbelt.vgs-docked .tb-drag:hover { opacity: 1; }
+
+/* Floating keeps its old look, but sits above the canvas frame's shadow. */
+.vgs .toolbelt:not(.vgs-docked) { z-index: 30; }

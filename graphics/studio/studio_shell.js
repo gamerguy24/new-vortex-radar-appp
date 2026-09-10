@@ -124,6 +124,95 @@ function wirePanels() {
   }
 }
 
+/* ── tool belt: docked by default ─────────────────────────────────────────── */
+
+/*
+ * The tool belt floated over the canvas, and toolbelt_drag.js clamps it to the
+ * stage — so it could be moved around the graphic but never off it. Whatever
+ * you were working on, something was underneath the bar. On a 1080-wide
+ * preview it also wrapped onto two rows, covering even more.
+ *
+ * Docked into a strip above the preview it covers nothing at all. Floating is
+ * still there for anyone who prefers it — double-click the ⠿ handle to switch
+ * — because the drag code is good and somebody will want the bar over the
+ * canvas while they paint near the top edge.
+ */
+const DOCK_KEY = 'vortexStudioToolbeltDocked';
+const DRAG_KEY = 'vortexStudioToolbeltPos';   // owned by toolbelt_drag.js
+
+const wantsDock = () => {
+  try { return localStorage.getItem(DOCK_KEY) !== '0'; } catch (e) { return true; }
+};
+const rememberDock = (on) => {
+  try { localStorage.setItem(DOCK_KEY, on ? '1' : '0'); } catch (e) {}
+};
+
+/* Strip the inline geometry toolbelt_drag.js writes, so CSS governs again. */
+function clearFloatStyles(bar) {
+  bar.style.left = bar.style.top = bar.style.right = bar.style.bottom = bar.style.transform = '';
+}
+
+function dockToolbelt() {
+  const bar = $('toolbelt');
+  const dock = $('vgs-toolsdock');
+  if (!bar || !dock) return;
+  dock.appendChild(bar);
+  bar.classList.add('vgs-docked');
+  clearFloatStyles(bar);
+  /*
+   * Drop the remembered floating position too. toolbelt_drag.js restores it on
+   * a requestAnimationFrame, which can land after this runs — leaving the bar
+   * absolutely positioned inside a static strip, i.e. back over the canvas.
+   */
+  try { localStorage.removeItem(DRAG_KEY); } catch (e) {}
+  requestAnimationFrame(() => clearFloatStyles(bar));
+  rememberDock(true);
+  reflow();
+}
+
+function floatToolbelt() {
+  const bar = $('toolbelt');
+  const stage = document.querySelector('.vgs-stagewrap .stage');
+  if (!bar || !stage) return;
+  bar.classList.remove('vgs-docked');
+  stage.appendChild(bar);
+  clearFloatStyles(bar);        // back to the CSS default: top-centre
+  rememberDock(false);
+  reflow();
+}
+
+function toggleToolbelt() {
+  if ($('toolbelt') && $('toolbelt').classList.contains('vgs-docked')) floatToolbelt();
+  else dockToolbelt();
+}
+
+function wireToolbelt() {
+  const bar = $('toolbelt');
+  const handle = $('tb-drag');
+  if (!bar) return;
+
+  if (wantsDock()) dockToolbelt();
+  else bar.classList.remove('vgs-docked');
+
+  if (handle) {
+    handle.title = 'Double-click to dock or float this bar · drag to move it when floating';
+    // Capture, so this runs before toolbelt_drag.js's own dblclick reset.
+    handle.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      toggleToolbelt();
+    }, true);
+    /*
+     * Dragging a docked bar pops it out first, so the gesture does something
+     * sensible instead of nothing. The drag itself is toolbelt_drag.js's job;
+     * it only works on an absolutely positioned bar, which floating restores.
+     */
+    handle.addEventListener('pointerdown', () => {
+      if (bar.classList.contains('vgs-docked')) floatToolbelt();
+    }, true);
+  }
+}
+
 /* ── program monitor ──────────────────────────────────────────────────────── */
 
 /*
@@ -362,6 +451,7 @@ function watchRail() {
 function boot() {
   wireMenus();
   wirePanels();
+  wireToolbelt();
   wireActions();
   wireHint();
   wirePreviewMeta();
@@ -376,4 +466,4 @@ if (document.readyState === 'loading') {
   boot();
 }
 
-export { take, clearProgram };
+export { take, clearProgram, dockToolbelt, floatToolbelt };

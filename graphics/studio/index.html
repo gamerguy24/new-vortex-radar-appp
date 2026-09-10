@@ -6,7 +6,7 @@
   <title>Vortex Graphics — Studio</title>
   <link rel="stylesheet" href="studio.css" />
   <!-- Loaded after studio.css so the broadcast chrome supersedes it. -->
-  <link rel="stylesheet" href="studio_shell.css?v=shell1" />
+  <link rel="stylesheet" href="studio_shell.css?v=shell2" />
 </head>
 <!--
   THE SHELL IS A BROADCAST GRAPHICS APPLICATION, NOT A WEB PAGE.
@@ -142,6 +142,14 @@
         <span class="vgs-pmeta" id="vgs-preview-meta"></span>
         <span class="vgs-pctl"><i data-ctl="collapse">▾</i><i data-ctl="close">✕</i></span>
       </header>
+      <!--
+        Where the tool belt lives when docked. It used to float over the canvas
+        and could only be dragged WITHIN the canvas, so it always covered part
+        of the graphic. Docked here it covers nothing; the ⠿ handle still pops
+        it out for anyone who wants it floating.
+      -->
+      <div class="vgs-toolsdock" id="vgs-toolsdock"></div>
+
       <div class="vgs-pb vgs-stagewrap">
         <section class="stage">
           <div class="stage-bg" aria-hidden="true"></div>
@@ -256,6 +264,6 @@
   <script src="toolbelt_drag.js"></script>
   <!-- The broadcast shell: menus, ribbon, panels, thumbnails, program monitor.
        Loaded last — it decorates what studio.js has already built. -->
-  <script type="module" src="studio_shell.js?v=shell1"></script>
+  <script type="module" src="studio_shell.js?v=shell2"></script>
 </body>
 </html>
