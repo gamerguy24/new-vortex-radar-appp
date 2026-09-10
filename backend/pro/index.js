@@ -61,15 +61,21 @@ function orgOf(user) {
 }
 
 /*
- * Admins can always open /pro. Without this the person who grants licences
- * cannot see the thing they are granting, which makes support impossible.
- * Their effective org is a placeholder, so the workspace has a name to show.
+ * The licence held, and nothing else.
+ *
+ * This used to hand administrators a placeholder org so they could see what
+ * they were granting. That was wrong: it meant every admin account silently
+ * got the professional interface without anyone deciding they should, which is
+ * exactly what a licensed edition must not do. Being able to grant a licence
+ * is not the same as holding one — an admin who wants the Pro interface grants
+ * it to themselves in the admin panel, deliberately, like anyone else.
+ *
+ * Kept as its own function rather than folded into orgOf so that every gate
+ * below reads as an explicit "the effective licence for this request", and so
+ * there is one obvious place this decision lives if it is ever revisited.
  */
 function effectiveOrg(user) {
-    const real = orgOf(user);
-    if (real) return real;
-    if (user && user.isAdmin) return { type: 'agency', name: 'Vortex Radar (admin)', grantedAt: null, viaAdmin: true };
-    return null;
+    return orgOf(user);
 }
 
 function hasOrg(user) {
@@ -94,9 +100,8 @@ function requireOrg(req, res, next) {
 /*
  * Page gate. Unlike billing's requireProPage this is NOT relaxed when Stripe is
  * unconfigured — an org licence is an explicit grant, not a paywall, so there
- * is no "dev mode" in which everyone is a TV station. Admins already pass via
- * effectiveOrg, which is what keeps a self-hosted operator from locking
- * themselves out of their own install.
+ * is no "dev mode" in which everyone is a TV station, and no back door for
+ * administrators either. An admin who wants in grants it to themselves first.
  */
 function requireOrgPage(req, res, next) {
     const wantsHtml = (req.headers.accept || '').includes('text/html');

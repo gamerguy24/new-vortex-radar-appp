@@ -22,7 +22,8 @@
  * because it can only re-home controls that are already on the page.
  */
 
-import { installRadarFurniture } from './pro_radar.js?v=proui10';
+import { isDesktop } from './platform.js';
+import { installRadarFurniture } from './pro_radar.js?v=proui11';
 
 const CLASS = 'vx-pro';
 const REMEMBER = 'vortex_pro_ui';     // last known answer, to avoid a flash
@@ -291,7 +292,7 @@ function loadStylesheet() {
   link.rel = 'stylesheet';
   // Appended to head last, so it lands after index.css and can override the
   // mobile geometry rules at the end of that file.
-  link.href = './components/pro_skin.css?v=proui10';
+  link.href = './components/pro_skin.css?v=proui11';
   document.head.appendChild(link);
 
   // The radar furniture's own sheet, loaded after so its re-cut of the frame
@@ -300,7 +301,7 @@ function loadStylesheet() {
   const radar = document.createElement('link');
   radar.id = 'vxpro-radar-css';
   radar.rel = 'stylesheet';
-  radar.href = './components/pro_radar.css?v=proui10';
+  radar.href = './components/pro_radar.css?v=proui11';
   document.head.appendChild(radar);
 
   // The window chrome, last: it supersedes the header and status styling in
@@ -308,7 +309,7 @@ function loadStylesheet() {
   const chrome = document.createElement('link');
   chrome.id = 'vxpro-chrome-css';
   chrome.rel = 'stylesheet';
-  chrome.href = './components/pro_chrome.css?v=proui10';
+  chrome.href = './components/pro_chrome.css?v=proui11';
   document.head.appendChild(chrome);
 }
 
@@ -360,7 +361,32 @@ async function build(orgName) {
   setTimeout(resizeMap, 400);
 }
 
+/** Undo anything the optimistic guess applied, and remember not to guess again. */
+function revertToConsumer() {
+  remember(false);
+  document.documentElement.classList.remove(CLASS);
+  for (const id of ['vxpro-css', 'vxpro-radar-css', 'vxpro-chrome-css']) {
+    const n = document.getElementById(id);
+    if (n) n.remove();
+  }
+}
+
 async function init() {
+  /*
+   * Phones and tablets never get this interface.
+   *
+   * It is a docked workstation: a menu bar, a toolbar, a colour scale down the
+   * edge and a status bar, all sized for a mouse and a wide screen. On a phone
+   * that chrome eats most of the display and the drop-downs are unusable. The
+   * consumer UI is the right answer on a small screen even for a licensed
+   * operator, so this is checked BEFORE the licence and before the optimistic
+   * guess is applied — a chaser on their phone must never see it flash.
+   */
+  if (!isDesktop()) {
+    revertToConsumer();
+    return;
+  }
+
   const guess = rememberedGuess();
   if (guess) { document.documentElement.classList.add(CLASS); loadStylesheet(); }
 
@@ -370,24 +396,27 @@ async function init() {
     const r = await fetch('/auth/me', { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
     if (r.ok) {
       const j = await r.json();
-      // proUi, not org: an administrator holds no licence of their own
-      // but must still see the interface they hand out.
+      // proUi is the licence actually held. An administrator gets nothing here
+      // unless somebody granted it to them, same as anyone else.
       ok = !!(j.user && j.user.proUi);
       org = ok ? j.user.proUi.name : null;
     }
-  } catch (e) { ok = guess; }   // offline: keep whatever we optimistically applied
+  } catch (e) {
+    /*
+     * Could not ask. Fall back to the CONSUMER interface, not to the last
+     * remembered answer: showing a licensed edition to someone we cannot
+     * currently verify is the wrong way to be wrong, and the consumer UI works
+     * for everybody.
+     */
+    ok = false;
+  }
 
-  remember(ok);
   if (!ok) {
-    // Not licensed (or no longer): make sure nothing from the guess is left.
-    document.documentElement.classList.remove(CLASS);
-    for (const id of ['vxpro-css', 'vxpro-radar-css', 'vxpro-chrome-css']) {
-      const n2 = document.getElementById(id);
-      if (n2) n2.remove();
-    }
+    revertToConsumer();
     return;
   }
 
+  remember(true);
   document.documentElement.classList.add(CLASS);
   loadStylesheet();
   build(org);
