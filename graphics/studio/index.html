@@ -6,7 +6,7 @@
   <title>Vortex Graphics — Studio</title>
   <link rel="stylesheet" href="studio.css" />
   <!-- Loaded after studio.css so the broadcast chrome supersedes it. -->
-  <link rel="stylesheet" href="studio_shell.css?v=shell3" />
+  <link rel="stylesheet" href="studio_shell.css?v=shell4" />
 </head>
 <!--
   THE SHELL IS A BROADCAST GRAPHICS APPLICATION, NOT A WEB PAGE.
@@ -208,6 +208,20 @@
           <div class="stage-hint" id="stage-hint"></div>
         </section>
       </div>
+
+      <!--
+        The transport, under the image, the way Max puts it: what moment you
+        are looking at, and the controls that move through time. The Live
+        Radar play/live buttons are RE-HOMED here rather than rebuilt, so they
+        keep the handlers studio.js bound to them.
+      -->
+      <div class="vgs-transport" id="vgs-transport">
+        <span class="vgs-tlabel">Frame</span>
+        <span class="vgs-tclock" id="vgs-tclock">—</span>
+        <span class="vgs-tslot" id="vgs-tslot"></span>
+        <span class="vgs-tspace"></span>
+        <span class="vgs-tmeta" id="vgs-tmeta"></span>
+      </div>
     </section>
 
     <!-- Program monitor -->
@@ -235,7 +249,22 @@
         <span class="vgs-pmeta props-blurb" id="props-blurb"></span>
         <span class="vgs-pctl"><i data-ctl="collapse">▾</i><i data-ctl="close">✕</i></span>
       </header>
-      <div class="vgs-pb" id="props-fields"></div>
+      <!--
+        Two columns, the way Max splits its bottom panel: the properties for
+        what you are editing on the left, and a palette of scenes on the right
+        that you click to jump straight to a graphic. The palette is built from
+        the same project list, so there is one source of truth for what exists.
+      -->
+      <div class="vgs-pb vgs-databody">
+        <div class="vgs-datacol vgs-datamain">
+          <div class="vgs-subhead">Properties</div>
+          <div class="vgs-fields" id="props-fields"></div>
+        </div>
+        <div class="vgs-datacol vgs-datascenes">
+          <div class="vgs-subhead">Scenes</div>
+          <div class="vgs-palette" id="vgs-palette"></div>
+        </div>
+      </div>
     </section>
   </main>
 
@@ -264,6 +293,6 @@
   <script src="toolbelt_drag.js"></script>
   <!-- The broadcast shell: menus, ribbon, panels, thumbnails, program monitor.
        Loaded last — it decorates what studio.js has already built. -->
-  <script type="module" src="studio_shell.js?v=shell3"></script>
+  <script type="module" src="studio_shell.js?v=shell4"></script>
 </body>
 </html>

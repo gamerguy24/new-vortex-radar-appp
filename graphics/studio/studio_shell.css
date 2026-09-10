@@ -380,3 +380,92 @@
 
 /* Floating keeps its old look, but sits above the canvas frame's shadow. */
 .vgs .toolbelt:not(.vgs-docked) { z-index: 30; }
+
+/* ══ Baron Max idiom, in black ═════════════════════════════════════════════
+ *
+ * Max is what a TV weather department actually runs, and three things about it
+ * are worth copying regardless of palette:
+ *
+ *   1. you pick a scene by LOOKING at it — the left rail is a column of image
+ *      thumbnails, not a list of names with an icon
+ *   2. the transport lives directly under the image, because you are reading a
+ *      time and pressing a button about that time
+ *   3. a palette of scenes stays permanently visible, so switching graphics
+ *      during weather is one click and no hunting
+ *
+ * Max is blue-grey. This stays black, as asked, and the templates are ours.
+ */
+
+/* ── scene list: image first ──────────────────────────────────────────────── */
+.vgs-cols { grid-template-columns: 60px 1fr 24px; }
+.vgs #template-rail .rail-item {
+  grid-template-columns: 60px 1fr 24px !important;
+  padding: 5px 9px !important;
+}
+/* The thumbnail leads the row, the way a scene list reads. */
+.vgs #template-rail .rail-item .vgs-thumb { order: -1; }
+.vgs-thumb { width: 60px; height: 34px; }
+
+/* ── transport ────────────────────────────────────────────────────────────── */
+.vgs-transport {
+  flex: none;
+  display: flex; align-items: center; gap: 10px;
+  height: 30px; padding: 0 10px;
+  background: #1d2024;
+  border-top: 1px solid var(--g-line);
+}
+.vgs-tlabel { color: var(--g-faint); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }
+.vgs-tclock {
+  font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; color: #d7dee6;
+  min-width: 128px;
+}
+.vgs-tslot { display: flex; align-items: center; gap: 4px; }
+/* The Live Radar group is re-homed in here; it must not keep toolbelt spacing. */
+.vgs-tslot #live-radar-toolbar { display: flex; align-items: center; gap: 4px; margin: 0; }
+.vgs-tspace { flex: 1; }
+.vgs-tmeta { color: var(--g-faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── data panel: properties beside a scene palette ────────────────────────── */
+.vgs-databody { display: flex; gap: 1px; background: var(--g-line); overflow: hidden; }
+.vgs-datacol { background: var(--g-panel); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.vgs-datamain { flex: 1; }
+.vgs-datascenes { width: 340px; flex: none; }
+.vgs-subhead {
+  flex: none; padding: 4px 10px;
+  background: #1d2024; border-bottom: 1px solid var(--g-line);
+  color: var(--g-faint); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.vgs-fields { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; }
+
+.vgs-palette {
+  flex: 1; min-height: 0; overflow: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px; padding: 8px;
+  align-content: start;
+}
+.vgs .vgs-tile {
+  appearance: none; padding: 0; cursor: pointer;
+  background: #16181c; border: 1px solid var(--g-line); border-radius: 0;
+  display: flex; flex-direction: column; overflow: hidden; text-align: left;
+}
+.vgs .vgs-tile:hover { border-color: var(--g-line-2); }
+.vgs .vgs-tile.on { border-color: var(--g-accent); box-shadow: inset 0 0 0 1px var(--g-accent); }
+.vgs-tilepic {
+  display: block; width: 100%; aspect-ratio: 16 / 9;
+  background: #0e1013 center/cover no-repeat;
+}
+.vgs-tilepic:not(.has) {
+  background-image: repeating-linear-gradient(135deg, #16181c, #16181c 3px, #1b1e22 3px, #1b1e22 6px);
+}
+.vgs-tilecap {
+  display: block; padding: 4px 6px;
+  color: #c3cbd4; font-size: 10.5px; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vgs .vgs-tile.on .vgs-tilecap { color: #fff; }
+
+/* Narrow: the palette drops before the properties do — the fields are the
+   thing you cannot work without. */
+@media (max-width: 1180px) {
+  .vgs-datascenes { display: none; }
+}

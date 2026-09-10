@@ -238,6 +238,90 @@ function wireToolbelt() {
   }
 }
 
+/* ── transport ────────────────────────────────────────────────────────────── */
+
+/*
+ * The strip under the image: what moment you are looking at, and the controls
+ * that move through it. Max puts this directly beneath the graphic, and it is
+ * the right place — you are reading a time and pressing a button about that
+ * time, so they belong together rather than at opposite ends of the window.
+ *
+ * The Live Radar controls are MOVED here, not rebuilt. studio.js bound its
+ * handlers to those exact elements and also shows and hides the group as a
+ * template needs it, so the group keeps working and keeps hiding itself.
+ */
+function wireTransport() {
+  const slot = $('vgs-tslot');
+  const group = $('live-radar-toolbar');
+  if (slot && group && group.parentElement !== slot) slot.appendChild(group);
+
+  const tick = () => {
+    // The scan time studio.js writes into the stage hint is the honest source
+    // for "which frame is this" — reading it means no second clock to drift.
+    const hint = $('stage-hint');
+    const clock = $('vgs-tclock');
+    const meta = $('vgs-tmeta');
+    const text = hint ? (hint.textContent || '').trim() : '';
+    if (clock) {
+      // Pull a time out of the hint if it has one, else say what it does say.
+      const m = text.match(/(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?[^·|]*)/i);
+      const v = m ? m[1].trim() : (text ? text.split('·')[0].trim() : '—');
+      if (clock.textContent !== v) clock.textContent = v || '—';
+    }
+    if (meta) {
+      const t = $('vgs-status-template');
+      const name = t ? t.textContent : '';
+      const v = name && name !== '—' ? name : '';
+      if (meta.textContent !== v) meta.textContent = v;
+    }
+  };
+  tick();
+  setInterval(tick, 1000);
+}
+
+/* ── scene palette ────────────────────────────────────────────────────────── */
+
+/*
+ * A grid of scene tiles in the data panel, mirroring the project list.
+ *
+ * Max keeps a palette of scenes permanently visible at the bottom so an
+ * operator can jump between graphics without hunting a list — during weather
+ * that speed is the whole point. Built from the project rows rather than from
+ * the template registry, so it cannot list something the list does not have,
+ * and so the thumbnails are the same ones.
+ */
+function buildPalette() {
+  const pal = $('vgs-palette');
+  if (!pal) return;
+  const rows = [...document.querySelectorAll('#template-rail .rail-item')];
+  if (!rows.length) return;
+
+  pal.innerHTML = '';
+  rows.forEach((row, i) => {
+    const title = row.querySelector('.ri-title');
+    const thumb = row.querySelector('.vgs-thumb');
+    const tile = document.createElement('button');
+    tile.className = 'vgs-tile' + (row.classList.contains('active') ? ' on' : '');
+    tile.title = title ? title.textContent : 'Scene ' + (i + 1);
+
+    const pic = document.createElement('span');
+    pic.className = 'vgs-tilepic';
+    const url = thumbs.get(String(i));
+    if (url) { pic.style.backgroundImage = 'url(' + url + ')'; pic.classList.add('has'); }
+
+    const cap = document.createElement('span');
+    cap.className = 'vgs-tilecap';
+    cap.textContent = title ? title.textContent : '';
+
+    tile.append(pic, cap);
+    tile.addEventListener('click', () => {
+      const fresh = [...document.querySelectorAll('#template-rail .rail-item')][i];
+      if (fresh) fresh.click();
+    });
+    pal.appendChild(tile);
+  });
+}
+
 /* ── program monitor ──────────────────────────────────────────────────────── */
 
 /*
@@ -466,8 +550,9 @@ function watchRail() {
   let settle = null;
   new MutationObserver(() => {
     decorateRows();
+    buildPalette();
     clearTimeout(settle);
-    settle = setTimeout(captureActive, 800);   // capture once the render lands
+    settle = setTimeout(() => { captureActive(); buildPalette(); }, 800);
   }).observe(rail, { childList: true });
   decorateRows();
   setTimeout(captureActive, 1200);
@@ -477,10 +562,12 @@ function boot() {
   wireMenus();
   wirePanels();
   wireToolbelt();
+  wireTransport();
   wireActions();
   wireHint();
   wirePreviewMeta();
   watchRail();
+  buildPalette();
   syncRibbon();
   clearProgram();
 }
