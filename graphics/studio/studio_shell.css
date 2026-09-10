@@ -335,6 +335,12 @@
  * canvas down every time a template revealed another tool group, and a toolbar
  * that changes height as you work is worse than one you occasionally scroll.
  */
+/*
+ * The strip sits under the ribbon, spanning the whole window. Inside the
+ * Preview panel it was still eating into the graphic area, and the panel width
+ * was narrow enough that the controls wrapped. Full width, at the top, they
+ * fit on one row and cost the canvas nothing.
+ */
 .vgs-toolsdock {
   flex: none;
   background: #1d2024;

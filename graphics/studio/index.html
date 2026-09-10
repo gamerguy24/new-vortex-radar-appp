@@ -6,7 +6,7 @@
   <title>Vortex Graphics — Studio</title>
   <link rel="stylesheet" href="studio.css" />
   <!-- Loaded after studio.css so the broadcast chrome supersedes it. -->
-  <link rel="stylesheet" href="studio_shell.css?v=shell2" />
+  <link rel="stylesheet" href="studio_shell.css?v=shell3" />
 </head>
 <!--
   THE SHELL IS A BROADCAST GRAPHICS APPLICATION, NOT A WEB PAGE.
@@ -117,6 +117,14 @@
     <input id="open-project" type="file" accept=".json,application/json,.vortexproj.json" hidden />
   </div>
 
+  <!--
+    The tool belt docks HERE: a full-width strip directly under the ribbon,
+    at the very top of the window. Inside the Preview panel it was still
+    taking a bite out of the graphic area; up here it takes none, and the full
+    window width means the controls never wrap onto a second row.
+  -->
+  <div class="vgs-toolsdock" id="vgs-toolsdock"></div>
+
   <!-- ── workspace ─────────────────────────────────────────────────────── -->
   <main class="vgs-work" id="vgs-work">
 
@@ -142,14 +150,6 @@
         <span class="vgs-pmeta" id="vgs-preview-meta"></span>
         <span class="vgs-pctl"><i data-ctl="collapse">▾</i><i data-ctl="close">✕</i></span>
       </header>
-      <!--
-        Where the tool belt lives when docked. It used to float over the canvas
-        and could only be dragged WITHIN the canvas, so it always covered part
-        of the graphic. Docked here it covers nothing; the ⠿ handle still pops
-        it out for anyone who wants it floating.
-      -->
-      <div class="vgs-toolsdock" id="vgs-toolsdock"></div>
-
       <div class="vgs-pb vgs-stagewrap">
         <section class="stage">
           <div class="stage-bg" aria-hidden="true"></div>
@@ -264,6 +264,6 @@
   <script src="toolbelt_drag.js"></script>
   <!-- The broadcast shell: menus, ribbon, panels, thumbnails, program monitor.
        Loaded last — it decorates what studio.js has already built. -->
-  <script type="module" src="studio_shell.js?v=shell2"></script>
+  <script type="module" src="studio_shell.js?v=shell3"></script>
 </body>
 </html>

@@ -167,7 +167,32 @@ function dockToolbelt() {
   try { localStorage.removeItem(DRAG_KEY); } catch (e) {}
   requestAnimationFrame(() => clearFloatStyles(bar));
   rememberDock(true);
+  holdDock();
   reflow();
+}
+
+/*
+ * Keep it docked for the first few seconds.
+ *
+ * Two other pieces of code write to this element after load — toolbelt_drag.js
+ * restores a saved position on a requestAnimationFrame, and studio.js reveals
+ * tool groups as a template needs them — and the ordering between them and
+ * this module is not something either side guarantees. Rather than reason
+ * about whose frame lands last, check the outcome a few times while the page
+ * settles and put it back if it escaped. It stops on its own; it is not a
+ * permanent timer.
+ */
+function holdDock() {
+  const dock = $('vgs-toolsdock');
+  if (!dock) return;
+  let n = 0;
+  const t = setInterval(() => {
+    const bar = $('toolbelt');
+    if (!bar || !bar.classList.contains('vgs-docked')) { clearInterval(t); return; }
+    if (bar.parentElement !== dock) dock.appendChild(bar);
+    if (bar.style.left || bar.style.top || bar.style.transform) clearFloatStyles(bar);
+    if (++n >= 12) clearInterval(t);      // ~3s, then leave it alone
+  }, 250);
 }
 
 function floatToolbelt() {
