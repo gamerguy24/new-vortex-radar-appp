@@ -1,0 +1,326 @@
+/*
+ * studio_shell.css — the Studio as a broadcast graphics application.
+ *
+ * Loaded after studio.css and supersedes its shell. The old chrome was a web
+ * page: an app bar with pill buttons, rounded cards, generous padding, a
+ * gradient brand mark. Captivate and Title Live are Windows applications, and
+ * the specific things that make them read that way are:
+ *
+ *   · a menu bar of plain text, then a ribbon of icon-above-label buttons
+ *   · every region is a titled PANEL with its own header and controls, so the
+ *     workspace reads as arranged rather than as a page that scrolled
+ *   · square corners, hairline borders, one small type size, tight rows
+ *   · a status bar along the bottom that is always saying something
+ *
+ * The inner canvas, toolbelt and property fields are left to studio.css. This
+ * file is the frame around them.
+ */
+
+.vgs {
+  --g-bg: #1b1d21;          /* app ground */
+  --g-chrome: #26292e;      /* bars */
+  --g-chrome-hi: #31353b;   /* hover */
+  --g-panel: #212429;       /* panel body */
+  --g-head: #2b2f35;        /* panel caption */
+  --g-line: #15171a;        /* hard divider */
+  --g-line-2: #3a3f46;      /* light edge */
+  --g-text: #dfe3e8;
+  --g-dim: #9aa3ad;
+  --g-faint: #6c757e;
+  --g-accent: #2f6fb5;      /* selection, the flat Windows blue */
+  --g-live: #d8342a;
+
+  --g-menubar: 26px;
+  --g-ribbon: 52px;
+  --g-status: 24px;
+
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--g-bg);
+  color: var(--g-text);
+  font-family: "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.vgs * { box-sizing: border-box; }
+.vgs-legacy { display: none !important; }
+
+/* ── menu bar ─────────────────────────────────────────────────────────────── */
+.vgs-menubar {
+  flex: none; display: flex; align-items: stretch;
+  height: var(--g-menubar);
+  background: var(--g-chrome);
+  border-bottom: 1px solid var(--g-line);
+  padding-left: 2px;
+  position: relative; z-index: 60;
+}
+.vgs-menu {
+  position: relative;
+  display: flex; align-items: center;
+  padding: 0 9px;
+  color: #ccd3db; cursor: default; user-select: none;
+  border: 1px solid transparent;
+}
+.vgs-menu:hover, .vgs-menu.open { background: var(--g-chrome-hi); border-color: var(--g-line-2); }
+.vgs-menuspace { flex: 1; }
+.vgs-build {
+  display: flex; align-items: center; padding: 0 10px;
+  color: var(--g-faint); font-size: 11px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.vgs-pop {
+  display: none;
+  position: absolute; top: 100%; left: -1px;
+  min-width: 210px;
+  background: var(--g-chrome);
+  border: 1px solid var(--g-line);
+  box-shadow: 2px 3px 12px rgba(0,0,0,0.55);
+  padding: 2px; z-index: 70;
+}
+.vgs-menu.open > .vgs-pop { display: block; }
+.vgs-mi { padding: 5px 12px; color: #d3dae2; white-space: nowrap; cursor: default; }
+.vgs-mi:hover { background: var(--g-accent); color: #fff; }
+.vgs-sep { height: 1px; background: var(--g-line); margin: 3px 6px; }
+
+/* ── ribbon ───────────────────────────────────────────────────────────────── */
+.vgs-ribbon {
+  flex: none; display: flex; align-items: center; gap: 2px;
+  height: var(--g-ribbon); padding: 0 6px;
+  background: var(--g-chrome);
+  border-bottom: 1px solid var(--g-line);
+}
+.vgs-rib {
+  appearance: none; background: none; border: 1px solid transparent; border-radius: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-width: 58px; height: 44px; padding: 2px 6px;
+  color: #c8cfd8; font: inherit; font-size: 10.5px; cursor: pointer;
+}
+.vgs-rib svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.vgs-rib:hover { background: var(--g-chrome-hi); border-color: var(--g-line-2); }
+/* A ribbon button for a panel that is open reads as pressed in, not tinted. */
+.vgs-rib.on { background: #1a1d21; border-color: var(--g-line) var(--g-line-2) var(--g-line-2) var(--g-line); color: #fff; }
+.vgs-ribsep { width: 2px; height: 30px; border-left: 1px solid var(--g-line); border-right: 1px solid var(--g-line-2); margin: 0 5px; }
+.vgs-ribspace { flex: 1; }
+
+.vgs-ribfield { display: flex; align-items: center; gap: 6px; color: var(--g-dim); margin-right: 8px; }
+.vgs .vgs-ribfield select {
+  appearance: auto;
+  background: #16181c; color: var(--g-text);
+  border: 1px solid var(--g-line); border-radius: 2px;
+  font: inherit; padding: 3px 5px; height: 24px;
+}
+.vgs .vgs-take {
+  appearance: none; height: 26px; padding: 0 14px;
+  background: var(--g-accent); color: #fff;
+  border: 1px solid #24548a; border-radius: 2px;
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.vgs .vgs-take:hover { background: #3a80cc; }
+
+/* ── workspace ────────────────────────────────────────────────────────────── */
+.vgs-work {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 300px;
+  grid-template-rows: minmax(0, 1fr) 232px;
+  grid-template-areas:
+    "project preview program"
+    "project data    data";
+  gap: 1px;
+  background: var(--g-line);
+}
+.vgs-p-project { grid-area: project; }
+.vgs-p-preview { grid-area: preview; }
+.vgs-p-program { grid-area: program; }
+.vgs-p-data    { grid-area: data; }
+
+/* A closed panel gives its space back rather than leaving a hole. */
+.vgs-work:has(.vgs-p-project[hidden]) { grid-template-columns: 0 minmax(0, 1fr) 300px; }
+.vgs-work:has(.vgs-p-program[hidden]) { grid-template-columns: 260px minmax(0, 1fr) 0; }
+.vgs-work:has(.vgs-p-project[hidden]):has(.vgs-p-program[hidden]) { grid-template-columns: 0 minmax(0, 1fr) 0; }
+.vgs-work:has(.vgs-p-data[hidden]) { grid-template-rows: minmax(0, 1fr) 0; }
+
+.vgs-panel {
+  background: var(--g-panel);
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0; overflow: hidden;
+}
+.vgs-panel[hidden] { display: none; }
+
+.vgs-ph {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  height: 24px; padding: 0 4px 0 9px;
+  background: var(--g-head);
+  border-bottom: 1px solid var(--g-line);
+}
+.vgs-pt { font-weight: 600; color: #e4e9ef; }
+.vgs-pmeta {
+  color: var(--g-faint); font-size: 11px;
+  font-family: ui-monospace, Consolas, monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vgs-pctl { margin-left: auto; display: flex; gap: 2px; }
+.vgs-pctl i {
+  font-style: normal; width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--g-dim); cursor: pointer; font-size: 11px;
+}
+.vgs-pctl i:hover { background: var(--g-chrome-hi); color: #fff; }
+
+.vgs-pb { flex: 1; min-height: 0; overflow: auto; }
+.vgs-panel.collapsed .vgs-pb,
+.vgs-panel.collapsed .vgs-pf,
+.vgs-panel.collapsed .vgs-cols { display: none; }
+.vgs-panel.collapsed { flex: none; }
+
+.vgs-pf {
+  flex: none; display: flex; gap: 5px; padding: 5px;
+  border-top: 1px solid var(--g-line); background: var(--g-head);
+}
+.vgs .vgs-sm {
+  appearance: none; flex: 1;
+  background: #333941; color: #d6dde5;
+  border: 1px solid var(--g-line); border-radius: 2px;
+  font: inherit; font-size: 11px; padding: 4px 6px; cursor: pointer;
+}
+.vgs .vgs-sm:hover { background: #3d444d; }
+.vgs .vgs-sm:disabled { opacity: 0.55; cursor: default; }
+
+/* ── project list ─────────────────────────────────────────────────────────── */
+.vgs-cols {
+  flex: none; display: grid; grid-template-columns: 1fr 52px 24px;
+  gap: 6px; padding: 4px 9px;
+  background: #1d2024; border-bottom: 1px solid var(--g-line);
+  color: var(--g-faint); font-size: 10.5px;
+}
+
+/*
+ * studio.js builds these rows and knows nothing about this layout, so the row
+ * is re-gridded here into Name | Preview | Take. Its own children keep their
+ * markup — only where they sit changes.
+ */
+.vgs #template-rail { padding: 0; }
+.vgs #template-rail .rail-item {
+  display: grid !important;
+  grid-template-columns: 1fr 52px 24px;
+  align-items: center; gap: 6px;
+  padding: 4px 9px !important; margin: 0 !important;
+  border: none !important; border-bottom: 1px solid #1a1d21 !important;
+  border-radius: 0 !important; background: none !important;
+  cursor: pointer;
+}
+.vgs #template-rail .rail-item:hover { background: #2a2e34 !important; }
+.vgs #template-rail .rail-item.active { background: var(--g-accent) !important; color: #fff !important; }
+.vgs #template-rail .rail-item.active .ri-sub { color: rgba(255,255,255,0.78) !important; }
+/* The monogram is the row's icon, inline with the name rather than a big tile. */
+.vgs #template-rail .ri-icon {
+  display: none !important;
+}
+.vgs #template-rail .ri-body { min-width: 0; }
+.vgs #template-rail .ri-title {
+  font-size: 12px; font-weight: 500; color: inherit;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vgs #template-rail .ri-sub {
+  font-size: 10.5px; color: var(--g-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.vgs-thumb {
+  width: 52px; height: 30px; flex: none;
+  background: #0e1013 center/cover no-repeat;
+  border: 1px solid var(--g-line);
+}
+/* Until a template has been rendered once there is nothing true to show, so
+   the slot stays an empty well rather than inventing a picture. */
+.vgs-thumb:not(.has) {
+  background-image:
+    repeating-linear-gradient(135deg, #16181c, #16181c 3px, #1b1e22 3px, #1b1e22 6px);
+}
+.vgs .vgs-take-row {
+  appearance: none; width: 20px; height: 20px; padding: 0;
+  background: none; border: 1px solid transparent; border-radius: 0;
+  color: var(--g-dim); font-size: 10px; cursor: pointer;
+}
+.vgs .vgs-take-row:hover { background: var(--g-live); border-color: #8f2b23; color: #fff; }
+
+/* ── preview panel ────────────────────────────────────────────────────────── */
+.vgs-stagewrap { position: relative; overflow: hidden; }
+.vgs .vgs-stagewrap .stage {
+  position: absolute; inset: 0;
+  width: auto; height: auto;
+  border: none; border-radius: 0; margin: 0;
+}
+/* The transparency checkerboard every graphics tool shows behind the frame. */
+.vgs .vgs-stagewrap .stage-bg {
+  background-color: #191b1f;
+  background-image:
+    linear-gradient(45deg, #23262b 25%, transparent 25%),
+    linear-gradient(-45deg, #23262b 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #23262b 75%),
+    linear-gradient(-45deg, transparent 75%, #23262b 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  opacity: 1;
+}
+.vgs .vgs-stagewrap .canvas-frame {
+  border: 1px solid #000; border-radius: 0; box-shadow: 0 2px 14px rgba(0,0,0,0.5);
+}
+/* The hint is mirrored into the status bar, so it does not also float here. */
+.vgs .stage-hint { display: none !important; }
+
+/* ── program monitor ──────────────────────────────────────────────────────── */
+.vgs-program { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
+.vgs-progframe {
+  flex: 1; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #000; border: 1px solid var(--g-line);
+}
+.vgs-progframe img { max-width: 100%; max-height: 100%; display: block; }
+.vgs-progempty { color: var(--g-faint); text-align: center; font-size: 11.5px; line-height: 1.7; }
+.vgs-progempty span { color: #4e565e; }
+.vgs-tally {
+  flex: none; text-align: center; padding: 4px;
+  background: #2a2e34; border: 1px solid var(--g-line);
+  color: var(--g-faint); font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em;
+}
+.vgs-tally.live { background: var(--g-live); border-color: #8f2b23; color: #fff; }
+
+/* ── data panel ───────────────────────────────────────────────────────────── */
+/* studio.css styles the fields themselves; this is only their container. */
+.vgs .vgs-p-data .vgs-pb { padding: 10px 12px; }
+.vgs .props-blurb { margin: 0; }
+
+/* ── status bar ───────────────────────────────────────────────────────────── */
+.vgs-status {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  height: var(--g-status); padding: 0 10px;
+  background: var(--g-chrome);
+  border-top: 1px solid var(--g-line-2);
+  color: var(--g-dim); font-size: 11px;
+}
+.vgs-beta {
+  background: #3a3f47; color: #cfd6de;
+  border: 1px solid var(--g-line);
+  padding: 0 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+}
+.vgs-sdiv { width: 1px; height: 14px; background: var(--g-line); }
+.vgs-sspace { flex: 1; }
+.vgs-hint { color: var(--g-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vgs-dot { width: 7px; height: 7px; border-radius: 50%; background: #35d07f; }
+
+/*
+ * A narrow window drops the side panels rather than crushing three columns.
+ * The preview is the thing worth keeping.
+ */
+@media (max-width: 1180px) {
+  .vgs-work {
+    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-areas: "project preview" "data data";
+  }
+  .vgs-p-program { display: none; }
+}
