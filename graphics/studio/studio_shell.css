@@ -469,3 +469,94 @@
 @media (max-width: 1180px) {
   .vgs-datascenes { display: none; }
 }
+
+/* ══ THE SCENE GRID ════════════════════════════════════════════════════════
+ *
+ * The single most characteristic thing about Max is that you browse a GRID of
+ * picture tiles. Its window is mostly thumbnails; a list of names with a small
+ * image beside it is a file manager, and that is what the project panel still
+ * was. This turns it into the grid.
+ *
+ * studio.js builds these rows and knows nothing about any of it — the row
+ * keeps its markup, and only the box it is laid out in changes.
+ */
+.vgs-cols { display: none; }          /* a grid has no columns to head */
+
+.vgs-gridbar {
+  flex: none; display: flex; align-items: center; gap: 4px;
+  padding: 4px 8px;
+  background: #1d2024; border-bottom: 1px solid var(--g-line);
+  color: var(--g-faint); font-size: 10.5px;
+}
+.vgs-gbspace { flex: 1; }
+.vgs .vgs-gbsz {
+  appearance: none; width: 22px; height: 18px; padding: 0;
+  background: none; color: var(--g-faint);
+  border: 1px solid transparent; border-radius: 0;
+  font: inherit; font-size: 11px; cursor: pointer;
+}
+.vgs .vgs-gbsz:hover { background: var(--g-chrome-hi); color: #fff; }
+.vgs .vgs-gbsz.on { background: #16181c; border-color: var(--g-line) var(--g-line-2) var(--g-line-2) var(--g-line); color: #fff; }
+
+/* The list becomes a grid of cards. */
+.vgs #template-rail {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--tile, 132px), 1fr));
+  gap: 6px; padding: 8px; align-content: start;
+}
+.vgs #template-rail .rail-item {
+  display: flex !important;
+  flex-direction: column;
+  gap: 0 !important;
+  padding: 0 !important; margin: 0 !important;
+  background: #16181c !important;
+  border: 1px solid var(--g-line) !important;
+  border-bottom: 1px solid var(--g-line) !important;
+  border-radius: 0 !important;
+  overflow: hidden; position: relative;
+}
+.vgs #template-rail .rail-item:hover { background: #1b1e23 !important; border-color: var(--g-line-2) !important; }
+.vgs #template-rail .rail-item.active {
+  background: #16181c !important;
+  border-color: var(--g-accent) !important;
+  box-shadow: inset 0 0 0 1px var(--g-accent);
+}
+
+/* The picture is the tile; the caption is a bar under it, as in Max. */
+.vgs #template-rail .rail-item .vgs-thumb {
+  order: -1;
+  width: 100% !important; height: auto !important;
+  aspect-ratio: 16 / 9;
+  border: none !important; border-bottom: 1px solid var(--g-line) !important;
+}
+.vgs #template-rail .ri-body {
+  padding: 4px 6px 5px;
+  background: #1a1d21;
+  min-width: 0; width: 100%;
+}
+.vgs #template-rail .rail-item.active .ri-body { background: var(--g-accent); }
+.vgs #template-rail .ri-title { font-size: 11px; line-height: 1.25; white-space: normal; }
+.vgs #template-rail .ri-sub { font-size: 10px; }
+.vgs #template-rail .rail-item.active .ri-title,
+.vgs #template-rail .rail-item.active .ri-sub { color: #fff !important; }
+
+/* Take sits on the picture, out of the caption's way. */
+.vgs #template-rail .vgs-take-row {
+  position: absolute; top: 3px; right: 3px;
+  width: 20px; height: 20px;
+  background: rgba(10,12,15,0.72) !important;
+  border: 1px solid rgba(255,255,255,0.14) !important;
+  color: #e6ecf3 !important;
+}
+.vgs #template-rail .vgs-take-row:hover { background: var(--g-live) !important; border-color: #8f2b23 !important; }
+
+/* Tile size, driven by the strip above the grid. */
+.vgs-p-project { --tile: 132px; }
+.vgs-p-project[data-size="lg"] { --tile: 190px; }
+.vgs-p-project[data-size="sm"] { --tile: 96px; }
+.vgs-p-project[data-size="sm"] .ri-sub { display: none; }
+
+/* The panel is wide enough for two columns of medium tiles. */
+.vgs-work { grid-template-columns: 300px minmax(0, 1fr) 300px; }
+.vgs-work:has(.vgs-p-project[hidden]) { grid-template-columns: 0 minmax(0, 1fr) 300px; }
+.vgs-work:has(.vgs-p-program[hidden]) { grid-template-columns: 300px minmax(0, 1fr) 0; }

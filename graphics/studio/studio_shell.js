@@ -238,6 +238,43 @@ function wireToolbelt() {
   }
 }
 
+/* ── scene grid ───────────────────────────────────────────────────────────── */
+
+/*
+ * Tile size, and the count.
+ *
+ * Max's scene browser lets you change how big the pictures are, and it matters
+ * for the same reason the grid does: at a glance you either recognise the
+ * graphic or you do not. Someone with nine scenes wants them large; someone
+ * who has built forty wants them small enough to see at once.
+ */
+const SIZE_KEY = 'vortexStudioTileSize';
+
+function applyTileSize(size) {
+  const panel = document.querySelector('.vgs-p-project');
+  if (!panel) return;
+  panel.dataset.size = size;
+  for (const b of document.querySelectorAll('.vgs-gbsz')) {
+    b.classList.toggle('on', b.dataset.size === size);
+  }
+  try { localStorage.setItem(SIZE_KEY, size); } catch (e) {}
+}
+
+function wireGrid() {
+  let size = 'md';
+  try { size = localStorage.getItem(SIZE_KEY) || 'md'; } catch (e) {}
+  applyTileSize(size);
+  for (const b of document.querySelectorAll('.vgs-gbsz')) {
+    b.addEventListener('click', () => applyTileSize(b.dataset.size));
+  }
+}
+
+function updateSceneCount() {
+  const n = document.querySelectorAll('#template-rail .rail-item').length;
+  const el = $('vgs-scene-count');
+  if (el) el.textContent = n + (n === 1 ? ' scene' : ' scenes');
+}
+
 /* ── transport ────────────────────────────────────────────────────────────── */
 
 /*
@@ -551,6 +588,7 @@ function watchRail() {
   new MutationObserver(() => {
     decorateRows();
     buildPalette();
+    updateSceneCount();
     clearTimeout(settle);
     settle = setTimeout(() => { captureActive(); buildPalette(); }, 800);
   }).observe(rail, { childList: true });
@@ -563,11 +601,13 @@ function boot() {
   wirePanels();
   wireToolbelt();
   wireTransport();
+  wireGrid();
   wireActions();
   wireHint();
   wirePreviewMeta();
   watchRail();
   buildPalette();
+  updateSceneCount();
   syncRibbon();
   clearProgram();
 }

@@ -6,7 +6,7 @@
   <title>Vortex Graphics — Studio</title>
   <link rel="stylesheet" href="studio.css" />
   <!-- Loaded after studio.css so the broadcast chrome supersedes it. -->
-  <link rel="stylesheet" href="studio_shell.css?v=shell4" />
+  <link rel="stylesheet" href="studio_shell.css?v=shell5" />
 </head>
 <!--
   THE SHELL IS A BROADCAST GRAPHICS APPLICATION, NOT A WEB PAGE.
@@ -134,7 +134,15 @@
         <span class="vgs-pt">Project</span>
         <span class="vgs-pctl"><i data-ctl="collapse">▾</i><i data-ctl="close">✕</i></span>
       </header>
-      <div class="vgs-cols"><span>Name</span><span>Preview</span><span>Take</span></div>
+      <!-- A grid of scenes has no columns to head, so this strip carries what
+           Max puts there instead: how many there are, and the tile size. -->
+      <div class="vgs-gridbar">
+        <span id="vgs-scene-count">—</span>
+        <span class="vgs-gbspace"></span>
+        <button class="vgs-gbsz" data-size="lg" title="Large tiles">▦</button>
+        <button class="vgs-gbsz on" data-size="md" title="Medium tiles">▤</button>
+        <button class="vgs-gbsz" data-size="sm" title="Small tiles">▪</button>
+      </div>
       <!-- studio.js fills this; each .rail-item is styled as a table row -->
       <div class="vgs-pb" id="template-rail"></div>
       <footer class="vgs-pf">
@@ -293,6 +301,6 @@
   <script src="toolbelt_drag.js"></script>
   <!-- The broadcast shell: menus, ribbon, panels, thumbnails, program monitor.
        Loaded last — it decorates what studio.js has already built. -->
-  <script type="module" src="studio_shell.js?v=shell4"></script>
+  <script type="module" src="studio_shell.js?v=shell5"></script>
 </body>
 </html>
