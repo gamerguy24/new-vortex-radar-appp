@@ -24,6 +24,8 @@ const CHANGELOG = [
     {
         date: 'September 11, 2026',
         items: [
+            { title: 'Storm tracks no longer flash', desc: 'Storm tracks and tornado markers blinked every time the radar updated, and several times a second while a loop played. Every radar refresh was deleting them and drawing them again from scratch, because the check meant to skip a file it had already drawn never actually remembered what it had drawn. They now stay put, and only change when a new storm-track file arrives — and even then they update in place rather than vanishing first. Clicking a storm also opens a single popup again, where a long session could stack up several identical ones.' },
+            { title: 'Tornado vortex signature markers now appear', desc: 'The tornado symbols for radar-detected vortex signatures were not showing on the map at all: the markers asked for an icon by a different name from the one it was loaded under, so there was nothing to draw. They now appear, and update alongside the storm tracks.' },
             { title: 'Radar loops up to 75 frames', desc: 'Next to the speed control there is now a choice of loop length: 10, 25, 50 or 75 scans. Seventy-five is five to seven hours of radar, enough to watch a line form and cross a whole region. Loops also load far faster than before — they used to fetch one scan at a time and look each one up separately, and now they look them up once and download several at a time, with a counter showing how far along it is. A loop that reaches back past midnight UTC no longer skips scans at the change of day, and one scan that fails to download costs that one frame instead of freezing the whole load. Phones stay at five frames, which is what they can hold safely.' },
         ],
     },
