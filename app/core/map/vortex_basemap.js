@@ -87,6 +87,9 @@ function apply_vortex_basemap(targetMap) {
         }
         // Never touch layers the app added (radar, alerts, markers, tracks).
         if (l.source !== BASE_SOURCE) continue;
+        // Our own layers on the basemap source (road_shields.js) carry their own
+        // colours: white on an interstate's blue, dark on a white state circle.
+        if (id.startsWith('vx-')) continue;
 
         if (l.type === 'fill') {
             if (/water|ocean|sea|bathymetry/i.test(id)) _set(m, id, 'fill-color', VORTEX_PALETTE.water);

@@ -63,6 +63,7 @@ function theme_dual(attempt = 0) {
             // which builds the Mapbox instance on require. Load order is not
             // something a right-pane feature should be moving around.
             require('../../core/map/vortex_basemap').apply_vortex_basemap(dm);
+            require('../../core/map/road_shields').install(dm);
             return;
         }
     } catch (e) { /* fall through to the retry */ }

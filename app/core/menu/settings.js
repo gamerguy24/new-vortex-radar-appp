@@ -173,3 +173,11 @@ armFunctions.toggleswitchFunctions($('#armrCountyVisBtnSwitchElem'),
     function() { county_borders.enable(); },
     function() { county_borders.disable(); }
 );
+// Highway shields (the base style has none — see road_shields.js). On unless
+// the user turned them off, and that choice is remembered.
+const road_shields = require('../map/road_shields');
+$('#armrRoadShieldsBtnSwitchElem').prop('checked', road_shields.isEnabled());
+armFunctions.toggleswitchFunctions($('#armrRoadShieldsBtnSwitchElem'),
+    function() { road_shields.enable(); },
+    function() { road_shields.disable(); }
+);
