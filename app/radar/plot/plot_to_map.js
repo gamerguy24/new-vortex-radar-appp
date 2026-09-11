@@ -343,14 +343,12 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
         }
     }
 
-    if (S.current_RadarUpdater != undefined) {
-        S.current_RadarUpdater.disable();
-    }
-    if (!isInFileUploadMode) {
-        const current_RadarUpdater = new RadarUpdater(nexrad_factory);
-        S.current_RadarUpdater = current_RadarUpdater;
-        current_RadarUpdater.enable();
-    }
+    // Every loop frame used to land here and start its own updater, so a paused
+    // loop kept polling, and a scan arriving mid-loop was drawn over it. While
+    // the loop is showing the past (not live), a frame retires the updater and
+    // starts none; the Live button starts one again (see radar_loop.js).
+    const loop_holds_pane = is_main && !!window.vortexLoop && window.vortexLoop.live === false;
+    RadarUpdater.hand_over(S, nexrad_factory, !isInFileUploadMode && !loop_holds_pane);
 
     S.current_nexrad_location = nexrad_factory.get_location();
     S.current_elevation_angle = nexrad_factory.elevation_angle;

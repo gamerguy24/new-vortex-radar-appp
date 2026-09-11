@@ -68,6 +68,7 @@ let helpEl = null;
 const ROWS = [
     ['Space', 'Play / pause radar loop'],
     ['← / →', 'Step frames back / forward'],
+    ['L', 'Back to live (newest scan)'],
     ['Shift+V', 'Switch to velocity'],
     ['Shift+R', 'Switch to reflectivity'],
     ['Esc', 'Close menu or dialog'],
@@ -102,6 +103,7 @@ document.addEventListener('keydown', (e) => {
         case 'ArrowLeft': if (loop.step(-1)) e.preventDefault(); break;
         case 'ArrowRight': if (loop.step(1)) e.preventDefault(); break;
         case 'Escape': closeTopUI(); break;
+        case 'KeyL': if (!e.shiftKey) { e.preventDefault(); loop.goLive(); } break;
         // Shift+V / Shift+R — product switching without opening the menu.
         // Shift is required so plain V and R stay free, and e.code is used so
         // the shortcut still works on non-QWERTY layouts where Shift+v yields

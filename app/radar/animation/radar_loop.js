@@ -1,8 +1,8 @@
 /*
  * Radar loop / playback controller for the Vortex Radar bottom bar.
  *
- * Drives the play/pause button, the timeline slider, the speed dropdown and the
- * loop-length dropdown. It preloads the most recent Level 3 scans for the
+ * Drives the play/pause button, the timeline slider, the Live button, the
+ * speed dropdown and the loop-length dropdown. It preloads the most recent Level 3 scans for the
  * currently displayed station + product, then animates through them.
  *
  * Wiring lives here (rather than in the page's inline script) so it has direct
@@ -60,6 +60,14 @@ let speed = 1;
 let loadedKey = null;   // station+product+length the current frames belong to
 
 /*
+ * Whether the map is showing the newest scan and updating itself. Playing,
+ * stepping or scrubbing shows the past and clears it; the Live button and a
+ * fresh product or station set it again. plot_to_map reads it (through
+ * window.vortexLoop) to decide whether a drawn frame may start the updater.
+ */
+let live = true;
+
+/*
  * Bumped whenever the loop is reset, stopped or retargeted. A preload in
  * flight compares its own token before doing anything, so a run the user has
  * moved on from cannot push stale frames in or keep fetching in the background.
@@ -70,6 +78,7 @@ let loadedKey = null;   // station+product+length the current frames belong to
 let generation = 0;
 
 function $play() { return $('#vortexPlayBtn'); }
+function $live() { return $('#vortexLiveBtn'); }
 function frameDelayMs() { return Math.round(750 / speed); }
 
 function setIcon(isPlaying) {
@@ -100,13 +109,18 @@ function setProgress(done, total) {
     el.textContent = (done == null) ? '' : (done + '/' + total);
 }
 
+function setLive(isLive) {
+    live = isLive;
+    $live().toggleClass('vortexIsLive', isLive).attr('aria-pressed', String(isLive));
+}
+
 function updateSlider() {
     if (frames.length <= 1) { return; }
     $('#vortexTimeline').val(Math.round((idx / (frames.length - 1)) * 100));
 }
 
 function showFrame(i) {
-    if (!frames[i]) return;
+    if (!frames[i]) return false;
     /*
      * A single frame that fails to plot should cost that frame, not the whole
      * loop. Before this, one bad sweep threw out of the timer callback and
@@ -114,8 +128,10 @@ function showFrame(i) {
      */
     try {
         frames[i].plot();
+        return true;
     } catch (e) {
         console.warn('[loop] frame ' + i + ' failed to plot:', e);
+        return false;
     }
 }
 
@@ -157,6 +173,10 @@ function reset() {
     idx = 0;
     loadedKey = null;
     setIcon(false);
+    // Both callers plot the newest scan of a new product straight after, so
+    // the map is live again — and must be before that plot, or it would not
+    // start the updater.
+    setLive(true);
     $('#vortexTimeline').val(100);
 }
 
@@ -185,10 +205,41 @@ function play() {
     // stop the live auto-updater so it doesn't fight the loop
     const a = window.vortexData;
     if (a && a.current_RadarUpdater) { try { a.current_RadarUpdater.disable(); } catch (e) {} }
+    setLive(false);
     playing = true;
     setIcon(true);
     if (timer) { clearTimeout(timer); timer = null; }
     timer = setTimeout(tick, frameDelayMs());
+}
+
+/*
+ * Back to the newest scan, and keep it updating.
+ *
+ * Stops the loop (or cancels one still loading), shows the newest frame held,
+ * and gets the updater running again. Before this, pausing a loop left the map
+ * on whatever past scan it stopped at, with nothing updating it, until a
+ * different product was picked.
+ */
+function goLive() {
+    if (loading) { setLoading(false); setProgress(null); }
+    const wasLive = live;
+    stop();                     // also abandons a load in flight
+    setLive(true);
+    if (!wasLive && frames.length) {
+        idx = frames.length - 1;
+        updateSlider();
+        // Drawing it hands the pane a fresh updater (plot_to_map), which
+        // checks the server at once and draws anything newer than the loop.
+        if (showFrame(idx)) return;
+    }
+    // Already on the newest, or it would not draw: restart the updater that is
+    // there. enable() checks straight away; disable() first, because enable()
+    // on a running updater would start a second interval.
+    const a = window.vortexData;
+    const u = a && a.current_RadarUpdater;
+    if (u) {
+        try { u.disable(); u.enable(); } catch (e) { console.warn('[loop] could not restart updates:', e); }
+    }
 }
 
 /**
@@ -310,6 +361,7 @@ function onPlayClick() {
 function step(dir) {
     if (frames.length === 0) { return false; }
     stop();
+    setLive(false);
     idx = (idx + dir + frames.length) % frames.length;
     showFrame(idx);
     updateSlider();
@@ -319,6 +371,7 @@ function step(dir) {
 function onSliderInput() {
     if (frames.length === 0) { return; }
     stop();
+    setLive(false);
     const v = parseInt($('#vortexTimeline').val(), 10) || 0;
     idx = Math.round((v / 100) * (frames.length - 1));
     showFrame(idx);
@@ -346,12 +399,17 @@ function onFramesChange() {
     chosenFrames = n;
     try { localStorage.setItem(FRAMES_KEY, String(n)); } catch (e) { /* not remembered, still applied */ }
     const resume = playing || loading;
+    // The frames held are about to be dropped. If one of them is on screen, go
+    // back to the newest scan first, rather than leave a past scan showing,
+    // un-updated, under a button that says Live.
+    if (!live) goLive();
     reset();
     if (resume) onPlayClick();
 }
 
 function init() {
     $play().off('click.vortexLoop').on('click.vortexLoop', onPlayClick);
+    $live().off('click.vortexLoop').on('click.vortexLoop', goLive);
     $('#vortexTimeline').off('input.vortexLoop').on('input.vortexLoop', onSliderInput);
     $('#vortexSpeed').off('change.vortexLoop').on('change.vortexLoop', onSpeedChange);
 
@@ -373,7 +431,8 @@ if (typeof window !== 'undefined') {
         get index() { return idx; },
         get loading() { return loading; },
         get budget() { return frameBudget(); },
+        get live() { return live; },
     };
 }
 
-module.exports = { reset, togglePlay: onPlayClick, step };
+module.exports = { reset, togglePlay: onPlayClick, step, goLive };

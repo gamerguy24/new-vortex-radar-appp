@@ -2159,6 +2159,29 @@ select optgroup {
 #vortexFrames:hover { border-color: var(--vortex-accent); }
 /* The open list is painted by the OS; without this it is white-on-white. */
 #vortexFrames option { background: #12151c; color: var(--vx-text); }
+/* Live — lit while the map shows the newest scan and keeps updating; dim while
+   the loop is showing the past, when pressing it is the way back. */
+#vortexLiveBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--vortex-subtext);
+    border: 1px solid var(--vortex-border);
+    border-radius: var(--vortex-r-md);
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    cursor: pointer;
+    outline: none;
+}
+#vortexLiveBtn:hover, #vortexLiveBtn:focus-visible { border-color: var(--vortex-accent); color: var(--vortex-text); }
+#vortexLiveBtn .vortexLiveDot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.55; }
+#vortexLiveBtn.vortexIsLive { color: var(--vortex-text); }
+#vortexLiveBtn.vortexIsLive .vortexLiveDot { background: var(--vx-live); opacity: 1; box-shadow: 0 0 0 2px rgba(209, 64, 47, 0.28); }
 /* "23/75" while a long loop downloads; empty otherwise, so it takes no room. */
 #vortexLoopProgress { font-size: 11px; color: var(--vortex-subtext); font-variant-numeric: tabular-nums; }
 #vortexLoopProgress:empty { display: none; }
@@ -2351,6 +2374,7 @@ select optgroup {
     #vortexSpeed { font-size: 10px !important; padding: 3px 4px !important; }
     /* Loop length, sized to sit beside the speed control on a phone. */
     #vortexFrames { font-size: 10px !important; padding: 3px 4px !important; }
+    #vortexLiveBtn { font-size: 10px !important; padding: 3px 5px !important; gap: 4px !important; }
 
     /* ---- row 2: the tool rail, full width and scrollable ----
        `flex: 0 0 100%` is what pushes it onto its own line. `min-width: 0` is

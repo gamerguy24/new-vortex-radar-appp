@@ -46,15 +46,53 @@ class RadarUpdater {
     }
 
     enable() {
-        this._check_for_new_file();
-        // check for a new radar scan every 15 seconds
+        // Safe to call on a running updater: a second enable() used to start a
+        // second interval alongside the first.
+        this.disable();
+        this.enabled = true;
+        // Interval BEFORE the immediate check. That check can draw a new scan,
+        // and drawing disables this updater — which only stops it if there is
+        // already an interval to clear. The other order left one polling
+        // forever whenever the answer came back before enable() finished.
         this.interval = setInterval(() => {
             this._check_for_new_file();
-        }, 15000);
+        }, 15000);   // check for a new radar scan every 15 seconds
+        this._check_for_new_file();
     }
 
     disable() {
+        this.enabled = false;
         clearInterval(this.interval);
+    }
+
+    /*
+     * Replace a pane's updater with one for the file just drawn.
+     *
+     * The new updater inherits the old one's newest-known scan date when both
+     * follow the same station and product. Without that, an updater's first
+     * check simply adopts whatever is newest on the server as "already shown".
+     * That is true when the file was just fetched AS the newest, and false when
+     * it is an older scan — a loop's last frame, loaded ten minutes ago — which
+     * then sat on screen until the next scan after that arrived. Inheriting,
+     * the first check compares against what was really last seen, and catches
+     * up at once.
+     *
+     * With start false the old updater is retired and no new one is started:
+     * a loop's past frames are not the latest scan and must not poll as if
+     * they were.
+     */
+    static hand_over(S, nexrad_factory, start) {
+        const prev = S.current_RadarUpdater;
+        if (prev != undefined) prev.disable();
+        if (!start) return;
+        const next = new RadarUpdater(nexrad_factory);
+        const pf = prev && prev.nexrad_factory;
+        if (prev && prev.latest_date && pf
+            && pf.station === nexrad_factory.station && pf.product_abbv === nexrad_factory.product_abbv) {
+            next.latest_date = prev.latest_date;
+        }
+        S.current_RadarUpdater = next;
+        next.enable();
     }
 
     _check_for_new_file() {
@@ -75,6 +113,10 @@ class RadarUpdater {
         return product;
     }
     _process_update_check(url, fetched_date, formatted_now) {
+        // An answer that lands after this updater was disabled — a check in
+        // flight when a loop started playing, say — must not draw the newest
+        // scan over whatever took over the map.
+        if (!this.enabled) return;
         if (this.latest_date == undefined) {
             this.latest_date = fetched_date;
         }
