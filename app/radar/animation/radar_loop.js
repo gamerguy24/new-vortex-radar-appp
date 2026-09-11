@@ -14,19 +14,23 @@ const loaders = require('../libnexrad/loaders_nexrad');
 /*
  * How many recent scans to hold.
  *
- * Desktop offers 10, 25, 50 or 75. Measured against live N0B: a parsed frame is
- * about 1 MB, so 75 frames is roughly 80 MB held at once — comfortable on a
- * desktop. Phones stay at five whatever the choice says: they were crashing at
- * ten, and the cause there was plotting, not memory, so a longer loop would
- * only make it worse.
+ * 10, 25, 50 or 75, on every device, starting at 75. Measured against live
+ * N0B, a parsed frame is about 1 MB, so 75 frames is roughly 80 MB held.
+ *
+ * Phones used to be held to five. That cap assumed memory was what crashed
+ * them, and at ~1 MB a frame it is not: the crash came from the frame timer
+ * piling draws up faster than a phone could finish them, and from a load that
+ * could not be cancelled — both fixed below. Drawing cost is per frame SHOWN,
+ * one at a time, not per frame held, so a longer loop does not make a phone
+ * draw any harder. What it does cost on a phone is data: about 21 MB a loop,
+ * which is why the choice is offered there rather than fixed.
  *
  * At the usual 4-6 minute scan interval, 75 frames is five to seven hours of
  * history — which is why the listing below has to be able to reach back into
  * the previous UTC day.
  */
 const FRAME_CHOICES = [10, 25, 50, 75];
-const DEFAULT_FRAMES = 10;
-const NUM_FRAMES_MOBILE = 5;
+const DEFAULT_FRAMES = 75;
 const FRAMES_KEY = 'vortexLoopFrames';
 
 /*
@@ -36,12 +40,6 @@ const FRAMES_KEY = 'vortexLoopFrames';
  */
 const CONCURRENCY = 6;
 
-// Read once: this decides a memory budget, not a layout, so it does not need to
-// react to rotation.
-const IS_MOBILE = (typeof window !== 'undefined')
-    && (window.innerWidth <= 760
-        || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
-
 function storedFrames() {
     try {
         const n = parseInt(localStorage.getItem(FRAMES_KEY), 10);
@@ -50,8 +48,8 @@ function storedFrames() {
     return DEFAULT_FRAMES;
 }
 
-let desktopFrames = storedFrames();
-function frameBudget() { return IS_MOBILE ? NUM_FRAMES_MOBILE : desktopFrames; }
+let chosenFrames = storedFrames();
+function frameBudget() { return chosenFrames; }
 
 let frames = [];        // array of L3Factory instances, ordered oldest -> newest
 let idx = 0;            // index of the currently shown frame
@@ -345,7 +343,7 @@ function onSpeedChange() {
 function onFramesChange() {
     const n = parseInt($('#vortexFrames').val(), 10);
     if (!FRAME_CHOICES.includes(n)) return;
-    desktopFrames = n;
+    chosenFrames = n;
     try { localStorage.setItem(FRAMES_KEY, String(n)); } catch (e) { /* not remembered, still applied */ }
     const resume = playing || loading;
     reset();
@@ -358,9 +356,7 @@ function init() {
     $('#vortexSpeed').off('change.vortexLoop').on('change.vortexLoop', onSpeedChange);
 
     const $frames = $('#vortexFrames');
-    $frames.val(String(desktopFrames));
-    // Phones hold five whatever is chosen, so offering 75 there would be a lie.
-    $frames.prop('hidden', IS_MOBILE);
+    $frames.val(String(chosenFrames));
     $frames.off('change.vortexLoop').on('change.vortexLoop', onFramesChange);
 }
 
