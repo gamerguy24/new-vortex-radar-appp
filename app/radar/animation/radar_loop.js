@@ -1,9 +1,9 @@
 /*
  * Radar loop / playback controller for the Vortex Radar bottom bar.
  *
- * Drives the play/pause button, the timeline slider, and the speed dropdown.
- * It preloads the most recent Level 3 scans for the currently displayed
- * station + product, then animates through them.
+ * Drives the play/pause button, the timeline slider, the speed dropdown and the
+ * loop-length dropdown. It preloads the most recent Level 3 scans for the
+ * currently displayed station + product, then animates through them.
  *
  * Wiring lives here (rather than in the page's inline script) so it has direct
  * access to the NEXRAD loaders that fetch and parse historical scans.
@@ -14,13 +14,27 @@ const loaders = require('../libnexrad/loaders_nexrad');
 /*
  * How many recent scans to hold.
  *
- * Every frame is a parsed Level 3 factory kept in memory at once, and on a
- * phone ten super-res sweeps is enough to exhaust the tab and take the browser
- * — sometimes the phone — down with it. Desktop keeps the full loop; phones get
- * a shorter one, which is also all that fits on a small timeline usefully.
+ * Desktop offers 10, 25, 50 or 75. Measured against live N0B: a parsed frame is
+ * about 1 MB, so 75 frames is roughly 80 MB held at once — comfortable on a
+ * desktop. Phones stay at five whatever the choice says: they were crashing at
+ * ten, and the cause there was plotting, not memory, so a longer loop would
+ * only make it worse.
+ *
+ * At the usual 4-6 minute scan interval, 75 frames is five to seven hours of
+ * history — which is why the listing below has to be able to reach back into
+ * the previous UTC day.
  */
-const NUM_FRAMES_DESKTOP = 10;
+const FRAME_CHOICES = [10, 25, 50, 75];
+const DEFAULT_FRAMES = 10;
 const NUM_FRAMES_MOBILE = 5;
+const FRAMES_KEY = 'vortexLoopFrames';
+
+/*
+ * Downloads run this many at a time. The files come straight from the Unidata
+ * S3 bucket, not through our server, so this is not load on the box — it is
+ * only about not queueing 75 requests in the browser at once.
+ */
+const CONCURRENCY = 6;
 
 // Read once: this decides a memory budget, not a layout, so it does not need to
 // react to rotation.
@@ -28,7 +42,16 @@ const IS_MOBILE = (typeof window !== 'undefined')
     && (window.innerWidth <= 760
         || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
 
-function frameBudget() { return IS_MOBILE ? NUM_FRAMES_MOBILE : NUM_FRAMES_DESKTOP; }
+function storedFrames() {
+    try {
+        const n = parseInt(localStorage.getItem(FRAMES_KEY), 10);
+        if (FRAME_CHOICES.includes(n)) return n;
+    } catch (e) { /* storage blocked: use the default */ }
+    return DEFAULT_FRAMES;
+}
+
+let desktopFrames = storedFrames();
+function frameBudget() { return IS_MOBILE ? NUM_FRAMES_MOBILE : desktopFrames; }
 
 let frames = [];        // array of L3Factory instances, ordered oldest -> newest
 let idx = 0;            // index of the currently shown frame
@@ -36,7 +59,7 @@ let playing = false;
 let loading = false;
 let timer = null;
 let speed = 1;
-let loadedKey = null;   // station+product the current frames belong to
+let loadedKey = null;   // station+product+length the current frames belong to
 
 /*
  * Bumped whenever the loop is reset, stopped or retargeted. A preload in
@@ -68,6 +91,17 @@ function setLoading(isLoading) {
     }
 }
 
+/*
+ * "23/75" beside the controls while a long loop downloads. Ten frames arrived
+ * quickly enough that a spinner was all the feedback needed; seventy-five do
+ * not, and a spinner with no end in sight reads as a hang.
+ */
+function setProgress(done, total) {
+    const el = document.getElementById('vortexLoopProgress');
+    if (!el) return;
+    el.textContent = (done == null) ? '' : (done + '/' + total);
+}
+
 function updateSlider() {
     if (frames.length <= 1) { return; }
     $('#vortexTimeline').val(Math.round((idx / (frames.length - 1)) * 100));
@@ -92,9 +126,11 @@ function currentTarget() {
     return { station: a.currentStation, product: a.current_loop_product };
 }
 
+// The loop length is part of the key: switching 10 -> 75 must fetch, not
+// replay the ten already held.
 function targetKey() {
     const t = currentTarget();
-    return (t.station && t.product) ? (t.station + ':' + t.product) : null;
+    return (t.station && t.product) ? (t.station + ':' + t.product + ':' + frameBudget()) : null;
 }
 
 function stop() {
@@ -110,6 +146,11 @@ function stop() {
  */
 function reset() {
     stop();
+    // A load in flight has just been abandoned by stop(). Clear its spinner
+    // too: the abandoned run returns without touching the UI, so otherwise the
+    // button kept spinning and the next tap only cancelled a load that was
+    // already dead.
+    if (loading) { setLoading(false); setProgress(null); }
     // Drop the references explicitly: these are the largest objects the app
     // holds, and on a phone the difference between releasing them now and at
     // the next collection is the difference between playing and crashing.
@@ -117,7 +158,7 @@ function reset() {
     frames = [];
     idx = 0;
     loadedKey = null;
-    if (!loading) { setIcon(false); }
+    setIcon(false);
     $('#vortexTimeline').val(100);
 }
 
@@ -155,6 +196,12 @@ function play() {
 /**
  * Fetch + parse the most recent frameBudget() scans, oldest first, then
  * call cb(ok). Cancellable: see `generation`.
+ *
+ * This used to ask for one frame at a time, and each ask re-downloaded the
+ * whole day's bucket listing to find it — two requests per frame, strictly in
+ * sequence. Fine at ten; at seventy-five that is 150 round trips back to back.
+ * Now it lists ONCE (reaching into the previous day if it has to), then
+ * downloads the scans several at a time, keeping them in time order.
  */
 function preload(cb) {
     const { station, product } = currentTarget();
@@ -168,50 +215,80 @@ function preload(cb) {
 
     const myGeneration = ++generation;
     const stale = () => myGeneration !== generation;
+    const want = frameBudget();
 
     setLoading(true);
-    const collected = [];
-    let i = frameBudget() - 1; // oldest first
 
     function finish(ok) {
         if (stale()) return;      // a newer run owns the UI now
+        setProgress(null);
         setLoading(false);
         cb(ok);
     }
 
-    function next() {
-        if (stale()) { return; }  // abandoned: stop fetching, touch nothing
-        if (i < 0) {
-            frames = collected;
-            idx = Math.max(0, frames.length - 1); // start on the newest frame
-            loadedKey = station + ':' + product;
-            updateSlider();
-            finish(frames.length > 0);
-            return;
+    (async () => {
+        let urls;
+        try {
+            urls = await loaders.list_level_3_urls(station, product, want);
+        } catch (e) {
+            console.warn('[loop] could not list scans:', e && e.message);
+            urls = [];
         }
-        loaders.get_latest_level_3_url(station, product, i, function (url) {
-            if (stale()) { return; }
-            if (!url) { i--; next(); return; }
-            loaders.return_level_3_factory_from_url(url, function (factory) {
-                if (stale()) { return; }
-                if (factory) collected.push(factory);
-                i--; next();
-            });
-        });
-    }
-    next();
+        if (stale()) return;
+
+        /*
+         * null means this product has no history to loop through (VIL and the
+         * legacy products come from tgftp's sn.last, which is only ever the
+         * newest file). The old code fetched that same file N times and played
+         * it as an "animation" of identical frames. One honest frame is better.
+         */
+        if (urls === null) {
+            const one = await new Promise((res) => loaders.get_latest_level_3_url(station, product, 0, (u) => res(u)));
+            if (stale()) return;
+            urls = one ? [one] : [];
+        }
+        if (!urls.length) { finish(false); return; }
+
+        const out = new Array(urls.length).fill(null);
+        let nextIndex = 0;
+        let done = 0;
+        setProgress(0, urls.length);
+
+        async function worker() {
+            while (!stale() && nextIndex < urls.length) {
+                const i = nextIndex++;
+                // Resolves null on failure rather than hanging: one dropped
+                // request costs one frame, not the whole load.
+                out[i] = await loaders.level_3_factory_from_url_async(urls[i]);
+                done++;
+                if (!stale()) setProgress(done, urls.length);
+            }
+        }
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCY, urls.length) }, worker));
+        if (stale()) return;
+
+        frames = out.filter(Boolean);
+        if (frames.length < urls.length) {
+            console.warn('[loop] ' + (urls.length - frames.length) + ' of ' + urls.length + ' scans failed to load and were skipped');
+        }
+        idx = Math.max(0, frames.length - 1); // start on the newest frame
+        loadedKey = station + ':' + product + ':' + want;
+        updateSlider();
+        finish(frames.length > 0);
+    })();
 }
 
 function onPlayClick() {
     /*
      * Tapping while it is still loading cancels, rather than doing nothing.
-     * Ten sequential downloads on a phone connection take long enough that an
-     * unresponsive button reads as a frozen app — and the old code gave no way
-     * to stop the fetch it had started.
+     * Sequential downloads on a phone connection took long enough that an
+     * unresponsive button read as a frozen app — and there was no way to stop
+     * the fetch once started.
      */
     if (loading) {
         generation++;
         setLoading(false);
+        setProgress(null);
         setIcon(false);
         return;
     }
@@ -260,12 +337,47 @@ function onSpeedChange() {
     }
 }
 
+/*
+ * Change the loop length. Whatever is held is for the old length, so it is
+ * dropped; if the loop was playing (or loading), it reloads at the new length
+ * and carries on, rather than making the user press play again.
+ */
+function onFramesChange() {
+    const n = parseInt($('#vortexFrames').val(), 10);
+    if (!FRAME_CHOICES.includes(n)) return;
+    desktopFrames = n;
+    try { localStorage.setItem(FRAMES_KEY, String(n)); } catch (e) { /* not remembered, still applied */ }
+    const resume = playing || loading;
+    reset();
+    if (resume) onPlayClick();
+}
+
 function init() {
     $play().off('click.vortexLoop').on('click.vortexLoop', onPlayClick);
     $('#vortexTimeline').off('input.vortexLoop').on('input.vortexLoop', onSliderInput);
     $('#vortexSpeed').off('change.vortexLoop').on('change.vortexLoop', onSpeedChange);
+
+    const $frames = $('#vortexFrames');
+    $frames.val(String(desktopFrames));
+    // Phones hold five whatever is chosen, so offering 75 there would be a lie.
+    $frames.prop('hidden', IS_MOBILE);
+    $frames.off('change.vortexLoop').on('change.vortexLoop', onFramesChange);
 }
 
 init();
+
+/*
+ * The real frame count and position, for readouts that want them. The slider
+ * is a 0-100 percentage track, so anything reading its range to count frames
+ * gets 101 whatever the loop holds.
+ */
+if (typeof window !== 'undefined') {
+    window.vortexLoop = {
+        get count() { return frames.length; },
+        get index() { return idx; },
+        get loading() { return loading; },
+        get budget() { return frameBudget(); },
+    };
+}
 
 module.exports = { reset, togglePlay: onPlayClick, step };

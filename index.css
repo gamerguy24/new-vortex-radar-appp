@@ -2144,6 +2144,25 @@ select optgroup {
 }
 #vortexSpeed:hover { border-color: var(--vortex-accent); }
 
+/* loop length — sits beside the speed and borrows its look */
+#vortexSpeedWrap { display: flex; align-items: center; gap: 6px; }
+#vortexFrames {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--vortex-text);
+    border: 1px solid var(--vortex-border);
+    border-radius: var(--vortex-r-md);
+    padding: 6px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+}
+#vortexFrames:hover { border-color: var(--vortex-accent); }
+/* The open list is painted by the OS; without this it is white-on-white. */
+#vortexFrames option { background: #12151c; color: var(--vx-text); }
+/* "23/75" while a long loop downloads; empty otherwise, so it takes no room. */
+#vortexLoopProgress { font-size: 11px; color: var(--vortex-subtext); font-variant-numeric: tabular-nums; }
+#vortexLoopProgress:empty { display: none; }
+
 /* tools cluster — inset segmented group */
 #vortexBarIcons {
     display: flex;
@@ -2330,6 +2349,8 @@ select optgroup {
 
     #vortexSpeedWrap { flex: 0 0 auto; }
     #vortexSpeed { font-size: 10px !important; padding: 3px 4px !important; }
+    /* Phones are capped at five frames, so the length choice is not offered. */
+    #vortexFrames { display: none !important; }
 
     /* ---- row 2: the tool rail, full width and scrollable ----
        `flex: 0 0 100%` is what pushes it onto its own line. `min-width: 0` is

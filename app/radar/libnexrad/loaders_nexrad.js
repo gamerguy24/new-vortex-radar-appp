@@ -252,6 +252,97 @@ function return_level_3_factory_from_info(station, product, callback) {
  * @param {String} url - See documentation for "file_to_buffer" function.
  * @param {Function} callback - A callback function. Passes a single variable, which is an instance of a L3Factory class.
  */
+/*
+ * The last `count` Level 3 scans for a station and product, oldest first, as
+ * URLs — from ONE listing per UTC day rather than one per frame.
+ *
+ * get_latest_level_3_url answers "the Nth scan back" by downloading the whole
+ * day's bucket listing and indexing into it. That is right for the latest
+ * scan, which is what the auto-updater and storm tracks ask for, and it is
+ * left alone for them. For a loop it meant a listing request per frame,
+ * strictly in sequence — and when the index ran past the start of the day it
+ * retried the previous day with the SAME index, so a loop that crossed 00Z
+ * silently skipped however many scans today already had. At 75 frames, which
+ * is five to seven hours, that happens every evening.
+ *
+ * This walks back a day at a time, concatenating, until it has enough.
+ */
+const L3_BUCKET = 'https://unidata-nexrad-level3.s3.amazonaws.com/';
+
+// Products this bucket carries. The rest (VIL, the legacy low-res products,
+// storm attributes) come from tgftp's sn.last, which is only ever the newest
+// file — there is no history there to loop through.
+function level_3_has_history(product) {
+    return !(product === 'NTV' || product === 'NMD' || product === 'NST' ||
+        product === '134il' || product.slice(0, 3) === 'p94' || product.slice(0, 3) === 'p99');
+}
+
+async function list_level_3_day(site3, product, date) {
+    const p = (n) => String(n).padStart(2, '0');
+    const prefix = site3 + '_' + product + '_' + date.getUTCFullYear() + '_' + p(date.getUTCMonth() + 1) + '_' + p(date.getUTCDate());
+    const keys = [];
+    let marker = '';
+    // The bucket returns at most 1000 keys a request. One product rarely
+    // passes 400 a day, but a listing that silently stopped at 1000 would drop
+    // the NEWEST scans — the ones a loop is for — so page until it says done.
+    for (let page = 0; page < 5; page++) {
+        const url = L3_BUCKET + '?prefix=' + prefix + (marker ? '&marker=' + encodeURIComponent(marker) : '');
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r.ok) throw new Error('listing HTTP ' + r.status);
+        const xml = await r.text();
+        const found = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1]);
+        keys.push(...found);
+        if (!/<IsTruncated>true<\/IsTruncated>/.test(xml) || !found.length) break;
+        marker = found[found.length - 1];
+    }
+    return keys;   // keys are timestamp-named, so lexical order is time order
+}
+
+/**
+ * @returns {Promise<string[]|null>} URLs oldest -> newest, or null when this
+ *   product has no history to list.
+ */
+async function list_level_3_urls(station, product, count, maxDaysBack = 3) {
+    if (!level_3_has_history(product)) return null;
+    const site3 = station.slice(1).toUpperCase();
+    const now = new Date();
+    let keys = [];
+    for (let back = 0; back <= maxDaysBack && keys.length < count; back++) {
+        const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - back));
+        try {
+            keys = (await list_level_3_day(site3, product, day)).concat(keys);
+        } catch (e) {
+            if (back === 0) throw e;   // today unreachable: say so
+            break;                     // an older day failing only shortens the loop
+        }
+    }
+    return keys.slice(-count).map((k) => L3_BUCKET + k);
+}
+
+/*
+ * Download and parse one scan, resolving null on ANY failure.
+ *
+ * file_to_buffer has no error path: a failed fetch never calls back, so a
+ * loop built on it waits forever for that frame. At ten frames that was rare
+ * enough to go unnoticed; at seventy-five one dropped request would hang the
+ * whole load. A timeout covers the request that neither succeeds nor fails.
+ */
+async function level_3_factory_from_url_async(url, timeoutMs = 20000) {
+    if (url.includes('tgftp.nws.noaa.gov')) url = ut.phpProxy + url;   // as file_to_buffer does
+    const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const t = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
+    try {
+        const r = await fetch(url, ctl ? { signal: ctl.signal } : undefined);
+        if (!r.ok) return null;
+        const buffer = Buffer.from(await r.arrayBuffer());
+        return new Level3Factory(new NEXRADLevel3File(buffer));
+    } catch (e) {
+        return null;
+    } finally {
+        if (t) clearTimeout(t);
+    }
+}
+
 function return_level_3_factory_from_url(url, callback) {
     file_to_buffer(url, (buffer) => {
         const file = new NEXRADLevel3File(buffer);
@@ -440,6 +531,8 @@ module.exports = {
     file_to_buffer,
     get_latest_level_2_url,
     get_latest_level_3_url,
+    list_level_3_urls,
+    level_3_factory_from_url_async,
 
     return_level_3_factory_from_info,
     return_level_3_factory_from_url,

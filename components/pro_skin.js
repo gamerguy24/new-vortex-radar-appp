@@ -23,7 +23,7 @@
  */
 
 import { isDesktop } from './platform.js';
-import { installRadarFurniture } from './pro_radar.js?v=proui11';
+import { installRadarFurniture } from './pro_radar.js?v=proui12';
 
 const CLASS = 'vx-pro';
 const REMEMBER = 'vortex_pro_ui';     // last known answer, to avoid a flash
@@ -232,11 +232,15 @@ function pumpReadouts() {
 
 /* "4 / 10" — how far through the loop, not what percent the slider is at. */
 function frameText() {
-  const slider = document.getElementById('vortexTimeline');
-  if (!slider) return '—';
-  const max = Number(slider.max) || 0;
-  const val = Number(slider.value) || 0;
-  return max > 0 ? (val + 1) + ' / ' + (max + 1) : '—';
+  /*
+   * The loop publishes its real frame count. This used to read the timeline
+   * slider's range — but that is a 0-100 percentage track, so every loop
+   * reported itself as "101 / 101" whatever it held.
+   */
+  const L = window.vortexLoop;
+  if (L && L.loading) return 'loading';
+  if (L && L.count > 0) return (L.index + 1) + ' / ' + L.count;
+  return '—';
 }
 
 function pumpClock() {
@@ -292,7 +296,7 @@ function loadStylesheet() {
   link.rel = 'stylesheet';
   // Appended to head last, so it lands after index.css and can override the
   // mobile geometry rules at the end of that file.
-  link.href = './components/pro_skin.css?v=proui11';
+  link.href = './components/pro_skin.css?v=proui12';
   document.head.appendChild(link);
 
   // The radar furniture's own sheet, loaded after so its re-cut of the frame
@@ -301,7 +305,7 @@ function loadStylesheet() {
   const radar = document.createElement('link');
   radar.id = 'vxpro-radar-css';
   radar.rel = 'stylesheet';
-  radar.href = './components/pro_radar.css?v=proui11';
+  radar.href = './components/pro_radar.css?v=proui12';
   document.head.appendChild(radar);
 
   // The window chrome, last: it supersedes the header and status styling in
@@ -309,7 +313,7 @@ function loadStylesheet() {
   const chrome = document.createElement('link');
   chrome.id = 'vxpro-chrome-css';
   chrome.rel = 'stylesheet';
-  chrome.href = './components/pro_chrome.css?v=proui11';
+  chrome.href = './components/pro_chrome.css?v=proui12';
   document.head.appendChild(chrome);
 }
 

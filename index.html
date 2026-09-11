@@ -191,6 +191,16 @@
                 <option value="2">2&times;</option>
                 <option value="4">4&times;</option>
             </select>
+            <!-- Loop length. Phones hold five frames whatever this says, and
+                 hide it (see radar_loop.js). Inside #vortexSpeedWrap on purpose:
+                 the Pro interface re-homes that wrapper, so this travels with it. -->
+            <select id="vortexFrames" title="How many scans the loop holds">
+                <option value="10">10 fr</option>
+                <option value="25">25 fr</option>
+                <option value="50">50 fr</option>
+                <option value="75">75 fr</option>
+            </select>
+            <span id="vortexLoopProgress" aria-live="polite"></span>
         </div>
 
         <div id="vortexBarIcons">
@@ -1614,7 +1624,7 @@
 
     <!-- The professional interface. Applies only to accounts holding a Vortex
          Pro organisation licence; everyone else is left on the consumer UI. -->
-    <script type="module" src="./components/pro_skin.js?v=proui11"></script>
+    <script type="module" src="./components/pro_skin.js?v=proui12"></script>
     <!-- Native push registration (weather alerts) — no-op in a browser -->
     <script type="module" src="./components/push_notifications.js"></script>
     <!-- Remember the signed-in account locally for the login profile chooser -->

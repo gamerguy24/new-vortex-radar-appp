@@ -22,6 +22,12 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'September 11, 2026',
+        items: [
+            { title: 'Radar loops up to 75 frames', desc: 'Next to the speed control there is now a choice of loop length: 10, 25, 50 or 75 scans. Seventy-five is five to seven hours of radar, enough to watch a line form and cross a whole region. Loops also load far faster than before — they used to fetch one scan at a time and look each one up separately, and now they look them up once and download several at a time, with a counter showing how far along it is. A loop that reaches back past midnight UTC no longer skips scans at the change of day, and one scan that fails to download costs that one frame instead of freezing the whole load. Phones stay at five frames, which is what they can hold safely.' },
+        ],
+    },
+    {
         date: 'September 9, 2026',
         items: [
             { title: 'The Graphics Studio now looks like a graphics application', desc: 'The Studio has been rebuilt around the way broadcast graphics software actually works. There is a menu bar and a ribbon of tools across the top, and the workspace is divided into named panels you can collapse or close: your Project list on the left, the Preview in the middle on a transparency checkerboard, a Program Monitor on the right, and the properties for whatever you are editing along the bottom. Your templates all appear in the project list with a thumbnail of what each one currently produces, so you pick a graphic by looking at it rather than by reading names. And there is now a proper Take: the Preview is what you are building, the Program Monitor is what you have sent out, and editing after a take no longer changes what you already put on air.' },
