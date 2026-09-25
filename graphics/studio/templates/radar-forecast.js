@@ -111,7 +111,7 @@ export default {
       showCta: true,
       ctaText: 'DOWNLOAD OUR FREE WEATHER APP',
       ctaSub: 'LINK BELOW',
-      ctaIcon: '/logo.png?v=echo1',
+      ctaIcon: '/logo.png?v=echo2',
     };
   },
 

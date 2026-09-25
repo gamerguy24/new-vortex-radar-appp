@@ -17,7 +17,7 @@ export default {
   defaultConfig() {
     return {
       style: 'futurecast',
-      logoImg: '/logo.png?v=echo1',          // the app's Echo Radar logo (transparent PNG)
+      logoImg: '/logo.png?v=echo2',          // the app's Echo Radar logo (black backdrop, as supplied)
       logoState: 'LA',
       logoLine1: 'SW LOUISIANA',
       logoLine2: 'WEATHER',
@@ -244,7 +244,7 @@ function futurecast(config, geo, ctrl) {
       const barY = Math.round(H * 0.04) + Math.round(barH * 0.18);
       const accent = config.accent || '#e7b53b';
       // default to the app's Echo Radar logo; explicit '' means "use text wordmark"
-      const logoSrc = config.logoImg == null ? '/logo.png?v=echo1' : config.logoImg;
+      const logoSrc = config.logoImg == null ? '/logo.png?v=echo2' : config.logoImg;
       const logo = getLogo(logoSrc, ctrl);
 
       // ---- main title bar: dark gradient fading to the right ----

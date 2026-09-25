@@ -4,7 +4,7 @@
   "description": "A clean, powerful weather radar toolkit by Twistcaster Live Media LLC.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b1220",
+  "background_color": "#000000",
   "theme_color": "#27beff",
   "icons": [
     { "src": "/icons/icons/64x64.png", "sizes": "64x64", "type": "image/png" },
