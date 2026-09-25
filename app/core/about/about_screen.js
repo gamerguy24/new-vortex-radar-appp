@@ -33,7 +33,7 @@ ${heading('SpotterNetwork Integration')}
 ${heading('Contact')}
 <p style="margin: 0; font-size: 14px;">For media inquiries, collaboration opportunities, or SpotterNetwork coordination, reach out via your preferred contact method.</p>
 
-<p style="margin: 18px 0 0; font-size: 12px; color: ${muted};">© 2026 EWV extremeweathervideos LLC. All rights reserved.</p>
+<p style="margin: 18px 0 0; font-size: 12px; color: ${muted};">© 2026 Echo Radar WX. All rights reserved.</p>
 </div>`;
 
     display_vortex_dialog({
