@@ -13,7 +13,7 @@ $('#armrAboutBtn').click(function() {
 
     const html_content =
 `<div style="text-align: left; padding: 4px 20px; color: ${text};">
-<p style="margin: 0 0 4px; color: ${muted};">Meet the storm chasers, meteorologists, and media professionals behind Twistcaster Live Media.</p>
+<p style="margin: 0 0 4px; color: ${muted};">Meet the storm chasers, meteorologists, and media professionals behind EWV extremeweathervideos LLC.</p>
 
 ${heading('The Team')}
 ${person('David Wallis', 'Cumming, GA')}
@@ -33,7 +33,7 @@ ${heading('SpotterNetwork Integration')}
 ${heading('Contact')}
 <p style="margin: 0; font-size: 14px;">For media inquiries, collaboration opportunities, or SpotterNetwork coordination, reach out via your preferred contact method.</p>
 
-<p style="margin: 18px 0 0; font-size: 12px; color: ${muted};">© 2026 Twistcaster Live Media LLC. All rights reserved.</p>
+<p style="margin: 18px 0 0; font-size: 12px; color: ${muted};">© 2026 EWV extremeweathervideos LLC. All rights reserved.</p>
 </div>`;
 
     display_vortex_dialog({
