@@ -548,7 +548,7 @@ function buildLayout(info, mapImg, locatorImg, pop, homes, size, extra) {
                 ${state ? `<div class="wg-banner-sub">${esc(state)}</div>` : ''}
             </div>
             <div class="wg-brand">
-                <img src="/logo.png" class="wg-logo" alt="" onerror="this.style.display='none'"/>
+                <img src="/logo.png?v=echo1" class="wg-logo" alt="" onerror="this.style.display='none'"/>
                 <div class="wg-brand-col">
                     <div class="wg-brand-name">ECHO RADAR</div>
                     <div class="wg-brand-tag">LIVE WARNING</div>
