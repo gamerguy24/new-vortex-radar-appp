@@ -25,6 +25,7 @@ const CHANGELOG = [
         date: 'September 25, 2026',
         items: [
             { title: 'Vortex Radar is now Echo Radar', desc: 'Same app, same team, new name and a new look. You may need to refresh once for the new name and icon to appear, and if you added the app to your home screen you may want to remove and re-add it to pick up the new icon. Nothing about your account, your saved locations or your subscription changes.' },
+            { title: 'Our Team is up to date', desc: 'The team list under Our Team now shows the current roster, with where each person is based.' },
         ],
     },
     {
