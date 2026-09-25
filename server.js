@@ -42,10 +42,10 @@ const STREAM_FILE = path.join(DATA_DIR, 'stream_configs.json');
 const TICKETS_FILE = path.join(DATA_DIR, 'tickets.json');
 
 const PORT = process.env.PORT || 3333;
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@echoradarwx.com';
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'davidwallis17@gmail.com';
 // A protected super admin that is always present, always an admin, and cannot
 // be locked, demoted, or deleted by other admins.
-const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@twistcasterlivemedia.com').trim().toLowerCase();
+const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'davidwallis17@gmail.com').trim().toLowerCase();
 const SESSION_TTL_MS = (parseInt(process.env.SESSION_TTL_DAYS, 10) || 30) * 24 * 60 * 60 * 1000;
 const COOKIE = 'vr_session';
 
