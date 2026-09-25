@@ -1,6 +1,6 @@
 {
-  "name": "Vortex Radar",
-  "short_name": "Vortex Radar",
+  "name": "Echo Radar",
+  "short_name": "Echo Radar",
   "description": "A clean, powerful weather radar toolkit by Twistcaster Live Media LLC.",
   "start_url": "/",
   "display": "standalone",

@@ -1,6 +1,6 @@
 /*
  * backend/pro/index.js
- * Server side of VORTEX PRO — the licensed workspace at /pro.
+ * Server side of ECHO PRO — the licensed workspace at /pro.
  *
  * WHO THIS IS FOR
  * Television and radio newsrooms, school districts, and emergency management
@@ -92,7 +92,7 @@ function requireOrg(req, res, next) {
     if (req.user.isLocked) return res.status(403).json({ error: 'Account locked' });
     if (hasOrg(req.user)) return next();
     return res.status(403).json({
-        error: 'Vortex Pro is licensed to organisations. Contact us to have your account enabled.',
+        error: 'Echo Pro is licensed to organisations. Contact us to have your account enabled.',
         proRequired: true,
     });
 }
@@ -111,7 +111,7 @@ function requireOrgPage(req, res, next) {
     }
     if (hasOrg(req.user)) return next();
     if (wantsHtml) return res.redirect('/?pro=required');
-    return res.status(403).json({ error: 'Vortex Pro licence required', proRequired: true });
+    return res.status(403).json({ error: 'Echo Pro licence required', proRequired: true });
 }
 
 /* ── coverage area ──────────────────────────────────────────────────────────

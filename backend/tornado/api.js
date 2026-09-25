@@ -108,7 +108,7 @@ function envelope(extra) {
     return {
         generatedAt: new Date().toISOString(),
         experimental: true,
-        product: 'VORTEX RADAR EXPERIMENTAL — TORNADO POTENTIAL',
+        product: 'ECHO RADAR EXPERIMENTAL — TORNADO POTENTIAL',
         disclaimer: DISCLAIMER,
         ...extra,
     };

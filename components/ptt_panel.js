@@ -1,6 +1,6 @@
 /*
  * components/ptt_panel.js
- * VORTEX PTT — the radio panel, mounted inside Vortex Radar.
+ * ECHO PTT — the radio panel, mounted inside Echo Radar.
  *
  * Drop <div id="vortex-ptt"></div> anywhere (or load this module on a page that
  * has one) and the panel mounts itself. On the radar page it floats over the
@@ -243,7 +243,7 @@ class VortexPTT {
     const btn = document.createElement('div');
     btn.id = 'vortexPttBtn';
     btn.className = 'mapFooterMenuItem';
-    btn.title = 'Vortex PTT — radio';
+    btn.title = 'Echo PTT — radio';
     btn.innerHTML = '<span id="vortexPttIcon" class="fa fa-microphone-lines icon-grey menu_item_not_selected"></span>';
     btn.addEventListener('click', () => {
       const open = !this.isOpen();
@@ -627,7 +627,7 @@ class VortexPTT {
      */
     if (this.isNativeApp() && /NotAllowedError|PermissionDeniedError|NotFoundError|SecurityError/.test(e && e.name)) {
       this.micError(
-        'The app has not been granted microphone access. Check Android Settings → Apps → Vortex Radar → Permissions → Microphone. '
+        'The app has not been granted microphone access. Check Android Settings → Apps → Echo Radar → Permissions → Microphone. '
         + 'If Microphone is not listed there at all, the APK needs the RECORD_AUDIO permission added and rebuilt — voice will keep working on the website meanwhile.',
         'native:' + (e && e.name),
       );

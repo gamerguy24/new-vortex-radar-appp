@@ -2,10 +2,10 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Vortex Radar</title>
+    <title>Echo Radar</title>
     <meta name="description" content="A clean, simple, but powerful weather toolkit for the web browser. Includes NEXRAD parsing and plotting, doppler velocity dealiasing, weather alerts, real time lightning data, METAR station data, and much more.">
-    <link rel="icon" href="logo.png">
-    <link rel="apple-touch-icon" href="logo.png">
+    <link rel="icon" href="/icons/icons/64x64.png">
+    <link rel="apple-touch-icon" href="/icons/icons/256x256.png">
     <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap" rel="stylesheet">
@@ -252,7 +252,7 @@
             <span id="vortexSplitIcon" class="fa fa-table-columns icon-grey menu_item_not_selected"></span>
         </div>
         <span class="vortexIconSpacer noselect"></span>
-        <div id="vortexGraphicsBtn" class="mapFooterMenuItem" title="Vortex Graphics">
+        <div id="vortexGraphicsBtn" class="mapFooterMenuItem" title="Echo Graphics">
             <span id="vortexGraphicsIcon" class="fa fa-palette icon-grey menu_item_not_selected"></span>
         </div>
         <span class="vortexIconSpacer noselect"></span>
@@ -301,7 +301,7 @@
             </span>
         </div>
         <div id="headerChevron"><i class="fa fa-chevron-right"></i></div>
-        <div class="vrHdrBrand">vortex radar</div>
+        <div class="vrHdrBrand">echo radar</div>
     </div>
 
     <!--
@@ -348,7 +348,7 @@
 
     <div id="attributionDiv" class="noselect">
         <b id="attributionDivContent">
-            <span><b style="font-weight: 900; z-index: 1; position: relative; border-bottom: none;" class="attributionDivText">Vortex Radar</b><br><span style="font-weight: normal" class="attributionDivText">vortexradar.app</span></span>
+            <span><b style="font-weight: 900; z-index: 1; position: relative; border-bottom: none;" class="attributionDivText">Echo Radar</b><br><span style="font-weight: normal" class="attributionDivText">echoradarwx.com</span></span>
         </b>
     </div>
 
@@ -707,7 +707,7 @@
 
                     <div class="armrHeader armrHeaderWide">MAP STYLES</div>
                     <div class="vortexRadarMenuRow armrTop armrWide" id="armrDarkMapBtn">
-                        Vortex
+                        Echo Radar
                         <div class="form-check form-switch">
                             <input class="map_style_button form-check-input toggleSwitchContainter tscWide" onfocus="this.blur();" type="checkbox" role="switch" id="armrDarkMapBtnSwitchElem" checked>
                         </div>
@@ -791,10 +791,10 @@
                         Dealiasing is the action of correcting issues in velocity sweeps.
                         When you load a Level 2 file and view its velocity data, a lot of the time,
                         the velocity values will seem wrong. There is a process to correct this, and it's called dealiasing.
-                        Vortex Radar implements two dealiasing algorithms.
+                        Echo Radar implements two dealiasing algorithms.
                         <br><br>
                         The <b>Region Based</b> algorithm was originally developed for use in the python package <a href="https://github.com/ARM-DOE/pyart" style="color: var(--vx-steel);">pyart</a>.
-                        I simply rewrote it in JavaScript, for use in Vortex Radar. This algorithm is very robust, and is great at dealing with gaps in data, e.g. hurricanes.
+                        I simply rewrote it in JavaScript, for use in Echo Radar. This algorithm is very robust, and is great at dealing with gaps in data, e.g. hurricanes.
                         <br><br>
                         The <b>Tornadic</b> algorithm is much better suited for dealing with velocity scans with tornado signatures, or tight rotation in general.
                         The region based algorithm struggles with these cases, so if you find an issue with that algorithm, you should try this one.
@@ -1453,7 +1453,7 @@
     </script>
 
     <!--
-        VORTEX RADAR UI WIRING
+        ECHO RADAR UI WIRING
         Keeps the redesigned floating panels in sync with the existing app state.
         Pure DOM glue (no bundle changes) so it works without a rebuild.
     -->
@@ -1585,15 +1585,15 @@
     })();
     </script>
 
-    <!-- Vortex Radar account / admin glue (ES module, not bundled) -->
+    <!-- Echo Radar account / admin glue (ES module, not bundled) -->
     <script type="module" src="./components/vortex_account.js?v=streamacc2"></script>
     <!-- In-app support tickets (ES module, not bundled) -->
     <script type="module" src="./components/support.js"></script>
     <!-- Native (Capacitor) compatibility shims — no-op in a browser -->
     <script type="module" src="./components/native_adapt.js"></script>
-    <!-- Vortex Radar feature layers (cams, sponsors, reports, spotters, MRMS) -->
+    <!-- Echo Radar feature layers (cams, sponsors, reports, spotters, MRMS) -->
     <script type="module" src="./components/vortex_layers.js?v=mrms9"></script>
-    <!-- Vortex PTT: the radio panel floats over the map. It mounts itself into
+    <!-- Echo PTT: the radio panel floats over the map. It mounts itself into
          the div below, so the radar page needs no other wiring. -->
     <div id="vortex-ptt" data-start-collapsed></div>
     <script type="module" src="./components/ptt_panel.js?v=ptt12"></script>
@@ -1610,7 +1610,7 @@
     <script type="module" src="./components/featured_streams.js?v=feat2"></script>
     <!-- 3D storm view launcher -->
     <script type="module" src="./components/storm3d_launch.js?v=plat1"></script>
-    <!-- Vortex Graphics launcher (Studio / Dashboard / Overlay) -->
+    <!-- Echo Graphics launcher (Studio / Dashboard / Overlay) -->
     <script type="module" src="./components/graphics_launch.js?v=plat1"></script>
     <!-- Go-to-my-location button -->
     <script type="module" src="./components/geolocate.js"></script>
@@ -1633,8 +1633,8 @@
     <!-- Pro feature gates (lock badges + upgrade prompts) -->
     <script type="module" src="./components/pro_gates.js?v=tier1"></script>
 
-    <!-- The professional interface. Applies only to accounts holding a Vortex
-         Pro organisation licence; everyone else is left on the consumer UI. -->
+    <!-- The professional interface. Applies only to accounts holding an Echo Pro
+         organisation licence; everyone else is left on the consumer UI. -->
     <script type="module" src="./components/pro_skin.js?v=proui13"></script>
     <!-- Native push registration (weather alerts) — no-op in a browser -->
     <script type="module" src="./components/push_notifications.js"></script>

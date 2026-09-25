@@ -1,6 +1,6 @@
 /*
  * components/pro_skin.js
- * The professional interface, for accounts holding a Vortex Pro organisation
+ * The professional interface, for accounts holding an Echo Pro organisation
  * licence. Everyone else gets the consumer radar exactly as before.
  *
  * THE IDEA
@@ -109,7 +109,7 @@ function buildTop() {
   const name = el('div');
   name.id = 'vxpro-titletext';
   name.innerHTML = '<b id="vxpro-tsite"></b><span id="vxpro-tloc"></span>' +
-    '<span class="vxpro-tapp">Vortex Pro</span>';
+    '<span class="vxpro-tapp">Echo Pro</span>';
   top.appendChild(name);
 
   const right = el('div');
@@ -211,7 +211,7 @@ function pumpReadouts() {
     return t;
   };
 
-  // Title bar: "KFFC  Atlanta   Vortex Pro", the way a console names its window.
+  // Title bar: "KFFC  Atlanta   Echo Pro", the way a console names its window.
   const site = text('radarStation');
   const loc = text('radarLocation');
   const ts = document.getElementById('vxpro-tsite');

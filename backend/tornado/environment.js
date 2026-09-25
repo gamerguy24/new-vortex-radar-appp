@@ -1,6 +1,6 @@
 /*
  * backend/tornado/environment.js
- * Near-storm environment — from Vortex Radar's OWN weather data.
+ * Near-storm environment — from Echo Radar's OWN weather data.
  *
  * This deliberately uses the same NOAA model GRIB2 pipeline that already powers
  * the app's Models browser and Skew-T soundings (model_data.js → HRRR/NAM/GFS

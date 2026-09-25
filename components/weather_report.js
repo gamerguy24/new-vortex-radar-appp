@@ -292,7 +292,7 @@ export default function openWeatherReport(mapInstance) {
 
     const content = `
         <div class="wr-form">
-            <p class="wr-intro">Log what you're seeing in the field. Your report is shared live on the map for every Vortex spotter.</p>
+            <p class="wr-intro">Log what you're seeing in the field. Your report is shared live on the map for every Echo Radar spotter.</p>
 
             <div class="wr-section-label">Hazard type</div>
             <div class="wr-chip-grid" id="wr-chip-grid">${chips}</div>

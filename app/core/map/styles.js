@@ -40,7 +40,7 @@ function change_map_style(style) {
     }
 
     function set_dark() {
-        // Use the Vortex Radar deep-navy theme rather than the style's original
+        // Use the Echo Radar deep-navy theme rather than the style's original
         // (RadarScope-like) gray defaults.
         require('./vortex_basemap').apply_vortex_basemap();
         // Satellite/style swaps drop user-added layers; restore counties if on.

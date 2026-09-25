@@ -32,7 +32,7 @@ function toast(msg, kind) {
 const TIER_INFO = {
   tier1: { name: 'Tier One', features: ['Live Lightning', 'Surface Fronts', 'Tide Stations', 'Buoys', 'BuoyCAMs', 'Power Outages'] },
   tier2: { name: 'Tier Two', features: ['Everything in Tier One', 'Manual Storm Track', 'Split Screen'] },
-  tier3: { name: 'Tier Three', features: ['Everything in Tier Two', 'Warning Graphic', 'Models & Forecast', 'My Locations', 'Vortex Graphics'] },
+  tier3: { name: 'Tier Three', features: ['Everything in Tier Two', 'Warning Graphic', 'Models & Forecast', 'My Locations', 'Echo Graphics'] },
 };
 
 // Shared client billing state for the Pro gates (components/pro_gates.js).

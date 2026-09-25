@@ -1,5 +1,5 @@
 {
-  "_comment": "Vortex Radar — Tornado Potential configuration. Every value here is hot-reloaded when the file changes; no restart needed. See docs/TORNADO_POTENTIAL.md for what each option does.",
+  "_comment": "Echo Radar — Tornado Potential configuration. Every value here is hot-reloaded when the file changes; no restart needed. See docs/TORNADO_POTENTIAL.md for what each option does.",
   "enabled": false,
   "sites": [],
   "autoSelectSites": {

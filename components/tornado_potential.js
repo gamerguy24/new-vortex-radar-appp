@@ -7,7 +7,7 @@
  *
  * TWO RULES THIS FILE MUST KEEP:
  *
- * 1. It never impersonates a warning. Everything is labelled VORTEX RADAR
+ * 1. It never impersonates a warning. Everything is labelled ECHO RADAR
  *    EXPERIMENTAL, the disclaimer is present on every surface that shows a
  *    score, and where an official NWS Tornado Warning exists it is shown ABOVE
  *    the experimental number and visually distinct from it. The experimental
@@ -31,7 +31,7 @@ let lastData = null;
 let selectedStormId = null;
 let lastAlertCheck = new Date().toISOString();
 
-const DISCLAIMER = 'Vortex Radar Tornado Potential is an experimental radar-derived '
+const DISCLAIMER = 'Echo Radar Tornado Potential is an experimental radar-derived '
     + 'analysis tool. It is not an official warning system and does not replace alerts '
     + 'or warnings issued by the National Weather Service.';
 
@@ -350,7 +350,7 @@ function togglePanel() {
         <button class="vtp-gear" id="vtpPrefsBtn" title="Alert settings">Alerts</button>
         <button class="vtp-x" aria-label="Close">×</button>
       </div>
-      <div class="vtp-exp">Vortex Radar Experimental</div>
+      <div class="vtp-exp">Echo Radar Experimental</div>
       <div class="vtp-body"><div class="vtp-none">Loading…</div></div>
       <div class="vtp-foot">${esc(DISCLAIMER)}</div>`;
     document.body.appendChild(p);
@@ -370,7 +370,7 @@ async function openDetail(stormId) {
     const d = document.createElement('div');
     d.id = 'vtpDetail';
     d.innerHTML = `<div class="vtp-head"><b>${esc(stormId)}</b><button class="vtp-x" aria-label="Close">×</button></div>
-      <div class="vtp-exp">Vortex Radar Experimental — Radar-Derived Rotation</div>
+      <div class="vtp-exp">Echo Radar Experimental — Radar-Derived Rotation</div>
       <div class="vtp-body"><div class="vtp-none">Loading analysis…</div></div>`;
     document.body.appendChild(d);
     d.querySelector('.vtp-x').onclick = () => { d.remove(); selectedStormId = null; };
@@ -473,7 +473,7 @@ function showAlert(a, p) {
         el.className = 'vtp-toast';
         el.style.borderLeftColor = catColor(a.category);
         el.innerHTML = `
-          <div class="h">Vortex Radar Experimental${a.officialTornadoWarning ? ' · NWS Tornado Warning in effect' : ''}</div>
+          <div class="h">Echo Radar Experimental${a.officialTornadoWarning ? ' · NWS Tornado Warning in effect' : ''}</div>
           <div class="t">${esc(a.title)}</div>
           <div class="b">
             Storm ${esc(a.stormId)} · ${esc(a.site)}<br>
@@ -490,7 +490,7 @@ function showAlert(a, p) {
 
     if (p.browserNotifications && 'Notification' in window && Notification.permission === 'granted') {
         try {
-            new Notification('Vortex Radar — Tornado Potential (experimental)', {
+            new Notification('Echo Radar — Tornado Potential (experimental)', {
                 body: `${a.stormId}: score ${a.currentScore} (${a.category}). Rotation ${a.rotation}, trend ${a.trend}.\n`
                     + 'Experimental radar analysis — not an official NWS warning.',
                 tag: a.stormId,
@@ -595,7 +595,7 @@ function liveAlert(r) {
         el.className = 'vtp-toast';
         el.style.borderLeftColor = catColor(r.category);
         el.innerHTML = `
-          <div class="h">Vortex Radar Experimental — radar-derived rotation</div>
+          <div class="h">Echo Radar Experimental — radar-derived rotation</div>
           <div class="t">Possible rotation in view</div>
           <div class="b">
             <b style="color:${catColor(r.category)}">${r.score}/100 ${esc(r.category)}</b>
@@ -613,7 +613,7 @@ function liveAlert(r) {
 
     if (p.browserNotifications && 'Notification' in window && Notification.permission === 'granted') {
         try {
-            new Notification('Vortex Radar — possible rotation (experimental)', {
+            new Notification('Echo Radar — possible rotation (experimental)', {
                 body: `${r.site}: potential ${r.score}/100 (${r.category}).\n`
                     + 'Experimental radar analysis — not an official NWS warning.',
                 tag: 'vtp-live-' + r.id,
@@ -633,7 +633,7 @@ function showLive(r) {
     const d = document.createElement('div');
     d.id = 'vtpDetail';
     d.innerHTML = `<div class="vtp-head"><b>Radar-derived rotation</b><button class="vtp-x" aria-label="Close">×</button></div>
-      <div class="vtp-exp">Vortex Radar Experimental — this scan only</div>
+      <div class="vtp-exp">Echo Radar Experimental — this scan only</div>
       <div class="vtp-body">
         <div class="vtp-big" style="color:${catColor(r.category)}">${r.score}<span>${esc(r.category)} · CONFIDENCE ${esc(r.scoreConfidence)}</span></div>
         <div class="vtp-bar"><i style="width:${r.score}%;background:${catColor(r.category)}"></i></div>

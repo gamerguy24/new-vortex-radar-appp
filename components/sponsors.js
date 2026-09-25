@@ -3,7 +3,7 @@ import Dialog from "../js/ui/dialog.js";
 export default function openSponsors() {
     const content = `
         <p style="margin-bottom: 20px; color: var(--text-muted, var(--vx-text-2));">
-            Vortex Radar is made possible by the generous support of our sponsors.
+            Echo Radar is made possible by the generous support of our sponsors.
             Thank you for keeping this platform free for everyone.
         </p>
 
@@ -66,7 +66,7 @@ export default function openSponsors() {
                 <div>
                     <div style="font-weight: 700; font-size: 15px; margin-bottom: 4px;">By His Grace</div>
                     <div style="font-size: 13px; color: var(--text-muted, var(--vx-text-2)); margin-bottom: 8px;">
-                        Proudly supporting Vortex Radar and the mission to keep communities safe through better weather awareness.
+                        Proudly supporting Echo Radar and the mission to keep communities safe through better weather awareness.
                     </div>
                 </div>
             </div>

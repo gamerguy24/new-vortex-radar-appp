@@ -4,7 +4,7 @@
  * Positions auto-refresh every 2 minutes.
  *
  * Spotter Network blocks direct browser requests (CORS), so these calls go
- * through the Vortex Radar server proxy (/api/spotters/*), which forwards to
+ * through the Echo Radar server proxy (/api/spotters/*), which forwards to
  * spotternetwork.org server-side.
  */
 

@@ -22,6 +22,12 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'September 25, 2026',
+        items: [
+            { title: 'Vortex Radar is now Echo Radar', desc: 'Same app, same team, new name and a new look. You may need to refresh once for the new name and icon to appear, and if you added the app to your home screen you may want to remove and re-add it to pick up the new icon. Nothing about your account, your saved locations or your subscription changes.' },
+        ],
+    },
+    {
         date: 'September 11, 2026',
         items: [
             { title: 'Highway shields on the map', desc: 'Interstate, US highway and state route shields now show on the radar map, drawn on top of the radar, so you can tell at a glance which road a storm is crossing and where you are. Interstates appear from far out; US highways, then state routes, fill in as you zoom closer. They are on for everyone; if you would rather not see them, switch off Highway Shields in the settings menu, and the app remembers your choice.' },
@@ -41,8 +47,8 @@ const CHANGELOG = [
         date: 'September 8, 2026',
         items: [
             { title: 'The professional radar reads like a radar console', desc: 'The licensed interface now carries the instruments an analyst expects. Products sit across the top as the codes they are known by — BR, BV, SRV, CC, ZDR, KDP, HCA, VIL — and one click switches to them, with the loaded one filled in so you can see at a glance what you are looking at. The colour scale stands on its end against the left edge of the image, where you can read a value off it in the same glance as the storm. The site, VCP, product and elevation are written into the corners of the image itself, so you never have to look away from the weather to check which tilt you are on. Range rings mark 50, 100, 150 and 200 nautical miles from the antenna. And the status bar answers the question a radar operator actually asks: the azimuth and range of whatever is under the cursor, the height of the beam at that range, the exact latitude and longitude, and the scale of the image in metres per pixel.' },
-            { title: 'A professional interface for licensed operators', desc: 'Accounts with a Vortex Pro licence now get a different radar interface: a docked workstation in the style of the desktop analysis tools, rather than rounded controls floating over the map. A tool dock down the left lists every tool by name instead of as an unlabelled icon, the site, product, elevation and VCP sit in a readout strip across the top, and a status bar along the bottom carries the playback controls, the frame counter, the scan time and a live cursor position. It is the same radar underneath — the same controls, moved. Everyone without a licence keeps the interface they already have, unchanged.' },
-            { title: 'Vortex Pro — a workspace built for newsrooms', desc: 'A new professional edition at /pro, for television and radio stations, school districts and emergency management agencies. It is a different screen from the radar, not a reskin of it: you set the counties your operation covers, and warnings for those counties are promoted to the top of the board with the population affected, how long each has left, and whether a tornado warning is radar indicated or confirmed on the ground. It writes your on-air crawl copy for you, groups warnings the way you would read them out, and puts a full-screen banner up the moment a tornado warning is issued inside your coverage area. An On Air button strips the interface away to a clean full-bleed map for a camera shot. Access is granted per organisation by an administrator — it is not something a consumer account can buy into.' },
+            { title: 'A professional interface for licensed operators', desc: 'Accounts with an Echo Pro licence now get a different radar interface: a docked workstation in the style of the desktop analysis tools, rather than rounded controls floating over the map. A tool dock down the left lists every tool by name instead of as an unlabelled icon, the site, product, elevation and VCP sit in a readout strip across the top, and a status bar along the bottom carries the playback controls, the frame counter, the scan time and a live cursor position. It is the same radar underneath — the same controls, moved. Everyone without a licence keeps the interface they already have, unchanged.' },
+            { title: 'Echo Pro — a workspace built for newsrooms', desc: 'A new professional edition at /pro, for television and radio stations, school districts and emergency management agencies. It is a different screen from the radar, not a reskin of it: you set the counties your operation covers, and warnings for those counties are promoted to the top of the board with the population affected, how long each has left, and whether a tornado warning is radar indicated or confirmed on the ground. It writes your on-air crawl copy for you, groups warnings the way you would read them out, and puts a full-screen banner up the moment a tornado warning is issued inside your coverage area. An On Air button strips the interface away to a clean full-bleed map for a camera shot. Access is granted per organisation by an administrator — it is not something a consumer account can buy into.' },
             { title: 'Crawl times now read in the warning\'s own time zone', desc: 'Expiry times are written in the time zone of the office that issued the warning, taken from the warning itself, rather than in whatever zone the computer happens to be set to. A producer covering a market from out of state was previously being shown a time that was an hour or more wrong, with a confident time zone label attached to it, in the box designed to be copied straight onto air.' },
         ],
     },
@@ -83,7 +89,7 @@ const CHANGELOG = [
             { title: 'Cameras & More is one section', desc: 'The menu’s Cameras and More groups are now a single “Cameras & More” section — Live Cameras, Live Cams, BuoyCAMs, Earthquakes, NOAA Weather Radio and Power Outages together, one heading to open instead of two.' },
             { title: 'Drawings show on both panes', desc: 'Mark up a storm in split screen and the same mark appears on the other pane, over the same ground. Draw on either side — it copies to the other. Turn split screen off and the copy goes away, leaving what you actually drew.' },
             { title: 'Split screen works like you’d expect', desc: 'Click a pane to select it, then pick from the product menu you already use — that pane changes, the other one stays put. So you can hold reflectivity on the left and flip the right through velocity, correlation coefficient and back without losing your place. The separate right-pane control box is gone; there is one set of controls now, and a highlight around the edge of a pane shows which map you are driving.' },
-            { title: 'Both panes wear the Vortex map', desc: 'The second pane now uses the same basemap as the first, instead of opening as a stock dark Mapbox map beside it. Both panes share whichever radar site you pick on the left, so the comparison is always the same storm.' },
+            { title: 'Both panes wear the Echo Radar map', desc: 'The second pane now uses the same basemap as the first, instead of opening as a stock dark Mapbox map beside it. Both panes share whichever radar site you pick on the left, so the comparison is always the same storm.' },
         ],
     },
     {
@@ -147,7 +153,7 @@ $('#armrChangelogBtn').click(function () {
 
     const html_content =
 `<div style="text-align: left; padding: 4px 20px; color: ${text};">
-<p style="margin: 0 0 6px; color: ${muted};">The latest additions and improvements to Vortex Radar.</p>
+<p style="margin: 0 0 6px; color: ${muted};">The latest additions and improvements to Echo Radar.</p>
 ${releases}
 <p style="margin: 14px 0 0; font-size: 12px; color: ${muted};">© 2026 Twistcaster Live Media LLC.</p>
 </div>`;

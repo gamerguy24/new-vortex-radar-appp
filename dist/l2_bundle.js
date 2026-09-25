@@ -44,7 +44,7 @@ const range_folded = 'rgb(139, 0, 218)';
 const range_folded_val = 999;
 
 // Default base reflectivity — "Generated Color Table with Tools by Garrett Helms
-// for WxTools.org" (installed as the Vortex Radar default 2026-08-21).
+// for WxTools.org" (installed as the Echo Radar default 2026-08-21).
 const reflectivity =
 `Product: BR
 Units: dBZ

@@ -17,7 +17,7 @@ export default {
   defaultConfig() {
     return {
       style: 'futurecast',
-      logoImg: '/logo.png',          // the app's Vortex Radar logo (transparent PNG)
+      logoImg: '/logo.png',          // the app's Echo Radar logo (transparent PNG)
       logoState: 'LA',
       logoLine1: 'SW LOUISIANA',
       logoLine2: 'WEATHER',
@@ -243,7 +243,7 @@ function futurecast(config, geo, ctrl) {
       // barY down by that much to keep the overhang on-screen below a small margin.
       const barY = Math.round(H * 0.04) + Math.round(barH * 0.18);
       const accent = config.accent || '#e7b53b';
-      // default to the app's Vortex Radar logo; explicit '' means "use text wordmark"
+      // default to the app's Echo Radar logo; explicit '' means "use text wordmark"
       const logoSrc = config.logoImg == null ? '/logo.png' : config.logoImg;
       const logo = getLogo(logoSrc, ctrl);
 

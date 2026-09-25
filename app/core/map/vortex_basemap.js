@@ -1,7 +1,7 @@
 /*
- * Vortex Radar basemap theme.
+ * Echo Radar basemap theme.
  *
- * Re-tints the Mapbox basemap to Vortex Radar's own palette: a medium-light
+ * Re-tints the Mapbox basemap to Echo Radar's own palette: a medium-light
  * neutral grey landmass with a true blue ocean, dark boundaries, and dark
  * labels on a light halo. This is what stops the map reading as the stock
  * Mapbox dark style that every other radar app (this one's ancestor included)

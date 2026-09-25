@@ -1,4 +1,4 @@
-// Vortex Graphics — Studio controller. Loads geo data, manages the active
+// Echo Graphics — Studio controller. Loads geo data, manages the active
 // template + its config, renders to the broadcast canvas, builds the editor
 // panel, handles click-to-paint editing, and exports PNG frames.
 import { Scene } from './engine/scene.js';
@@ -636,12 +636,12 @@ function resetPaintData() {
 }
 
 // ---- SPC live import -------------------------------------------------------
-// Uses the host Vortex Dome's existing /spc/* proxy (server.js) instead of a
+// Uses the host Echo Radar's existing /spc/* proxy (server.js) instead of a
 // dedicated studio-server endpoint, so the studio runs in-process with no
 // separate backend.
 async function importSpc() {
   const day = state.config.spcDay || '1';
-  // Route through Vortex Radar's server-side CORS proxy (see server.js /api/proxy;
+  // Route through Echo Radar's server-side CORS proxy (see server.js /api/proxy;
   // spc.noaa.gov is on its allowlist) instead of a Dome-only /spc/ endpoint.
   const res = await fetch(`/api/proxy?url=https://www.spc.noaa.gov/products/outlook/day${day}otlk_cat.nolyr.geojson`);
   if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -946,7 +946,7 @@ function saveProject() {
 }
 
 function loadProject(project) {
-  if (!project || project.format !== 'vortex-graphics-project') throw new Error('Not a Vortex project file.');
+  if (!project || project.format !== 'vortex-graphics-project') throw new Error('Not an Echo Radar project file.');
   const tmpl = TEMPLATE_BY_ID[project.templateId];
   if (!tmpl) throw new Error('Unknown template "' + project.templateId + '".');
   state.templateId = project.templateId;

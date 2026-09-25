@@ -1,7 +1,7 @@
 /*
  * components/stream_hub.js
  * The Chase Stream Hub — one place for a storm chaser to go live and manage the
- * whole broadcast without leaving Vortex Radar.
+ * whole broadcast without leaving Echo Radar.
  *
  * What it does (Phase 1):
  *   - Go Live / Stop from one button, with a LIVE badge shown in the app.
@@ -232,7 +232,7 @@ async function goLive() {
     const wantObs = !!($('vrsh-obs-enable') && $('vrsh-obs-enable').checked);
 
     // Manual RTMP destination. Read live from the form if the panel is open,
-    // else from saved config. When present, Vortex pushes it into OBS.
+    // else from saved config. When present, Echo Radar pushes it into OBS.
     const rtmpEnabled = ($('vrsh-rtmp-enable') ? $('vrsh-rtmp-enable').checked : (cfg && cfg.rtmp && cfg.rtmp.enabled));
     const rtmpUrl = (($('vrsh-rtmp-url') && $('vrsh-rtmp-url').value.trim()) || (cfg && cfg.rtmp && cfg.rtmp.url) || '');
     const rtmpKey = (($('vrsh-rtmp-key') && $('vrsh-rtmp-key').value.trim()) || (cfg && cfg.rtmp && cfg.rtmp.key) || '');
@@ -261,7 +261,7 @@ async function goLive() {
             }
             if (!(await obs.isStreaming())) await obs.startStream();
         } else if (manualIngest) {
-            toast('Turn on "Control OBS" so Vortex can push your RTMP key into OBS.', 'warn');
+            toast('Turn on "Control OBS" so Echo Radar can push your RTMP key into OBS.', 'warn');
         }
 
         live = true;
@@ -594,7 +594,7 @@ function panelHTML() {
         <div class="vrsh-field"><label>RTMP URL</label><input id="vrsh-rtmp-url" type="text" placeholder="rtmp://your-server/app" /></div>
         <div class="vrsh-field"><label>Stream key</label><input id="vrsh-rtmp-key" type="password" placeholder="paste your stream key" /></div>
       </div>
-      <div class="vrsh-hint">Vortex sets these in OBS for you at Go Live — no need to paste them into OBS yourself. Requires <b>Control OBS</b> above to be on. Tip: reset this key with your streaming provider if it has ever been shared.</div>
+      <div class="vrsh-hint">Echo Radar sets these in OBS for you at Go Live — no need to paste them into OBS yourself. Requires <b>Control OBS</b> above to be on. Tip: reset this key with your streaming provider if it has ever been shared.</div>
 
       <div class="vrsh-section">Auto-post</div>
       <label class="vrsh-check"><input id="vrsh-ap-discord" type="checkbox" /> Discord <span id="vrsh-discord-state" class="vrsh-status">—</span></label>

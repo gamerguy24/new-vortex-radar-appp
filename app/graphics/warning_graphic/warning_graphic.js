@@ -550,7 +550,7 @@ function buildLayout(info, mapImg, locatorImg, pop, homes, size, extra) {
             <div class="wg-brand">
                 <img src="/logo.png" class="wg-logo" alt="" onerror="this.style.display='none'"/>
                 <div class="wg-brand-col">
-                    <div class="wg-brand-name">VORTEX RADAR</div>
+                    <div class="wg-brand-name">ECHO RADAR</div>
                     <div class="wg-brand-tag">LIVE WARNING</div>
                 </div>
             </div>

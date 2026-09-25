@@ -3,8 +3,8 @@
  * Who may do what on the radio.
  *
  * ROLES COME FROM THE EXISTING ACCOUNT, NOT FROM A SECOND USER SYSTEM.
- * Vortex already knows whether someone is an admin, a super admin, or approved
- * to stream. PTT adds only what Vortex has no concept of — per-channel
+ * Echo Radar already knows whether someone is an admin, a super admin, or approved
+ * to stream. PTT adds only what Echo Radar has no concept of — per-channel
  * moderators, priority transmit, and radio bans — and stores those as grants
  * against the existing user id.
  *
@@ -13,7 +13,7 @@
  * layer re-checks every action against these functions before it takes effect.
  */
 
-// Highest wins. A user's effective role is the strongest of: their Vortex
+// Highest wins. A user's effective role is the strongest of: their Echo Radar
 // account flags, and any radio grant recorded against them.
 const ROLES = ['USER', 'MODERATOR', 'CHANNEL_ADMIN', 'RADIO_ADMIN', 'SUPER_ADMIN'];
 const RANK = Object.fromEntries(ROLES.map((r, i) => [r, i]));
@@ -31,7 +31,7 @@ const CAPS = {
 /**
  * Effective role for a user, optionally within one channel.
  *
- * @param {object} user     the Vortex account (req.user)
+ * @param {object} user     the Echo Radar account (req.user)
  * @param {object} grants   radio grants store: { byUser: { [id]: {...} } }
  * @param {object} channel  optional channel, for per-channel moderators
  */
@@ -39,7 +39,7 @@ function roleFor(user, grants, channel) {
   if (!user) return null;
   let role = 'USER';
 
-  // Vortex account flags map onto radio roles.
+  // Echo Radar account flags map onto radio roles.
   if (user.isSuperAdmin) role = 'SUPER_ADMIN';
   else if (user.isAdmin) role = 'RADIO_ADMIN';
 
@@ -126,7 +126,7 @@ function canJoin(user, channel, grants, password) {
  * radio by any path, not merely fail to see the button. Hiding the panel is
  * cosmetic; this is the part that matters.
  *
- * Admins are in by virtue of their Vortex account. Beyond that, an admin can
+ * Admins are in by virtue of their Echo Radar account. Beyond that, an admin can
  * extend access to one specific person by giving them a radio role through
  * /api/ptt/users/:id/grant — that endpoint is itself admin-only, so the set of
  * people on the radio stays under admin control either way. A radio ban closes
@@ -151,7 +151,7 @@ function canPriority(user, grants, channel) {
 /**
  * A name to put on the radio.
  *
- * Vortex accounts carry an email and nothing else -- no username, no display
+ * Echo Radar accounts carry an email and nothing else -- no username, no display
  * name -- so the local part of the address is the only identity available.
  * Without this every operator showed up as the literal word "User", which on a
  * radio is worse than useless: you cannot tell who is transmitting.

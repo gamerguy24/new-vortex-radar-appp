@@ -26,7 +26,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const UA = 'VortexRadar EOC (davidwallis17@twistcasterlivemedia.com)';
+const UA = 'EchoRadar EOC (davidwallis17@twistcasterlivemedia.com)';
 
 /* ── county population ──────────────────────────────────────────────────────
  * Generated from the Census Bureau's keyless bulk estimates file

@@ -1,6 +1,6 @@
 /*
  * components/graphics_launch.js
- * Wires the Vortex Graphics tools (Studio editor, Dashboard, Overlay) which are
+ * Wires the Echo Graphics tools (Studio editor, Dashboard, Overlay) which are
  * bundled under /graphics/ and served behind the same login as the radar.
  *
  * Two entry points, both handled here:
@@ -54,7 +54,7 @@ function togglePopup() {
         font-family: var(--vx-font);`;
 
     pop.innerHTML = `<div style="padding:8px 10px 4px; color:var(--vx-text-2); font-size:11px;
-        letter-spacing:.08em; text-transform:uppercase;">Vortex Graphics</div>`;
+        letter-spacing:.08em; text-transform:uppercase;">Echo Graphics</div>`;
 
     for (const t of TOOLS) {
         const row = document.createElement('div');

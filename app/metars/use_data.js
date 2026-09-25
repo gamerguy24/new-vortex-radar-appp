@@ -168,7 +168,7 @@ function useData(data) {
             //     <div>${ut.knotsToMph(metarWindSpeed, 0)} mph</div>
             //     <div>${ut.knotsToMph(metarWindGustSpeed, 0)} mph gusts</div>
             //     <div>${metarWindDirection}° (${ut.degToCompass(metarWindDirection)})</div>
-            //     <img src="https://steepatticstairs.github.io/VortexRadar/resources/compass.png" class="centerImg" style="max-width: 50%; max-height: 50%; transform: rotate(${metarWindDirection}deg)">
+            //     <img src="https://steepatticstairs.github.io/EchoRadar/resources/compass.png" class="centerImg" style="max-width: 50%; max-height: 50%; transform: rotate(${metarWindDirection}deg)">
             //     <!-- <br>
             //     <div><b>METAR Plot <a href="https://github.com/phoenix-opsgroup/metar-plot">(credit)</a>:</b></div>
             //     <div>{svgStr}</div> -->

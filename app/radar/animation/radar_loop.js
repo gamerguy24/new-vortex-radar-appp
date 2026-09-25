@@ -1,5 +1,5 @@
 /*
- * Radar loop / playback controller for the Vortex Radar bottom bar.
+ * Radar loop / playback controller for the Echo Radar bottom bar.
  *
  * Drives the play/pause button, the timeline slider, the Live button, the
  * speed dropdown and the loop-length dropdown. It preloads the most recent Level 3 scans for the

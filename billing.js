@@ -1,6 +1,6 @@
 /*
  * billing.js
- * Stripe-backed Pro paywall for Vortex Radar. Adapted from the Postgres/ESM
+ * Stripe-backed Pro paywall for Echo Radar. Adapted from the Postgres/ESM
  * version to this app's stack: CommonJS, the JSON user store (users.json), and
  * the custom signed-cookie session (req.user set by server.js middleware).
  *

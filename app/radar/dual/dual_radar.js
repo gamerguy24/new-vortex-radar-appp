@@ -43,7 +43,7 @@ function dual_map() {
  */
 
 /*
- * Paint the RIGHT pane with the Vortex basemap.
+ * Paint the RIGHT pane with the Echo Radar basemap.
  *
  * apply_vortex_basemap() defers via once('style.load') when the style is not
  * readable yet — but split_screen called it FROM a style.load handler, where

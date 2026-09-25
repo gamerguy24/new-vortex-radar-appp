@@ -3,7 +3,7 @@
  * Channel definitions and their persistence.
  *
  * STORAGE FOLLOWS THE REST OF THE APP: JSON in DATA_DIR through the same
- * readJson/writeJson helpers users, sessions and reports already use. Vortex
+ * readJson/writeJson helpers users, sessions and reports already use. Echo Radar
  * has no SQL database, so introducing one for seven radio channels would be
  * exactly the "unnecessary infrastructure" this build is meant to avoid.
  *
@@ -28,7 +28,7 @@ const DEFAULT_CHANNELS = [
   { id: 'emergency', emoji: '🚨', name: 'Emergency Weather', description: 'Life-threatening situations only.', limit: 100, priorityOnly: false },
   { id: 'media', emoji: '🎥', name: 'Media', description: 'Broadcast and media coordination.', limit: 50 },
   { id: 'global', emoji: '🌎', name: 'Global Weather', description: 'Open channel, all welcome.', limit: 200 },
-  { id: 'staff', emoji: '🛠️', name: 'Vortex Staff', description: 'Staff only.', limit: 25, requiresRole: 'MODERATOR' },
+  { id: 'staff', emoji: '🛠️', name: 'Echo Radar Staff', description: 'Staff only.', limit: 25, requiresRole: 'MODERATOR' },
 ];
 
 function normalise(c) {

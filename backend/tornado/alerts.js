@@ -24,7 +24,7 @@ const feed = [];                 // newest last
 const lastAlertByStorm = new Map(); // stormId -> { atMs, score }
 let seq = 0;
 
-const DISCLAIMER = 'Vortex Radar Tornado Potential is an experimental radar-derived '
+const DISCLAIMER = 'Echo Radar Tornado Potential is an experimental radar-derived '
     + 'analysis tool. It is not an official warning system and does not replace alerts '
     + 'or warnings issued by the National Weather Service.';
 

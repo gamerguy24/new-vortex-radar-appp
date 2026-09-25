@@ -7,7 +7,7 @@
  *                          Buoys, BuoyCAMs, Power Outages
  *   Tier Two   (level 2) — Manual Storm Track, Split Screen
  *   Tier Three (level 3) — Warning Graphic, Models & Forecast, My Locations,
- *                          Vortex Graphics
+ *                          Echo Graphics
  *
  * Clicks are intercepted in the capture phase so users below the required tier
  * get an upgrade prompt instead of the feature. No "PRO" badge is shown here —
@@ -37,7 +37,7 @@ const FEATURES = [
   { id: 'warnGraphicBtn', name: 'Warning Graphic', tier: 3 },
   { id: 'vortexModelsBtn', name: 'Models & Forecast', tier: 3 },
   { id: 'vortexLocationsBtn', name: 'My Locations', tier: 3 },
-  { id: 'vortexGraphicsBtn', name: 'Vortex Graphics', tier: 3 },
+  { id: 'vortexGraphicsBtn', name: 'Echo Graphics', tier: 3 },
 ];
 
 // True only when a paywall is actually live for this deployment. When billing

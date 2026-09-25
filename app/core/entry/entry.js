@@ -8,7 +8,7 @@ function load() {
     window.vortexData = {};
     window.vortexData.map_type = 'dark';
 
-    // apply the Vortex Radar basemap theme (distinct deep-navy palette)
+    // apply the Echo Radar basemap theme (distinct deep-navy palette)
     require('../map/vortex_basemap').apply_vortex_basemap();
 
     // highway route shields (I-75, US-41, state routes) above the radar
@@ -102,7 +102,7 @@ function load() {
     // load the "What's New" changelog screen
     require('../changelog/changelog');
 
-    // // detect if VortexRadar is being loaded in an iframe
+    // // detect if EchoRadar is being loaded in an iframe
     // require('../misc/detect_iframe');
     // require('../misc/message');
 
@@ -147,7 +147,7 @@ function load() {
     //             original = $('#mapFooter').html();
     //             const productMapFooter = $('#productMapFooter');
 
-    //             $('#mapFooter').html(`<div style="color: #a0a0a0; font-size: 20px"><b style="font-weight: 900">VortexRadar</b> - steepatticstairs.net</div>`);
+    //             $('#mapFooter').html(`<div style="color: #a0a0a0; font-size: 20px"><b style="font-weight: 900">EchoRadar</b> - steepatticstairs.net</div>`);
     //             $('#mapFooter').append(productMapFooter);
     //         }
 

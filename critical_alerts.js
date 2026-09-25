@@ -21,7 +21,7 @@
 
 const path = require('path');
 
-const NWS_UA = (process.env.NWS_USER_AGENT || 'VortexRadar (critical-alerts, admin@twistcasterlivemedia.com)').trim();
+const NWS_UA = (process.env.NWS_USER_AGENT || 'EchoRadar (critical-alerts, admin@twistcasterlivemedia.com)').trim();
 
 // ── default admin config (editable in the admin dashboard; NOT hard-coded through
 //    the app — everything reads from crit_config.json). Priorities + per-priority

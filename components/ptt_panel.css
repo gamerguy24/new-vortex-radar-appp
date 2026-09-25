@@ -1,6 +1,6 @@
 /*
  * components/ptt_panel.css
- * VORTEX PTT panel. Floats over the radar; collapses to a widget.
+ * ECHO PTT panel. Floats over the radar; collapses to a widget.
  *
  * Sizing is driven by one rule: this gets used one-handed, in a moving vehicle,
  * by someone who is looking at the road. The talk button is therefore the

@@ -1,7 +1,7 @@
 /*
  * components/obs_websocket.js
  * A tiny obs-websocket v5 client for the browser — enough to remote-control OBS
- * running on a chaser's field laptop straight from Vortex Radar's Chase Stream
+ * running on a chaser's field laptop straight from Echo Radar's Chase Stream
  * Hub. No dependencies; uses the native WebSocket + WebCrypto for the auth
  * handshake.
  *

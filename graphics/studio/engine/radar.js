@@ -1,5 +1,5 @@
 // Radar layer. Fetches NOAA NEXRAD base reflectivity (an EPSG:4326 PNG from the
-// NWS radar ImageServer, routed through Vortex Radar's /api/proxy so there's no
+// NWS radar ImageServer, routed through Echo Radar's /api/proxy so there's no
 // CORS taint) and warps it onto the studio's d3 projection so it aligns with the
 // basemap for any region/projection. Drawn under labels/chrome, over the map.
 //

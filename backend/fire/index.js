@@ -20,7 +20,7 @@
  */
 
 const WFIGS = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services';
-const UA = 'VortexRadar (davidwallis17@twistcasterlivemedia.com)';
+const UA = 'EchoRadar (davidwallis17@twistcasterlivemedia.com)';
 
 // Fires move on the scale of hours, not seconds. NIFC updates these feeds
 // roughly every few minutes; polling harder buys nothing and is rude.

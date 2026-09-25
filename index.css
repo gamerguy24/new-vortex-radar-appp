@@ -1838,9 +1838,9 @@ select optgroup {
     /* pointer-events: none; */
 }
 /* =========================================================================
-   VORTEX RADAR REDESIGN
+   ECHO RADAR REDESIGN
    Floating, rounded dark panels over a full-bleed map (matches the
-   Vortex Radar mockup). Overrides the legacy full-width bar layout.
+   Echo Radar mockup). Overrides the legacy full-width bar layout.
    ========================================================================= */
 /* Design tokens live in components/tokens.css — one palette shared by
    index.html and login.html. Edit them there, not here. */
@@ -1935,7 +1935,7 @@ select optgroup {
 #headerChevron { color: var(--vortex-subtext); font-size: 13px; flex: 0 0 auto; cursor: pointer; margin-top: 1px; }
 #headerChevron:hover { color: var(--vortex-text); }
 
-/* Subtle Vortex Radar wordmark, bottom-right of the card */
+/* Subtle Echo Radar wordmark, bottom-right of the card */
 .vrHdrBrand {
     position: absolute; right: 15px; bottom: 6px;
     font-size: 9px; font-weight: 800; letter-spacing: 1.6px;
@@ -2003,7 +2003,7 @@ select optgroup {
 }
 
 /* ============================================================
-   Bottom playback bar — "Vortex console" (distinct redesign)
+   Bottom playback bar — "Echo Radar console" (distinct redesign)
    ============================================================ */
 .mapFooter {
     bottom: 14px !important;

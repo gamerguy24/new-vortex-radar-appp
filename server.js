@@ -1,5 +1,5 @@
 /*
- * Vortex Radar backend.
+ * Echo Radar backend.
  *
  * Serves the radar app behind authentication and provides the /auth/* and
  * /admin/* endpoints that login.html, admin.html and components/admin_panel.js
@@ -21,7 +21,7 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const { createBilling } = require('./billing');
-// Vortex Pro organisation licences. Required at the top rather than inside the
+// Echo Pro organisation licences. Required at the top rather than inside the
 // guarded attach block below because publicUser() reports the licence on every
 // user payload, so this one has to exist before the first request is served.
 const pro = require('./backend/pro');
@@ -42,7 +42,7 @@ const STREAM_FILE = path.join(DATA_DIR, 'stream_configs.json');
 const TICKETS_FILE = path.join(DATA_DIR, 'tickets.json');
 
 const PORT = process.env.PORT || 3333;
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@vortexradar.app';
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@echoradarwx.com';
 // A protected super admin that is always present, always an admin, and cannot
 // be locked, demoted, or deleted by other admins.
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@twistcasterlivemedia.com').trim().toLowerCase();
@@ -61,7 +61,7 @@ const SMTP_PASSWORD = process.env.SMTP_PASSWORD || '';
 // Port 465 is implicit TLS; anything else upgrades via STARTTLS.
 const SMTP_SECURE = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : SMTP_PORT === 465;
 const MAIL_FROM = process.env.MAIL_FROM || SMTP_USER;
-const APP_NAME = process.env.APP_NAME || 'Vortex Radar';
+const APP_NAME = process.env.APP_NAME || 'Echo Radar';
 // Shown in the email so the recipient knows where to sign in.
 const APP_URL = process.env.APP_URL || '';
 // How long an emailed temporary password stays valid.
@@ -299,7 +299,7 @@ function publicUser(u) {
         mustChangePassword: !!u.mustChangePassword,
         tier: u.tier || 'free',
         tierLevel: billing.billingState(u).tierLevel,
-        // Vortex Pro organisation licence. A separate axis from `tier`: it is
+        // Echo Pro organisation licence. A separate axis from `tier`: it is
         // granted by an admin under a contract, never bought in checkout, and
         // it neither grants nor implies a consumer tier. See backend/pro.
         //
@@ -687,7 +687,7 @@ app.post('/admin/users/:id/tier', requireAdmin, (req, res) => {
 });
 
 /*
- * Grant or revoke a Vortex Pro organisation licence.
+ * Grant or revoke an Echo Pro organisation licence.
  *
  * POST { type: 'media'|'school'|'agency', name: 'KXAS-TV' }  grants
  * POST { type: null }                                         revokes
@@ -1395,7 +1395,7 @@ app.post('/api/stream/announce', requireStreamer, async (req, res) => {
                 url: /^https?:\/\//.test(url) ? url : undefined,
                 color: 0xff3b30,
                 timestamp: new Date().toISOString(),
-                footer: { text: 'Vortex Radar — Chase Stream Hub' },
+                footer: { text: 'Echo Radar — Chase Stream Hub' },
             };
             const r = await fetch(cfg.discordWebhook, {
                 method: 'POST',
@@ -1574,7 +1574,7 @@ app.post('/admin/users/:id/stream', requireAdmin, (req, res) => {
 });
 
 // ─── Remote OBS control relay (operator dashboard → chaser agent) ────────────
-// Chasers who opt in keep Vortex open on their streaming PC; their browser holds
+// Chasers who opt in keep Echo Radar open on their streaming PC; their browser holds
 // an SSE "agent" connection here and a local connection to their own OBS.
 // Operators (admins) list connected agents and send commands, which we relay
 // over SSE to the target agent, whose browser runs them against its local OBS.
@@ -1700,7 +1700,7 @@ async function sendExpoPush({ title, body, data }) {
     let sent = 0; const errors = [];
     for (let i = 0; i < tokens.length; i += 100) {
         const chunk = tokens.slice(i, i + 100);
-        const messages = chunk.map((to) => ({ to, title: title || 'Vortex Radar', body: body || '', sound: 'default', priority: 'high', data: data || {} }));
+        const messages = chunk.map((to) => ({ to, title: title || 'Echo Radar', body: body || '', sound: 'default', priority: 'high', data: data || {} }));
         try {
             const r = await fetch('https://exp.host/--/api/v2/push/send', {
                 method: 'POST',
@@ -1722,7 +1722,7 @@ async function sendExpoPush({ title, body, data }) {
 // Admin: broadcast a push to all native (Expo) app installs. `url` (optional) is
 // carried in the notification payload so tapping it deep-links the app there.
 app.post('/admin/push/send', requireAdmin, async (req, res) => {
-    const title = String(req.body?.title || 'Vortex Radar').slice(0, 120);
+    const title = String(req.body?.title || 'Echo Radar').slice(0, 120);
     const body = String(req.body?.body || '').slice(0, 500);
     const url = req.body?.url ? String(req.body.url).slice(0, 800) : null;
     if (!body.trim()) return res.status(400).json({ error: 'A message body is required.' });
@@ -1882,7 +1882,7 @@ app.get('/api/proxy', requireAuth, async (req, res) => {
         });
     }
     try {
-        const upstream = await fetch(target, { headers: { 'User-Agent': 'Mozilla/5.0 (VortexRadar)', 'Accept': '*/*' } });
+        const upstream = await fetch(target, { headers: { 'User-Agent': 'Mozilla/5.0 (EchoRadar)', 'Accept': '*/*' } });
         const buf = Buffer.from(await upstream.arrayBuffer());
         res.status(upstream.status);
         res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
@@ -2205,7 +2205,7 @@ app.get('/api/tides/predictions', requireAuth, billing.requireTier(1), async (re
         + `&begin_date=${begin}&end_date=${end}&datum=MLLW&station=${station}`
         + '&time_zone=lst_ldt&units=english&interval=hilo&format=json';
     try {
-        const upstream = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (VortexRadar)' } });
+        const upstream = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (EchoRadar)' } });
         const text = await upstream.text();
         res.status(upstream.status).type('application/json').set('Cache-Control', 'no-store').send(text);
     } catch (err) {
@@ -2217,7 +2217,7 @@ app.get('/api/tides/predictions', requireAuth, billing.requireTier(1), async (re
 app.get('/api/outages/live', requireAuth, billing.requireTier(1), async (req, res) => {
     try {
         const upstream = await fetch('https://massoutage.com/api/v1/live/map', {
-            headers: { 'User-Agent': 'Mozilla/5.0 (VortexRadar)', Accept: 'application/json' },
+            headers: { 'User-Agent': 'Mozilla/5.0 (EchoRadar)', Accept: 'application/json' },
         });
         const text = await upstream.text();
         res.status(upstream.status).type('application/json').set('Cache-Control', 'no-store').send(text);
@@ -2281,7 +2281,7 @@ try {
     console.error('[EOC] failed to attach (feature disabled):', e.message);
 }
 
-// ─── VORTEX PRO (licensed workspace at /pro) ─────────────────────────────────
+// ─── ECHO PRO (licensed workspace at /pro) ─────────────────────────────────
 // The newsroom / district / agency edition. Gated by an admin-granted org
 // licence rather than by Stripe — see the header of backend/pro/index.js for
 // why that is a separate axis from the consumer tiers. Wrapped like the rest:
@@ -2302,7 +2302,7 @@ try {
     console.error('[FIRE] failed to attach (feature disabled):', e.message);
 }
 
-// ─── VORTEX PTT (self-hosted push-to-talk radio) ─────────────────────────────
+// ─── ECHO PTT (self-hosted push-to-talk radio) ─────────────────────────────
 // Control plane only: channels, presence, floor control and WebRTC signalling.
 // Voice goes browser-to-browser and never through this process. Separate from
 // scanner.js, which is a one-way broadcast relay and stays exactly as it is.
@@ -2364,7 +2364,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// Pro-gate the Vortex Graphics studio (redirects free users to an upgrade
+// Pro-gate the Echo Graphics studio (redirects free users to an upgrade
 // prompt; no-op if billing isn't configured).
 app.use('/graphics', billing.requireProPage);
 
@@ -2384,7 +2384,7 @@ app.use('/eoc', (req, res, next) => {
 });
 app.get(['/eoc', '/eoc/'], sendFile(path.join('eoc', 'index.html')));
 
-// Vortex Pro, served the same way: plain ESM that must always revalidate, plus
+// Echo Pro, served the same way: plain ESM that must always revalidate, plus
 // a real index route because express.static runs with index:false. The licence
 // gate itself is mounted in backend/pro (app.use('/pro', requireOrgPage)), so
 // it already covers this route and every asset under it.
@@ -2409,7 +2409,7 @@ ensureSuperAdmin();
 // connections (ERR_CONNECTION_RESET).
 const HOST = process.env.HOST || '0.0.0.0';
 const server = app.listen(PORT, HOST, () => {
-    console.log(`Vortex Radar server running on ${HOST}:${PORT}`);
+    console.log(`Echo Radar server running on ${HOST}:${PORT}`);
     if (mailReady()) {
         console.log(`[mail] smtp ${SMTP_HOST}:${SMTP_PORT} as ${SMTP_USER} — password resets are self-service.`);
         if (MAIL_FROM && SMTP_USER && !MAIL_FROM.includes(SMTP_USER)) {

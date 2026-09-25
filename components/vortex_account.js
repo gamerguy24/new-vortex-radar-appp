@@ -1,6 +1,6 @@
 /*
  * components/vortex_account.js
- * Front-end glue for the Vortex Radar account system. Loaded as a plain ES
+ * Front-end glue for the Echo Radar account system. Loaded as a plain ES
  * module (no bundling needed). It:
  *   - mounts the in-app admin panel as a full-screen overlay
  *   - opens it when the URL hash is #admin (and the user is an admin)

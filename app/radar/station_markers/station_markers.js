@@ -110,7 +110,7 @@ function _add_stations_layer(radar_stations_geojson, callback) {
                     // 'dark_grey_station_marker', // mouse-over
                     // ['==', ['feature-state', 'color'], 2],
                     // 'grey_station_marker',
-                    // Vortex Radar: default station pill is blue to match the design
+                    // Echo Radar: default station pill is blue to match the design
                     'blue_station'
                 ],
 

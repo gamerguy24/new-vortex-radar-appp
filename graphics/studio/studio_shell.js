@@ -530,7 +530,7 @@ function runAction(act, srcEl) {
   if (act === 'thumbs') return refreshAllThumbs(srcEl);
   if (act === 'fit') return reflow();
   if (act === 'about') {
-    window.alert('Vortex Graphics Studio\n\nBroadcast graphics rendered from official data, ' +
+    window.alert('Echo Graphics Studio\n\nBroadcast graphics rendered from official data, ' +
       'deterministically — the same numbers the radar page uses.');
     return;
   }

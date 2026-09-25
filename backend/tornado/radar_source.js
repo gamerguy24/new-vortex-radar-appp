@@ -2,7 +2,7 @@
  * backend/tornado/radar_source.js
  * Radar ingest for the Tornado Potential engine.
  *
- * This deliberately does NOT reimplement any NEXRAD decoding. Vortex Radar
+ * This deliberately does NOT reimplement any NEXRAD decoding. Echo Radar
  * already decodes Level 2 in Node (nws_radar_l2.js, which reuses the browser
  * app's own libnexrad parser against the free THREDDS/AWS Open Data mirrors);
  * this module drives that machinery per radar site and hands the engine a
@@ -25,7 +25,7 @@ const { NEXRAD_LOCATIONS } = require('../../app/radar/libnexrad/nexrad_locations
 const log = require('./logger');
 
 const USER_AGENT = process.env.NWS_USER_AGENT
-    || 'VortexRadar Tornado Potential (davidwallis17@gmail.com)';
+    || 'EchoRadar Tornado Potential (davidwallis17@gmail.com)';
 
 // site -> { lastVolume, lastOkAt, lastError, failures }
 const siteState = new Map();

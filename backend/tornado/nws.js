@@ -5,7 +5,7 @@
  *
  * This exists for two reasons:
  *   1. So the UI can show "OFFICIAL NWS TORNADO WARNING" as a distinct thing
- *      from "VORTEX RADAR EXPERIMENTAL — TORNADO POTENTIAL: HIGH". The
+ *      from "ECHO RADAR EXPERIMENTAL — TORNADO POTENTIAL: HIGH". The
  *      experimental number never inherits official authority, and an official
  *      warning is never suppressed or re-scored by us.
  *   2. So the historical dataset records whether a warning was in force at the
@@ -20,7 +20,7 @@ const log = require('./logger');
 
 const ALERTS_URL = 'https://api.weather.gov/alerts/active';
 const USER_AGENT = process.env.NWS_USER_AGENT
-    || 'VortexRadar Tornado Potential (davidwallis17@gmail.com)';
+    || 'EchoRadar Tornado Potential (davidwallis17@gmail.com)';
 
 let cache = { at: 0, features: [] };
 let inflight = null;

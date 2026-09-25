@@ -290,7 +290,7 @@ const MENU_NAMES = {
   vortexSplitBtn: 'Split Screen',
   soundingMenuItemDiv: 'Sounding',
   vortexModelsBtn: 'Models & Forecast…',
-  vortexGraphicsBtn: 'Vortex Graphics…',
+  vortexGraphicsBtn: 'Echo Graphics…',
   warnGraphicBtn: 'Warning Graphic…',
   streamHubMenuItemDiv: 'Chase Stream Hub…',
   vortexScannerBtn: 'Global PTT',

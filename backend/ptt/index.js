@@ -1,6 +1,6 @@
 /*
  * backend/ptt/index.js
- * VORTEX PTT — a self-hosted push-to-talk radio inside Vortex Radar.
+ * ECHO PTT — a self-hosted push-to-talk radio inside Echo Radar.
  *
  * REPLACES nothing that already works: scanner.js stays exactly as it is. That
  * module is a ONE-WAY broadcast relay (a gateway pushes audio in, listeners
@@ -235,7 +235,7 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
 
       // THE SAME SESSION THE WEBSITE USES. The upgrade request carries the
       // vr_session cookie like any other request, so the radio identifies
-      // people exactly as the rest of Vortex does — no token to mint, no second
+      // people exactly as the rest of Echo Radar does — no token to mint, no second
       // account system, and nothing the client can claim about itself.
       let user = null;
       try { user = userFromRequest(req); } catch (e) { user = null; }

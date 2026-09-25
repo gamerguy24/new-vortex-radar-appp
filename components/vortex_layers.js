@@ -1,6 +1,6 @@
 /*
  * components/vortex_layers.js
- * Wires the Vortex Radar feature layers (Live Cams, Sponsors, Report Weather,
+ * Wires the Echo Radar feature layers (Live Cams, Sponsors, Report Weather,
  * Spotter Network, MRMS) to the in-app menu. Loaded as a plain ES module.
  *
  * The map is created by the bundled app and published as window.vortexMap

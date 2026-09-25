@@ -6,7 +6,7 @@
 // http://server.steepatticstairs.net/VortexServer/proxy/index.php/?
 
 // https://php-cors-proxy.herokuapp.com/?
-const phpProxy = '/api/proxy?url='; // Vortex Radar server-side proxy (see server.js)
+const phpProxy = '/api/proxy?url='; // Echo Radar server-side proxy (see server.js)
 // const phpProxy2 = 'https://vortex-server.herokuapp.com/proxy/index.php/?'; // http://127.0.0.1:3333/server/VortexServer/proxy/?
 //const phpProxy  = 'https://salty-citadel-44916.herokuapp.com/';
 //const phpProxy  = 'https://secret-retreat-45871.herokuapp.com/'
