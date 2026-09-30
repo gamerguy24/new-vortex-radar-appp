@@ -126,8 +126,14 @@ function injectStyles() {
         color:var(--vx-text-2);cursor:pointer;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;align-self:center;transition:all .12s;}
     .snd-x:hover{color:#fff;background:rgba(255,90,90,.16);border-color:rgba(255,90,90,.4);}
     .snd-body{padding:16px 18px 18px;}
+    /* COLUMN, not row. The renderer note is appended into this box alongside the
+       plot; as a centred row the two sat side by side, overflowed, and were
+       clipped at BOTH edges by overflow:hidden — the plot lost its left side
+       (the title read "RRR" instead of "HRRR") and the note lost its right. */
     .snd-canvas-wrap{border-radius:var(--vx-r-3);overflow:hidden;background:var(--vx-surface);border:1px solid rgba(255,255,255,.08);
-        min-height:220px;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 2px 22px rgba(0,0,0,.35);}
+        min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        box-shadow:inset 0 2px 22px rgba(0,0,0,.35);}
+    .snd-canvas-wrap > img{max-width:100%;height:auto;display:block;}
     .snd-canvas-wrap canvas{max-width:100%;height:auto;display:block;}
     .snd-msg{padding:30px;color:var(--vx-text-2);text-align:center;font-size:14px;line-height:1.55;}
     .snd-actions{display:flex;gap:9px;margin-top:14px;}
@@ -197,8 +203,11 @@ function openSoundingModal(lat, lon) {
     function buildSounderpyNote(reason) {
         const missing = /No module named|not available|ModuleNotFound/i.test(reason);
         const box = document.createElement('div');
+        // align-self:stretch so it fills the column rather than shrinking to its
+        // longest word; max-width keeps it inside the box on a narrow screen.
         box.style.cssText = 'margin:10px 2px 0;padding:9px 11px;border-radius:8px;font-size:11.5px;line-height:1.45;'
-            + 'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#9fb2c9;';
+            + 'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#9fb2c9;'
+            + 'align-self:stretch;max-width:100%;box-sizing:border-box;';
         box.innerHTML = missing
             ? 'Showing the built-in sounding. For the exact SHARPpy plot, install the renderer on the server:'
                 + '<br><code style="display:inline-block;margin-top:5px;padding:3px 6px;border-radius:4px;'

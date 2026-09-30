@@ -1,82 +1,49 @@
 import Dialog from "../js/ui/dialog.js";
 
+/*
+ * Sponsors.
+ *
+ * The named sponsors were removed at the owner's request; this is now only the
+ * invitation and the address to write to. Keeping the dialog (rather than
+ * dropping the menu item) means the door is still visible to anyone looking for
+ * it, and adding sponsors back later is just markup.
+ */
+const SPONSOR_EMAIL = 'admin@extremeweathervideos.com';
+
 export default function openSponsors() {
     const content = `
-        <p style="margin-bottom: 20px; color: var(--text-muted, var(--vx-text-2));">
-            Echo Radar is made possible by the generous support of our sponsors.
-            Thank you for keeping this platform free for everyone.
-        </p>
-
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-
+        <div style="text-align: center; padding: 8px 4px 4px;">
             <div style="
-                background: rgba(255,255,255,0.04);
-                border: 1px solid var(--border-color, gray);
-                border-radius:var(--vx-r-3);
-                padding: 18px 20px;
-                display: flex;
-                align-items: center;
-                gap: 16px;
+                width: 56px; height: 56px; margin: 0 auto 16px;
+                background: var(--vx-accent-soft);
+                border-radius: var(--vx-r-3);
+                display: flex; align-items: center; justify-content: center;
             ">
-                <div style="
-                    width: 48px; height: 48px;
-                    background: var(--vx-accent-soft);
-                    border-radius:var(--vx-r-3);
-                    display: flex; align-items: center; justify-content: center;
-                    flex-shrink: 0;
-                ">
-                    <i class="ti ti-radio" style="font-size: 1.6em; color: var(--primary-color, var(--vx-accent));"></i>
-                </div>
-                <div>
-                    <div style="font-weight: 700; font-size: 15px; margin-bottom: 4px;">Global PTT</div>
-                    <div style="font-size: 13px; color: var(--text-muted, var(--vx-text-2)); margin-bottom: 8px;">
-                        Push-to-talk communication solutions for first responders, storm chasers, and emergency teams worldwide.
-                    </div>
-                    <a href="https://www.tiktok.com/@globalptt?_r=1&_t=ZP-92uLt6rrOpy" target="_blank" style="
-                        font-size: 12px;
-                        color: var(--primary-color, var(--vx-accent));
-                        text-decoration: none;
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 4px;
-                    ">
-                        <i class="ti ti-external-link"></i> @globalptt
-                    </a>
-                </div>
+                <i class="ti ti-star" style="font-size: 1.8em; color: var(--primary-color, var(--vx-accent));"></i>
             </div>
 
-            <div style="
-                background: rgba(255,255,255,0.04);
-                border: 1px solid var(--border-color, gray);
-                border-radius:var(--vx-r-3);
-                padding: 18px 20px;
-                display: flex;
-                align-items: center;
-                gap: 16px;
-            ">
-                <div style="
-                    width: 48px; height: 48px;
-                    background: var(--vx-accent-soft);
-                    border-radius:var(--vx-r-3);
-                    display: flex; align-items: center; justify-content: center;
-                    flex-shrink: 0;
-                ">
-                    <i class="ti ti-heart" style="font-size: 1.6em; color: var(--primary-color, var(--vx-accent));"></i>
-                </div>
-                <div>
-                    <div style="font-weight: 700; font-size: 15px; margin-bottom: 4px;">By His Grace</div>
-                    <div style="font-size: 13px; color: var(--text-muted, var(--vx-text-2)); margin-bottom: 8px;">
-                        Proudly supporting Echo Radar and the mission to keep communities safe through better weather awareness.
-                    </div>
-                </div>
-            </div>
+            <p style="margin: 0 0 6px; font-size: 15px; font-weight: 600;">
+                Interested in sponsoring Echo Radar?
+            </p>
+            <p style="margin: 0 0 18px; font-size: 13px; color: var(--text-muted, var(--vx-text-2)); line-height: 1.5;">
+                Sponsorship helps keep the radar free for everyone.
+                Get in touch and we will send you the details.
+            </p>
 
+            <a href="mailto:${SPONSOR_EMAIL}" style="
+                display: inline-flex; align-items: center; gap: 8px;
+                padding: 11px 18px;
+                border-radius: var(--vx-r-3);
+                background: var(--vx-accent-soft);
+                border: 1px solid var(--border-color, gray);
+                color: var(--primary-color, var(--vx-accent));
+                font-size: 14px; font-weight: 600;
+                text-decoration: none;
+                word-break: break-all;
+            ">
+                <i class="ti ti-mail"></i> ${SPONSOR_EMAIL}
+            </a>
         </div>
-
-        <p style="margin-top: 20px; font-size: 12px; color: var(--text-muted, var(--vx-text-2)); text-align: center;">
-            Interested in sponsoring? Contact us at
-            <a href="mailto:admin@twistcasterlivemedia.com" style="color: var(--primary-color, var(--vx-accent));">admin@twistcasterlivemedia.com</a>
-        </p>
     `;
 
     new Dialog('Sponsors', 'star', content, {}, true);

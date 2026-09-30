@@ -9,6 +9,21 @@ Nothing else in the radar depends on this. It's an additive endpoint
 (`GET /api/models/:id/sounding/image`) plus the Python script
 `tools/sounding_sounderpy.py`.
 
+## Quick install (one command)
+
+```bash
+bash tools/install_sounderpy.sh
+```
+
+It creates `.venv-sounderpy`, installs the packages, **renders a test sounding
+to prove it works**, and offers to add `SOUNDERPY_PYTHON` to `.env`. Restart the
+server afterwards. Everything below is the same thing done by hand.
+
+Verified on 2026-09-29 with **sounderpy 3.2.0** (metpy 1.7.1, matplotlib 3.11.2,
+numpy 2.5.3) on Python 3.14: a full `style="full"` plot renders in about 10
+seconds, and the server caches each one by model/run/hour/point, so opening the
+same sounding again is instant.
+
 ## 1. Install Python + SounderPy on the Linux server
 
 ```bash

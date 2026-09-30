@@ -8,7 +8,7 @@
  * order, and restore persisted layer toggles once the map signals it's ready.
  */
 
-import openSponsors from './sponsors.js';
+import openSponsors from './sponsors.js?v=echo1';
 import openCams, { addCamMarkers, removeCamMarkers } from './cams.js';
 import openWeatherReport, { addWeatherReportMarkers, removeWeatherReportMarkers } from './weather_report.js';
 import { addSpotterMarkers, removeSpotterMarkers } from './spotters.js';

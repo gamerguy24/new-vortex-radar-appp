@@ -27,6 +27,8 @@ const CHANGELOG = [
             { title: 'Radio: you can be heard again', desc: 'On the PTT radio, audio often only travelled one way — you could hear someone but they could not hear you, and refreshing the page just swapped who was deaf. Whichever side answered the call was connecting its microphone to the wrong end of the line, so the connection looked perfectly healthy while your voice went nowhere. Both directions now work, including after a refresh.' },
             { title: 'Global PTT listening removed', desc: 'The Global PTT live listening feed has been taken out of the app. The PTT radio — channels, hold to talk — is unaffected.' },
             { title: 'A tidier map, and a new way into the menu', desc: 'The alert counter has moved to the top right, and the Echo Radar mark now sits in the top left corner — tap it to open layers and settings. That clears two icons off the bottom bar: the settings sliders, which the mark replaces, and the Global PTT headphones, which no longer does anything.' },
+            { title: 'Soundings no longer get cut off', desc: 'When the sounding fell back to the built-in plot, the note explaining why was placed beside the chart instead of beneath it, so both were clipped at the edges of the window — the model name lost its first letter and the note lost its right-hand side. They stack properly now.' },
+            { title: 'Sponsors', desc: 'The sponsors page is now simply an invitation: if you would like to sponsor Echo Radar, email admin@extremeweathervideos.com.' },
         ],
     },
     {
