@@ -1,0 +1,78 @@
+# Post every push to the radar-development-updates Discord channel.
+#
+# Runs on GitHub, so it catches EVERY push to this repo — from any machine,
+# not just the one a local git hook happens to be installed on.
+#
+# SETUP (once): add the webhook URL as a repository secret named
+# DISCORD_WEBHOOK_URL —
+#   GitHub → this repo → Settings → Secrets and variables → Actions →
+#   New repository secret.
+# The URL is a password: anyone holding it can post to the channel, so it must
+# never be committed. Without the secret this workflow simply does nothing.
+name: Discord update
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post the commits to Discord
+        uses: actions/github-script@v7
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        with:
+          script: |
+            const webhook = process.env.WEBHOOK;
+            if (!webhook) {
+              core.info('DISCORD_WEBHOOK_URL is not set — nothing posted.');
+              return;
+            }
+            const p = context.payload;
+            const commits = p.commits || [];
+            if (!commits.length) {
+              core.info('No commits in this push (branch create/delete) — nothing posted.');
+              return;
+            }
+
+            // First line only: commit bodies here are long by design.
+            const lines = commits.map((c) => {
+              const title = String(c.message || '').split('\n')[0].slice(0, 140);
+              return `[\`${c.id.slice(0, 7)}\`](${c.url}) ${title} — ${c.author && c.author.name || 'unknown'}`;
+            });
+            // Discord embeds cap at 4096 characters; leave room for the tail.
+            let description = '';
+            let shown = 0;
+            for (const line of lines) {
+              if (description.length + line.length > 3800) break;
+              description += line + '\n';
+              shown++;
+            }
+            if (shown < lines.length) description += `…and ${lines.length - shown} more\n`;
+
+            const branch = (p.ref || '').replace('refs/heads/', '');
+            const body = {
+              username: 'Echo Radar',
+              embeds: [{
+                title: `${commits.length} commit${commits.length === 1 ? '' : 's'} pushed to ${branch}`,
+                url: p.compare,
+                description,
+                color: 0x27beff,
+                footer: { text: `${context.repo.owner}/${context.repo.repo} · pushed by ${p.pusher && p.pusher.name || 'unknown'}` },
+                timestamp: new Date().toISOString(),
+              }],
+            };
+
+            const res = await fetch(webhook, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+              core.setFailed(`Discord replied ${res.status}: ${(await res.text()).slice(0, 300)}`);
+            } else {
+              core.info(`Posted ${commits.length} commit(s) to Discord.`);
+            }
