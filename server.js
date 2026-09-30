@@ -2243,16 +2243,6 @@ try {
     console.error('[NWS-BSKY] failed to attach (feature disabled):', e.message);
 }
 
-// ─── Global PTT live audio streaming (our own comms, not a public scanner) ───
-// Relays the Windows radio-gateway feed to website/app listeners; channel
-// registry is extensible for future channels. Guarded so it never breaks boot.
-let scannerApi = null;
-try {
-    scannerApi = require('./scanner').attachScanner({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson });
-} catch (e) {
-    console.error('[SCANNER] failed to attach (feature disabled):', e.message);
-}
-
 // ─── Critical Weather Alerts (saved locations → NWS warning → notifications) ──
 // Free-first, self-hosted. Phase 2: data model + saved locations + preferences +
 // admin config. Later phases add the NWS worker, polygon matcher, and channels.
@@ -2305,7 +2295,7 @@ try {
 // ─── ECHO PTT (self-hosted push-to-talk radio) ─────────────────────────────
 // Control plane only: channels, presence, floor control and WebRTC signalling.
 // Voice goes browser-to-browser and never through this process. Separate from
-// scanner.js, which is a one-way broadcast relay and stays exactly as it is.
+// the Global PTT relay, which has been removed.
 //
 // The radio identifies people with THE SAME SESSION the website uses — the
 // upgrade request carries the vr_session cookie, so userFromRequest resolves it
@@ -2422,18 +2412,8 @@ const server = app.listen(PORT, HOST, () => {
     }
 });
 
-// The WebSocket ingest shares this port. It exists because a CDN in front of the
-// origin buffers a long HTTP POST body and only forwards it when the upload
-// ends, which never happens for a live feed.
-if (scannerApi && typeof scannerApi.attachUpgrade === 'function') {
-    try { scannerApi.attachUpgrade(server); } catch (e) {
-        console.error('[SCANNER] WebSocket ingest failed to attach:', e.message);
-    }
-}
-
-// The PTT radio shares the same port and the same upgrade event. Both handlers
-// check the path and return for anything that is not theirs, so they coexist:
-// /scanner/ingest-ws belongs to the scanner, /ptt/socket to the radio.
+// The PTT radio shares this port, taking the 'upgrade' event for /ptt/socket
+// and ignoring anything else.
 if (pttApi && typeof pttApi.attachUpgrade === 'function') {
     try { pttApi.attachUpgrade(server); } catch (e) {
         console.error('[PTT] WebSocket failed to attach:', e.message);

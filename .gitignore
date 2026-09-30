@@ -15,3 +15,7 @@ server_data/
 # Local Global PTT gateway settings (holds the ingest key).
 tools/ptt.local.env
 tools/ptt.key.txt
+
+# Runtime data the PTT test suites write into the repo root (they pass DATA_DIR: ".")
+ptt_channels.json
+ptt_events.json

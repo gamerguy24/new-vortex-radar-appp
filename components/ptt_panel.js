@@ -118,7 +118,7 @@ class VortexPTT {
     this.root.innerHTML = `
       <div class="vptt-head">
         <span class="vptt-dot" data-role="dot"></span>
-        <span class="vptt-title">VORTEX <b>PTT</b></span>
+        <span class="vptt-title">ECHO <b>PTT</b></span>
         <span class="vptt-quality" data-role="quality"></span>
         <button class="vptt-min" data-role="min" title="Show or hide the radio">–</button>
         <button class="vptt-close" data-role="close" title="Close the radio">✕</button>
@@ -783,15 +783,61 @@ class VortexPTT {
    */
   async attachMicToPeers() {
     if (!this.micTrack) return;
-    for (const p of this.peers.values()) {
-      try { await p.tx.sender.replaceTrack(this.micTrack); } catch (e) { /* peer went away */ }
+    for (const [connId, p] of this.peers) {
+      try {
+        // Whatever is in the SDP now — not whatever was stored when the
+        // connection was built. Those can differ, and using the stored one is
+        // what made this side inaudible.
+        const tx = this.audioTransceiver(p.pc) || p.tx;
+        if (!tx) continue;
+        p.tx = tx;
+        await tx.sender.replaceTrack(this.micTrack);
+        /*
+         * A connection negotiated before this browser had a microphone can be
+         * recvonly on our side. A track on a recvonly transceiver is silence:
+         * the direction has to change, and changing it needs a renegotiation.
+         */
+        if (tx.direction !== 'sendrecv') {
+          tx.direction = 'sendrecv';
+          await this.renegotiate(connId);
+        }
+      } catch (e) { /* peer went away */ }
     }
+  }
+
+  /** The audio transceiver that is actually part of the connection. */
+  audioTransceiver(pc) {
+    let txs = [];
+    try { txs = pc.getTransceivers(); } catch (e) { return null; }
+    const isAudio = (t) => {
+      const r = t.receiver && t.receiver.track;
+      const s = t.sender && t.sender.track;
+      return (r && r.kind === 'audio') || (s && s.kind === 'audio') || (!r && !s);
+    };
+    // Associated (has a mid) means negotiated — prefer it over any orphan.
+    return txs.find((t) => t.mid != null && isAudio(t)) || txs.find(isAudio) || null;
+  }
+
+  /**
+   * Re-offer after changing what this side sends.
+   *
+   * Only from a stable connection: offering while an offer is already in
+   * flight is glare, and the far end would reject it.
+   */
+  async renegotiate(connId) {
+    const p = this.peers.get(connId);
+    if (!p || !p.pc || p.pc.signalingState !== 'stable') return;
+    try {
+      const offer = await p.pc.createOffer();
+      await p.pc.setLocalDescription(offer);
+      this.send('webrtc:offer', { to: connId, payload: offer });
+    } catch (e) { console.warn('[PTT] renegotiate failed:', e && e.message); }
   }
 
   // Kept for callers that only need to listen.
   async startAudio() { return true; }
 
-  peerConn(connId) {
+  peerConn(connId, { offering = false } = {}) {
     let p = this.peers.get(connId);
     if (p) return p;
     const pc = new RTCPeerConnection({ iceServers: ICE });
@@ -816,13 +862,28 @@ class VortexPTT {
      * — which is exactly how "unmute" works in any production WebRTC app, and
      * avoids the offer/answer glare a teardown-and-rebuild would invite.
      */
-    const tx = pc.addTransceiver('audio', { direction: 'sendrecv' });
-    p = { pc, tx };
+    p = { pc, tx: null };
     this.peers.set(connId, p);
 
-    // Attach the microphone if we already have one. replaceTrack keeps the
-    // negotiated m-line, so no renegotiation is needed.
-    if (this.micTrack) tx.sender.replaceTrack(this.micTrack).catch(() => {});
+    /*
+     * ONLY THE OFFERER CREATES THE TRANSCEIVER.
+     *
+     * This side used to add one too, then answer the incoming offer. Chrome
+     * did not reuse it: the offer's m-line got a fresh, implicitly created
+     * transceiver (recvonly, no track) while ours stayed unassociated — mid
+     * null, currentDirection null, in no SDP at all. The microphone was then
+     * fitted to that orphan, so this side could hear and could never be heard,
+     * and which side was deaf flipped whenever someone refreshed. Measured
+     * with getStats across two browsers, not guessed.
+     *
+     * The answerer's transceiver comes from setRemoteDescription instead, and
+     * onOffer() turns it two-way before answering.
+     */
+    if (offering) {
+      p.tx = pc.addTransceiver('audio', { direction: 'sendrecv' });
+      // replaceTrack keeps the negotiated m-line, so no renegotiation here.
+      if (this.micTrack) p.tx.sender.replaceTrack(this.micTrack).catch(() => {});
+    }
 
     pc.onicecandidate = (e) => {
       if (e.candidate) this.send('webrtc:ice', { to: connId, payload: e.candidate });
@@ -870,7 +931,7 @@ class VortexPTT {
   }
 
   async openPeer(connId, initiator) {
-    const { pc } = this.peerConn(connId);
+    const { pc } = this.peerConn(connId, { offering: !!initiator });
     if (!initiator) return;
     try {
       // No offerToReceiveAudio: that constraint is Plan B and is ignored under
@@ -883,10 +944,25 @@ class VortexPTT {
   }
 
   async onOffer(m) {
-    const { pc } = this.peerConn(m.from);
+    const p = this.peerConn(m.from);
+    const { pc } = p;
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(m.payload));
       await this.flushIce(m.from);            // anything that arrived early
+
+      /*
+       * The transceiver the offer just created IS the audio channel. Make it
+       * two-way BEFORE answering — an implicitly created one is recvonly, and
+       * answering recvonly means this side can never transmit on it, no matter
+       * what track is attached later.
+       */
+      const tx = this.audioTransceiver(pc);
+      if (tx) {
+        p.tx = tx;
+        if (tx.direction !== 'sendrecv') tx.direction = 'sendrecv';
+        if (this.micTrack) { try { await tx.sender.replaceTrack(this.micTrack); } catch (e) { /* fitted on the next press */ } }
+      }
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       this.send('webrtc:answer', { to: m.from, payload: answer });

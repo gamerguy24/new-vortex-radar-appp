@@ -2,11 +2,8 @@
  * backend/ptt/index.js
  * ECHO PTT — a self-hosted push-to-talk radio inside Echo Radar.
  *
- * REPLACES nothing that already works: scanner.js stays exactly as it is. That
- * module is a ONE-WAY broadcast relay (a gateway pushes audio in, listeners
- * pull it out). This is a many-to-many radio with floor control, which is a
- * different thing entirely, so the two live side by side rather than one being
- * bent into the other.
+ * A many-to-many radio with floor control. (It once shared the server with a
+ * one-way "Global PTT" relay, which has been removed.)
  *
  * WHAT RUNS WHERE
  *   this file            REST API, admin controls, event log, WS upgrade
@@ -19,8 +16,8 @@
  * offer/answer/ICE messages signaling.js relays.
  *
  * No Docker, no third-party voice service, no second user system. `ws` was
- * already a declared dependency of this project (scanner.js uses it), so this
- * adds no new infrastructure.
+ * already a declared dependency of this project, so this adds no new
+ * infrastructure.
  */
 
 const { createStore } = require('./channels');
@@ -205,10 +202,9 @@ function attachPtt({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJs
   });
 
   /* ── WebSocket ──────────────────────────────────────────────────────────
-   * Mounted on the existing HTTP server at /ptt/socket. scanner.js installs its
-   * own 'upgrade' listener and ignores paths that are not its own; this does
-   * the same, so the two coexist on one port without either knowing about the
-   * other.
+   * Mounted on the existing HTTP server at /ptt/socket. The handler ignores
+   * any upgrade for a different path, so it can share the port with anything
+   * else that wants one.
    */
   function attachUpgrade(server) {
     if (!server) return false;

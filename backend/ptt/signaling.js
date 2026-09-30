@@ -16,8 +16,8 @@
  * offer/answer/ICE messages relayed here, so speech goes directly between
  * browsers and never touches this process.
  *
- * Mounted at /ptt/socket, alongside scanner.js's own upgrade handler. Both
- * check the path and ignore anything that is not theirs, so they coexist.
+ * Mounted at /ptt/socket. The upgrade handler checks the path and ignores
+ * anything that is not its own.
  */
 
 const crypto = require('crypto');

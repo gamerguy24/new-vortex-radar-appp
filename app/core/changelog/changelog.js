@@ -22,6 +22,13 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'September 29, 2026',
+        items: [
+            { title: 'Radio: you can be heard again', desc: 'On the PTT radio, audio often only travelled one way — you could hear someone but they could not hear you, and refreshing the page just swapped who was deaf. Whichever side answered the call was connecting its microphone to the wrong end of the line, so the connection looked perfectly healthy while your voice went nowhere. Both directions now work, including after a refresh.' },
+            { title: 'Global PTT listening removed', desc: 'The Global PTT live listening feed has been taken out of the app. The PTT radio — channels, hold to talk — is unaffected.' },
+        ],
+    },
+    {
         date: 'September 25, 2026',
         items: [
             { title: 'Vortex Radar is now Echo Radar', desc: 'Same app, same team, new name and a new look. You may need to refresh once for the new name and icon to appear, and if you added the app to your home screen you may want to remove and re-add it to pick up the new icon. Nothing about your account, your saved locations or your subscription changes.' },

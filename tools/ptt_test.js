@@ -1,6 +1,6 @@
 /*
  * tools/ptt_test.js
- * Floor-control regression test for VORTEX PTT. Run: node tools/ptt_test.js
+ * Floor-control regression test for ECHO PTT. Run: node tools/ptt_test.js
  *
  * Half duplex is the property this radio cannot get wrong -- two people keyed
  * up at once during a warning is the failure mode that matters. These drive the
