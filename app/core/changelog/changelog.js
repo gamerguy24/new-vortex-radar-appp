@@ -26,6 +26,7 @@ const CHANGELOG = [
         items: [
             { title: 'Radio: you can be heard again', desc: 'On the PTT radio, audio often only travelled one way — you could hear someone but they could not hear you, and refreshing the page just swapped who was deaf. Whichever side answered the call was connecting its microphone to the wrong end of the line, so the connection looked perfectly healthy while your voice went nowhere. Both directions now work, including after a refresh.' },
             { title: 'Global PTT listening removed', desc: 'The Global PTT live listening feed has been taken out of the app. The PTT radio — channels, hold to talk — is unaffected.' },
+            { title: 'A tidier map, and a new way into the menu', desc: 'The alert counter has moved to the top right, and the Echo Radar mark now sits in the top left corner — tap it to open layers and settings. That clears two icons off the bottom bar: the settings sliders, which the mark replaces, and the Global PTT headphones, which no longer does anything.' },
         ],
     },
     {

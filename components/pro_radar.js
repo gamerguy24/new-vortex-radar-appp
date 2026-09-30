@@ -63,7 +63,7 @@ const MENUS = [
   { label: 'View', items: ['alertMenuItemDiv', 'metarStationMenuItemDiv', 'colorPickerItemDiv', 'drawMenuItemDiv'] },
   { label: 'Tools', items: ['mstMenuItemDiv', 'vortexSplitBtn', 'soundingMenuItemDiv', 'vortexModelsBtn'] },
   { label: 'Graphics', items: ['vortexGraphicsBtn', 'warnGraphicBtn'] },
-  { label: 'Comms', items: ['streamHubMenuItemDiv', 'vortexScannerBtn', 'vortexFeaturedBtn'] },
+  { label: 'Comms', items: ['streamHubMenuItemDiv', 'vortexFeaturedBtn'] },
   {
     label: 'Window',
     // The desk is the other half of this licence and nothing else points at it.
@@ -293,7 +293,6 @@ const MENU_NAMES = {
   vortexGraphicsBtn: 'Echo Graphics…',
   warnGraphicBtn: 'Warning Graphic…',
   streamHubMenuItemDiv: 'Chase Stream Hub…',
-  vortexScannerBtn: 'Global PTT',
   vortexFeaturedBtn: 'Featured Streams…',
   settingsItemDiv: 'Settings…',
 };

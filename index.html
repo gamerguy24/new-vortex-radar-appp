@@ -220,9 +220,6 @@
             <span id="streamHubMenuItemIcon" class="fa fa-video icon-grey menu_item_not_selected"></span>
         </div>
         <span class="vortexIconSpacer noselect"></span>
-        <div id="vortexScannerBtn" class="mapFooterMenuItem" title="Global PTT — live audio">
-            <span id="vortexScannerIcon" class="fa fa-headphones icon-grey menu_item_not_selected"></span>
-        </div>
         <span class="vortexIconSpacer noselect"></span>
         <div id="vortexFeaturedBtn" class="mapFooterMenuItem" title="Featured Streams — watch the team live">
             <span id="vortexFeaturedIcon" class="fa fa-star icon-grey menu_item_not_selected"></span>
@@ -279,10 +276,18 @@
     </div>
 
     <!--
-        VORTEX ALERT PILL (top-left)
+        ALERT PILL (top-right)
     -->
     <div id="vortexAlertPill" class="noselect" title="Toggle weather alerts">
         <i class="fa fa-triangle-exclamation"></i><span id="vortexAlertCount"></span>
+    </div>
+
+    <!--
+        ECHO RADAR ORB (top-left) — opens layers & settings.
+        The footer no longer carries the sliders icon; this is the way in.
+    -->
+    <div id="vortexMenuOrb" class="noselect" role="button" tabindex="0" title="Layers &amp; settings">
+        <img src="/icons/icons/128x128.png?v=echo2" alt="Echo Radar — layers and settings">
     </div>
 
     <!--
@@ -1522,7 +1527,22 @@
         // Reposition the legend whenever the products/elevation tab changes size.
         observe('#productMapFooter', function () { if ($('#vortexLegend').is(':visible')) { positionLegendAboveFooter(); } });
 
-        // Top-left alert pill -> open the active-alerts overlay (list of all alerts).
+        /*
+         * The orb opens layers & settings.
+         *
+         * It forwards to the footer icon rather than opening the menu itself:
+         * that icon still owns the behaviour (settings.js binds the open, and
+         * the draw and storm-track tools bind their own cleanup to it), and the
+         * professional interface re-homes the very same node into its Window
+         * menu. Forwarding keeps one implementation instead of two.
+         */
+        $('#vortexMenuOrb').on('click', function () {
+            $('#settingsItemClass').trigger('click');
+        }).on('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#settingsItemClass').trigger('click'); }
+        });
+
+        // Alert pill -> open the active-alerts overlay (list of all alerts).
         $('#vortexAlertPill').on('click', function () {
             if (typeof window.openVortexAlerts === 'function') {
                 window.openVortexAlerts();
