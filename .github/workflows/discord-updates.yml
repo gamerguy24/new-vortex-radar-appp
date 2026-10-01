@@ -20,7 +20,32 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
+      # Full history: the release-notes check below diffs this push against
+      # what came before it.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Did this push touch the release notes? Decided with git rather than a
+      # payload expression — github.event.commits.*.modified is an array OF
+      # ARRAYS, and joining it did not produce the string the match needed, so
+      # the step silently skipped every time.
+      - name: Did the release notes change?
+        id: notes
+        run: |
+          before='${{ github.event.before }}'
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$before^{commit}" 2>/dev/null; then
+            range="${{ github.sha }}~1 ${{ github.sha }}"
+          else
+            range="$before ${{ github.sha }}"
+          fi
+          if git diff --name-only $range | grep -qx 'app/core/changelog/changelog.js'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "release notes changed in this push"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "release notes unchanged"
+          fi
 
       - name: Post the commits to Discord
         uses: actions/github-script@v7
@@ -30,7 +55,13 @@ jobs:
           script: |
             const webhook = process.env.WEBHOOK;
             if (!webhook) {
-              core.info('DISCORD_WEBHOOK_URL is not set — nothing posted.');
+              /*
+               * FAIL, do not shrug. This used to log a line and return, so the
+               * run went green while the channel stayed empty — indistinguishable
+               * from working, and the hardest kind of thing to notice.
+               */
+              core.setFailed('DISCORD_WEBHOOK_URL secret is not set on this repository, '
+                + 'so nothing was posted. Add it under Settings → Secrets and variables → Actions.');
               return;
             }
             const p = context.payload;
@@ -83,9 +114,7 @@ jobs:
       # using the radar. When a push actually changes the release notes, post
       # those too — the same text the app shows under What's New.
       - name: Post What's New when the release notes changed
-        if: >-
-          contains(join(github.event.commits.*.modified, ','), 'app/core/changelog/changelog.js') ||
-          contains(join(github.event.commits.*.added, ','), 'app/core/changelog/changelog.js')
+        if: steps.notes.outputs.changed == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: node tools/post_discord_update.js --changelog 1
