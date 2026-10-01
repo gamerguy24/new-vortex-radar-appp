@@ -188,6 +188,61 @@ const map = new mapboxgl.Map({
 // this wrapper. Nothing else from the app is loaded.
 window.vortexMap = { map, dualMap: null, isSplit: () => false };
 
+/* ── the app's own basemap ──────────────────────────────────────────────────
+ * The stream showed the stock Mapbox dark style while the app showed the Echo
+ * map — same product, two different-looking maps. This paints the broadcast
+ * with the SAME palette the app uses, fetched from the one file both read
+ * (components/basemap_palette.json), and applies it with the same rules as
+ * app/core/map/vortex_basemap.js. Keep the two in step if those rules change.
+ */
+const BASE_SOURCE = 'composite';
+const isCasing = (id) => /(^|[-_])case($|[-_])|casing/i.test(id);
+const isMajorRoad = (id) => /motorway|trunk|highway/i.test(id);
+
+async function paintBasemap() {
+  let P;
+  try {
+    const r = await fetch('/components/basemap_palette.json', { cache: 'no-store' });
+    P = await r.json();
+  } catch (e) {
+    console.warn('[broadcast] palette unavailable, leaving the default style:', e.message);
+    return;
+  }
+  const set = (id, prop, val) => { try { if (map.getLayer(id)) map.setPaintProperty(id, prop, val); } catch (e) {} };
+
+  set('land', 'background-color', P.land);
+  set('background', 'background-color', P.land);
+  set('national-park', 'fill-color', P.national_park);
+  set('landuse', 'fill-color', P.landuse);
+  set('water', 'fill-color', P.water);
+
+  let layers = [];
+  try { layers = (map.getStyle() && map.getStyle().layers) || []; } catch (e) { return; }
+  for (const l of layers) {
+    const id = l.id || '';
+    if (l.type === 'background') { set(id, 'background-color', P.land); continue; }
+    if (l.source !== BASE_SOURCE) continue;   // never touch our own layers
+    if (l.type === 'fill') {
+      if (/water|ocean|sea|bathymetry/i.test(id)) set(id, 'fill-color', P.water);
+      else if (/park|grass|wood|forest|green|pitch|cemetery/i.test(id)) set(id, 'fill-color', P.national_park);
+      else if (/building/i.test(id)) set(id, 'fill-color', P.building);
+      else if (/land|aeroway|sand|snow/i.test(id)) set(id, 'fill-color', P.landuse);
+    } else if (l.type === 'fill-extrusion') {
+      set(id, 'fill-extrusion-color', P.building);
+    } else if (l.type === 'line') {
+      if (/admin|boundary|border/i.test(id)) set(id, 'line-color', P.boundary);
+      else if (/water|river|stream|canal/i.test(id)) set(id, 'line-color', P.waterway);
+      else if (/road|street|bridge|tunnel|motorway|highway|transit|rail|path/i.test(id)) {
+        set(id, 'line-color', isCasing(id) ? P.road_casing : isMajorRoad(id) ? P.road_major : P.road);
+      }
+    } else if (l.type === 'symbol') {
+      set(id, 'text-color', P.label_text);
+      set(id, 'text-halo-color', P.label_halo);
+      set(id, 'text-halo-width', 1.3);
+    }
+  }
+}
+
 /* ── warnings ───────────────────────────────────────────────────────────── */
 const WARN = {
   'Tornado Warning': { key: 'tor', color: '#ff2f1f' },
@@ -228,6 +283,8 @@ async function loadAlerts() {
 
 /* ── start ──────────────────────────────────────────────────────────────── */
 map.on('load', async () => {
+  await paintBasemap();          // the Echo map, before anything is drawn on it
+
   map.addSource('warnings', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addLayer({ id: 'warn-fill', type: 'fill', source: 'warnings',
     paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.10 } });

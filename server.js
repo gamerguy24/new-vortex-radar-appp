@@ -2358,7 +2358,7 @@ app.use('/broadcast', (req, res, next) => {
 app.get(['/broadcast', '/broadcast/'], sendFile(path.join('broadcast', 'index.html')));
 // The three front-end modules that page imports — named one by one rather than
 // opening /components, so nothing else becomes public by accident.
-for (const f of ['mrms.js', 'mrms_products.js', 'palettes.js']) {
+for (const f of ['mrms.js', 'mrms_products.js', 'palettes.js', 'basemap_palette.json']) {
     app.get('/components/' + f, sendFile(path.join('components', f)));
 }
 

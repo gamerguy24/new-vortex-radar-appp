@@ -22,25 +22,22 @@
 
 const map = require('./map');
 
-const VORTEX_PALETTE = {
-    // ---- surfaces
-    land:          'rgb(156, 160, 165)',  // medium-light cool grey (dominant)
-    landuse:       'rgb(147, 151, 157)',  // urban/landuse, a step darker so cities read
-    national_park: 'rgb(144, 156, 142)',  // muted sage, not a saturated green
-    building:      'rgb(137, 141, 147)',
-    water:         'rgb(51, 92, 133)',    // marine blue — the ocean, clearly blue
-    waterway:      'rgb(68, 110, 150)',   // rivers/streams, a touch lighter than open water
-
-    // ---- lines
-    road:          'rgb(231, 234, 238)',  // near-white roads read cleanly on grey
-    road_major:    'rgb(245, 247, 249)',  // motorways slightly brighter
-    road_casing:   'rgb(118, 124, 132)',  // thin dark casing gives roads definition
-    boundary:      'rgb(82, 88, 97)',     // state / county lines, dark on light grey
-
-    // ---- type: dark text on a light halo (inverted from the old dark theme)
-    label_text:    'rgb(28, 32, 37)',
-    label_halo:    'rgba(255, 255, 255, 0.88)',
-};
+/*
+ * The colours live in components/basemap_palette.json, not here.
+ *
+ * The 24/7 broadcast page (broadcast/index.html) has to paint the same map and
+ * cannot require() this file — it is standalone and this is CommonJS inside the
+ * bundle. With the palette written out in both places the YouTube feed drifted
+ * to a different-looking map than the app. One file, fetched there, required
+ * here.
+ *
+ * Surfaces, lines, then type: land deliberately lighter than the radar
+ * palette's low greens and blues so returns stay legible, and the ocean
+ * desaturated below anything in the reflectivity ramp so coastline never reads
+ * as echo.
+ */
+const PALETTE_JSON = require('../../../components/basemap_palette.json');
+const VORTEX_PALETTE = Object.freeze({ ...PALETTE_JSON });
 
 const BASE_SOURCE = 'composite'; // Mapbox vector basemap source
 

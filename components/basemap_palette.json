@@ -1,0 +1,18 @@
+{
+  "_comment": "The Echo Radar basemap palette — ONE definition, read by both the app (app/core/map/vortex_basemap.js) and the 24/7 broadcast page (broadcast/index.html). They used to be two different maps on screen; keeping the colours here is what stops them drifting apart again. Land is deliberately lighter than the radar palette's low greens and blues so returns stay legible, and the ocean blue is desaturated well below anything in the reflectivity ramp so coastline never reads as echo.",
+
+  "land": "rgb(156, 160, 165)",
+  "landuse": "rgb(147, 151, 157)",
+  "national_park": "rgb(144, 156, 142)",
+  "building": "rgb(137, 141, 147)",
+  "water": "rgb(51, 92, 133)",
+  "waterway": "rgb(68, 110, 150)",
+
+  "road": "rgb(231, 234, 238)",
+  "road_major": "rgb(245, 247, 249)",
+  "road_casing": "rgb(118, 124, 132)",
+  "boundary": "rgb(82, 88, 97)",
+
+  "label_text": "rgb(28, 32, 37)",
+  "label_halo": "rgba(255, 255, 255, 0.88)"
+}
