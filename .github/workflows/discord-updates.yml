@@ -19,7 +19,24 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    # Resolved once for every step. The fallbacks are deliberate: this went
+    # unnoticed because the secret was believed to be set, and the likely
+    # mistakes are a different name or a repository VARIABLE instead of a
+    # secret. Any of these works.
+    env:
+      WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL || secrets.DISCORD_WEBHOOK || vars.DISCORD_WEBHOOK_URL || vars.DISCORD_WEBHOOK }}
     steps:
+      # Fail HERE, before anything else, when there is nowhere to post. A
+      # failure buried in the posting step stopped the job and skipped the
+      # release-notes step with it, which read as "What's New never posts".
+      - name: Check the webhook is configured
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "::error::No Discord webhook configured. Add the webhook URL to this REPOSITORY as a secret named DISCORD_WEBHOOK_URL (Settings -> Secrets and variables -> Actions -> New repository secret). Checked: secrets.DISCORD_WEBHOOK_URL, secrets.DISCORD_WEBHOOK, vars.DISCORD_WEBHOOK_URL, vars.DISCORD_WEBHOOK."
+            exit 1
+          fi
+          echo "webhook configured"
+
       # Full history: the release-notes check below diffs this push against
       # what came before it.
       - uses: actions/checkout@v4
@@ -47,13 +64,12 @@ jobs:
             echo "release notes unchanged"
           fi
 
+      # WEBHOOK comes from the job-level env, so the fallbacks there apply.
       - name: Post the commits to Discord
         uses: actions/github-script@v7
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         with:
           script: |
-            const webhook = process.env.WEBHOOK;
+            const webhook = process.env.WEBHOOK;   // checked in the first step
             if (!webhook) {
               /*
                * FAIL, do not shrug. This used to log a line and return, so the
@@ -116,5 +132,7 @@ jobs:
       - name: Post What's New when the release notes changed
         if: steps.notes.outputs.changed == 'true'
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # The script reads DISCORD_WEBHOOK_URL; feed it whichever name the
+          # repository actually has (resolved at job level).
+          DISCORD_WEBHOOK_URL: ${{ env.WEBHOOK }}
         run: node tools/post_discord_update.js --changelog 1
