@@ -1051,3 +1051,16 @@ export async function setMRMSProduct(id) {
 }
 
 export function getMRMSProductId() { return _productId; }
+
+/**
+ * When the frame currently on screen is VALID, as an ISO-8601 UTC string —
+ * null before the first paint.
+ *
+ * The frame's own time, parsed from its S3 key. Not "when this browser noticed
+ * a new frame", which is a different number and, on a server running in UTC,
+ * one that reads hours wrong when it is formatted as local time. The 24/7
+ * broadcast page puts this on air.
+ */
+export function getMRMSFrameTime() {
+    return _lastRenderedKey ? _parseTimestamp(_lastRenderedKey) : null;
+}

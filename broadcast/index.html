@@ -135,7 +135,26 @@
  * Everything below is written to survive being left alone. Any failure path
  * ends in "reload the page" rather than a dead pixel on air.
  */
-import { addMRMS, setMRMSProduct } from '/components/mrms.js?v=bcast1';
+import { addMRMS, setMRMSProduct, getMRMSFrameTime } from '/components/mrms.js?v=bcast2';
+
+/*
+ * TIME ON AIR IS ALWAYS EXPLICIT.
+ *
+ * The encoder runs on a server, and a server's idea of "local" is usually UTC
+ * — so toLocaleTimeString() put 17:25Z on screen as "5:25 PM" next to a clock
+ * that was really 1:25 PM in the east. Everything shown is therefore formatted
+ * in a NAMED zone, never the renderer's, and labelled with it.
+ *
+ * Override for a different audience with /broadcast?tz=America/Chicago.
+ */
+const TZ = new URLSearchParams(location.search).get('tz') || 'America/New_York';
+const tzTime = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
+});
+const tzShort = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ, hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short',
+});
+const tzDate = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short', day: 'numeric' });
 
 const RELOAD_EVERY_MS = 6 * 60 * 60 * 1000;   // a browser left running for weeks leaks
 const STALE_FRAME_MS = 25 * 60 * 1000;        // MRMS updates ~2 min; 25 without = something is wrong
@@ -164,10 +183,9 @@ addEventListener('resize', fitStage); fitStage();
 const p2 = (n) => String(n).padStart(2, '0');
 setInterval(() => {
   const d = new Date();
-  document.getElementById('t_local').textContent =
-    `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+  document.getElementById('t_local').textContent = tzTime.format(d);
   document.getElementById('t_utc').textContent =
-    `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}Z · ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+    `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}Z · ${tzDate.format(d)}`;
 }, 1000);
 
 /* ── the map ────────────────────────────────────────────────────────────── */
@@ -309,21 +327,33 @@ map.on('load', async () => {
    * means the feed, the network or the tab has stopped and a reload is the
    * cheapest cure.
    */
-  let lastSeen = Date.now();
-  let lastUrl = '';
+  /*
+   * What is on screen, and how old it IS — taken from the frame's own valid
+   * time, not from when this page last did something. Those are different
+   * numbers: the browser can be busy and current, or idle and showing a frame
+   * from half an hour ago.
+   */
+  function showFrameTime() {
+    const el = document.getElementById('valid');
+    const iso = getMRMSFrameTime();
+    const t = iso ? Date.parse(iso) : NaN;
+    if (!Number.isFinite(t)) { el.textContent = 'waiting for data'; return null; }
+    const ageMin = Math.round((Date.now() - t) / 60000);
+    el.textContent = `valid ${tzShort.format(new Date(t))} · ${iso.slice(11, 16)}Z · `
+      + (ageMin < 1 ? 'just now' : ageMin === 1 ? '1 min ago' : `${ageMin} min ago`);
+    return t;
+  }
+
+  showFrameTime();
   setInterval(() => {
-    // 'mrms-img-src' is the image source components/mrms.js swaps on each
-    // refresh; its blob URL changes every time a new frame is painted.
-    const s = map.getSource('mrms-img-src');
-    const now = Date.now();
-    const u = (s && (s.url || (s._options && s._options.url))) || '';
-    if (u && u !== lastUrl) {
-      lastUrl = u;
-      lastSeen = now;
-      document.getElementById('valid').textContent = 'updated ' + new Date().toLocaleTimeString();
+    const t = showFrameTime();
+    // Staleness is measured on the DATA. A frozen national radar during severe
+    // weather is the failure that looks fine, so it is the frame's age that
+    // decides, not whether the page is otherwise alive.
+    if (t && Date.now() - t > STALE_FRAME_MS) {
+      reload('radar frame is ' + Math.round((Date.now() - t) / 60000) + ' minutes old');
     }
-    if (now - lastSeen > STALE_FRAME_MS) reload('radar has not updated in 25 minutes');
-  }, 30000);
+  }, 20000);
 });
 </script>
 </body>
