@@ -262,11 +262,28 @@ async function paintBasemap() {
 }
 
 /* ── warnings ───────────────────────────────────────────────────────────── */
+/*
+ * A tornado warning is drawn heavier than the rest on purpose: at national
+ * scale every box is small, and the one that means "take cover now" should not
+ * take the same glance to find as a flash flood.
+ */
 const WARN = {
-  'Tornado Warning': { key: 'tor', color: '#ff2f1f' },
-  'Severe Thunderstorm Warning': { key: 'svr', color: '#ffd000' },
-  'Flash Flood Warning': { key: 'ffw', color: '#19c45f' },
+  'Tornado Warning': { key: 'tor', color: '#ff2f1f', tag: 'TOR', weight: 3.6, halo: 6.4 },
+  'Severe Thunderstorm Warning': { key: 'svr', color: '#ffd000', tag: 'SVR', weight: 2.6, halo: 5.0 },
+  'Flash Flood Warning': { key: 'ffw', color: '#19c45f', tag: 'FFW', weight: 2.6, halo: 5.0 },
 };
+
+/*
+ * MRMS removes and re-adds its raster when a refresh cannot update the image
+ * in place, which puts the radar back above the warning boxes. Re-raising them
+ * is cheap and idempotent, so it is simply done on every refresh and after
+ * every alert poll rather than trying to detect the rebuild.
+ */
+function keepWarningsOnTop() {
+  for (const id of ['warn-fill', 'warn-halo', 'warn-line', 'warn-label']) {
+    try { if (map.getLayer(id)) map.moveLayer(id); } catch (e) { /* style reloading */ }
+  }
+}
 const ALERTS_URL = 'https://api.weather.gov/alerts/active?status=actual&message_type=alert';
 
 async function loadAlerts() {
@@ -282,14 +299,20 @@ async function loadAlerts() {
       const w = WARN[ev];
       if (!w) continue;
       counts[w.key]++;
-      if (f.geometry) feats.push({ type: 'Feature', geometry: f.geometry, properties: { color: w.color } });
+      if (f.geometry) {
+        feats.push({
+          type: 'Feature',
+          geometry: f.geometry,
+          properties: { color: w.color, tag: w.tag, weight: w.weight, halo: w.halo },
+        });
+      }
       const area = (f.properties.areaDesc || '').split(';')[0].trim();
       lines.push(`<span class="${w.key}">${ev.replace(' Warning', '')}</span> ${area}`);
     }
     for (const k of Object.keys(counts)) document.getElementById('c_' + k).textContent = counts[k];
     const src = map.getSource('warnings');
     const fc = { type: 'FeatureCollection', features: feats };
-    if (src) src.setData(fc);
+    if (src) { src.setData(fc); keepWarningsOnTop(); }
     const t = document.getElementById('ticker');
     t.innerHTML = lines.length
       ? lines.join('<span class="sep">•</span>')
@@ -303,15 +326,45 @@ async function loadAlerts() {
 map.on('load', async () => {
   await paintBasemap();          // the Echo map, before anything is drawn on it
 
+  /*
+   * WARNING BOXES, ON TOP OF THE RADAR.
+   *
+   * Four layers, not one: a light wash so the warned area reads at a glance, a
+   * dark halo under the outline so the box survives being drawn over a bright
+   * echo, the coloured outline itself, and a short label.
+   *
+   * Order matters more than any of it. MRMS adds its raster AFTER these and
+   * rebuilds it on refresh, so left alone the boxes sit UNDER the radar —
+   * invisible over the storm, which is the only place they matter. They are
+   * lifted back on top after every radar refresh (see keepWarningsOnTop).
+   */
   map.addSource('warnings', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addLayer({ id: 'warn-fill', type: 'fill', source: 'warnings',
-    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.10 } });
+    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.14 } });
+  map.addLayer({ id: 'warn-halo', type: 'line', source: 'warnings',
+    layout: { 'line-join': 'round' },
+    paint: { 'line-color': 'rgba(0,0,0,0.75)', 'line-width': ['get', 'halo'] } });
   map.addLayer({ id: 'warn-line', type: 'line', source: 'warnings',
-    paint: { 'line-color': ['get', 'color'], 'line-width': 2.2 } });
+    layout: { 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'weight'] } });
+  map.addLayer({ id: 'warn-label', type: 'symbol', source: 'warnings',
+    layout: {
+      'text-field': ['get', 'tag'],
+      'text-font': ['Arial Unicode MS Bold'],
+      'text-size': 13,
+      'text-allow-overlap': false,     // crowded outbreaks drop labels, not boxes
+      'text-padding': 3,
+    },
+    paint: {
+      'text-color': ['get', 'color'],
+      'text-halo-color': 'rgba(0,0,0,0.85)',
+      'text-halo-width': 1.6,
+    } });
 
   try {
     await setMRMSProduct('ref_comp');          // national composite reflectivity
     await addMRMS(window.vortexMap);           // paints, then refreshes itself every 2 min
+    keepWarningsOnTop();                       // the radar just went above the boxes
   } catch (e) {
     console.error('[broadcast] MRMS failed to start:', e.message);
     setTimeout(() => reload('MRMS failed to start'), 60000);
@@ -347,6 +400,7 @@ map.on('load', async () => {
   showFrameTime();
   setInterval(() => {
     const t = showFrameTime();
+    keepWarningsOnTop();   // a radar refresh between polls must not bury them
     // Staleness is measured on the DATA. A frozen national radar during severe
     // weather is the failure that looks fine, so it is the frame's age that
     // decides, not whether the page is otherwise alive.
