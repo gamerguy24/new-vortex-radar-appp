@@ -1,1 +1,1 @@
-{"index.css": 70500, "bundle.js": 4125564, "l2_bundle.js": 715061}
+{"index.css": 70500, "bundle.js": 4126422, "l2_bundle.js": 715061}
