@@ -20,6 +20,8 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Post the commits to Discord
         uses: actions/github-script@v7
         env:
@@ -76,3 +78,14 @@ jobs:
             } else {
               core.info(`Posted ${commits.length} commit(s) to Discord.`);
             }
+
+      # Commit subjects are written for us; What's New is written for the people
+      # using the radar. When a push actually changes the release notes, post
+      # those too — the same text the app shows under What's New.
+      - name: Post What's New when the release notes changed
+        if: >-
+          contains(join(github.event.commits.*.modified, ','), 'app/core/changelog/changelog.js') ||
+          contains(join(github.event.commits.*.added, ','), 'app/core/changelog/changelog.js')
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: node tools/post_discord_update.js --changelog 1

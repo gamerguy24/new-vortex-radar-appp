@@ -6,7 +6,13 @@
  *   node tools/post_discord_update.js --count 5       # the last 5 commits
  *   node tools/post_discord_update.js --range main@{1}..main
  *   node tools/post_discord_update.js --message "Deployed to the server"
+ *   node tools/post_discord_update.js --changelog     # the newest What's New
+ *   node tools/post_discord_update.js --changelog 3   # the newest 3 releases
  *   node tools/post_discord_update.js --test
+ *
+ * --changelog posts what USERS are told, which is not the same thing as a list
+ * of commit subjects: it reads app/core/changelog/changelog.js — the same
+ * What's New the app shows — and posts one embed per release.
  *
  * The webhook URL comes from DISCORD_WEBHOOK_URL (environment, or the app's
  * .env). It is a password — anyone holding it can post to the channel — so it
@@ -54,6 +60,29 @@ function commits() {
   });
 }
 
+/*
+ * Read the What's New releases out of changelog.js.
+ *
+ * Parsed rather than require()d: changelog.js pulls in the app's dialog module,
+ * which expects a browser. The shape it is parsed from is the shape the file
+ * has had throughout — a date followed by { title, desc } items.
+ */
+function releases(limit, skip) {
+  const src = fs.readFileSync(path.join(ROOT, 'app/core/changelog/changelog.js'), 'utf8');
+  const blockRe = /date:\s*'([^']+)',\s*\r?\n\s*items:\s*\[([\s\S]*?)\r?\n\s{8}\],/g;
+  const itemRe = /\{\s*title:\s*'((?:[^'\\]|\\.)*)',\s*desc:\s*'((?:[^'\\]|\\.)*)'/g;
+  const unescape = (s) => s.replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+  const all = [];
+  for (const b of src.matchAll(blockRe)) {
+    const items = [...b[2].matchAll(itemRe)].map((m) => ({ title: unescape(m[1]), desc: unescape(m[2]) }));
+    if (items.length) all.push({ date: b[1], items });
+    if (all.length >= limit + skip) break;
+  }
+  // --skip exists to post a BACKLOG without repeating a release the automatic
+  // push notification has already sent.
+  return all.slice(skip, skip + limit);
+}
+
 function repoUrl() {
   try {
     const remote = git(['remote', 'get-url', 'origin']);
@@ -74,6 +103,36 @@ async function main() {
   const isTest = process.argv.includes('--test');
   const base = repoUrl();
   let embed;
+
+  // What's New, exactly as users see it: one embed per release, newest first.
+  if (process.argv.includes('--changelog')) {
+    const n = parseInt(arg('changelog', '1'), 10) || 1;
+    const skip = parseInt(arg('skip', '0'), 10) || 0;
+    const blocks = releases(Math.min(n, 8), skip);
+    if (!blocks.length) { console.error('no releases found in changelog.js'); process.exit(1); }
+    const embeds = blocks.map((b) => ({
+      title: "What's New — " + b.date,
+      // Discord caps a description at 4096; a release of long notes is trimmed
+      // rather than rejected outright.
+      description: b.items.map((i) => '**' + i.title + '**\n' + i.desc).join('\n\n').slice(0, 4000),
+      color: 0x27beff,
+    }));
+    // --dry prints what would be sent. Worth having: a malformed parse is much
+    // cheaper to see here than in the channel.
+    if (process.argv.includes('--dry')) {
+      for (const e of embeds) console.log('\n=== ' + e.title + ' ===\n' + e.description);
+      console.log('\n(dry run — nothing posted; ' + embeds.length + ' embed(s))');
+      return;
+    }
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'Echo Radar', embeds }),
+    });
+    if (!r.ok) { console.error('Discord replied ' + r.status + ': ' + (await r.text()).slice(0, 300)); process.exit(1); }
+    console.log('posted ' + embeds.length + " release(s) of What's New to Discord.");
+    return;
+  }
 
   if (isTest) {
     embed = {
