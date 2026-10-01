@@ -329,6 +329,27 @@ export const TOUR_SCORE = 100;
  */
 export const NATIONAL_SCORE = 50;
 
+/**
+ * The band a shot belongs to, for deciding who takes turns with whom.
+ *
+ * Scores rank shots; tiers group them. Two severe thunderstorms are peers even
+ * when one has larger hail, and a tornado is never a peer of anything else.
+ */
+export function tierOf(c) {
+  if (!c) return 'none';
+  if (c.kind === 'national') return 'national';
+  if (c.kind === 'tour') return 'tour';
+  const sp = c.specs || {};
+  if (sp.isWatch) return 'watch';
+  if (sp.isTornado) {
+    if (sp.emergency) return 'tornado-emergency';
+    return sp.observed ? 'tornado-confirmed' : 'tornado';
+  }
+  if (sp.floodEmergency) return 'flood-emergency';
+  if (sp.isFlood) return 'flood';
+  return 'severe';
+}
+
 export const MIN_DWELL_MS = 90 * 1000;       // never cut away from a storm sooner
 export const ROTATE_MS = 3 * 60 * 1000;      // share the air during an outbreak
 
@@ -397,9 +418,17 @@ export class Director {
 
     const held = now - this.since;
     if (held >= Math.max(this.minDwell, this.rotate)) {
-      // Everything within a hair of the top score deserves a turn; prefer the
-      // one that has not been on air longest.
-      const peers = sorted.filter((c) => c.score >= current.score - 1 && c.id !== current.id);
+      /*
+       * Everyone in the same tier deserves a turn, with the one that has been
+       * off the air longest going next.
+       *
+       * This used to compare scores directly, which quietly stopped working once
+       * the ranking learned to tell two severe storms apart by hail size: every
+       * warning then had its own score, the leader had no peers, and the stream
+       * sat on one storm until it expired.
+       */
+      const tier = tierOf(current);
+      const peers = sorted.filter((c) => c.id !== current.id && tierOf(c) === tier);
       if (peers.length) {
         peers.sort((a, b) => this.shown.indexOf(a.id) - this.shown.indexOf(b.id));
         return cut(peers[0], 'sharing the air');

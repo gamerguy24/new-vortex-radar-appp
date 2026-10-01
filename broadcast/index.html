@@ -28,8 +28,19 @@
   html, body { width: 100%; height: 100%; overflow: hidden; background: #05070a;
     font-family: Onest, "Segoe UI", system-ui, sans-serif; color: #e9eef5; cursor: none; }
 
-  #stage { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; transform-origin: top left; }
-  #map { position: absolute; inset: 0; }
+  /*
+   * The stage carries the FURNITURE only, laid out at a fixed 1920x1080 and
+   * scaled to the window so everything lands where it was designed to.
+   *
+   * The map deliberately sits outside it, at the window's own size. Inside the
+   * transform its WebGL canvas was rendered at 1920x1080 and then resampled by
+   * the compositor every frame, which is invisible at full size (scale 1) and
+   * expensive at any other. pointer-events are off so the overlay cannot swallow
+   * anything; nothing on this page is clickable anyway.
+   */
+  #stage { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px;
+    transform-origin: top left; pointer-events: none; z-index: 2; }
+  #map { position: fixed; inset: 0; z-index: 1; }
 
   /* ── top bar ───────────────────────────────────────────────────────────── */
   #top { position: absolute; top: 0; left: 0; right: 0; height: 96px; display: flex; align-items: center;
@@ -161,9 +172,9 @@
 </head>
 <body>
 
-<div id="stage">
-  <div id="map"></div>
+<div id="map"></div>
 
+<div id="stage">
   <div id="top">
     <img id="mark" src="/icons/icons/128x128.png" alt="" />
     <div id="brand"><b>ECHO RADAR</b><span id="brandsub">National Radar</span></div>
@@ -294,14 +305,35 @@ window.addEventListener('unhandledrejection', (e) => console.error('[broadcast] 
 setTimeout(() => reload('scheduled refresh'), RELOAD_EVERY_MS);
 
 /* ── fit the 1920x1080 layout to whatever display the encoder gives us ───── */
+let stageScale = 1;
 function fitStage() {
-  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  stageScale = Math.min(innerWidth / 1920, innerHeight / 1080);
   const el = document.getElementById('stage');
-  el.style.transform = `scale(${s})`;
-  el.style.left = Math.round((innerWidth - 1920 * s) / 2) + 'px';
-  el.style.top = Math.round((innerHeight - 1080 * s) / 2) + 'px';
+  el.style.transform = `scale(${stageScale})`;
+  el.style.left = Math.round((innerWidth - 1920 * stageScale) / 2) + 'px';
+  el.style.top = Math.round((innerHeight - 1080 * stageScale) / 2) + 'px';
 }
-addEventListener('resize', fitStage); fitStage();
+
+/*
+ * Camera padding is written in stage pixels — "clear the 406px storm panel" —
+ * but the map is now in window pixels. Scaling it keeps the framing identical
+ * at any window size instead of leaving the panel over the storm on a small
+ * screen and miles clear of it on a large one.
+ */
+function pad(p) {
+  const k = stageScale;
+  return {
+    top: Math.round(p.top * k), bottom: Math.round(p.bottom * k),
+    left: Math.round(p.left * k), right: Math.round(p.right * k),
+  };
+}
+addEventListener('resize', () => {
+  fitStage();
+  // The raster is drawn through the map's projection at its current size, so a
+  // resized window needs it drawn again rather than stretched.
+  if (typeof onSite === 'function' && onSite() && onAir && onAir.site) redrawSite(map);
+});
+fitStage();
 
 /* ── clock ──────────────────────────────────────────────────────────────── */
 const p2 = (n) => String(n).padStart(2, '0');
@@ -319,7 +351,7 @@ const map = new mapboxgl.Map({
   container: 'map',
   style: 'mapbox://styles/mapbox/dark-v11',
   bounds: CONUS,
-  fitBoundsOptions: { padding: NATIONAL_PAD },
+  fitBoundsOptions: { padding: NATIONAL_PAD },   // scale is 1 before fitStage runs
   interactive: false,          // nothing drives this but the clock and the weather
   attributionControl: false,
   fadeDuration: 0,
@@ -742,7 +774,7 @@ async function goStorm(target, reason) {
   onAir = { kind: 'warning', id: target.id, specs: target.specs, geometry: target.geometry, site: null };
   paintWarnings();           // marks the on-air box
   renderPanel();
-  map.fitBounds(box, { padding: STORM_PAD, maxZoom: 10.5, duration: 1600, bearing: 0, pitch: 0 });
+  map.fitBounds(box, { padding: pad(STORM_PAD), maxZoom: 10.5, duration: 1600, bearing: 0, pitch: 0 });
 
   let got;
   try { got = await loading; } finally { cutting = false; }
@@ -844,7 +876,7 @@ async function goNational(reason) {
   showRefLegend(false);
   paintWarnings();
   renderPanel();
-  map.fitBounds(CONUS, { padding: NATIONAL_PAD, duration: 1200, bearing: 0, pitch: 0 });
+  map.fitBounds(CONUS, { padding: pad(NATIONAL_PAD), duration: 1200, bearing: 0, pitch: 0 });
   try {
     await setMRMSProduct('ref_comp');
     await addMRMS(window.vortexMap);
