@@ -188,18 +188,17 @@ function init() {
     });
 
     /*
-     * One station, two products.
+     * The panes are INDEPENDENT.
      *
-     * Station markers only exist on the left map, so picking a site there is
-     * the only way to change sites at all — the right pane follows it and keeps
-     * whatever product it was showing. That is the RadarOmega behaviour the
-     * removed control box was getting in the way of.
+     * This used to force the right pane onto whatever site was picked on the
+     * left, so both panes always showed the same storm and a compare view could
+     * not compare two of them. Station clicks now land on the pane being driven
+     * (see station_markers.js), and the right pane keeps its own site until it
+     * is the pane you are driving.
+     *
+     * The right pane still SEEDS from the left when split screen opens, so it
+     * opens as a comparison rather than an empty map.
      */
-    window.addEventListener('vortexstationchange', (e) => {
-        if (!document.body.classList.contains('vortex-split')) return;
-        const station = e.detail && e.detail.station;
-        if (station) seed_dual(station);
-    });
 }
 
 init();

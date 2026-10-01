@@ -21,8 +21,11 @@ function injectStyles() {
   s.id = 'vwsearch-styles';
   s.textContent = `
   #vwsearch{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:520;
-    width:min(440px,72vw);font-family:var(--vx-font)}
-  #vwsearch .vws-box{display:flex;align-items:center;gap:8px;background:var(--vx-surface);
+    width:min(560px,86vw);font-family:var(--vx-font)}
+  /* The search box and the layers button share one row; the results panel hangs
+     below BOTH. Named .vws-top because .vws-row is already a result row. */
+  #vwsearch .vws-top{display:flex;align-items:stretch;gap:8px}
+  #vwsearch .vws-box{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--vx-surface);
     border:1px solid rgba(255,255,255,.10);border-radius:var(--vx-r-3);padding:8px 12px;
     box-shadow:var(--vx-shadow);}
   #vwsearch .vws-ico{width:16px;height:16px;flex:0 0 auto;stroke:var(--vx-text-2);stroke-width:2;fill:none}
@@ -161,10 +164,12 @@ function init() {
   const wrap = document.createElement('div');
   wrap.id = 'vwsearch';
   wrap.innerHTML = `
-    <div class="vws-box">
-      <svg class="vws-ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-      <input type="text" placeholder="Search warnings & watches…" autocomplete="off" spellcheck="false" aria-label="Search warnings and watches" />
-      <button class="vws-clear" title="Clear" aria-label="Clear">×</button>
+    <div class="vws-top">
+      <div class="vws-box">
+        <svg class="vws-ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" placeholder="Search warnings & watches…" autocomplete="off" spellcheck="false" aria-label="Search warnings and watches" />
+        <button class="vws-clear" title="Clear" aria-label="Clear">×</button>
+      </div>
     </div>
     <div class="vws-results"></div>`;
   document.body.appendChild(wrap);

@@ -4,6 +4,7 @@ const map = require('../../core/map/map');
 const get_station_status = require('./get_station_status');
 const set_layer_order = require('../../core/map/setLayerOrder');
 const icons = require('../../core/map/icons/icons');
+const { pane_state, active_pane } = require('../../core/map/radar_panes');
 
 const NEXRADLevel2File = require('../libnexrad/level2/level2_parser');
 const Level2Factory = require('../libnexrad/level2/level2_factory');
@@ -214,11 +215,24 @@ function _init_click_listener() {
     map.on('click', 'stationSymbolLayer', (e) => {
         const base = e.features[0].properties;
         const clickedStation = base.station_id;
-        window.vortexData.currentStation = clickedStation;
+        /*
+         * WHICH PANE GETS THIS SITE?
+         *
+         * The one being driven. In split screen the operator chooses a pane by
+         * clicking it, and the product menu already follows that choice —
+         * sites used to be the exception: picking one changed the left pane AND
+         * forced the right pane to the same site, so the two panes could never
+         * show two different storms, which is most of the point of a compare
+         * view. Outside split screen active_pane() is always 'main', so
+         * single-pane behaviour is untouched.
+         */
+        const target = active_pane();
+        const S = pane_state(target);
+        S.currentStation = clickedStation;
         $('#radarStation').html(clickedStation);
         $('#radarLocation').html(nexrad_locations[clickedStation].name);
         const stationType = base.type;
-        window.vortexData.L2_file_id = '';
+        S.L2_file_id = '';
 
         var productToLoad;
         var abbvProductToLoad;
@@ -245,20 +259,20 @@ function _init_click_listener() {
         $('#radarInfoSpan').show();
 
         // track the active product so the playback loop can fetch historical scans
-        window.vortexData.current_loop_product = productToLoad;
-        require('../animation/radar_loop').reset();
+        S.current_loop_product = productToLoad;
+        // Playback drives the main pane only, so only a main-pane change resets it.
+        if (target === 'main') require('../animation/radar_loop').reset();
 
-        window.vortexData.from_file_upload = false;
-        loaders_nexrad.quick_level_3_plot(clickedStation, productToLoad, (L3Factory) => {});
+        S.from_file_upload = false;
+        loaders_nexrad.quick_level_3_plot(clickedStation, productToLoad, (L3Factory) => {}, target);
 
         /*
-         * Station markers live only on the left map, so this click is the only
-         * way to change sites. Announce it so the split-screen right pane can
-         * follow along (it keeps its own product). Nothing listens when split
-         * is off, and the main load above is unaffected either way.
+         * Announce the change, with the pane it landed on. Nothing forces the
+         * other pane any more — a listener that wants to follow can, but the
+         * compare view deliberately does not.
          */
         window.dispatchEvent(new CustomEvent('vortexstationchange', {
-            detail: { station: clickedStation, type: stationType }
+            detail: { station: clickedStation, type: stationType, target }
         }));
     });
 }

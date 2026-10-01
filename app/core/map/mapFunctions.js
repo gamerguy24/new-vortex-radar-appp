@@ -73,16 +73,22 @@ function moveMapLayer(lay) {
     }
 }
 
-function get_base_layer() {
-    const current_style_name = window.vortexData.map_type; // map.getStyle().name;
+/*
+ * The layer new map layers are inserted BELOW, for one pane.
+ *
+ * Each pane carries its own basemap now, so this reads that pane's style rather
+ * than one global. An unset pane (the right one before anything is chosen) is
+ * dark, which is the style its map is created with — returning undefined here
+ * put the radar on TOP of the labels instead of beneath them.
+ */
+function get_base_layer(target) {
+    const panes = require('./radar_panes');
+    const current_style_name = panes.pane_state(target === 'dual' ? 'dual' : 'main').map_type;
 
     if (current_style_name == 'satellite') {
         return 'tunnel-path-trail';
-    } else if (current_style_name == 'dark') {
-        return 'land-structure-line';
-    } else if (current_style_name == 'light') {
-        return 'land-structure-line';
     }
+    return 'land-structure-line';
 }
 
 module.exports = {

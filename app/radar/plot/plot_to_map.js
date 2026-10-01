@@ -266,7 +266,7 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
     }
 
     map_funcs.removeMapLayer(pane.layerId, map);
-    map.addLayer(layer, map_funcs.get_base_layer());
+    map.addLayer(layer, map_funcs.get_base_layer(target));
 
     // File-upload mode is a main-pane concept; the dual pane is always live.
     var isInFileUploadMode = is_main && window.vortexData.from_file_upload; /* $('#armrModeBtnSwitchElem').is(':checked'); */

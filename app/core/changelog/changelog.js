@@ -22,6 +22,13 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'October 1, 2026',
+        items: [
+            { title: 'Layers menu beside the search bar', desc: 'A Layers button now sits next to the search box. It holds Radar and Satellite, which switch those layers on and off and show you which are on, plus shortcuts to Models and Outlooks. It drives the same switches as the menu, so the two can never disagree.' },
+            { title: 'Side-by-side panes are now independent', desc: 'In split screen, clicking a radar site used to change BOTH panes, so you could never compare two different storms. Now a site lands only on the pane you are working in — click a pane to aim the controls at it. Each pane also keeps its own map: you can run the Echo Radar map on one side and satellite on the other.' },
+        ],
+    },
+    {
         date: 'September 29, 2026',
         items: [
             { title: 'Radio: you can be heard again', desc: 'On the PTT radio, audio often only travelled one way — you could hear someone but they could not hear you, and refreshing the page just swapped who was deaf. Whichever side answered the call was connecting its microphone to the wrong end of the line, so the connection looked perfectly healthy while your voice went nowhere. Both directions now work, including after a refresh.' },
