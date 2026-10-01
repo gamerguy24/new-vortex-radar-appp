@@ -252,6 +252,36 @@ async function plotOverlayFromUrl(url, W, E, S, N, plotted, fallbackLabel) {
   drawLegend(legend, vLabel);
 }
 
+/*
+ * Each model's OWN area.
+ *
+ * An overlay used to be cut to the viewport at the moment you pressed the
+ * button, then pinned to those coordinates: zoom out and the field became a
+ * small rectangle in one corner of the country. These are the grids the models
+ * actually cover, clamped to what the server accepts (±179, ±85).
+ *
+ * The cost is resolution — one image now spans the whole domain rather than
+ * one screen — which is why the requests below ask for the widest image the
+ * server will render.
+ */
+const DOMAINS = {
+  hrrr: [-134, 21, -60.5, 53],      // 3 km CONUS Lambert grid
+  nam: [-140, 18, -57, 58],         // 12 km CONUS, a little beyond the coasts
+  nam3km: [-134, 21, -60.5, 53],    // CONUS nest
+  ndfd: [-127, 22, -65, 50],        // 2.5 km CONUS
+  gfs: [-179, -85, 179, 85],        // global
+  gefs: [-179, -85, 179, 85],       // global
+  ecmwf: [-179, -85, 179, 85],      // global
+};
+const DEFAULT_DOMAIN = [-134, 21, -60.5, 53];
+const DOMAIN_W = 1600;              // the server's maximum
+
+/** The bounds an overlay for this model should be rendered at. */
+function domainBounds(modelId) {
+  const [W, S, E, N] = DOMAINS[modelId] || DEFAULT_DOMAIN;
+  return { W, E, S, N, bbox: `${W},${S},${E},${N}` };
+}
+
 function viewBounds() {
   const b = mapObj().getBounds();
   const W = Math.max(-179, b.getWest()), E = Math.min(179, b.getEast());
@@ -265,8 +295,8 @@ async function plotField(m, msg, btn) {
   if (!map) { alert('Map is not ready yet.'); return; }
   if (state.plotted && state.plotted.model === m.id && state.plotted.msg === msg.n
       && String(state.plotted.msg2) === String(msg.n2 == null ? null : msg.n2)) { clearOverlay(); return; }
-  const { W, E, S, N, bbox } = viewBounds();
-  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${msg.n}${msg2Param(msg)}&bbox=${bbox}`;
+  const { W, E, S, N, bbox } = domainBounds(m.id);
+  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${msg.n}${msg2Param(msg)}&bbox=${bbox}&w=${DOMAIN_W}`;
   const label = btn ? btn.textContent : '';
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
   try {
@@ -463,8 +493,8 @@ function productQuery(it) {
 async function plotProduct(m, it) {
   const map = mapObj();
   if (!map) { alert('Map is not ready yet.'); return; }
-  const { W, E, S, N, bbox } = viewBounds();
-  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&${productQuery(it)}&bbox=${bbox}`;
+  const { W, E, S, N, bbox } = domainBounds(m.id);
+  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&${productQuery(it)}&bbox=${bbox}&w=${DOMAIN_W}`;
   try {
     await plotOverlayFromUrl(url, W, E, S, N, { model: m.id, msg: null, msg2: null, product: it.id }, it.label);
   } catch (e) {
@@ -559,10 +589,10 @@ function prefetchHour(idx) {
     .then((r) => r.json()).then((idxData) => {
       const msg = resolvePreset(idxData.messages || [], state.activePreset);
       if (!msg) return;
-      const map = mapObj(); if (!map) return;
-      const b = map.getBounds();
-      const bbox = `${Math.max(-179, b.getWest()).toFixed(3)},${Math.max(-85, b.getSouth()).toFixed(3)},${Math.min(179, b.getEast()).toFixed(3)},${Math.min(85, b.getNorth()).toFixed(3)}`;
-      fetch(`${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${fhr}&msg=${msg.n}${msg2Param(msg)}&bbox=${bbox}`).catch(() => {});
+      // Same bbox and width as the real request, or this warms a cache entry
+      // nothing ever asks for.
+      const { bbox } = domainBounds(m.id);
+      fetch(`${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${fhr}&msg=${msg.n}${msg2Param(msg)}&bbox=${bbox}&w=${DOMAIN_W}`).catch(() => {});
     }).catch(() => {});
 }
 
@@ -699,8 +729,8 @@ function plotNdfdCurrent() {
   const lab = document.getElementById('ndfdTimeLabel');
   if (lab) lab.textContent = t ? `valid +${t.fhr} h` : '';
   const sel = document.getElementById('ndfdTime'); if (sel) sel.value = String(state.ndfdTimeIdx);
-  const { W, E, S, N, bbox } = viewBounds();
-  const url = `${API}/ndfd/elemfield?vp=${state.ndfdVp}&elem=${state.ndfdElem}&msg=${state.ndfdTimeIdx}&bbox=${bbox}`;
+  const { W, E, S, N, bbox } = domainBounds('ndfd');
+  const url = `${API}/ndfd/elemfield?vp=${state.ndfdVp}&elem=${state.ndfdElem}&msg=${state.ndfdTimeIdx}&bbox=${bbox}&w=${DOMAIN_W}`;
   plotOverlayFromUrl(url, W, E, S, N, { model: 'ndfd', ndfdElem: state.ndfdElem }, state.ndfdLabel)
     .then(markNdfdCards)
     .catch((e) => alert('Could not plot NDFD field:\n' + e.message));
