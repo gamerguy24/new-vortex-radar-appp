@@ -252,6 +252,17 @@ export function nearestSites(sites, lat, lon, limit = 4) {
 
 /* ── the director ──────────────────────────────────────────────────────────── */
 
+/*
+ * What a shot is worth, when it is not a warning.
+ *
+ * Both sit far below the lowest warning score (500), so no amount of pretty
+ * weather ever outranks a severe thunderstorm. They are EQUAL to each other so
+ * that the rotation treats them as peers: the country and the storms take
+ * turns, which is what a weather channel does when nothing is warned.
+ */
+export const TOUR_SCORE = 100;
+export const NATIONAL_SCORE = 100;
+
 export const MIN_DWELL_MS = 90 * 1000;       // never cut away from a storm sooner
 export const ROTATE_MS = 3 * 60 * 1000;      // share the air during an outbreak
 
@@ -285,15 +296,20 @@ export class Director {
    * @returns {{mode, target, changed, reason}}
    */
   decide(candidates, now = Date.now()) {
-    const live = (candidates || []).filter((c) => c && c.score > 0 && c.geometry);
+    // A warning with no polygon cannot be framed, so it is not a candidate.
+    // A missing kind is treated AS a warning: that is the default shape, and
+    // letting an unlabelled candidate through without geometry would hand the
+    // page a target it cannot point a camera at.
+    const live = (candidates || []).filter((c) => c && c.score > 0
+      && ((c.kind && c.kind !== 'warning') || c.geometry));
     if (!live.length) {
       const changed = this.mode !== 'national';
       if (changed) { this.mode = 'national'; this.targetId = null; this.since = now; }
-      return { mode: 'national', target: null, changed, reason: 'no breakable warnings' };
+      return { mode: 'national', target: null, changed, reason: 'nothing to show' };
     }
 
     const sorted = [...live].sort((a, b) => (b.score - a.score)
-      || ((b.specs.issued || 0) - (a.specs.issued || 0)));
+      || ((b.issued || 0) - (a.issued || 0)));
     const top = sorted[0];
     const current = live.find((c) => c.id === this.targetId) || null;
 
@@ -304,13 +320,14 @@ export class Director {
         this.since = now;
         this.shown = this.shown.filter((id) => id !== to.id).concat(to.id).slice(-40);
       }
-      const modeChanged = this.mode !== 'storm';
-      this.mode = 'storm';
-      return { mode: 'storm', target: to, changed: changed || modeChanged, reason };
+      const mode = to.kind === 'national' ? 'national' : to.kind === 'tour' ? 'tour' : 'storm';
+      const modeChanged = this.mode !== mode;
+      this.mode = mode;
+      return { mode, target: to, changed: changed || modeChanged, reason };
     };
 
-    if (!current) return cut(top, this.mode === 'national' ? 'warning issued' : 'previous warning ended');
-    if (top.score > current.score) return cut(top, 'more urgent warning');
+    if (!current) return cut(top, this.mode === 'national' ? 'something to show' : 'previous shot ended');
+    if (top.score > current.score) return cut(top, 'something more urgent');
 
     const held = now - this.since;
     if (held >= Math.max(this.minDwell, this.rotate)) {
@@ -322,7 +339,8 @@ export class Director {
         return cut(peers[0], 'sharing the air');
       }
     }
-    return { mode: 'storm', target: current, changed: false, reason: 'holding' };
+    const mode = current.kind === 'national' ? 'national' : current.kind === 'tour' ? 'tour' : 'storm';
+    return { mode, target: current, changed: false, reason: 'holding' };
   }
 }
 
@@ -334,10 +352,46 @@ export function candidatesFrom(features) {
     if (!WARN_TYPES[p.event]) continue;
     const specs = stormSpecs(p);
     out.push({
+      kind: 'warning',
       id: p.id || `${p.event}:${p.areaDesc}:${p.sent}`,
       specs,
       score: scoreWarning(specs),
+      issued: specs.issued,
       geometry: f.geometry || null,
+    });
+  }
+  return out;
+}
+
+/**
+ * The shots available when nothing is warned.
+ *
+ * One per patch of weather the mosaic found, on the nearest WSR-88D to it,
+ * plus the national view itself — which is a shot like any other here, so the
+ * rotation gives the country a turn between storms instead of never showing it
+ * or never leaving it.
+ *
+ * @param {Array} hotspots [{ lat, lon, dbz }] from findMRMSHotspots()
+ * @param {object} sites    the NEXRAD site table
+ */
+export function quietCandidates(hotspots, sites) {
+  const out = [{ kind: 'national', id: 'national', score: NATIONAL_SCORE, issued: 0 }];
+  const used = new Set();
+  for (const h of hotspots || []) {
+    if (!h || !Number.isFinite(h.lat) || !Number.isFinite(h.lon)) continue;
+    const near = nearestSites(sites, h.lat, h.lon, 1)[0];
+    // Beyond ~230 km the site cannot see it, so there is nothing to cut to.
+    if (!near || near.km > 230) continue;
+    if (used.has(near.id)) continue;      // one shot per radar, not per cell
+    used.add(near.id);
+    out.push({
+      kind: 'tour',
+      id: `tour:${near.id}`,
+      score: TOUR_SCORE,
+      issued: 0,
+      site: near,
+      centre: [h.lon, h.lat],
+      dbz: Math.round(h.dbz),
     });
   }
   return out;

@@ -90,12 +90,24 @@ encoder its own machine; it only needs to reach the app over HTTP.
 `broadcast/index.html` — deliberately standalone: no app bundle, no menus, and
 **no login**, because a session that lapses would put a sign-in page on air.
 
-It has two looks, and switches between them on its own.
+It has three looks and switches between them on its own, and the radar site
+pills from the app are on all of them — blue for a working WSR-88D, amber for
+a TDWR, red for one that has not posted Level 2 in 15 minutes. Positions come
+from the app's own site table and the status from the same NWS endpoint the
+radar page uses, so the stream and the app never show a different set of
+radars.
 
 **Quiet — the national view.** MRMS composite reflectivity over the whole
 country, refreshing itself every 2 minutes, with every active tornado, severe
 thunderstorm and flash flood warning outlined, counters, a scrolling ticker,
 the clock and the MRMS legend carrying the frame's age.
+
+**Weather but nothing warned — the tour.** The mosaic is scanned for the
+strongest cells in the country, and the nearest WSR-88D to each is a shot in
+the rotation. So a wet afternoon with no warnings is still the app's own
+super-res radar on the air rather than a 1 km national picture. No bulletin
+card here, deliberately: no office has said anything about these storms, and
+the card exists to repeat what an office said.
 
 **A storm is warned — the storm view.** It picks the most urgent warning,
 finds the nearest WSR-88D, and puts THAT radar on air: single-site base
@@ -104,9 +116,15 @@ specifications beside it — what the warning says about hail, gusts, storm
 motion, whether a tornado is radar indicated or confirmed, who issued it and
 when it expires. MRMS comes down while this is on, and goes back up afterwards.
 
-Why both: the mosaic is the right picture of the country and the wrong picture
+Why the mosaic is still there: it is the right picture of the country and the
+wrong picture
 of a storm (1 km, pre-smoothed, merged across sites, no tilt), and a single
 site is the right picture of a storm and cannot show the country at all.
+
+The national view is a shot in the rotation rather than the absence of one, so
+a quiet evening alternates between the country and whatever storms exist
+instead of sitting on either. A warning outranks both by a factor of five and
+interrupts immediately.
 
 Which storm wins, in order: tornado emergency, confirmed large/destructive
 tornado, confirmed tornado, radar-indicated tornado, then severe thunderstorm
@@ -136,7 +154,9 @@ Useful query strings, mostly for checking it:
 | `?site=KTLX` | force which radar a cut uses |
 
 To change what is shown, edit that one file — the MRMS product id (`ref_comp`)
-comes straight from `components/mrms_products.js`, and the weakest echo drawn
+comes straight from `components/mrms_products.js`, `TOUR_MIN_DBZ` (45) is how
+strong an echo has to be before the stream leaves the national view for it,
+and the weakest echo drawn
 in the storm view is `MIN_DBZ` in `broadcast/site_radar.js` (20 dBZ: lower and
 the palette's grey band sheets over the basemap).
 

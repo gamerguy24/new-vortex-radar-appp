@@ -224,10 +224,13 @@
  * ends in "show the national view" or "reload the page" rather than a dead
  * pixel on air.
  */
-import { addMRMS, removeMRMS, setMRMSProduct, getMRMSFrameTime } from '/components/mrms.js?v=bcast3';
+import { addMRMS, removeMRMS, setMRMSProduct, getMRMSFrameTime, findMRMSHotspots }
+  from '/components/mrms.js?v=bcast4';
 import { paletteStops } from '/graphics/studio/engine/radar_l2_raster.js?v=bcast1';
-import { Director, candidatesFrom, WARN_TYPES, boundsOf, centroidOf, nearestSites }
-  from '/broadcast/storm_director.js?v=bcast1';
+import { Director, candidatesFrom, quietCandidates, WARN_TYPES, boundsOf, centroidOf, nearestSites }
+  from '/broadcast/storm_director.js?v=bcast2';
+import { addSiteMarkers, setSiteMarkerStatus, keepSiteMarkersOnTop, fetchSiteStatus }
+  from '/broadcast/site_markers.js?v=bcast1';
 import { loadSite, redrawSite, showSite, clearSite, siteRadarState, BUSY, MIN_DBZ }
   from '/broadcast/site_radar.js?v=bcast2';
 
@@ -258,6 +261,11 @@ const STALE_SITE_MS = 22 * 60 * 1000;         // a volume every ~5 min; 22 means
 const SITE_REFRESH_MS = 45 * 1000;            // how often to look for the next volume
 const VETO_MS = 10 * 60 * 1000;               // how long a failing radar or storm is left alone
 const ALERTS_MS = 60 * 1000;
+const STATUS_MS = 10 * 60 * 1000;      // how often to recheck which radars are down
+// What counts as weather worth leaving the national view for, and how close to
+// stand. 45 dBZ is a thunderstorm core rather than a rain shower.
+const TOUR_MIN_DBZ = 45;
+const TOUR_ZOOM = 8.2;
 const CONUS = [[-127, 23.5], [-66, 50.5]];
 const NATIONAL_PAD = { top: 110, bottom: 120, left: 40, right: 40 };
 // The left padding clears the storm panel, so a storm is never hidden behind
@@ -375,11 +383,37 @@ async function paintBasemap() {
 
 /* ── what is on air ─────────────────────────────────────────────────────── */
 const director = new Director();
-let mode = 'national';
-let onAir = null;             // { id, specs, geometry, site }
+let mode = 'national';         // national | storm (warned) | tour (quiet weather)
+let onAir = null;             // { kind, id, specs?, geometry?, centre?, site }
 let rawFeatures = [];         // last good warning list from the NWS
 let sites = {};               // id -> { lat, lon, name, type }
+let siteStatus = {};          // id -> up | down, for the pill colours
 let siteTimer = null;
+
+/*
+ * Where the weather is, found by the mosaic.
+ *
+ * Kept rather than recomputed on demand because removeMRMS() throws the
+ * decoded grid away — so while a single site is on air there is nothing to ask.
+ * The national view is part of the rotation, so this is refreshed every time
+ * the country comes back round, which is well inside the lifetime below.
+ */
+let hotspots = [];
+let hotspotsAt = 0;
+const HOTSPOTS_GOOD_FOR_MS = 20 * 60 * 1000;
+
+// Showing a single radar, as opposed to the national mosaic.
+const onSite = () => mode === 'storm' || mode === 'tour';
+
+/*
+ * Every cut takes a ticket. A volume takes seconds to arrive, and in that time
+ * a warning can be issued that outranks the shot being set up — so when the
+ * download finally lands, the only safe question is whether this is still the
+ * cut the page is making. It usually is; when it is not, drawing it would put
+ * one radar under another radar's camera.
+ */
+let cutSeq = 0;
+let cutting = false;
 
 /*
  * Things that have just failed us, and when to try them again. A radar that is
@@ -408,6 +442,13 @@ function keepWarningsOnTop() {
   }
 }
 
+// Pills above the radar, warnings above the pills: a site label may be covered
+// by a warning outline, but a warning outline must never be covered by a label.
+function keepFurnitureOnTop() {
+  keepSiteMarkersOnTop(map);
+  keepWarningsOnTop();
+}
+
 const ALERTS_URL = 'https://api.weather.gov/alerts/active?status=actual&message_type=alert';
 
 async function loadAlerts() {
@@ -421,6 +462,8 @@ async function loadAlerts() {
     return;
   }
   paintWarnings();
+  // Where the weather is, before deciding what to point at.
+  refreshHotspots();
   await runDirector();
 }
 
@@ -470,23 +513,100 @@ function paintWarnings() {
 }
 
 /* ── the director: decide, then cut ─────────────────────────────────────── */
+/*
+ * Three kinds of shot, in order of what they are worth:
+ *
+ *   warned storm — the nearest radar to a tornado or severe thunderstorm
+ *                  warning, framed on the polygon, with the specifications.
+ *   tour         — nothing warned, but there IS weather: the nearest radar to
+ *                  the strongest echo the mosaic can find.
+ *   national     — the whole country on the mosaic.
+ *
+ * The national view is a shot in the rotation rather than the absence of one,
+ * so a quiet evening alternates between the country and whatever storms exist
+ * instead of sitting on either forever. A warning outranks both by a factor of
+ * five, and interrupts immediately.
+ */
 async function runDirector() {
   if (FORCED_MODE === 'national') return;
+  // A cut already in flight finishes on its own; starting a second one here is
+  // how two radars end up fighting over one camera.
+  if (cutting) return;
   const now = Date.now();
-  const candidates = candidatesFrom(rawFeatures).filter((c) => !vetoed(c.id));
+
+  let candidates = candidatesFrom(rawFeatures).filter((c) => !vetoed(c.id));
+  if (!candidates.length) {
+    // Nothing worth breaking to. Ask the mosaic where the weather is instead.
+    if (hotspots.length && (now - hotspotsAt) > HOTSPOTS_GOOD_FOR_MS) hotspots = [];
+    candidates = quietCandidates(hotspots, sites)
+      .filter((c) => !vetoed(c.id) && !(c.site && vetoed(c.site.id)));
+  }
+
   const d = director.decide(candidates, now);
 
   if (d.mode === 'national') {
     if (mode !== 'national') await goNational(d.reason);
     return;
   }
-  if (d.changed || !onAir) { await goStorm(d.target, d.reason); return; }
+  // !onAir.site means a cut was set up but its radar never arrived — retry it,
+  // or the page holds a camera with nothing under it until the next rotation.
+  if (d.mode === 'tour') {
+    if (d.changed || !onAir || !onAir.site) await goTour(d.target, d.reason);
+    return;
+  }
+  if (d.changed || !onAir || !onAir.site) { await goStorm(d.target, d.reason); return; }
 
   // Same storm: an escalation from "radar indicated" to "confirmed tornado" is
   // an update to the panel, not a reason to move the camera.
   onAir.specs = d.target.specs;
   onAir.geometry = d.target.geometry;
   renderPanel();
+}
+
+/**
+ * Load the first of these radars that will actually give us a scan.
+ *
+ * @returns {Promise<{site}|null|"busy">} "busy" means a previous cut is still
+ *   downloading — not a failure, and not a reason to stand down from anything.
+ */
+async function loadFirstWorking(picks) {
+  for (const site of picks) {
+    const r = await loadSite(site.id, { product: 'reflectivity' });
+    if (r.ok) return { site };
+    if (r.reason === BUSY) return 'busy';
+    setVeto(site.id, r.reason);
+  }
+  return null;
+}
+
+/**
+ * Take down whatever radar is on the map if it does not belong to the shot we
+ * are cutting to. Basemap and warnings for a few seconds is honest; another
+ * radar's returns under this camera is not.
+ */
+function dropStaleRaster(wantSiteId) {
+  const loaded = siteRadarState().site;
+  if (loaded && loaded !== wantSiteId) clearSite(map);
+}
+
+/**
+ * Shared tail of a cut to a single radar: draw it, caption it, keep it fresh.
+ *
+ * @param {number} ticket the cut this belongs to; a stale one is dropped.
+ */
+function settleOnSite(got, ticket) {
+  if (ticket !== cutSeq || !onAir) {
+    console.log('[broadcast] a newer shot took over while that scan downloaded');
+    return;
+  }
+  onAir.site = got.site;
+  redrawSite(map);
+  keepSiteMarkersOnTop(map);
+  keepWarningsOnTop();
+  showRefLegend(true);
+  renderPanel();
+  showFrameTime();
+  startSiteTimer();
 }
 
 /** Cut to a warned storm: nearest radar, camera on the polygon, panel beside it. */
@@ -502,52 +622,81 @@ async function goStorm(target, reason) {
 
   const picks = (FORCED_SITE
     ? [{ id: FORCED_SITE, name: FORCED_SITE, km: 0 }]
-    : nearestSites(sites, centre[1], centre[0], 4)).filter((s) => !vetoed(s.id));
+    : nearestSites(sites, centre[1], centre[0], 4)).filter((site) => !vetoed(site.id));
   if (!picks.length) {
     setVeto(target.id, 'no usable radar within range');
-    if (mode === 'storm') await goNational('no radar for the warned storm');
+    if (onSite()) await goNational('no radar for the warned storm');
     return;
   }
 
   console.log(`[broadcast] cutting to ${target.specs.event} — ${target.specs.counties} `
-    + `(${reason}); radar ${picks.map((s) => s.id).join('/')}`);
+    + `(${reason}); radar ${picks.map((p) => p.id).join('/')}`);
 
   // Download the volume WHILE the camera flies, rather than after it lands.
-  const loading = (async () => {
-    for (const s of picks) {
-      const r = await loadSite(s.id, { product: 'reflectivity' });
-      if (r.ok) return { site: s };
-      if (r.reason === BUSY) return 'busy';
-      setVeto(s.id, r.reason);
-    }
-    return null;
-  })();
+  const loading = loadFirstWorking(picks);
 
-  if (mode !== 'storm') { try { removeMRMS(); } catch (e) { /* was not up */ } }
+  const ticket = ++cutSeq;
+  cutting = true;
+  dropStaleRaster(picks[0].id);
+  if (mode === 'national') { try { removeMRMS(); } catch (e) { /* was not up */ } }
   mode = 'storm';
-  onAir = { id: target.id, specs: target.specs, geometry: target.geometry, site: null };
+  onAir = { kind: 'warning', id: target.id, specs: target.specs, geometry: target.geometry, site: null };
   paintWarnings();           // marks the on-air box
   renderPanel();
   map.fitBounds(box, { padding: STORM_PAD, maxZoom: 10.5, duration: 1600, bearing: 0, pitch: 0 });
 
-  const got = await loading;
+  let got;
+  try { got = await loading; } finally { cutting = false; }
   if (got === 'busy') return;          // an earlier cut is still downloading; the next poll retries
   if (!got) {
     setVeto(target.id, 'every nearby radar failed');
-    await goNational('could not get radar for that storm');
+    if (ticket === cutSeq) await goNational('could not get radar for that storm');
     return;
   }
-  onAir.site = got.site;
-  redrawSite(map);
-  showRefLegend(true);
+  settleOnSite(got, ticket);
+}
+
+/**
+ * Nothing warned, but something worth looking at: the nearest radar to the
+ * strongest echo, on its own data.
+ *
+ * No specifications panel here, deliberately. There is no warning, so there is
+ * nothing an office has said about this storm, and the panel exists to repeat
+ * what an office said — not to narrate the radar on its own authority.
+ */
+async function goTour(target, reason) {
+  const picks = (FORCED_SITE ? [{ id: FORCED_SITE, name: FORCED_SITE, km: 0 }] : [target.site])
+    .filter((site) => !vetoed(site.id));
+  if (!picks.length) { setVeto(target.id, 'radar stood down'); return; }
+
+  console.log(`[broadcast] touring ${picks[0].id} — ${target.dbz} dBZ (${reason})`);
+  const loading = loadFirstWorking(picks);
+
+  const ticket = ++cutSeq;
+  cutting = true;
+  dropStaleRaster(picks[0].id);
+  if (mode === 'national') { try { removeMRMS(); } catch (e) { /* was not up */ } }
+  mode = 'tour';
+  onAir = { kind: 'tour', id: target.id, centre: target.centre, dbz: target.dbz, site: null };
+  paintWarnings();
   renderPanel();
-  showFrameTime();
-  startSiteTimer();
+  map.easeTo({ center: target.centre, zoom: TOUR_ZOOM, duration: 1600, bearing: 0, pitch: 0 });
+
+  let got;
+  try { got = await loading; } finally { cutting = false; }
+  if (got === 'busy') return;
+  if (!got) {
+    setVeto(target.id, 'the radar nearest that weather failed');
+    if (ticket === cutSeq) await goNational('could not get radar for that weather');
+    return;
+  }
+  settleOnSite(got, ticket);
 }
 
 /** Back to the whole country. */
 async function goNational(reason) {
   console.log('[broadcast] national view: ' + reason);
+  cutSeq++;              // anything still downloading belongs to a shot we have left
   stopSiteTimer();
   clearSite(map);
   mode = 'national';
@@ -559,6 +708,7 @@ async function goNational(reason) {
   try {
     await setMRMSProduct('ref_comp');
     await addMRMS(window.vortexMap);
+    keepSiteMarkersOnTop(map);
     keepWarningsOnTop();
   } catch (e) {
     console.error('[broadcast] MRMS failed to restart:', e.message);
@@ -566,12 +716,29 @@ async function goNational(reason) {
   }
 }
 
+/**
+ * Re-read where the weather is, from the frame the mosaic has in hand.
+ *
+ * Only possible while the national view is up — the grid is thrown away when
+ * MRMS comes down — which is exactly why the country stays in the rotation.
+ */
+function refreshHotspots() {
+  if (mode !== 'national') return;
+  try {
+    const found = findMRMSHotspots({ minDbz: TOUR_MIN_DBZ, limit: 5 });
+    if (found.length) { hotspots = found; hotspotsAt = Date.now(); }
+    else if (Date.now() - hotspotsAt > HOTSPOTS_GOOD_FOR_MS) { hotspots = []; }
+  } catch (e) {
+    console.warn('[broadcast] could not scan the mosaic for weather:', e.message);
+  }
+}
+
 function startSiteTimer() {
   stopSiteTimer();
   siteTimer = setInterval(async () => {
-    if (mode !== 'storm' || !onAir || !onAir.site) return;
+    if (!onSite() || !onAir || !onAir.site) return;
     const r = await showSite(map, onAir.site.id);
-    if (r.ok && r.changed) { keepWarningsOnTop(); renderPanel(); showFrameTime(); }
+    if (r.ok && r.changed) { keepSiteMarkersOnTop(map); keepWarningsOnTop(); renderPanel(); showFrameTime(); }
     else if (!r.ok && r.reason !== BUSY) console.warn('[broadcast] site refresh: ' + r.reason);
   }, SITE_REFRESH_MS);
 }
@@ -579,7 +746,16 @@ function stopSiteTimer() { if (siteTimer) { clearInterval(siteTimer); siteTimer 
 
 // Any camera move in storm mode means redrawing the raster through the new
 // projection: it is pinned to the corners it was rendered for.
-map.on('moveend', () => { if (mode === 'storm') redrawSite(map); });
+/*
+ * A camera move means the raster has to be redrawn through the new projection
+ * — but only if the radar on the map is the one this shot is about. During the
+ * fly to a new site there is nothing of ours to draw yet.
+ */
+map.on('moveend', () => {
+  if (!onSite() || !onAir || !onAir.site) return;
+  if (siteRadarState().site !== onAir.site.id) return;
+  redrawSite(map);
+});
 
 /* ── the panel ──────────────────────────────────────────────────────────── */
 const $ = (id) => document.getElementById(id);
@@ -592,10 +768,16 @@ function row(id, value) {
 
 function renderPanel() {
   const panel = $('storm');
-  if (mode !== 'storm' || !onAir) {
+  // The card is for what an OFFICE said. A tour has no warning behind it, so
+  // it gets the chip and the legend and nothing that looks like a bulletin.
+  if (mode !== 'storm' || !onAir || onAir.kind !== 'warning') {
     panel.classList.add('hide');
-    $('brandsub').textContent = 'National Radar';
-    $('foot_src').textContent = 'Radar: NOAA MRMS · Warnings: NWS api.weather.gov';
+    const st = siteRadarState();
+    $('brandsub').textContent = mode === 'tour' ? 'Live Radar Tour' : 'National Radar';
+    $('foot_src').textContent = st.site
+      ? `Radar: NOAA NEXRAD ${st.site} Level II · Warnings: NWS api.weather.gov`
+      : 'Radar: NOAA MRMS · Warnings: NWS api.weather.gov';
+    $('rl_src').textContent = st.site ? `${st.site}${st.superRes ? ' · super-res' : ''}` : 'NEXRAD Level II';
     setProductName();
     return;
   }
@@ -644,7 +826,7 @@ function renderPanel() {
 
 /** "UNTIL 3:15 PM EDT · 14 MIN" — recomputed every second, not once per poll. */
 function tickUntil() {
-  if (mode !== 'storm' || !onAir) return;
+  if (mode !== 'storm' || !onAir || !onAir.specs) return;
   const t = onAir.specs.expires;
   const el = $('sp_until');
   if (!t) { el.textContent = ''; return; }
@@ -654,7 +836,7 @@ function tickUntil() {
 
 function setProductName() {
   const el = $('prodname');
-  if (mode === 'storm') {
+  if (onSite()) {
     const st = siteRadarState();
     const tilt = Number.isFinite(st.elevationAngle) ? ` ${st.elevationAngle.toFixed(1)}°` : '';
     el.textContent = st.site
@@ -704,7 +886,7 @@ function showRefLegend(on) {
  * the only honest answer there.
  */
 function frameTime() {
-  if (mode === 'storm') return siteRadarState().scanTime || null;
+  if (onSite()) return siteRadarState().scanTime || null;
   const iso = getMRMSFrameTime();
   const t = iso ? Date.parse(iso) : NaN;
   return Number.isFinite(t) ? t : null;
@@ -713,7 +895,7 @@ function frameTime() {
 function showFrameTime() {
   const el = $('valid');
   const t = frameTime();
-  if (!t) { el.textContent = mode === 'storm' ? 'acquiring scan' : 'waiting for data'; return null; }
+  if (!t) { el.textContent = onSite() ? 'acquiring scan' : 'waiting for data'; return null; }
   const d = new Date(t);
   const ageMin = Math.round((Date.now() - t) / 60000);
   el.textContent = `valid ${tzShort.format(d)} · ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}Z · `
@@ -801,10 +983,30 @@ map.on('load', async () => {
     console.error('[broadcast] dist/l2_bundle.js did not load — staying on the national view');
   }
 
+  /*
+   * The app's radar site pills. Added before the radar so they are already in
+   * the style when the first raster lands, and raised again after every refresh.
+   */
+  try {
+    await addSiteMarkers(map, sites, siteStatus);
+    fetchSiteStatus().then((st) => {
+      siteStatus = st;
+      setSiteMarkerStatus(map, sites, siteStatus);
+      const down = Object.values(st).filter((v) => v === 'down').length;
+      console.log(`[broadcast] radar status: ${down} of ${Object.keys(st).length} not posting Level 2`);
+    });
+    setInterval(async () => {
+      siteStatus = await fetchSiteStatus();
+      setSiteMarkerStatus(map, sites, siteStatus);
+    }, STATUS_MS);
+  } catch (e) {
+    console.warn('[broadcast] radar site pills unavailable:', e.message);
+  }
+
   try {
     await setMRMSProduct('ref_comp');          // national composite reflectivity
     await addMRMS(window.vortexMap);           // paints, then refreshes itself every 2 min
-    keepWarningsOnTop();                       // the radar just went above the boxes
+    keepFurnitureOnTop();                      // the radar just went above both
   } catch (e) {
     console.error('[broadcast] MRMS failed to start:', e.message);
     setTimeout(() => reload('MRMS failed to start'), 60000);
@@ -817,7 +1019,7 @@ map.on('load', async () => {
   setInterval(() => {
     const t = showFrameTime();
     setProductName();
-    keepWarningsOnTop();   // a radar refresh between polls must not bury them
+    keepFurnitureOnTop();  // a radar refresh between polls must not bury them
 
     /*
      * Staleness is measured on the DATA, because a frozen radar during severe
@@ -826,10 +1028,10 @@ map.on('load', async () => {
      * down from it and show the country, rather than reloading the page and
      * asking the same dead station again.
      */
-    const limit = mode === 'storm' ? STALE_SITE_MS : STALE_FRAME_MS;
+    const limit = onSite() ? STALE_SITE_MS : STALE_FRAME_MS;
     if (t && Date.now() - t > limit) {
       const age = Math.round((Date.now() - t) / 60000);
-      if (mode === 'storm') {
+      if (onSite()) {
         const st = siteRadarState();
         if (st.site) setVeto(st.site, `last volume is ${age} minutes old`);
         goNational(`site radar is ${age} minutes old`);
@@ -851,7 +1053,9 @@ map.on('load', async () => {
     // poll() runs the real alert path, so a check can drive the page the way
     // the weather does instead of reaching past it.
     poll: () => loadAlerts(),
-    goStorm, goNational, director, sites: () => sites,
+    goStorm, goTour, goNational, director, sites: () => sites,
+    hotspots: () => ({ found: hotspots, at: hotspotsAt }),
+    status: () => siteStatus,
   };
 });
 </script>

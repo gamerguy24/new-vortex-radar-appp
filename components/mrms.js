@@ -1000,6 +1000,74 @@ export async function addMRMS(mapWrapper) {
     console.log('[MRMS] Layer added (S3 noaa-mrms-pds, MergedBaseReflectivityQC)');
 }
 
+/*
+ * WHERE THE WEATHER IS, from the frame already in memory.
+ *
+ * The 24/7 broadcast view needs to answer "which radar should be on air right
+ * now?" when nothing is warned. Downloading volumes from 160 sites to find out
+ * is absurd; the national mosaic has already been decoded for the picture, and
+ * the strongest cells in it are exactly that answer. So the mosaic scouts and
+ * the single site does the looking.
+ *
+ * Buckets rather than a sort: a squall line can put hundreds of thousands of
+ * cells over the threshold, and sorting those to take six is work for nothing.
+ * One maximum per bucket bounds it at a couple of thousand candidates however
+ * bad the weather is.
+ *
+ * @returns {{lat:number, lon:number, dbz:number}[]} strongest first
+ */
+export function findMRMSHotspots({ minDbz = 45, limit = 6, separationKm = 160, bucketDeg = 1 } = {}) {
+    if (!_frame || !_frame.values || !_frame.grid) return [];
+    const { values, grid } = _frame;
+    const { nx, ny } = grid;
+    if (!nx || !ny) return [];
+
+    // Same geometry the painter uses: row 0 is the NORTH edge, and scanMode
+    // 0x40 means the rows are stored south-up.
+    const flipJ = (grid.scanMode & 0x40) !== 0;
+    const latTop = Math.max(grid.lat1, grid.lat2);
+    const dj = grid.dj || ((latTop - Math.min(grid.lat1, grid.lat2)) / (ny - 1));
+    const lonW0 = grid.lon1 > 180 ? grid.lon1 - 360 : grid.lon1;
+    const di = grid.di;
+    if (!isFinite(dj) || !isFinite(di) || dj <= 0 || di <= 0) return [];
+
+    // ~4 km steps. We are looking for storms, not gates.
+    const STEP = Math.max(1, Math.round(4 / (di * 111 * Math.cos(35 * Math.PI / 180))));
+    const best = new Map();
+    for (let j = 0; j < ny; j += STEP) {
+        const lat = latTop - j * dj;
+        const row = (flipJ ? ny - 1 - j : j) * nx;
+        const bj = Math.floor(lat / bucketDeg);
+        for (let i = 0; i < nx; i += STEP) {
+            const v = values[row + i];
+            if (!(v >= minDbz)) continue;          // NaN-safe
+            const lon = lonW0 + i * di;
+            const key = bj + ":" + Math.floor(lon / bucketDeg);
+            const cur = best.get(key);
+            if (!cur || v > cur.dbz) best.set(key, { lat, lon, dbz: v });
+        }
+    }
+
+    const ranked = [...best.values()].sort((a, b) => b.dbz - a.dbz);
+    const out = [];
+    for (const c of ranked) {
+        // Spread them out, so a tour visits different weather rather than one
+        // storm complex six times.
+        if (out.every((o) => _kmBetween(o.lat, o.lon, c.lat, c.lon) > separationKm)) out.push(c);
+        if (out.length >= limit) break;
+    }
+    return out;
+}
+
+function _kmBetween(lat1, lon1, lat2, lon2) {
+    const R = Math.PI / 180;
+    const dLat = (lat2 - lat1) * R;
+    const dLon = (lon2 - lon1) * R;
+    const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(lat1 * R) * Math.cos(lat2 * R) * Math.sin(dLon / 2) ** 2;
+    return 2 * 6371.0088 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
 export function removeMRMS() {
     _active = false;
     _frame = null;
