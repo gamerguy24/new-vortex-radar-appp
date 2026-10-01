@@ -629,7 +629,7 @@ export default {
       // Chrome
       showHeader: true,
       showLegend: true,
-      brandTop: 'VORTEX',
+      brandTop: 'ECHO',
       brandBig: 'RADAR',
       brandBottom: 'LIVE',
       brandColor: '#e8862b',

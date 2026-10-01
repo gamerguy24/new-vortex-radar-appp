@@ -6,7 +6,7 @@
 // it keys cleanly in OBS.
 import { roundRect } from '../engine/scene.js';
 import { flagHeaderLayer, titleBarLayer } from '../engine/chrome.js';
-import { fitProjection } from '../engine/projection.js';
+import { fitProjection } from '../engine/projection.js?v=tpl1';
 import { STATE_NAMES } from '../engine/geo.js';
 
 export default {

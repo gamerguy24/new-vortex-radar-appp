@@ -173,6 +173,10 @@ function init() {
         if (active) {
             theme_dual();
             install_pane_focus();
+            // The right pane gets its own station markers, so a site can be
+            // chosen there. Without them the pane had its own radar and no way
+            // to change it.
+            require('../station_markers/dual_station_markers').show_dual();
             // Start on the left pane, so the first product choice after opening
             // split screen lands where the operator is already looking.
             set_active_pane('main');

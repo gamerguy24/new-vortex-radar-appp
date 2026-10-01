@@ -2,7 +2,7 @@
 // counties for a "state by state" broadcast walkthrough. Paint per-county data
 // (forecast conditions / precip type / threat level), with the state name as a
 // header, city labels, and a matching legend. Switch states one at a time.
-import { fitProjection } from '../engine/projection.js';
+import { fitProjection } from '../engine/projection.js?v=tpl1';
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { choroplethLayer, outlineLayer } from '../engine/choropleth.js';
 import { cityLabelLayer } from '../engine/labels.js';

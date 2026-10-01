@@ -4,7 +4,7 @@ const map = require('../../core/map/map');
 const get_station_status = require('./get_station_status');
 const set_layer_order = require('../../core/map/setLayerOrder');
 const icons = require('../../core/map/icons/icons');
-const { pane_state, active_pane } = require('../../core/map/radar_panes');
+const { pane_state, set_active_pane } = require('../../core/map/radar_panes');
 
 const NEXRADLevel2File = require('../libnexrad/level2/level2_parser');
 const Level2Factory = require('../libnexrad/level2/level2_factory');
@@ -213,25 +213,34 @@ function _init_mouse_listeners() {
  */
 function _init_click_listener() {
     map.on('click', 'stationSymbolLayer', (e) => {
-        const base = e.features[0].properties;
-        const clickedStation = base.station_id;
         /*
          * WHICH PANE GETS THIS SITE?
          *
-         * The one being driven. In split screen the operator chooses a pane by
-         * clicking it, and the product menu already follows that choice —
-         * sites used to be the exception: picking one changed the left pane AND
-         * forced the right pane to the same site, so the two panes could never
-         * show two different storms, which is most of the point of a compare
-         * view. Outside split screen active_pane() is always 'main', so
-         * single-pane behaviour is untouched.
+         * The one whose map you clicked. Both maps carry markers now, so a
+         * marker on the LEFT map loads the left pane and one on the right map
+         * loads the right pane — and the controls follow to that pane, so the
+         * product menu acts where you are already looking. The panes keep
+         * their own sites: picking one no longer drags the other along, which
+         * is what makes a compare view able to compare two storms.
          */
-        const target = active_pane();
+        const props = e.features[0].properties;
+        set_active_pane('main');
+        select_station(props.station_id, props.type, 'main');
+    });
+}
+
+/**
+ * Load a radar site into a pane. Shared by the markers on both maps.
+ *
+ * @param {string} clickedStation ICAO, e.g. KFFC
+ * @param {string} stationType    'WSR-88D' | 'TDWR'
+ * @param {string} target         'main' | 'dual'
+ */
+function select_station(clickedStation, stationType, target) {
         const S = pane_state(target);
         S.currentStation = clickedStation;
         $('#radarStation').html(clickedStation);
         $('#radarLocation').html(nexrad_locations[clickedStation].name);
-        const stationType = base.type;
         S.L2_file_id = '';
 
         var productToLoad;
@@ -274,7 +283,6 @@ function _init_click_listener() {
         window.dispatchEvent(new CustomEvent('vortexstationchange', {
             detail: { station: clickedStation, type: stationType, target }
         }));
-    });
 }
 
 
@@ -291,3 +299,7 @@ function showStations() {
 }
 
 module.exports = showStations;
+// Attached rather than replacing the export: station_marker_menu.js calls this
+// module as a function.
+module.exports.select_station = select_station;
+module.exports.stations_geojson = _generate_stations_geojson;

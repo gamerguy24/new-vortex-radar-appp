@@ -1,19 +1,33 @@
 const set_layer_order = require('./setLayerOrder');
 const map_funcs = require('./mapFunctions');
-const { pane_state, get_pane, active_pane } = require('./radar_panes');
+const { pane_state, get_pane } = require('./radar_panes');
 
 /**
- * Change one pane's basemap.
+ * Change the basemap.
  *
  * @param {string} style   'dark' | 'light' | 'satellite'
- * @param {string} [target] 'main' | 'dual'; defaults to the pane being driven.
+ * @param {string} [target] 'main' | 'dual' to change ONE pane. Omitted — which
+ *                          is how the settings menu calls it — changes BOTH.
  *
- * In split screen each pane carries its own basemap — radar over the Echo map
- * on one side, satellite on the other — so this acts on the pane the operator
- * clicked, not on a single global map. Outside split screen active_pane() is
- * always 'main'.
+ * BOTH, deliberately. An earlier version changed only the pane being driven,
+ * and in use that reads as a bug: you pick satellite and half the screen stays
+ * on the Echo map. The style is how the map LOOKS, and both sides of a compare
+ * view should look alike. What stays independent is the DATA — each pane keeps
+ * its own radar site and product.
  */
 function change_map_style(style, target) {
+    // No target: every pane that exists right now.
+    if (!target) {
+        apply_style_to_pane(style, 'main');
+        if (typeof window !== 'undefined' && window.vortexMap && window.vortexMap.dualMap) {
+            apply_style_to_pane(style, 'dual');
+        }
+        return;
+    }
+    return apply_style_to_pane(style, target);
+}
+
+function apply_style_to_pane(style, target) {
     // const base_url = 'mapbox://styles/mapbox/';
 
     // const current_map_layers = map.getStyle().layers;
@@ -41,7 +55,7 @@ function change_map_style(style, target) {
     //     set_layer_order();
     // })
 
-    const pane = target === 'dual' ? 'dual' : (target === 'main' ? 'main' : active_pane());
+    const pane = target === 'dual' ? 'dual' : 'main';
     const map = get_pane(pane).getMap();
     if (!map) return;                       // the right pane before it exists
     const S = pane_state(pane);

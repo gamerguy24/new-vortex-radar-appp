@@ -1,6 +1,6 @@
 // Template: Severe Storm Threat — regional county choropleth on a 5-level
 // threat scale, with the boxed "STORM THREATS" icon legend and city labels.
-import { fitProjection } from '../engine/projection.js';
+import { fitProjection } from '../engine/projection.js?v=tpl1';
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { choroplethLayer } from '../engine/choropleth.js';
 import { cityLabelLayer } from '../engine/labels.js';

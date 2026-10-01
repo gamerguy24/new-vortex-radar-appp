@@ -10,16 +10,20 @@ function _load_image(image_data, callback) {
     img.src = image_data;
 }
 
-function _add_image_to_map(image_data, image_name, callback) {
+// target_map puts the icons on the split-screen pane instead: an image in
+// Mapbox belongs to ONE map, so the second map needs its own copy. Omitted, it
+// is the main map — which is every existing caller.
+function _add_image_to_map(image_data, image_name, callback, target_map) {
+    const m = target_map || map;
     _load_image(image_data, (image) => {
-        if (!map.hasImage(image_name)) {
-            map.addImage(image_name, image);
+        if (!m.hasImage(image_name)) {
+            m.addImage(image_name, image);
         }
         callback();
     })
 }
 
-function add_icon_svg(icons_array, callback, i = 0) {
+function add_icon_svg(icons_array, callback, i = 0, target_map) {
     const svg_string = icons_array[i][0];
     const icon_name = icons_array[i][1];
 
@@ -29,11 +33,11 @@ function add_icon_svg(icons_array, callback, i = 0) {
 
     _add_image_to_map(base64_svg, icon_name, () => {
         if (i < icons_array.length - 1) {
-            add_icon_svg(icons_array, callback, i + 1);
+            add_icon_svg(icons_array, callback, i + 1, target_map);
         } else {
             callback();
         }
-    });
+    }, target_map);
 }
 
 const icons = {

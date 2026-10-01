@@ -1,6 +1,6 @@
 // Template: Ice Accumulation — single regional map shaded by ice amount, with
 // a stepped inches color scale across the bottom and a day label under the map.
-import { fitProjection } from '../engine/projection.js';
+import { fitProjection } from '../engine/projection.js?v=tpl1';
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { choroplethLayer } from '../engine/choropleth.js';
 import { titleBarLayer } from '../engine/chrome.js';

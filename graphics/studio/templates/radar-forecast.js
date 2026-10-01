@@ -8,7 +8,7 @@
 // The map itself (satellite/roads basemap + live NEXRAD radar + city labels) is
 // supplied by the studio: set the basemap to "Satellite + roads (hybrid)" and
 // toggle Radar on to reproduce the screenshot's base.
-import { fitProjection } from '../engine/projection.js';
+import { fitProjection } from '../engine/projection.js?v=tpl1';
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { REGION_PRESETS, countiesForStates } from '../engine/geo.js';
@@ -92,7 +92,7 @@ export default {
       overlayOpacity: '0.85',
       showFieldLegend: true,
       // Brand flag (top-left). Defaults to the app's identity — edit to your own.
-      brandTop: 'VORTEX',
+      brandTop: 'ECHO',
       brandBig: 'RADAR',
       brandBottom: 'WEATHER',
       brandColor: '#1b53b3',

@@ -1,7 +1,7 @@
 // Template: National Severe Weather Outlook — CONUS map with SPC-style
 // categorical risk areas. Risk geometry can be imported live from SPC (via the
 // server proxy) or assigned by state with the paint tool as a fallback.
-import { fitProjection } from '../engine/projection.js';
+import { fitProjection } from '../engine/projection.js?v=tpl1';
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { choroplethLayer } from '../engine/choropleth.js';
 import { cityLabelLayer } from '../engine/labels.js';

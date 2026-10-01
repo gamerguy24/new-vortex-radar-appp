@@ -4,7 +4,7 @@
 // field (GFS/NAM/HRRR: 2 m temp, reflectivity, MSLP, CAPE, precip, upper-air
 // temps…) OR live radar. Pick the overlay in the properties panel. Data loads
 // asynchronously and the scene re-renders when it arrives.
-import { fitProjection } from '../engine/projection.js';
+import { fitProjection } from '../engine/projection.js?v=tpl1';
 import { backgroundLayer, landLayer, BASEMAP_OPTIONS } from '../engine/basemap.js';
 import { cityLabelLayer } from '../engine/labels.js';
 import { REGION_PRESETS, countiesForStates } from '../engine/geo.js';
@@ -71,7 +71,7 @@ export default {
       // broadcast chrome (shared with Radar Forecast)
       title: '2 M TEMPERATURE',
       time: '5:00 PM',
-      brandTop: 'VORTEX',
+      brandTop: 'ECHO',
       brandBig: 'RADAR',
       brandBottom: 'WEATHER',
       brandColor: '#1b53b3',

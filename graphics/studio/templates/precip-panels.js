@@ -1,6 +1,6 @@
 // Template: Day-to-Day Precip — a row of small regional maps (one per day),
 // each shaded by precipitation type. Title bar + categorical legend on top.
-import { fitProjection } from '../engine/projection.js';
+import { fitProjection } from '../engine/projection.js?v=tpl1';
 import { landLayer, getBasemapStyle } from '../engine/basemap.js';
 import { makeScreenPathFactory } from '../engine/choropleth.js';
 import { categoricalLegendLayer } from '../engine/legend.js';
