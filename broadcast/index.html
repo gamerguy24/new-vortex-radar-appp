@@ -90,6 +90,7 @@
   .count span { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .10em;
     text-transform: uppercase; color: #9fb2c9; margin-top: 2px; }
   .count.tor b { color: #ff5a4d; } .count.svr b { color: #ffd34d; } .count.ffw b { color: #4ddb86; }
+  .count.watch b { color: #9fb2c9; }
 
   #bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 92px; z-index: 5;
     background: linear-gradient(0deg, rgba(5,7,10,.95) 0%, rgba(5,7,10,.72) 62%, rgba(5,7,10,0) 100%); }
@@ -190,6 +191,7 @@
     <div class="count tor"><b id="c_tor">0</b><span>Tornado</span></div>
     <div class="count svr"><b id="c_svr">0</b><span>Svr T-Storm</span></div>
     <div class="count ffw"><b id="c_ffw">0</b><span>Flash Flood</span></div>
+    <div class="count watch"><b id="c_watch">0</b><span>Watches</span></div>
   </div>
 
   <div id="reflegend" class="hide">
@@ -266,6 +268,9 @@ const STATUS_MS = 10 * 60 * 1000;      // how often to recheck which radars are 
 // stand. 45 dBZ is a thunderstorm core rather than a rain shower.
 const TOUR_MIN_DBZ = 45;
 const TOUR_ZOOM = 8.2;
+// Older than this and it is not what is happening now, whatever the archive
+// handed us. A WSR-88D posts a volume every few minutes.
+const MAX_SCAN_AGE_MS = 30 * 60 * 1000;
 const CONUS = [[-127, 23.5], [-66, 50.5]];
 const NATIONAL_PAD = { top: 110, bottom: 120, left: 40, right: 40 };
 // The left padding clears the storm panel, so a storm is never hidden behind
@@ -435,7 +440,7 @@ const setVeto = (k, why) => {
  * alert poll rather than trying to detect the rebuild. (The single-site raster
  * is added BELOW them by construction and needs none of this.)
  */
-const WARN_LAYERS = ['warn-fill', 'warn-halo', 'warn-line', 'warn-onair', 'warn-label'];
+const WARN_LAYERS = ['watch-line', 'warn-fill', 'warn-halo', 'warn-line', 'warn-onair', 'warn-label'];
 function keepWarningsOnTop() {
   for (const id of WARN_LAYERS) {
     try { if (map.getLayer(id)) map.moveLayer(id); } catch (e) { /* style reloading */ }
@@ -450,6 +455,48 @@ function keepFurnitureOnTop() {
 }
 
 const ALERTS_URL = 'https://api.weather.gov/alerts/active?status=actual&message_type=alert';
+
+/*
+ * WHERE A WATCH IS.
+ *
+ * Warnings carry a polygon. Watches do not — they are issued for a list of
+ * zones — so the alert alone cannot say where to point. The first zone is
+ * fetched once and its centre remembered for as long as the page lives; a
+ * watch runs for hours, so this costs one request per watch.
+ *
+ * Deliberately not all the zones: the centre of a six-state watch is a field in
+ * Nebraska with nothing happening in it. One zone puts the camera inside the
+ * watch, and the hotspot search below moves it to whatever is actually going on.
+ */
+const watchCentres = new Map();          // alert id -> [lon, lat] | null | "pending"
+
+async function resolveWatchCentre(id, zones) {
+  if (!zones || !zones.length) { watchCentres.set(id, null); return; }
+  watchCentres.set(id, 'pending');
+  try {
+    const r = await fetch(zones[0], { headers: { Accept: 'application/geo+json' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    const c = centroidOf(j.geometry);
+    watchCentres.set(id, c || null);
+  } catch (e) {
+    console.warn('[broadcast] could not place a watch:', e.message);
+    watchCentres.set(id, null);
+  }
+}
+
+/**
+ * Point the camera at the weather inside a watch, not at the middle of it.
+ * Falls back to the zone centre when the mosaic has found nothing in there.
+ */
+function liveliestNear(centre, withinDeg = 3.2) {
+  let best = null;
+  for (const h of hotspots) {
+    if (Math.abs(h.lat - centre[1]) > withinDeg || Math.abs(h.lon - centre[0]) > withinDeg) continue;
+    if (!best || h.dbz > best.dbz) best = h;
+  }
+  return best ? [best.lon, best.lat] : centre;
+}
 
 async function loadAlerts() {
   try {
@@ -474,7 +521,7 @@ function paintWarnings() {
   // boundary is drawn once but LABELLED once per tile, which put two TOR tags
   // inside one box; one point per warning cannot do that.
   const labels = [];
-  const counts = { tor: 0, svr: 0, ffw: 0 };
+  const counts = { tor: 0, svr: 0, ffw: 0, watch: 0 };
   const lines = [];
   for (const f of rawFeatures) {
     const props = (f && f.properties) || {};
@@ -486,7 +533,10 @@ function paintWarnings() {
       feats.push({
         type: 'Feature',
         geometry: f.geometry,
-        properties: { color: w.color, tag: w.tag, weight: w.weight, halo: w.halo, on_air: live },
+        properties: {
+          color: w.color, tag: w.tag, weight: w.weight, halo: w.halo,
+          on_air: live, is_watch: !!w.watch,
+        },
       });
       const c = centroidOf(f.geometry);
       if (c) {
@@ -506,10 +556,18 @@ function paintWarnings() {
   if (src) { src.setData({ type: 'FeatureCollection', features: feats }); keepWarningsOnTop(); }
   const labelSrc = map.getSource('warning-labels');
   if (labelSrc) labelSrc.setData({ type: 'FeatureCollection', features: labels });
+  /*
+   * Only rewritten when it actually changes.
+   *
+   * The ticker scrolls with a CSS animation, and assigning innerHTML restarts
+   * it — so polling every 60 seconds made the whole line snap back to the
+   * beginning every 60 seconds, whether or not a single warning had changed.
+   */
   const t = document.getElementById('ticker');
-  t.innerHTML = lines.length
+  const html = lines.length
     ? lines.join('<span class="sep">•</span>')
-    : 'No active tornado, severe thunderstorm or flash flood warnings.';
+    : 'No active tornado, severe thunderstorm or flash flood warnings, and no watches.';
+  if (html !== t.innerHTML) t.innerHTML = html;
 }
 
 /* ── the director: decide, then cut ─────────────────────────────────────── */
@@ -535,6 +593,22 @@ async function runDirector() {
   const now = Date.now();
 
   let candidates = candidatesFrom(rawFeatures).filter((c) => !vetoed(c.id));
+
+  /*
+   * A watch needs a position before it can be a shot. Resolving one is a network
+   * request, so a watch simply sits out the poll it was first seen on and is
+   * available from the next one — 60 seconds later, on a product that lasts
+   * hours.
+   */
+  for (const c of candidates) {
+    if (!c.specs || !c.specs.isWatch || c.geometry) continue;
+    const known = watchCentres.get(c.id);
+    if (known === undefined) { resolveWatchCentre(c.id, c.zones); c.score = 0; continue; }
+    if (!known || known === 'pending') { c.score = 0; continue; }
+    c.kind = 'watch';
+    c.centre = liveliestNear(known);
+  }
+  candidates = candidates.filter((c) => c.score > 0);
   if (!candidates.length) {
     // Nothing worth breaking to. Ask the mosaic where the weather is instead.
     if (hotspots.length && (now - hotspotsAt) > HOTSPOTS_GOOD_FOR_MS) hotspots = [];
@@ -550,8 +624,14 @@ async function runDirector() {
   }
   // !onAir.site means a cut was set up but its radar never arrived — retry it,
   // or the page holds a camera with nothing under it until the next rotation.
-  if (d.mode === 'tour') {
+  const kind = d.target && d.target.kind;
+  if (kind === 'tour') {
     if (d.changed || !onAir || !onAir.site) await goTour(d.target, d.reason);
+    return;
+  }
+  if (kind === 'watch') {
+    if (d.changed || !onAir || !onAir.site) await goWatch(d.target, d.reason);
+    else { onAir.specs = d.target.specs; renderPanel(); }
     return;
   }
   if (d.changed || !onAir || !onAir.site) { await goStorm(d.target, d.reason); return; }
@@ -572,9 +652,22 @@ async function runDirector() {
 async function loadFirstWorking(picks) {
   for (const site of picks) {
     const r = await loadSite(site.id, { product: 'reflectivity' });
-    if (r.ok) return { site };
     if (r.reason === BUSY) return 'busy';
-    setVeto(site.id, r.reason);
+    if (!r.ok) { setVeto(site.id, r.reason); continue; }
+    /*
+     * A volume can come back successfully and still be hours old: when the
+     * archive listing fails, the relay falls back to the realtime chunks
+     * bucket, and a site that stopped reporting leaves a stale folder there
+     * that resolves perfectly well. One tour picked a scan 18 hours old that
+     * way. The age is checked here rather than left to the staleness watchdog,
+     * which would run it on air for twenty minutes first.
+     */
+    const age = siteRadarState().scanTime ? Date.now() - siteRadarState().scanTime : Infinity;
+    if (age > MAX_SCAN_AGE_MS) {
+      setVeto(site.id, `newest volume is ${Math.round(age / 60000)} minutes old`);
+      continue;
+    }
+    return { site };
   }
   return null;
 }
@@ -594,13 +687,19 @@ function dropStaleRaster(wantSiteId) {
  *
  * @param {number} ticket the cut this belongs to; a stale one is dropped.
  */
-function settleOnSite(got, ticket) {
+async function settleOnSite(got, ticket) {
   if (ticket !== cutSeq || !onAir) {
     console.log('[broadcast] a newer shot took over while that scan downloaded');
     return;
   }
   onAir.site = got.site;
-  redrawSite(map);
+  /*
+   * Awaited, because the raster LAYER is only added once the draw completes —
+   * and the radar is inserted below the warning boxes, which puts it above the
+   * site pills. Raising the furniture before that happens raises it above
+   * nothing and the pills end up buried under the radar.
+   */
+  await redrawSite(map);
   keepSiteMarkersOnTop(map);
   keepWarningsOnTop();
   showRefLegend(true);
@@ -653,7 +752,48 @@ async function goStorm(target, reason) {
     if (ticket === cutSeq) await goNational('could not get radar for that storm');
     return;
   }
-  settleOnSite(got, ticket);
+  await settleOnSite(got, ticket);
+}
+
+/**
+ * A watch: the card, because an office did issue it, but a centred camera.
+ *
+ * Framing the watch itself would pull the camera back to something close to the
+ * national view — they cover whole states — which is the picture this is all
+ * here to get away from. So it stands over the liveliest weather inside the
+ * watch at the same range a storm shot uses.
+ */
+async function goWatch(target, reason) {
+  const picks = (FORCED_SITE
+    ? [{ id: FORCED_SITE, name: FORCED_SITE, km: 0 }]
+    : nearestSites(sites, target.centre[1], target.centre[0], 4)).filter((site) => !vetoed(site.id));
+  if (!picks.length) {
+    setVeto(target.id, 'no usable radar inside that watch');
+    return;
+  }
+  console.log(`[broadcast] standing by on ${target.specs.event} — ${target.specs.counties} `
+    + `(${reason}); radar ${picks.map((p) => p.id).join('/')}`);
+
+  const loading = loadFirstWorking(picks);
+  const ticket = ++cutSeq;
+  cutting = true;
+  dropStaleRaster(picks[0].id);
+  if (mode === 'national') { try { removeMRMS(); } catch (e) { /* was not up */ } }
+  mode = 'storm';
+  onAir = { kind: 'watch', id: target.id, specs: target.specs, centre: target.centre, site: null };
+  paintWarnings();
+  renderPanel();
+  map.easeTo({ center: target.centre, zoom: TOUR_ZOOM, duration: 1600, bearing: 0, pitch: 0 });
+
+  let got;
+  try { got = await loading; } finally { cutting = false; }
+  if (got === 'busy') return;
+  if (!got) {
+    setVeto(target.id, 'every radar in that watch failed');
+    if (ticket === cutSeq) await goNational('could not get radar inside that watch');
+    return;
+  }
+  await settleOnSite(got, ticket);
 }
 
 /**
@@ -690,7 +830,7 @@ async function goTour(target, reason) {
     if (ticket === cutSeq) await goNational('could not get radar for that weather');
     return;
   }
-  settleOnSite(got, ticket);
+  await settleOnSite(got, ticket);
 }
 
 /** Back to the whole country. */
@@ -770,7 +910,7 @@ function renderPanel() {
   const panel = $('storm');
   // The card is for what an OFFICE said. A tour has no warning behind it, so
   // it gets the chip and the legend and nothing that looks like a bulletin.
-  if (mode !== 'storm' || !onAir || onAir.kind !== 'warning') {
+  if (mode !== 'storm' || !onAir || !(onAir.kind === 'warning' || onAir.kind === 'watch')) {
     panel.classList.add('hide');
     const st = siteRadarState();
     $('brandsub').textContent = mode === 'tour' ? 'Live Radar Tour' : 'National Radar';
@@ -930,17 +1070,35 @@ map.on('load', async () => {
   // The wash fades out as the camera comes in. At national scale it is what
   // makes a small box findable; over one county it is a sheet of colour on top
   // of the very radar the viewer is being shown.
+  const notWatch = ['!', ['get', 'is_watch']];
   map.addLayer({ id: 'warn-fill', type: 'fill', source: 'warnings',
+    filter: notWatch,
     paint: {
       'fill-color': ['get', 'color'],
       'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.14, 7, 0.08, 9, 0.045],
     } });
   map.addLayer({ id: 'warn-halo', type: 'line', source: 'warnings',
+    filter: notWatch,
     layout: { 'line-join': 'round' },
     paint: { 'line-color': 'rgba(0,0,0,0.75)', 'line-width': widen('halo') } });
   map.addLayer({ id: 'warn-line', type: 'line', source: 'warnings',
+    filter: notWatch,
     layout: { 'line-join': 'round' },
     paint: { 'line-color': ['get', 'color'], 'line-width': widen('weight') } });
+  /*
+   * Watches, dashed and unfilled. A watch covers whole states, so a solid
+   * outline with a wash over it would be the loudest thing on a map whose
+   * subject is a storm inside it — and it only means conditions are favourable.
+   */
+  map.addLayer({ id: 'watch-line', type: 'line', source: 'warnings',
+    filter: ['get', 'is_watch'],
+    layout: { 'line-join': 'round' },
+    paint: {
+      'line-color': ['get', 'color'],
+      'line-width': widen('weight'),
+      'line-opacity': 0.75,
+      'line-dasharray': [4, 3],
+    } });
   map.addLayer({ id: 'warn-onair', type: 'line', source: 'warnings',
     filter: ['==', ['get', 'on_air'], true],
     layout: { 'line-join': 'round' },

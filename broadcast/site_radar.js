@@ -43,11 +43,19 @@ const SRC = 'site-radar-src';
 const LAYER = 'site-radar-layer';
 
 /*
- * Rendered finer than the 1920-wide stage. Super-res gates carry more detail
- * than one screen pixel per gate at county zoom, and the encoder re-compresses
- * the result anyway — a soft radar reads as a bad stream, not as a wide beam.
+ * How wide the rasteriser draws, in pixels.
+ *
+ * This was 2200 — finer than the 1920 stage, on the reasoning that super-res
+ * gates carry more detail than one screen pixel per gate. They do, but the
+ * rasteriser inverts the projection per output pixel, and at 2200 that was 364
+ * milliseconds of blocked main thread per redraw. The encoder captures the
+ * screen at a fixed frame rate, so that is a third of a second of frozen
+ * picture every camera move and every scan: the shudder.
+ *
+ * 1600 is the Graphics Studio default and costs roughly half as much. Mapbox
+ * scales it the rest of the way, which is a far smaller loss than a stutter.
  */
-const QUALITY = 2200;
+const QUALITY = 1600;
 /*
  * The weakest echo drawn, in dBZ.
  *
@@ -120,8 +128,31 @@ function viewQuad(map, scene) {
   return [c(0, 0), c(scene.width, 0), c(scene.width, scene.height), c(0, scene.height)];
 }
 
-function putImage(map, canvas, quad) {
-  const url = canvas.toDataURL('image/png');
+/*
+ * Hand the canvas to Mapbox without stalling the page.
+ *
+ * toDataURL() base64-encodes the PNG synchronously on the main thread; at this
+ * size that is a freeze long enough for a 30fps capture to record it as a
+ * shudder, once per camera move and once per scan. toBlob does the same work
+ * off-thread and hands back an object URL, which is revoked when the next one
+ * replaces it so a week of scans does not accumulate in memory.
+ */
+let _objectUrl = null;
+function canvasUrl(canvas) {
+  return new Promise((resolve) => {
+    if (typeof canvas.toBlob !== 'function') { resolve(canvas.toDataURL('image/png')); return; }
+    canvas.toBlob((blob) => {
+      if (!blob) { resolve(canvas.toDataURL('image/png')); return; }
+      const url = URL.createObjectURL(blob);
+      if (_objectUrl) { try { URL.revokeObjectURL(_objectUrl); } catch (e) {} }
+      _objectUrl = url;
+      resolve(url);
+    }, 'image/png');
+  });
+}
+
+async function putImage(map, canvas, quad) {
+  const url = await canvasUrl(canvas);
   const src = map.getSource(SRC);
   if (src) {
     // One call: setCoordinates() followed by a separate image swap shows the
@@ -175,8 +206,13 @@ export async function loadSite(site, { product = 'reflectivity', force = false }
   }
 }
 
-/** Draw the sweep we already hold into the current view. No download. */
-export function redrawSite(map) {
+/**
+ * Draw the sweep we already hold into the current view. No download.
+ *
+ * Async only because the PNG encode is: see canvasUrl(). Callers that do not
+ * await it still get the draw, just not a promise of when.
+ */
+export async function redrawSite(map) {
   if (!state.radar) return false;
   try {
     const scene = sceneFor(map);
@@ -196,10 +232,10 @@ export function redrawSite(map) {
     if (!canvas) {
       const blank = document.createElement('canvas');
       blank.width = 2; blank.height = 2;
-      putImage(map, blank, viewQuad(map, scene));
+      await putImage(map, blank, viewQuad(map, scene));
       return true;
     }
-    putImage(map, canvas, viewQuad(map, scene));
+    await putImage(map, canvas, viewQuad(map, scene));
     return true;
   } catch (e) {
     console.warn('[broadcast] site radar draw failed:', e.message);
@@ -211,7 +247,7 @@ export function redrawSite(map) {
 export async function showSite(map, site, opts = {}) {
   const r = await loadSite(site, opts);
   if (r.ok && (r.changed || opts.force)) {
-    if (!redrawSite(map)) return { ok: false, reason: 'could not draw the scan' };
+    if (!await redrawSite(map)) return { ok: false, reason: 'could not draw the scan' };
   }
   return r;
 }
@@ -220,6 +256,7 @@ export async function showSite(map, site, opts = {}) {
 export function clearSite(map) {
   try { if (map.getLayer(LAYER)) map.removeLayer(LAYER); } catch (e) { /* style reloading */ }
   try { if (map.getSource(SRC)) map.removeSource(SRC); } catch (e) { /* style reloading */ }
+  if (_objectUrl) { try { URL.revokeObjectURL(_objectUrl); } catch (e) {} _objectUrl = null; }
   state = { site: null, product: 'reflectivity', volumeUrl: null, radar: null, scanTime: null, busy: false };
 }
 

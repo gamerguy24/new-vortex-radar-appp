@@ -18,18 +18,35 @@
 
 /* ── warning types we will break to ───────────────────────────────────────── */
 export const WARN_TYPES = {
-  'Tornado Warning': { key: 'tor', color: '#ff2f1f', tag: 'TOR', weight: 3.6, halo: 6.4, tier: 100 },
-  'Severe Thunderstorm Warning': { key: 'svr', color: '#ffd000', tag: 'SVR', weight: 2.6, halo: 5.0, tier: 50 },
-  'Flash Flood Warning': { key: 'ffw', color: '#19c45f', tag: 'FFW', weight: 2.6, halo: 5.0, tier: 10 },
+  'Tornado Warning': { key: 'tor', color: '#ff2f1f', tag: 'TOR', weight: 3.6, halo: 6.4 },
+  'Severe Thunderstorm Warning': { key: 'svr', color: '#ffd000', tag: 'SVR', weight: 2.6, halo: 5.0 },
+  'Flash Flood Warning': { key: 'ffw', color: '#19c45f', tag: 'FFW', weight: 2.6, halo: 5.0 },
+  'Flood Warning': { key: 'ffw', color: '#2fa36b', tag: 'FLW', weight: 2.2, halo: 4.4 },
+  // Watches are drawn thinner and dashed, and counted apart from warnings: a
+  // watch means conditions are favourable, not that anything is happening.
+  'Tornado Watch': { key: 'watch', color: '#ff8a7a', tag: 'TOR WATCH', weight: 2.0, halo: 3.6, watch: true },
+  'Severe Thunderstorm Watch': { key: 'watch', color: '#ffe68a', tag: 'SVR WATCH', weight: 2.0, halo: 3.6, watch: true },
+  'Flash Flood Watch': { key: 'watch', color: '#7ce8a8', tag: 'FF WATCH', weight: 2.0, halo: 3.6, watch: true },
+  'Flood Watch': { key: 'watch', color: '#7ce8a8', tag: 'FLOOD WATCH', weight: 2.0, halo: 3.6, watch: true },
 };
 
 /*
- * A flash flood warning is drawn, counted and read out, but never broken to.
- * Flooding does not look like anything on a reflectivity image zoomed to one
- * county — it is the rain that already fell. Cutting away from a tornado-warned
- * supercell to show it would be worse television and worse information.
+ * What the stream will point a radar at.
+ *
+ * Flash floods were left out of this at first, on the grounds that flooding is
+ * the rain that already fell and does not photograph like a supercell. That was
+ * wrong in practice: on a night with nine flash flood warnings and no severe
+ * ones the stream sat on a static national map, which tells a viewer less than
+ * the rain that caused them would. Ranking still keeps a tornado ahead of a
+ * flood; it no longer keeps a flood behind nothing at all.
+ *
+ * Watches are in for the same reason, far enough down that they are only ever
+ * shown when nothing is warned.
  */
-const BREAKABLE = new Set(['Tornado Warning', 'Severe Thunderstorm Warning']);
+const BREAKABLE = new Set([
+  'Tornado Warning', 'Severe Thunderstorm Warning', 'Flash Flood Warning', 'Flood Warning',
+  'Tornado Watch', 'Severe Thunderstorm Watch', 'Flash Flood Watch', 'Flood Watch',
+]);
 
 const first = (v) => (Array.isArray(v) ? v[0] : v) || null;
 const upper = (v) => String(first(v) || '').toUpperCase();
@@ -128,6 +145,10 @@ export function stormSpecs(props) {
   const headline = String(first(params.NWSheadline) || '').toUpperCase();
 
   const isTornado = p.event === 'Tornado Warning';
+  const isWatch = !!(type && type.watch);
+  const isFlood = /Flood/.test(p.event || '');
+  const floodDetection = upper(params.flashFloodDetection) || null;
+  const floodThreat = upper(params.flashFloodDamageThreat) || null;
   const observed = (detection || '').includes('OBSERVED');
   // Only the NWS declares a tornado emergency, and it says so in the headline.
   const emergency = isTornado && headline.includes('TORNADO EMERGENCY');
@@ -140,6 +161,18 @@ export function stormSpecs(props) {
     else if (tornadoThreat === 'CATASTROPHIC') threatLabel = 'CONFIRMED LARGE, DESTRUCTIVE TORNADO';
     else if (observed) threatLabel = 'CONFIRMED TORNADO';
     else threatLabel = 'RADAR INDICATED';
+  } else if (isWatch) {
+    threatLabel = null;                       // a watch says nothing has happened yet
+  } else if (isFlood) {
+    /*
+     * A flash flood emergency is a real, declared thing — flashFloodDamageThreat
+     * CATASTROPHIC is the tag the office sets for it, and the headline says so.
+     * Anything short of that is reported as what it is and nothing more.
+     */
+    if (floodThreat === 'CATASTROPHIC' || headline.includes('FLASH FLOOD EMERGENCY')) {
+      threatLabel = 'FLASH FLOOD EMERGENCY';
+    } else if (floodThreat === 'CONSIDERABLE') threatLabel = 'CONSIDERABLE DAMAGE THREAT';
+    else if (floodDetection) threatLabel = floodDetection;
   } else if (stormThreat === 'DESTRUCTIVE') threatLabel = 'DESTRUCTIVE DAMAGE THREAT';
   else if (stormThreat === 'CONSIDERABLE') threatLabel = 'CONSIDERABLE DAMAGE THREAT';
 
@@ -152,6 +185,10 @@ export function stormSpecs(props) {
     color: type ? type.color : '#ffffff',
     key: type ? type.key : null,
     isTornado,
+    isWatch,
+    isFlood,
+    floodDetection,
+    floodEmergency: threatLabel === 'FLASH FLOOD EMERGENCY',
     // Shown verbatim, so it has to be exactly what the office said.
     threatLabel,
     emergency,
@@ -176,8 +213,29 @@ export function stormSpecs(props) {
  * (radar indicated -> confirmed) must outrank every other storm of its type,
  * and a tornado emergency must outrank everything.
  */
+/*
+ * Tiers, highest first:
+ *   tornado warning        1000 (+ emergency / confirmed / PDS)
+ *   flash flood emergency   900 — declared, life-threatening, and ongoing
+ *   severe thunderstorm     500
+ *   flash flood warning     400
+ *   flood warning           300
+ *   watches                 200-250
+ * A watch therefore never displaces a warning, and nothing displaces a tornado.
+ */
 export function scoreWarning(specs) {
   if (!specs || !BREAKABLE.has(specs.event)) return 0;
+  if (specs.isWatch) {
+    return specs.event === 'Tornado Watch' ? 250
+      : specs.event === 'Severe Thunderstorm Watch' ? 220 : 200;
+  }
+  if (specs.floodEmergency) return 900;
+  if (specs.isFlood) {
+    let fs = specs.event === 'Flash Flood Warning' ? 400 : 300;
+    if (specs.threatLabel === 'CONSIDERABLE DAMAGE THREAT') fs += 60;
+    if ((specs.floodDetection || '').includes('OBSERVED')) fs += 30;
+    return fs;
+  }
   let s = specs.isTornado ? 1000 : 500;
   if (specs.emergency) s += 400;
   if (specs.threatLabel === 'CONFIRMED LARGE, DESTRUCTIVE TORNADO') s += 300;
@@ -261,7 +319,15 @@ export function nearestSites(sites, lat, lon, limit = 4) {
  * turns, which is what a weather channel does when nothing is warned.
  */
 export const TOUR_SCORE = 100;
-export const NATIONAL_SCORE = 100;
+/*
+ * The national mosaic is the FALLBACK, not a peer.
+ *
+ * It used to share the rotation with the storms, which meant a viewer tuning in
+ * during weather had a good chance of finding a static 1 km national picture —
+ * the exact thing single-site radar was added to replace. It now appears only
+ * when there is nothing else at all to show.
+ */
+export const NATIONAL_SCORE = 50;
 
 export const MIN_DWELL_MS = 90 * 1000;       // never cut away from a storm sooner
 export const ROTATE_MS = 3 * 60 * 1000;      // share the air during an outbreak
@@ -358,6 +424,9 @@ export function candidatesFrom(features) {
       score: scoreWarning(specs),
       issued: specs.issued,
       geometry: f.geometry || null,
+      // Watches arrive with NO polygon — they are issued for lists of zones —
+      // so the caller needs these to work out where one actually is.
+      zones: Array.isArray(p.affectedZones) ? p.affectedZones : [],
     });
   }
   return out;

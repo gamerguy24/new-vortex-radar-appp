@@ -131,8 +131,11 @@ tornado, confirmed tornado, radar-indicated tornado, then severe thunderstorm
 by damage threat. It holds a storm for at least 90 seconds, cuts away
 immediately for anything **more** urgent, and after 3 minutes shares the air
 with equally urgent storms so an outbreak is not one county all afternoon.
-Flash flood warnings are drawn and read out but never cut to — flooding does
-not look like anything on a reflectivity image.
+Flash flood warnings are cut to as well. They were deliberately left out at
+first, on the grounds that flooding is the rain that already fell and does not
+photograph like a supercell — which was wrong in practice: on a night with nine
+flash flood warnings and no severe ones, the stream sat on a static national map
+and told a viewer less than the rain that caused them would have.
 
 It never says more than the NWS said. "Confirmed tornado" appears only when
 `tornadoDetection` is OBSERVED, and "tornado emergency" only when the office
@@ -152,6 +155,21 @@ Useful query strings, mostly for checking it:
 | `?tz=America/Chicago` | the zone every time on screen is shown in |
 | `?mode=national` | never cut away; the quiet view only |
 | `?site=KTLX` | force which radar a cut uses |
+
+Full order of precedence, highest first: tornado warning (emergency, then
+confirmed, then radar indicated), flash flood EMERGENCY, severe thunderstorm,
+flash flood warning, flood warning, then watches, then a tour of the strongest
+echo, and the national mosaic last. A watch therefore never displaces a
+warning and the national view appears only when there is nothing else at all.
+
+Watches are issued for lists of zones and carry no polygon, so the first zone
+is fetched once to place the camera, and it then stands over the liveliest
+weather inside the watch rather than its geometric middle.
+
+A volume more than 30 minutes old is refused and that radar is stood down from
+for ten minutes. The archive can hand back a stale realtime folder for a site
+that stopped reporting, and one tour went on air with a scan 18 hours old
+before this check existed.
 
 To change what is shown, edit that one file — the MRMS product id (`ref_comp`)
 comes straight from `components/mrms_products.js`, `TOUR_MIN_DBZ` (45) is how
