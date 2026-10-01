@@ -155,6 +155,15 @@ async function main() {
     };
   }
 
+  // --dry means --dry here too. It used to be honoured only by the
+  // --changelog branch, so "--dry --message ..." posted for real while
+  // printing nothing to say it had.
+  if (process.argv.includes('--dry')) {
+    console.log('=== ' + embed.title + ' ===\n' + embed.description);
+    console.log('\n(dry run \u2014 nothing posted)');
+    return;
+  }
+
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
