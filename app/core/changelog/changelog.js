@@ -24,8 +24,8 @@ const CHANGELOG = [
     {
         date: 'October 1, 2026',
         items: [
-            { title: 'Layers menu beside the search bar', desc: 'A Layers button now sits next to the search box. It holds Radar and Satellite, which switch those layers on and off and show you which are on, plus shortcuts to Models and Outlooks. It drives the same switches as the menu, so the two can never disagree.' },
-            { title: 'Side-by-side panes are now independent', desc: 'In split screen, clicking a radar site used to change BOTH panes, so you could never compare two different storms. Now a site lands only on the pane you are working in — click a pane to aim the controls at it. Each pane also keeps its own map: you can run the Echo Radar map on one side and satellite on the other.' },
+            { title: 'Layers menu beside the search bar', desc: 'A Layers button now sits next to the search box, holding Radar, Satellite, Models and Outlooks. Radar and Satellite switch those layers on and off and show you which are on; Models and Outlooks open their panels. The buttons drive the same controls as the menu rather than copying them, so the two can never disagree with each other, and the button travels with the search box at any window width. "Satellite" here is the GOES satellite imagery layer — the satellite base map is still under map style in the settings menu.' },
+            { title: 'Side-by-side panes are now independent', desc: 'In split screen, clicking a radar site used to change BOTH panes, so you could never compare two different storms. Now a site lands only on the pane you are working in — click a pane to aim the controls at it, the same way the product menu already worked. Each pane also keeps its own map, so you can run the Echo Radar map on one side and satellite on the other at the same time. Opening split screen still starts the right pane on the left pane\'s site, so it opens as a comparison rather than an empty map; it simply stops following after that. With split screen off, nothing changes.' },
         ],
     },
     {
