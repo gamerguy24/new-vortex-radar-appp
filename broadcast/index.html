@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Echo Radar — Live National Radar</title>
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400..900&display=swap" rel="stylesheet" />
+<style>
+  /*
+   * THE 24/7 BROADCAST VIEW.
+   *
+   * This page is what the encoder points a browser at: national MRMS radar,
+   * active warnings, and nothing to click. It is deliberately standalone —
+   * no app bundle, no menus, no session — because it has to keep rendering
+   * unattended for weeks and anything it depends on is something that can
+   * break it at 3am. It is served WITHOUT a login for the same reason: a
+   * session that expires would put a sign-in page on air.
+   *
+   * Laid out at a fixed 1920x1080 and scaled to the window, so the furniture
+   * lands in the same place whatever the encoder's display size is.
+   */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #05070a;
+    font-family: Onest, "Segoe UI", system-ui, sans-serif; color: #e9eef5; cursor: none; }
+
+  #stage { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; transform-origin: top left; }
+  #map { position: absolute; inset: 0; }
+
+  /* ── top bar ───────────────────────────────────────────────────────────── */
+  #top { position: absolute; top: 0; left: 0; right: 0; height: 96px; display: flex; align-items: center;
+    gap: 18px; padding: 0 26px; z-index: 5;
+    background: linear-gradient(180deg, rgba(5,7,10,.93) 0%, rgba(5,7,10,.72) 68%, rgba(5,7,10,0) 100%); }
+  #mark { width: 64px; height: 64px; border-radius: 50%; flex: 0 0 auto; }
+  #brand { line-height: 1.05; }
+  #brand b { display: block; font-size: 30px; font-weight: 800; letter-spacing: .02em; }
+  #brand span { display: block; font-size: 14px; font-weight: 600; letter-spacing: .20em;
+    text-transform: uppercase; color: #7cc0f5; margin-top: 3px; }
+  #live { display: flex; align-items: center; gap: 8px; margin-left: 6px; padding: 7px 13px; border-radius: 999px;
+    background: rgba(209,64,47,.16); border: 1px solid rgba(209,64,47,.55); font-weight: 800;
+    letter-spacing: .12em; font-size: 13px; }
+  #live i { width: 10px; height: 10px; border-radius: 50%; background: #d1402f; display: block;
+    animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+  #clock { margin-left: auto; text-align: right; }
+  #clock b { display: block; font-size: 27px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  #clock span { display: block; font-size: 13px; color: #9fb2c9; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  #product { position: absolute; top: 104px; left: 26px; z-index: 5; font-size: 13px; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase; color: #9fb2c9;
+    background: rgba(5,7,10,.62); border: 1px solid rgba(255,255,255,.10); border-radius: 8px; padding: 7px 12px; }
+
+  /* ── warning counters + ticker ─────────────────────────────────────────── */
+  #counts { position: absolute; top: 104px; right: 26px; z-index: 5; display: flex; gap: 10px; }
+  .count { background: rgba(5,7,10,.66); border: 1px solid rgba(255,255,255,.10); border-radius: 8px;
+    padding: 7px 13px; text-align: center; min-width: 92px; }
+  .count b { display: block; font-size: 23px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .count span { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .10em;
+    text-transform: uppercase; color: #9fb2c9; margin-top: 2px; }
+  .count.tor b { color: #ff5a4d; } .count.svr b { color: #ffd34d; } .count.ffw b { color: #4ddb86; }
+
+  #bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 92px; z-index: 5;
+    background: linear-gradient(0deg, rgba(5,7,10,.95) 0%, rgba(5,7,10,.72) 62%, rgba(5,7,10,0) 100%); }
+  #tickerwrap { position: absolute; left: 0; right: 0; bottom: 30px; height: 40px; display: flex; align-items: center;
+    background: rgba(9,13,19,.86); border-top: 1px solid rgba(255,255,255,.08);
+    border-bottom: 1px solid rgba(255,255,255,.08); overflow: hidden; }
+  #tickerlabel { flex: 0 0 auto; height: 100%; display: flex; align-items: center; padding: 0 16px;
+    background: #d1402f; font-weight: 800; letter-spacing: .14em; font-size: 13px; }
+  #ticker { white-space: nowrap; font-size: 16px; font-weight: 600; padding-left: 100%;
+    animation: scroll 80s linear infinite; }
+  @keyframes scroll { from { transform: translateX(0) } to { transform: translateX(-100%) } }
+  #ticker .sep { color: #5d6b7c; padding: 0 14px; }
+  #ticker .tor { color: #ff7a6f; } #ticker .svr { color: #ffd98a; } #ticker .ffw { color: #7ce8a8; }
+  #foot { position: absolute; left: 26px; right: 26px; bottom: 6px; display: flex; justify-content: space-between;
+    font-size: 11.5px; color: #8a9bb0; }
+
+  /*
+   * The MRMS module appends its own legend (#vortexMrmsLegend) to <body> and
+   * leaves the styling to index.css — which this page deliberately does not
+   * load. These are those rules, trimmed, so the legend is not a bare div in
+   * the corner. It lives in screen space rather than the scaled stage, so it
+   * is sized for the real display and placed clear of the ticker.
+   *
+   * It carries the frame's valid time, its age, and a STALE flag after 15
+   * minutes — which is exactly what a viewer needs to trust what they see.
+   */
+  #vortexMrmsLegend {
+    position: absolute; right: 22px; bottom: 120px; z-index: 60;
+    background: #11151c; border: 1px solid rgba(255,255,255,.12); border-radius: 10px;
+    padding: 11px 13px; color: #eef4fb; font-family: Onest, system-ui, sans-serif;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45); min-width: 230px; pointer-events: none;
+  }
+  #vortexMrmsLegend .vml-title { font-size: 12.5px; font-weight: 800; margin-bottom: 8px; }
+  #vortexMrmsLegend .vml-bar { height: 13px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.18); box-shadow: inset 0 1px 2px rgba(0,0,0,.35); }
+  #vortexMrmsLegend .vml-scale { display: flex; justify-content: space-between;
+    font-size: 10.5px; opacity: .72; margin-top: 5px; font-weight: 600; }
+  #vortexMrmsLegend .vml-age { margin-top: 7px; padding-top: 6px;
+    border-top: 1px solid rgba(255,255,255,.09); font-size: 11px; font-weight: 700; opacity: .85; }
+  #vortexMrmsLegend .vml-age.stale { color: #e8862b; opacity: 1; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="map"></div>
+
+  <div id="top">
+    <img id="mark" src="/icons/icons/128x128.png" alt="" />
+    <div id="brand"><b>ECHO RADAR</b><span>National Radar</span></div>
+    <div id="live"><i></i>LIVE</div>
+    <div id="clock"><b id="t_local">--:--</b><span id="t_utc">--:--Z</span></div>
+  </div>
+
+  <div id="product">MRMS Composite Reflectivity · <span id="valid">updating…</span></div>
+
+  <div id="counts">
+    <div class="count tor"><b id="c_tor">0</b><span>Tornado</span></div>
+    <div class="count svr"><b id="c_svr">0</b><span>Svr T-Storm</span></div>
+    <div class="count ffw"><b id="c_ffw">0</b><span>Flash Flood</span></div>
+  </div>
+
+  <div id="bottom">
+    <div id="tickerwrap">
+      <div id="tickerlabel">ACTIVE WARNINGS</div>
+      <div id="ticker">Loading active warnings…</div>
+    </div>
+    <div id="foot">
+      <span>Radar: NOAA MRMS · Warnings: NWS api.weather.gov</span>
+      <span>Unofficial — for official warnings always go to weather.gov or your NOAA Weather Radio</span>
+    </div>
+  </div>
+</div>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js"></script>
+<script type="module">
+/*
+ * Everything below is written to survive being left alone. Any failure path
+ * ends in "reload the page" rather than a dead pixel on air.
+ */
+import { addMRMS, setMRMSProduct } from '/components/mrms.js?v=bcast1';
+
+const RELOAD_EVERY_MS = 6 * 60 * 60 * 1000;   // a browser left running for weeks leaks
+const STALE_FRAME_MS = 25 * 60 * 1000;        // MRMS updates ~2 min; 25 without = something is wrong
+const ALERTS_MS = 60 * 1000;
+const CONUS = [[-127, 23.5], [-66, 50.5]];
+
+function reload(why) {
+  console.warn('[broadcast] reloading: ' + why);
+  location.reload();
+}
+window.addEventListener('error', (e) => { console.error('[broadcast] error', e.message); setTimeout(() => reload('window error'), 30000); });
+window.addEventListener('unhandledrejection', (e) => console.error('[broadcast] rejection', e.reason));
+setTimeout(() => reload('scheduled refresh'), RELOAD_EVERY_MS);
+
+/* ── fit the 1920x1080 layout to whatever display the encoder gives us ───── */
+function fitStage() {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  const el = document.getElementById('stage');
+  el.style.transform = `scale(${s})`;
+  el.style.left = Math.round((innerWidth - 1920 * s) / 2) + 'px';
+  el.style.top = Math.round((innerHeight - 1080 * s) / 2) + 'px';
+}
+addEventListener('resize', fitStage); fitStage();
+
+/* ── clock ──────────────────────────────────────────────────────────────── */
+const p2 = (n) => String(n).padStart(2, '0');
+setInterval(() => {
+  const d = new Date();
+  document.getElementById('t_local').textContent =
+    `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+  document.getElementById('t_utc').textContent =
+    `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}Z · ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}, 1000);
+
+/* ── the map ────────────────────────────────────────────────────────────── */
+mapboxgl.accessToken = 'pk.eyJ1IjoiZGF2aWR3YWxsaXMwMCIsImEiOiJjbHlpNHJvZ2QwYzduMmpvZmdjejlkYjAxIn0.JNNcliJC4EFmok7iT5I6MQ';
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/dark-v11',
+  bounds: CONUS,
+  fitBoundsOptions: { padding: { top: 110, bottom: 120, left: 40, right: 40 } },
+  interactive: false,          // nothing drives this but the clock
+  attributionControl: false,
+  fadeDuration: 0,
+  projection: 'mercator',
+  maxPitch: 0,
+});
+
+// Published the way the app publishes it, because components/mrms.js takes
+// this wrapper. Nothing else from the app is loaded.
+window.vortexMap = { map, dualMap: null, isSplit: () => false };
+
+/* ── warnings ───────────────────────────────────────────────────────────── */
+const WARN = {
+  'Tornado Warning': { key: 'tor', color: '#ff2f1f' },
+  'Severe Thunderstorm Warning': { key: 'svr', color: '#ffd000' },
+  'Flash Flood Warning': { key: 'ffw', color: '#19c45f' },
+};
+const ALERTS_URL = 'https://api.weather.gov/alerts/active?status=actual&message_type=alert';
+
+async function loadAlerts() {
+  try {
+    const r = await fetch(ALERTS_URL, { headers: { Accept: 'application/geo+json' }, cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const feats = [];
+    const counts = { tor: 0, svr: 0, ffw: 0 };
+    const lines = [];
+    for (const f of data.features || []) {
+      const ev = f.properties && f.properties.event;
+      const w = WARN[ev];
+      if (!w) continue;
+      counts[w.key]++;
+      if (f.geometry) feats.push({ type: 'Feature', geometry: f.geometry, properties: { color: w.color } });
+      const area = (f.properties.areaDesc || '').split(';')[0].trim();
+      lines.push(`<span class="${w.key}">${ev.replace(' Warning', '')}</span> ${area}`);
+    }
+    for (const k of Object.keys(counts)) document.getElementById('c_' + k).textContent = counts[k];
+    const src = map.getSource('warnings');
+    const fc = { type: 'FeatureCollection', features: feats };
+    if (src) src.setData(fc);
+    const t = document.getElementById('ticker');
+    t.innerHTML = lines.length
+      ? lines.join('<span class="sep">•</span>')
+      : 'No active tornado, severe thunderstorm or flash flood warnings.';
+  } catch (e) {
+    console.warn('[broadcast] alerts failed:', e.message);   // keep the last good list on screen
+  }
+}
+
+/* ── start ──────────────────────────────────────────────────────────────── */
+map.on('load', async () => {
+  map.addSource('warnings', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addLayer({ id: 'warn-fill', type: 'fill', source: 'warnings',
+    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.10 } });
+  map.addLayer({ id: 'warn-line', type: 'line', source: 'warnings',
+    paint: { 'line-color': ['get', 'color'], 'line-width': 2.2 } });
+
+  try {
+    await setMRMSProduct('ref_comp');          // national composite reflectivity
+    await addMRMS(window.vortexMap);           // paints, then refreshes itself every 2 min
+  } catch (e) {
+    console.error('[broadcast] MRMS failed to start:', e.message);
+    setTimeout(() => reload('MRMS failed to start'), 60000);
+  }
+
+  loadAlerts();
+  setInterval(loadAlerts, ALERTS_MS);
+
+  /*
+   * Freshness watchdog. A frozen national radar during severe weather is worse
+   * than a black screen, because it looks fine. The MRMS layer swaps its image
+   * source on every refresh, so a source that has not changed in 25 minutes
+   * means the feed, the network or the tab has stopped and a reload is the
+   * cheapest cure.
+   */
+  let lastSeen = Date.now();
+  let lastUrl = '';
+  setInterval(() => {
+    // 'mrms-img-src' is the image source components/mrms.js swaps on each
+    // refresh; its blob URL changes every time a new frame is painted.
+    const s = map.getSource('mrms-img-src');
+    const now = Date.now();
+    const u = (s && (s.url || (s._options && s._options.url))) || '';
+    if (u && u !== lastUrl) {
+      lastUrl = u;
+      lastSeen = now;
+      document.getElementById('valid').textContent = 'updated ' + new Date().toLocaleTimeString();
+    }
+    if (now - lastSeen > STALE_FRAME_MS) reload('radar has not updated in 25 minutes');
+  }, 30000);
+});
+</script>
+</body>
+</html>

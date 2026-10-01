@@ -1,0 +1,45 @@
+# tools/broadcast/echo-stream.service — the 24/7 national radar stream.
+#
+# Install:
+#   sudo cp tools/broadcast/echo-stream.service /etc/systemd/system/
+#   sudo nano /etc/systemd/system/echo-stream.service      # fix User= and the paths
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now echo-stream
+#
+# Watch it:   journalctl -u echo-stream -f
+# Stop it:    sudo systemctl stop echo-stream
+#
+# The stream key is NOT here — it is read from the app's .env by the script, so
+# this file is safe to commit and to copy around.
+
+[Unit]
+Description=Echo Radar — 24/7 national radar stream to YouTube
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=david
+WorkingDirectory=/home/david/VortexRadar
+ExecStart=/usr/bin/env bash tools/broadcast/echo-stream.sh
+
+# Always come back. A stream that dies at 3am and stays dead is the whole
+# failure this is meant to avoid; RestartSec keeps it from hammering YouTube
+# when the cause is upstream (no network, ingest refusing the key).
+Restart=always
+RestartSec=15
+
+# Encoding is the greedy part. Leave the app and the radar decoding the
+# headroom they need when severe weather is actually happening.
+Nice=10
+CPUWeight=50
+
+# A long-running browser leaks; restart the whole thing daily in the quiet
+# hours. The page also reloads itself every 6 hours (broadcast/index.html).
+RuntimeMaxSec=86400
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

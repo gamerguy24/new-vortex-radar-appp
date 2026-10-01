@@ -2339,6 +2339,29 @@ app.use('/icons', express.static(path.join(ROOT, 'icons')));
 // like Power Outages. Mounted before the /graphics Pro gate below.
 app.use('/geo', express.static(path.join(ROOT, 'graphics', 'studio', 'geo')));
 
+/*
+ * The 24/7 broadcast view (see tools/BROADCAST_SETUP.md).
+ *
+ * PUBLIC, AND ABOVE THE SESSION GATE ON PURPOSE. The encoder points an
+ * unattended browser at this for weeks; behind requireAuth it redirects to
+ * /login.html the moment a session lapses, and a sign-in page goes to air.
+ * That is not hypothetical — it is what happened the first time this route was
+ * mounted below the gate.
+ *
+ * It exposes nothing private: national MRMS radar and NWS warnings, the same
+ * things the stream shows the world, with no account data on the page.
+ */
+app.use('/broadcast', (req, res, next) => {
+    if (/\.(js|css|html)$/.test(req.path)) res.setHeader('Cache-Control', 'no-cache');
+    next();
+});
+app.get(['/broadcast', '/broadcast/'], sendFile(path.join('broadcast', 'index.html')));
+// The three front-end modules that page imports — named one by one rather than
+// opening /components, so nothing else becomes public by accident.
+for (const f of ['mrms.js', 'mrms_products.js', 'palettes.js']) {
+    app.get('/components/' + f, sendFile(path.join('components', f)));
+}
+
 // Everything past this point requires a valid (unlocked) session.
 app.use(requireAuth);
 
@@ -2387,6 +2410,7 @@ app.get(['/pro', '/pro/'], sendFile(path.join('pro', 'index.html')));
 // The standalone radio page. Signed-in users only — the panel is also embedded
 // in the radar itself, so this is for anyone who wants it on its own screen.
 app.get(['/ptt', '/ptt/'], requireAuth, sendFile(path.join('ptt', 'index.html')));
+
 app.use(express.static(ROOT, { index: false }));
 
 // Final 404
