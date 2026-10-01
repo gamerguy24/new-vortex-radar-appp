@@ -2,19 +2,24 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Echo Radar — Live National Radar</title>
+<title>Echo Radar — Live Radar</title>
 <link href="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css" rel="stylesheet" />
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400..900&display=swap" rel="stylesheet" />
 <style>
   /*
    * THE 24/7 BROADCAST VIEW.
    *
-   * This page is what the encoder points a browser at: national MRMS radar,
-   * active warnings, and nothing to click. It is deliberately standalone —
-   * no app bundle, no menus, no session — because it has to keep rendering
-   * unattended for weeks and anything it depends on is something that can
-   * break it at 3am. It is served WITHOUT a login for the same reason: a
-   * session that expires would put a sign-in page on air.
+   * This page is what the encoder points a browser at. It has two looks:
+   *
+   *   QUIET  — the national MRMS mosaic, the whole country, warnings outlined.
+   *   STORM  — one WSR-88D's own Level 2 scan, zoomed to a warned storm, with
+   *            that storm's specifications beside it.
+   *
+   * It is deliberately standalone — no app bundle, no menus, no session —
+   * because it has to keep rendering unattended for weeks and anything it
+   * depends on is something that can break it at 3am. It is served WITHOUT a
+   * login for the same reason: a session that expires would put a sign-in page
+   * on air.
    *
    * Laid out at a fixed 1920x1080 and scaled to the window, so the furniture
    * lands in the same place whatever the encoder's display size is.
@@ -48,6 +53,35 @@
     letter-spacing: .14em; text-transform: uppercase; color: #9fb2c9;
     background: rgba(5,7,10,.62); border: 1px solid rgba(255,255,255,.10); border-radius: 8px; padding: 7px 12px; }
 
+  /* ── the storm panel ───────────────────────────────────────────────────────
+   * On screen only while a storm is on air. Every row comes from the warning
+   * itself, and a row with nothing behind it is left out rather than shown
+   * empty — "HAIL: —" reads as a measurement, and it is not one.
+   */
+  #storm { position: absolute; top: 150px; left: 26px; width: 406px; z-index: 6;
+    background: rgba(9,13,19,.91); border: 1px solid rgba(255,255,255,.13); border-radius: 12px;
+    box-shadow: 0 18px 44px rgba(0,0,0,.55); overflow: hidden; transition: opacity .35s ease; }
+  #storm.hide { opacity: 0; }
+  .sp-head { display: flex; align-items: center; gap: 10px; padding: 11px 14px; background: #d1402f; color: #fff; }
+  .sp-head b { font-size: 21px; font-weight: 800; line-height: 1.1; }
+  .sp-head span { margin-left: auto; flex: 0 0 auto; font-size: 12px; font-weight: 800; letter-spacing: .12em;
+    background: rgba(0,0,0,.26); border-radius: 5px; padding: 4px 8px; }
+  .sp-threat { padding: 9px 14px; font-size: 14px; font-weight: 800; letter-spacing: .10em;
+    text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,.09); color: #cfe0f2; }
+  .sp-threat.urgent { background: rgba(209,64,47,.24); color: #ff9183; }
+  .sp-threat.hide, .sp-row.hide { display: none; }
+  .sp-where { padding: 11px 14px 5px; font-size: 17px; font-weight: 700; line-height: 1.26; }
+  .sp-rows { padding: 7px 14px 12px; }
+  .sp-row { display: flex; align-items: baseline; gap: 10px; padding: 6px 0;
+    border-top: 1px solid rgba(255,255,255,.07); }
+  .sp-row:first-child { border-top: 0; }
+  .sp-row span { flex: 0 0 110px; font-size: 10.5px; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: #8fa3bb; }
+  .sp-row b { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sp-foot { display: flex; justify-content: space-between; gap: 12px; padding: 9px 14px;
+    background: rgba(255,255,255,.045); border-top: 1px solid rgba(255,255,255,.09);
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; color: #9fb2c9; }
+
   /* ── warning counters + ticker ─────────────────────────────────────────── */
   #counts { position: absolute; top: 104px; right: 26px; z-index: 5; display: flex; gap: 10px; }
   .count { background: rgba(5,7,10,.66); border: 1px solid rgba(255,255,255,.10); border-radius: 8px;
@@ -62,15 +96,41 @@
   #tickerwrap { position: absolute; left: 0; right: 0; bottom: 30px; height: 40px; display: flex; align-items: center;
     background: rgba(9,13,19,.86); border-top: 1px solid rgba(255,255,255,.08);
     border-bottom: 1px solid rgba(255,255,255,.08); overflow: hidden; }
+  /* position/z-index: the ticker text scrolls past this label, and without a
+     stacking context of its own the label is painted under it. */
   #tickerlabel { flex: 0 0 auto; height: 100%; display: flex; align-items: center; padding: 0 16px;
+    position: relative; z-index: 2;
     background: #d1402f; font-weight: 800; letter-spacing: .14em; font-size: 13px; }
   #ticker { white-space: nowrap; font-size: 16px; font-weight: 600; padding-left: 100%;
     animation: scroll 80s linear infinite; }
   @keyframes scroll { from { transform: translateX(0) } to { transform: translateX(-100%) } }
   #ticker .sep { color: #5d6b7c; padding: 0 14px; }
   #ticker .tor { color: #ff7a6f; } #ticker .svr { color: #ffd98a; } #ticker .ffw { color: #7ce8a8; }
+  #ticker .onair { background: #fff; color: #0b0f14; border-radius: 4px; padding: 1px 6px; margin-right: 7px;
+    font-size: 12px; font-weight: 800; letter-spacing: .10em; }
   #foot { position: absolute; left: 26px; right: 26px; bottom: 6px; display: flex; justify-content: space-between;
     font-size: 11.5px; color: #8a9bb0; }
+
+  /* ── reflectivity scale, for the single-site view ──────────────────────────
+   * MRMS brings its own legend and takes it away again, so the storm view needs
+   * one of its own. Both are built from the SAME colour table as the image they
+   * sit under — paletteStops() in the shared rasteriser — so the scale cannot
+   * drift from the picture.
+   */
+  #reflegend { position: absolute; right: 22px; bottom: 120px; z-index: 60; width: 252px;
+    background: #11151c; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: 11px 13px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  #reflegend.hide { display: none; }
+  #reflegend .rl-title { font-size: 12.5px; font-weight: 800; margin-bottom: 8px; }
+  #reflegend .rl-bar { height: 13px; border-radius: 6px; border: 1px solid rgba(255,255,255,.18);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.35); }
+  /* Ticks are positioned BY VALUE rather than spread evenly, so the floor can
+     be changed without the numbers quietly starting to lie. */
+  #reflegend .rl-scale { position: relative; height: 14px; margin-top: 5px; font-size: 10.5px;
+    opacity: .72; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #reflegend .rl-scale span { position: absolute; transform: translateX(-50%); }
+  #reflegend .rl-src { margin-top: 7px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.09);
+    font-size: 11px; font-weight: 700; opacity: .85; }
 
   /*
    * The MRMS module appends its own legend (#vortexMrmsLegend) to <body> and
@@ -99,22 +159,44 @@
 </style>
 </head>
 <body>
+
 <div id="stage">
   <div id="map"></div>
 
   <div id="top">
     <img id="mark" src="/icons/icons/128x128.png" alt="" />
-    <div id="brand"><b>ECHO RADAR</b><span>National Radar</span></div>
+    <div id="brand"><b>ECHO RADAR</b><span id="brandsub">National Radar</span></div>
     <div id="live"><i></i>LIVE</div>
     <div id="clock"><b id="t_local">--:--</b><span id="t_utc">--:--Z</span></div>
   </div>
 
-  <div id="product">MRMS Composite Reflectivity · <span id="valid">updating…</span></div>
+  <div id="product"><span id="prodname">MRMS Composite Reflectivity</span> · <span id="valid">updating…</span></div>
+
+  <div id="storm" class="hide">
+    <div class="sp-head"><b id="sp_event">WARNING</b><span id="sp_tag">—</span></div>
+    <div class="sp-threat hide" id="sp_threat"></div>
+    <div class="sp-where" id="sp_where"></div>
+    <div class="sp-rows">
+      <div class="sp-row hide" id="sp_r_motion"><span>Storm motion</span><b></b></div>
+      <div class="sp-row hide" id="sp_r_hail"><span>Max hail</span><b></b></div>
+      <div class="sp-row hide" id="sp_r_wind"><span>Max gust</span><b></b></div>
+      <div class="sp-row hide" id="sp_r_tor"><span>Tornado</span><b></b></div>
+      <div class="sp-row hide" id="sp_r_office"><span>Issued by</span><b></b></div>
+    </div>
+    <div class="sp-foot"><span id="sp_radar">—</span><span id="sp_until">—</span></div>
+  </div>
 
   <div id="counts">
     <div class="count tor"><b id="c_tor">0</b><span>Tornado</span></div>
     <div class="count svr"><b id="c_svr">0</b><span>Svr T-Storm</span></div>
     <div class="count ffw"><b id="c_ffw">0</b><span>Flash Flood</span></div>
+  </div>
+
+  <div id="reflegend" class="hide">
+    <div class="rl-title">Base Reflectivity (dBZ)</div>
+    <div class="rl-bar" id="rl_bar"></div>
+    <div class="rl-scale" id="rl_scale"></div>
+    <div class="rl-src" id="rl_src">—</div>
   </div>
 
   <div id="bottom">
@@ -123,19 +205,33 @@
       <div id="ticker">Loading active warnings…</div>
     </div>
     <div id="foot">
-      <span>Radar: NOAA MRMS · Warnings: NWS api.weather.gov</span>
+      <span id="foot_src">Radar: NOAA MRMS · Warnings: NWS api.weather.gov</span>
       <span>Unofficial — for official warnings always go to weather.gov or your NOAA Weather Radio</span>
     </div>
   </div>
 </div>
 
 <script src="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js"></script>
+<!--
+  The app's OWN Level 2 parser, bundled standalone (window.VortexL2). A classic
+  script on purpose: it has to be in place before the module below imports the
+  rasteriser that reads it. Same bundle the Graphics Studio uses.
+-->
+<script src="/dist/l2_bundle.js"></script>
 <script type="module">
 /*
  * Everything below is written to survive being left alone. Any failure path
- * ends in "reload the page" rather than a dead pixel on air.
+ * ends in "show the national view" or "reload the page" rather than a dead
+ * pixel on air.
  */
-import { addMRMS, setMRMSProduct, getMRMSFrameTime } from '/components/mrms.js?v=bcast2';
+import { addMRMS, removeMRMS, setMRMSProduct, getMRMSFrameTime } from '/components/mrms.js?v=bcast3';
+import { paletteStops } from '/graphics/studio/engine/radar_l2_raster.js?v=bcast1';
+import { Director, candidatesFrom, WARN_TYPES, boundsOf, centroidOf, nearestSites }
+  from '/broadcast/storm_director.js?v=bcast1';
+import { loadSite, redrawSite, showSite, clearSite, siteRadarState, BUSY, MIN_DBZ }
+  from '/broadcast/site_radar.js?v=bcast2';
+
+const Q = new URLSearchParams(location.search);
 
 /*
  * TIME ON AIR IS ALWAYS EXPLICIT.
@@ -147,7 +243,7 @@ import { addMRMS, setMRMSProduct, getMRMSFrameTime } from '/components/mrms.js?v
  *
  * Override for a different audience with /broadcast?tz=America/Chicago.
  */
-const TZ = new URLSearchParams(location.search).get('tz') || 'America/New_York';
+const TZ = Q.get('tz') || 'America/New_York';
 const tzTime = new Intl.DateTimeFormat('en-US', {
   timeZone: TZ, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
 });
@@ -158,8 +254,23 @@ const tzDate = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short', 
 
 const RELOAD_EVERY_MS = 6 * 60 * 60 * 1000;   // a browser left running for weeks leaks
 const STALE_FRAME_MS = 25 * 60 * 1000;        // MRMS updates ~2 min; 25 without = something is wrong
+const STALE_SITE_MS = 22 * 60 * 1000;         // a volume every ~5 min; 22 means that radar stopped
+const SITE_REFRESH_MS = 45 * 1000;            // how often to look for the next volume
+const VETO_MS = 10 * 60 * 1000;               // how long a failing radar or storm is left alone
 const ALERTS_MS = 60 * 1000;
 const CONUS = [[-127, 23.5], [-66, 50.5]];
+const NATIONAL_PAD = { top: 110, bottom: 120, left: 40, right: 40 };
+// The left padding clears the storm panel, so a storm is never hidden behind
+// its own specifications.
+const STORM_PAD = { top: 170, bottom: 150, left: 470, right: 110 };
+
+/*
+ * ?mode=national pins the quiet behaviour (national mosaic only, never cuts
+ * away); ?site=KTLX forces which radar a cut uses. Both exist so this page can
+ * be checked without waiting for the weather.
+ */
+const FORCED_MODE = Q.get('mode') || 'auto';
+const FORCED_SITE = (Q.get('site') || '').toUpperCase() || null;
 
 function reload(why) {
   console.warn('[broadcast] reloading: ' + why);
@@ -186,6 +297,7 @@ setInterval(() => {
   document.getElementById('t_local').textContent = tzTime.format(d);
   document.getElementById('t_utc').textContent =
     `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}Z · ${tzDate.format(d)}`;
+  tickUntil();
 }, 1000);
 
 /* ── the map ────────────────────────────────────────────────────────────── */
@@ -194,8 +306,8 @@ const map = new mapboxgl.Map({
   container: 'map',
   style: 'mapbox://styles/mapbox/dark-v11',
   bounds: CONUS,
-  fitBoundsOptions: { padding: { top: 110, bottom: 120, left: 40, right: 40 } },
-  interactive: false,          // nothing drives this but the clock
+  fitBoundsOptions: { padding: NATIONAL_PAD },
+  interactive: false,          // nothing drives this but the clock and the weather
   attributionControl: false,
   fadeDuration: 0,
   projection: 'mercator',
@@ -261,29 +373,41 @@ async function paintBasemap() {
   }
 }
 
-/* ── warnings ───────────────────────────────────────────────────────────── */
+/* ── what is on air ─────────────────────────────────────────────────────── */
+const director = new Director();
+let mode = 'national';
+let onAir = null;             // { id, specs, geometry, site }
+let rawFeatures = [];         // last good warning list from the NWS
+let sites = {};               // id -> { lat, lon, name, type }
+let siteTimer = null;
+
 /*
- * A tornado warning is drawn heavier than the rest on purpose: at national
- * scale every box is small, and the one that means "take cover now" should not
- * take the same glance to find as a flash flood.
+ * Things that have just failed us, and when to try them again. A radar that is
+ * down and a warning with no polygon both have to be stood down from, or the
+ * director picks the same impossible target every single poll and the stream
+ * flickers between a storm it cannot show and the national view.
  */
-const WARN = {
-  'Tornado Warning': { key: 'tor', color: '#ff2f1f', tag: 'TOR', weight: 3.6, halo: 6.4 },
-  'Severe Thunderstorm Warning': { key: 'svr', color: '#ffd000', tag: 'SVR', weight: 2.6, halo: 5.0 },
-  'Flash Flood Warning': { key: 'ffw', color: '#19c45f', tag: 'FFW', weight: 2.6, halo: 5.0 },
+const veto = new Map();
+const vetoed = (k) => (veto.get(k) || 0) > Date.now();
+const setVeto = (k, why) => {
+  veto.set(k, Date.now() + VETO_MS);
+  console.warn(`[broadcast] standing down from ${k} for 10 min: ${why}`);
 };
 
 /*
- * MRMS removes and re-adds its raster when a refresh cannot update the image
- * in place, which puts the radar back above the warning boxes. Re-raising them
- * is cheap and idempotent, so it is simply done on every refresh and after
- * every alert poll rather than trying to detect the rebuild.
+ * MRMS removes and re-adds its raster when a refresh cannot update the image in
+ * place, which puts the radar back above the warning boxes. Re-raising them is
+ * cheap and idempotent, so it is simply done on every refresh and after every
+ * alert poll rather than trying to detect the rebuild. (The single-site raster
+ * is added BELOW them by construction and needs none of this.)
  */
+const WARN_LAYERS = ['warn-fill', 'warn-halo', 'warn-line', 'warn-onair', 'warn-label'];
 function keepWarningsOnTop() {
-  for (const id of ['warn-fill', 'warn-halo', 'warn-line', 'warn-label']) {
+  for (const id of WARN_LAYERS) {
     try { if (map.getLayer(id)) map.moveLayer(id); } catch (e) { /* style reloading */ }
   }
 }
+
 const ALERTS_URL = 'https://api.weather.gov/alerts/active?status=actual&message_type=alert';
 
 async function loadAlerts() {
@@ -291,35 +415,310 @@ async function loadAlerts() {
     const r = await fetch(ALERTS_URL, { headers: { Accept: 'application/geo+json' }, cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    const feats = [];
-    const counts = { tor: 0, svr: 0, ffw: 0 };
-    const lines = [];
-    for (const f of data.features || []) {
-      const ev = f.properties && f.properties.event;
-      const w = WARN[ev];
-      if (!w) continue;
-      counts[w.key]++;
-      if (f.geometry) {
-        feats.push({
-          type: 'Feature',
-          geometry: f.geometry,
-          properties: { color: w.color, tag: w.tag, weight: w.weight, halo: w.halo },
-        });
-      }
-      const area = (f.properties.areaDesc || '').split(';')[0].trim();
-      lines.push(`<span class="${w.key}">${ev.replace(' Warning', '')}</span> ${area}`);
-    }
-    for (const k of Object.keys(counts)) document.getElementById('c_' + k).textContent = counts[k];
-    const src = map.getSource('warnings');
-    const fc = { type: 'FeatureCollection', features: feats };
-    if (src) { src.setData(fc); keepWarningsOnTop(); }
-    const t = document.getElementById('ticker');
-    t.innerHTML = lines.length
-      ? lines.join('<span class="sep">•</span>')
-      : 'No active tornado, severe thunderstorm or flash flood warnings.';
+    rawFeatures = data.features || [];
   } catch (e) {
     console.warn('[broadcast] alerts failed:', e.message);   // keep the last good list on screen
+    return;
   }
+  paintWarnings();
+  await runDirector();
+}
+
+/** Boxes, counters and ticker, from the last good warning list. */
+function paintWarnings() {
+  const feats = [];
+  // Labels come from their OWN point source. A polygon that straddles a tile
+  // boundary is drawn once but LABELLED once per tile, which put two TOR tags
+  // inside one box; one point per warning cannot do that.
+  const labels = [];
+  const counts = { tor: 0, svr: 0, ffw: 0 };
+  const lines = [];
+  for (const f of rawFeatures) {
+    const props = (f && f.properties) || {};
+    const w = WARN_TYPES[props.event];
+    if (!w) continue;
+    counts[w.key]++;
+    const live = !!(onAir && props.id && props.id === onAir.id);
+    if (f.geometry) {
+      feats.push({
+        type: 'Feature',
+        geometry: f.geometry,
+        properties: { color: w.color, tag: w.tag, weight: w.weight, halo: w.halo, on_air: live },
+      });
+      const c = centroidOf(f.geometry);
+      if (c) {
+        labels.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: c },
+          properties: { color: w.color, tag: w.tag },
+        });
+      }
+    }
+    const area = (props.areaDesc || '').split(';')[0].trim();
+    lines.push((live ? '<span class="onair">ON AIR</span>' : '')
+      + `<span class="${w.key}">${(props.event || '').replace(' Warning', '')}</span> ${area}`);
+  }
+  for (const k of Object.keys(counts)) document.getElementById('c_' + k).textContent = counts[k];
+  const src = map.getSource('warnings');
+  if (src) { src.setData({ type: 'FeatureCollection', features: feats }); keepWarningsOnTop(); }
+  const labelSrc = map.getSource('warning-labels');
+  if (labelSrc) labelSrc.setData({ type: 'FeatureCollection', features: labels });
+  const t = document.getElementById('ticker');
+  t.innerHTML = lines.length
+    ? lines.join('<span class="sep">•</span>')
+    : 'No active tornado, severe thunderstorm or flash flood warnings.';
+}
+
+/* ── the director: decide, then cut ─────────────────────────────────────── */
+async function runDirector() {
+  if (FORCED_MODE === 'national') return;
+  const now = Date.now();
+  const candidates = candidatesFrom(rawFeatures).filter((c) => !vetoed(c.id));
+  const d = director.decide(candidates, now);
+
+  if (d.mode === 'national') {
+    if (mode !== 'national') await goNational(d.reason);
+    return;
+  }
+  if (d.changed || !onAir) { await goStorm(d.target, d.reason); return; }
+
+  // Same storm: an escalation from "radar indicated" to "confirmed tornado" is
+  // an update to the panel, not a reason to move the camera.
+  onAir.specs = d.target.specs;
+  onAir.geometry = d.target.geometry;
+  renderPanel();
+}
+
+/** Cut to a warned storm: nearest radar, camera on the polygon, panel beside it. */
+async function goStorm(target, reason) {
+  const centre = centroidOf(target.geometry);
+  const box = boundsOf(target.geometry);
+  if (!centre || !box) {
+    // Some warnings are issued by county with no polygon. There is nothing to
+    // zoom to, so leave it to the ticker and find a storm we can show.
+    setVeto(target.id, 'warning has no polygon');
+    return;
+  }
+
+  const picks = (FORCED_SITE
+    ? [{ id: FORCED_SITE, name: FORCED_SITE, km: 0 }]
+    : nearestSites(sites, centre[1], centre[0], 4)).filter((s) => !vetoed(s.id));
+  if (!picks.length) {
+    setVeto(target.id, 'no usable radar within range');
+    if (mode === 'storm') await goNational('no radar for the warned storm');
+    return;
+  }
+
+  console.log(`[broadcast] cutting to ${target.specs.event} — ${target.specs.counties} `
+    + `(${reason}); radar ${picks.map((s) => s.id).join('/')}`);
+
+  // Download the volume WHILE the camera flies, rather than after it lands.
+  const loading = (async () => {
+    for (const s of picks) {
+      const r = await loadSite(s.id, { product: 'reflectivity' });
+      if (r.ok) return { site: s };
+      if (r.reason === BUSY) return 'busy';
+      setVeto(s.id, r.reason);
+    }
+    return null;
+  })();
+
+  if (mode !== 'storm') { try { removeMRMS(); } catch (e) { /* was not up */ } }
+  mode = 'storm';
+  onAir = { id: target.id, specs: target.specs, geometry: target.geometry, site: null };
+  paintWarnings();           // marks the on-air box
+  renderPanel();
+  map.fitBounds(box, { padding: STORM_PAD, maxZoom: 10.5, duration: 1600, bearing: 0, pitch: 0 });
+
+  const got = await loading;
+  if (got === 'busy') return;          // an earlier cut is still downloading; the next poll retries
+  if (!got) {
+    setVeto(target.id, 'every nearby radar failed');
+    await goNational('could not get radar for that storm');
+    return;
+  }
+  onAir.site = got.site;
+  redrawSite(map);
+  showRefLegend(true);
+  renderPanel();
+  showFrameTime();
+  startSiteTimer();
+}
+
+/** Back to the whole country. */
+async function goNational(reason) {
+  console.log('[broadcast] national view: ' + reason);
+  stopSiteTimer();
+  clearSite(map);
+  mode = 'national';
+  onAir = null;
+  showRefLegend(false);
+  paintWarnings();
+  renderPanel();
+  map.fitBounds(CONUS, { padding: NATIONAL_PAD, duration: 1200, bearing: 0, pitch: 0 });
+  try {
+    await setMRMSProduct('ref_comp');
+    await addMRMS(window.vortexMap);
+    keepWarningsOnTop();
+  } catch (e) {
+    console.error('[broadcast] MRMS failed to restart:', e.message);
+    setTimeout(() => reload('MRMS failed to restart'), 60000);
+  }
+}
+
+function startSiteTimer() {
+  stopSiteTimer();
+  siteTimer = setInterval(async () => {
+    if (mode !== 'storm' || !onAir || !onAir.site) return;
+    const r = await showSite(map, onAir.site.id);
+    if (r.ok && r.changed) { keepWarningsOnTop(); renderPanel(); showFrameTime(); }
+    else if (!r.ok && r.reason !== BUSY) console.warn('[broadcast] site refresh: ' + r.reason);
+  }, SITE_REFRESH_MS);
+}
+function stopSiteTimer() { if (siteTimer) { clearInterval(siteTimer); siteTimer = null; } }
+
+// Any camera move in storm mode means redrawing the raster through the new
+// projection: it is pinned to the corners it was rendered for.
+map.on('moveend', () => { if (mode === 'storm') redrawSite(map); });
+
+/* ── the panel ──────────────────────────────────────────────────────────── */
+const $ = (id) => document.getElementById(id);
+function row(id, value) {
+  const el = $(id);
+  if (value == null || value === '') { el.classList.add('hide'); return; }
+  el.querySelector('b').textContent = value;
+  el.classList.remove('hide');
+}
+
+function renderPanel() {
+  const panel = $('storm');
+  if (mode !== 'storm' || !onAir) {
+    panel.classList.add('hide');
+    $('brandsub').textContent = 'National Radar';
+    $('foot_src').textContent = 'Radar: NOAA MRMS · Warnings: NWS api.weather.gov';
+    setProductName();
+    return;
+  }
+  const s = onAir.specs;
+  panel.classList.remove('hide');
+  $('brandsub').textContent = 'Live Storm Coverage';
+
+  const head = panel.querySelector('.sp-head');
+  head.style.background = s.color;
+  head.style.color = s.key === 'svr' ? '#1b1304' : '#ffffff';   // the severe yellow cannot carry white
+  $('sp_event').textContent = (s.event || 'Warning').toUpperCase();
+  $('sp_tag').textContent = s.tag || '';
+
+  const threat = $('sp_threat');
+  if (s.threatLabel) {
+    threat.textContent = s.threatLabel;
+    threat.classList.remove('hide');
+    threat.classList.toggle('urgent',
+      s.emergency || s.observed || s.threatLabel === 'DESTRUCTIVE DAMAGE THREAT');
+  } else {
+    threat.classList.add('hide');
+  }
+
+  $('sp_where').textContent = s.counties || 'Area not specified';
+
+  row('sp_r_motion', s.motion ? `${s.motion.toward} at ${s.motion.mph} mph` : null);
+  row('sp_r_hail', s.hailIn ? `${String(s.hailIn)}″` : null);
+  row('sp_r_wind', s.windMph ? `${s.windMph} mph` : null);
+  // Verbatim from the office: OBSERVED or RADAR INDICATED, never our own word.
+  row('sp_r_tor', s.isTornado ? (s.detection || 'RADAR INDICATED') : null);
+  row('sp_r_office', s.office || null);
+
+  const st = siteRadarState();
+  const tilt = Number.isFinite(st.elevationAngle) ? ` · ${st.elevationAngle.toFixed(1)}°` : '';
+  const named = st.site && sites[st.site] ? sites[st.site].name : null;
+  $('sp_radar').textContent = st.site
+    ? `${st.site}${named ? ' ' + named : ''}${tilt}`
+    : 'acquiring radar…';
+  $('foot_src').textContent = st.site
+    ? `Radar: NOAA NEXRAD ${st.site} Level II · Warnings: NWS api.weather.gov`
+    : 'Radar: NOAA NEXRAD · Warnings: NWS api.weather.gov';
+  $('rl_src').textContent = st.site ? `${st.site}${st.superRes ? ' · super-res' : ''}` : 'NEXRAD Level II';
+  setProductName();
+  tickUntil();
+}
+
+/** "UNTIL 3:15 PM EDT · 14 MIN" — recomputed every second, not once per poll. */
+function tickUntil() {
+  if (mode !== 'storm' || !onAir) return;
+  const t = onAir.specs.expires;
+  const el = $('sp_until');
+  if (!t) { el.textContent = ''; return; }
+  const left = Math.round((t - Date.now()) / 60000);
+  el.textContent = `UNTIL ${tzShort.format(new Date(t))}` + (left > 0 ? ` · ${left} MIN` : ' · EXPIRING');
+}
+
+function setProductName() {
+  const el = $('prodname');
+  if (mode === 'storm') {
+    const st = siteRadarState();
+    const tilt = Number.isFinite(st.elevationAngle) ? ` ${st.elevationAngle.toFixed(1)}°` : '';
+    el.textContent = st.site
+      ? `${st.site} Base Reflectivity${tilt}${st.superRes ? ' · Super-Res' : ''}`
+      : 'Base Reflectivity';
+  } else {
+    el.textContent = 'MRMS Composite Reflectivity';
+  }
+}
+
+/*
+ * The dBZ scale for the single-site view, built from the SAME colour table the
+ * raster used. The window is 15–75 dBZ because that is what is actually drawn:
+ * the rasteriser fades out below 15 so light rain does not sheet over the map,
+ * and a scale claiming 0 dBZ would be labelling colours nothing on screen can
+ * be.
+ */
+let refLegendBuilt = false;
+function showRefLegend(on) {
+  const el = $('reflegend');
+  if (!on) { el.classList.add('hide'); return; }
+  if (!refLegendBuilt) {
+    const p = paletteStops('REF', null, 128);
+    if (!p) { console.warn('[broadcast] no reflectivity palette for the legend'); return; }
+    const LO = MIN_DBZ, HI = Math.round(p.vmax);
+    const inWindow = p.stops.filter((s) => s.value >= LO && s.value <= HI);
+    if (inWindow.length < 2) return;
+    const grad = inWindow
+      .map((s) => `${s.css} ${(((s.value - LO) / (HI - LO)) * 100).toFixed(1)}%`)
+      .join(', ');
+    $('rl_bar').style.background = `linear-gradient(90deg, ${grad})`;
+    // Every tick that falls inside the drawn range, placed where its value is.
+    $('rl_scale').innerHTML = [20, 30, 40, 50, 60, 70]
+      .filter((v) => v >= LO && v <= HI)
+      .map((v) => `<span style="left:${(((v - LO) / (HI - LO)) * 100).toFixed(1)}%">${v}</span>`)
+      .join('');
+    refLegendBuilt = true;
+  }
+  el.classList.remove('hide');
+}
+
+/*
+ * What is on screen, and how old it IS — taken from the frame's own valid time,
+ * not from when this page last did something. Those are different numbers: the
+ * browser can be busy and current, or idle and showing a frame from half an
+ * hour ago. In storm mode the frame is that radar's volume scan time, which is
+ * the only honest answer there.
+ */
+function frameTime() {
+  if (mode === 'storm') return siteRadarState().scanTime || null;
+  const iso = getMRMSFrameTime();
+  const t = iso ? Date.parse(iso) : NaN;
+  return Number.isFinite(t) ? t : null;
+}
+
+function showFrameTime() {
+  const el = $('valid');
+  const t = frameTime();
+  if (!t) { el.textContent = mode === 'storm' ? 'acquiring scan' : 'waiting for data'; return null; }
+  const d = new Date(t);
+  const ageMin = Math.round((Date.now() - t) / 60000);
+  el.textContent = `valid ${tzShort.format(d)} · ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}Z · `
+    + (ageMin < 1 ? 'just now' : ageMin === 1 ? '1 min ago' : `${ageMin} min ago`);
+  return t;
 }
 
 /* ── start ──────────────────────────────────────────────────────────────── */
@@ -329,29 +728,50 @@ map.on('load', async () => {
   /*
    * WARNING BOXES, ON TOP OF THE RADAR.
    *
-   * Four layers, not one: a light wash so the warned area reads at a glance, a
-   * dark halo under the outline so the box survives being drawn over a bright
-   * echo, the coloured outline itself, and a short label.
+   * Five layers: a light wash so the warned area reads at a glance, a dark halo
+   * under the outline so the box survives being drawn over a bright echo, the
+   * coloured outline itself, a white dashed ring around whichever box is on air,
+   * and a short label.
    *
    * Order matters more than any of it. MRMS adds its raster AFTER these and
    * rebuilds it on refresh, so left alone the boxes sit UNDER the radar —
    * invisible over the storm, which is the only place they matter. They are
    * lifted back on top after every radar refresh (see keepWarningsOnTop).
+   *
+   * Widths grow with zoom: an outline that reads well across the whole country
+   * is a hairline once the camera is on one county.
    */
+  const widen = (prop) => ['interpolate', ['linear'], ['zoom'],
+    4, ['get', prop], 9, ['*', ['get', prop], 1.8]];
+
   map.addSource('warnings', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  // The wash fades out as the camera comes in. At national scale it is what
+  // makes a small box findable; over one county it is a sheet of colour on top
+  // of the very radar the viewer is being shown.
   map.addLayer({ id: 'warn-fill', type: 'fill', source: 'warnings',
-    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.14 } });
+    paint: {
+      'fill-color': ['get', 'color'],
+      'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.14, 7, 0.08, 9, 0.045],
+    } });
   map.addLayer({ id: 'warn-halo', type: 'line', source: 'warnings',
     layout: { 'line-join': 'round' },
-    paint: { 'line-color': 'rgba(0,0,0,0.75)', 'line-width': ['get', 'halo'] } });
+    paint: { 'line-color': 'rgba(0,0,0,0.75)', 'line-width': widen('halo') } });
   map.addLayer({ id: 'warn-line', type: 'line', source: 'warnings',
     layout: { 'line-join': 'round' },
-    paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'weight'] } });
-  map.addLayer({ id: 'warn-label', type: 'symbol', source: 'warnings',
+    paint: { 'line-color': ['get', 'color'], 'line-width': widen('weight') } });
+  map.addLayer({ id: 'warn-onair', type: 'line', source: 'warnings',
+    filter: ['==', ['get', 'on_air'], true],
+    layout: { 'line-join': 'round' },
+    paint: {
+      'line-color': '#ffffff', 'line-width': 2, 'line-opacity': 0.9,
+      'line-dasharray': [2, 2], 'line-offset': 5,
+    } });
+  map.addSource('warning-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addLayer({ id: 'warn-label', type: 'symbol', source: 'warning-labels',
     layout: {
       'text-field': ['get', 'tag'],
       'text-font': ['Arial Unicode MS Bold'],
-      'text-size': 13,
+      'text-size': ['interpolate', ['linear'], ['zoom'], 4, 13, 9, 18],
       'text-allow-overlap': false,     // crowded outbreaks drop labels, not boxes
       'text-padding': 3,
     },
@@ -360,6 +780,26 @@ map.on('load', async () => {
       'text-halo-color': 'rgba(0,0,0,0.85)',
       'text-halo-width': 1.6,
     } });
+
+  /*
+   * The radar site table, from the app's own list, so the stream picks a site
+   * out of the same set the radar page offers. Without it the director can
+   * still run — it simply has nothing to cut to and says so — so this failure
+   * must not stop the national view coming up.
+   */
+  try {
+    const r = await fetch('/broadcast/radar-sites.json', { cache: 'force-cache' });
+    sites = await r.json();
+    console.log('[broadcast] ' + Object.keys(sites).length + ' radar sites loaded');
+  } catch (e) {
+    console.warn('[broadcast] radar site table unavailable:', e.message);
+  }
+
+  if (!window.VortexL2) {
+    // Single-site radar is impossible without the decoder. The national mosaic
+    // still works, so say so loudly and carry on rather than going dark.
+    console.error('[broadcast] dist/l2_bundle.js did not load — staying on the national view');
+  }
 
   try {
     await setMRMSProduct('ref_comp');          // national composite reflectivity
@@ -373,41 +813,46 @@ map.on('load', async () => {
   loadAlerts();
   setInterval(loadAlerts, ALERTS_MS);
 
-  /*
-   * Freshness watchdog. A frozen national radar during severe weather is worse
-   * than a black screen, because it looks fine. The MRMS layer swaps its image
-   * source on every refresh, so a source that has not changed in 25 minutes
-   * means the feed, the network or the tab has stopped and a reload is the
-   * cheapest cure.
-   */
-  /*
-   * What is on screen, and how old it IS — taken from the frame's own valid
-   * time, not from when this page last did something. Those are different
-   * numbers: the browser can be busy and current, or idle and showing a frame
-   * from half an hour ago.
-   */
-  function showFrameTime() {
-    const el = document.getElementById('valid');
-    const iso = getMRMSFrameTime();
-    const t = iso ? Date.parse(iso) : NaN;
-    if (!Number.isFinite(t)) { el.textContent = 'waiting for data'; return null; }
-    const ageMin = Math.round((Date.now() - t) / 60000);
-    el.textContent = `valid ${tzShort.format(new Date(t))} · ${iso.slice(11, 16)}Z · `
-      + (ageMin < 1 ? 'just now' : ageMin === 1 ? '1 min ago' : `${ageMin} min ago`);
-    return t;
-  }
-
   showFrameTime();
   setInterval(() => {
     const t = showFrameTime();
+    setProductName();
     keepWarningsOnTop();   // a radar refresh between polls must not bury them
-    // Staleness is measured on the DATA. A frozen national radar during severe
-    // weather is the failure that looks fine, so it is the frame's age that
-    // decides, not whether the page is otherwise alive.
-    if (t && Date.now() - t > STALE_FRAME_MS) {
-      reload('radar frame is ' + Math.round((Date.now() - t) / 60000) + ' minutes old');
+
+    /*
+     * Staleness is measured on the DATA, because a frozen radar during severe
+     * weather is the failure that looks fine. What to do about it depends on
+     * which radar: one site going quiet is that site's problem, so we stand
+     * down from it and show the country, rather than reloading the page and
+     * asking the same dead station again.
+     */
+    const limit = mode === 'storm' ? STALE_SITE_MS : STALE_FRAME_MS;
+    if (t && Date.now() - t > limit) {
+      const age = Math.round((Date.now() - t) / 60000);
+      if (mode === 'storm') {
+        const st = siteRadarState();
+        if (st.site) setVeto(st.site, `last volume is ${age} minutes old`);
+        goNational(`site radar is ${age} minutes old`);
+      } else {
+        reload('radar frame is ' + age + ' minutes old');
+      }
     }
   }, 20000);
+
+  /*
+   * TEST SEAM. A cut to a tornado-warned storm cannot be checked by waiting for
+   * one, so the pieces are reachable by name: read-only state, the two
+   * transitions, and a way to feed in warnings. Nothing here is reachable from
+   * the stream itself, which has no input of any kind.
+   */
+  window.echoBroadcast = {
+    state: () => ({ mode, onAir, site: siteRadarState(), vetoes: [...veto.keys()] }),
+    inject: async (features) => { rawFeatures = features; paintWarnings(); await runDirector(); },
+    // poll() runs the real alert path, so a check can drive the page the way
+    // the weather does instead of reaching past it.
+    poll: () => loadAlerts(),
+    goStorm, goNational, director, sites: () => sites,
+  };
 });
 </script>
 </body>

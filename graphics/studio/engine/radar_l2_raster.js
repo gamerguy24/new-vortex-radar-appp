@@ -40,6 +40,24 @@ const PRODUCTS = {
 
 const L2_BUCKET = 'https://noaa-nexrad-level2.s3.amazonaws.com';
 
+/*
+ * WHERE THE RELAY LIVES, AND WHETHER TO TRY S3 DIRECTLY AT ALL.
+ *
+ * The studio talks to the bucket first and falls back to its own origin. The
+ * 24/7 broadcast page cannot do either by default: it has no session, so the
+ * authenticated relay is shut to it, and the bucket refuses a LISTING request
+ * from a browser origin outright, so the direct attempt is three guaranteed
+ * CORS failures per scan — which the browser logs whether or not they are
+ * caught. It therefore points this at its own public relay and asks for the
+ * direct attempt to be skipped.
+ */
+let RELAY_BASE = '/api/graphics';
+let PREFER_RELAY = false;
+export function setL2Relay(base, { preferRelay = false } = {}) {
+  RELAY_BASE = String(base || '/api/graphics').replace(/\/+$/, '');
+  PREFER_RELAY = !!preferRelay;
+}
+
 /** window.VortexL2, or null if dist/l2_bundle.js has not loaded. */
 function lib() {
   return (typeof window !== 'undefined' && window.VortexL2) || null;
@@ -75,6 +93,20 @@ export async function listRecentVolumes(site, count = 1) {
   const id = String(site || '').toUpperCase().replace(/[^A-Z]/g, '');
   if (!/^[A-Z]{3,4}$/.test(id)) return { urls: null, reason: `"${site}" is not a radar id` };
   const want = Math.max(1, Math.min(64, count));
+
+  // When the relay is preferred it goes FIRST, rather than after three
+  // failures: an origin the bucket will not list for cannot be made to work by
+  // asking it twice more.
+  let relayReason = null;
+  if (PREFER_RELAY) {
+    const viaRelay = await relayList(id, want);
+    if (viaRelay && viaRelay.urls) return viaRelay;
+    // The relay ANSWERED but could not help — rate limited, not signed in, a
+    // radar genuinely down. Its reason is worth keeping, but it is not a reason
+    // to skip the bucket: the preference exists because the bucket usually
+    // refuses this origin, not because it is forbidden to ask.
+    if (viaRelay && viaRelay.reason) relayReason = viaRelay.reason;
+  }
 
   const now = new Date();
   let reachedArchive = false;
@@ -123,8 +155,27 @@ export async function listRecentVolumes(site, count = 1) {
   // Direct listing got us nothing. Before giving up, ask our own server to
   // look — it is a different network path, and "this browser cannot reach S3"
   // is a completely different problem from "this radar has no data".
+  const viaRelay = PREFER_RELAY ? null : await relayList(id, want);
+  if (viaRelay) return viaRelay;
+
+  return {
+    urls: null,
+    reason: reachedArchive
+      ? `${id} has not posted a scan in the last 3 days`
+      : relayReason || `could not reach the NEXRAD archive (${lastFailure || 'no response'})`,
+  };
+}
+
+/**
+ * Ask our own origin to list the bucket — a different network path, and the
+ * only one that works from an origin the bucket will not list for.
+ *
+ * Returns null when the relay could not help at all, so the caller can report
+ * its own (more useful) reason instead of the relay's.
+ */
+async function relayList(id, want) {
   try {
-    const r = await fetch(`/api/graphics/l2-list?site=${id}&count=${want}`, { cache: 'no-store' });
+    const r = await fetch(`${RELAY_BASE}/l2-list?site=${id}&count=${want}`, { cache: 'no-store' });
     const j = await r.json();
     if (r.ok && j) {
       if (Array.isArray(j.urls) && j.urls.length) return { urls: j.urls, via: 'relay' };
@@ -132,15 +183,9 @@ export async function listRecentVolumes(site, count = 1) {
     }
     if (j && j.error) return { urls: null, reason: j.error };
   } catch (e) {
-    // Relay unreachable too — fall through to the direct-path reason below.
+    // Relay unreachable; the caller falls back to its own reason.
   }
-
-  return {
-    urls: null,
-    reason: reachedArchive
-      ? `${id} has not posted a scan in the last 3 days`
-      : `could not reach the NEXRAD archive (${lastFailure || 'no response'})`,
-  };
+  return null;
 }
 
 export async function listLatestVolume(site) {
@@ -206,6 +251,7 @@ async function downloadVolumeBytes(url, onProgress) {
     // every marker-sourced volume logged a scary (but harmless) network error.
     let buf = null;
     let directError = url.startsWith('vortex-chunks:') ? 'not a direct URL' : null;
+    if (PREFER_RELAY && directError === null) directError = 'direct fetch skipped';
     if (directError === null) {
       try {
         const res = await fetch(url);
@@ -218,7 +264,7 @@ async function downloadVolumeBytes(url, onProgress) {
 
     if (!buf) {
       if (onProgress) onProgress('downloading volume (relay)');
-      const res = await fetch(`/api/graphics/l2-file?url=${encodeURIComponent(url)}`, { cache: 'no-store' });
+      const res = await fetch(`${RELAY_BASE}/l2-file?url=${encodeURIComponent(url)}`, { cache: 'no-store' });
       if (!res.ok) {
         let why = `HTTP ${res.status}`;
         try { const j = await res.json(); if (j && j.error) why = j.error; } catch (e) { /* not JSON */ }
@@ -319,6 +365,32 @@ export function chosenPalette(product) {
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * The colour scale as CSS stops, so a LEGEND can be drawn from the same table
+ * the image was drawn with.
+ *
+ * Exported rather than left to the caller to rebuild: a legend that disagrees
+ * with the picture above it is worse than no legend at all, and any second
+ * implementation of the LAB interpolation will disagree eventually.
+ *
+ * @returns {{vmin:number, vmax:number, stops:{value:number, css:string}[]}|null}
+ */
+export function paletteStops(code = 'REF', paletteId = null, n = 32) {
+  const lut = buildColorLut(code, paletteId);
+  if (!lut) return null;
+  const count = Math.max(2, Math.min(256, n));
+  const stops = [];
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    const idx = Math.round(t * (lut.N - 1));
+    stops.push({
+      value: lut.vmin + t * (lut.vmax - lut.vmin),
+      css: `rgb(${lut.r[idx]},${lut.g[idx]},${lut.b[idx]})`,
+    });
+  }
+  return { vmin: lut.vmin, vmax: lut.vmax, stops };
 }
 
 /* ── azimuth lookup ───────────────────────────────────────────────────────── */

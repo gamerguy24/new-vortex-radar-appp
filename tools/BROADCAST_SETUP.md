@@ -90,17 +90,69 @@ encoder its own machine; it only needs to reach the app over HTTP.
 `broadcast/index.html` — deliberately standalone: no app bundle, no menus, and
 **no login**, because a session that lapses would put a sign-in page on air.
 
-* National MRMS composite reflectivity, refreshing itself every 2 minutes
-* Active tornado / severe thunderstorm / flash flood warnings, every 60 seconds
-* Counters, a scrolling warning ticker, clock, and the MRMS legend with the
-  frame's age — it says **STALE** on its own if the feed stops
-* It reloads itself every 6 hours, and sooner if the radar has not updated in
-  25 minutes. A frozen national radar during severe weather is worse than a
-  black screen, because it looks fine.
+It has two looks, and switches between them on its own.
 
-To change what is shown, edit that one file — the product id (`ref_comp`) comes
-straight from `components/mrms_products.js`, so any MRMS product in the app can
-go on air.
+**Quiet — the national view.** MRMS composite reflectivity over the whole
+country, refreshing itself every 2 minutes, with every active tornado, severe
+thunderstorm and flash flood warning outlined, counters, a scrolling ticker,
+the clock and the MRMS legend carrying the frame's age.
+
+**A storm is warned — the storm view.** It picks the most urgent warning,
+finds the nearest WSR-88D, and puts THAT radar on air: single-site base
+reflectivity at super-res, zoomed to the warned polygon, with the storm's
+specifications beside it — what the warning says about hail, gusts, storm
+motion, whether a tornado is radar indicated or confirmed, who issued it and
+when it expires. MRMS comes down while this is on, and goes back up afterwards.
+
+Why both: the mosaic is the right picture of the country and the wrong picture
+of a storm (1 km, pre-smoothed, merged across sites, no tilt), and a single
+site is the right picture of a storm and cannot show the country at all.
+
+Which storm wins, in order: tornado emergency, confirmed large/destructive
+tornado, confirmed tornado, radar-indicated tornado, then severe thunderstorm
+by damage threat. It holds a storm for at least 90 seconds, cuts away
+immediately for anything **more** urgent, and after 3 minutes shares the air
+with equally urgent storms so an outbreak is not one county all afternoon.
+Flash flood warnings are drawn and read out but never cut to — flooding does
+not look like anything on a reflectivity image.
+
+It never says more than the NWS said. "Confirmed tornado" appears only when
+`tornadoDetection` is OBSERVED, and "tornado emergency" only when the office
+put it in the headline; everything else is labelled RADAR INDICATED.
+
+* It reloads itself every 6 hours, and sooner if the national radar has not
+  updated in 25 minutes. A frozen radar during severe weather is worse than a
+  black screen, because it looks fine.
+* If a single site goes quiet or fails, it stands down from THAT radar for 10
+  minutes and shows the country, rather than reloading and asking the same
+  dead station again.
+
+Useful query strings, mostly for checking it:
+
+| | |
+|---|---|
+| `?tz=America/Chicago` | the zone every time on screen is shown in |
+| `?mode=national` | never cut away; the quiet view only |
+| `?site=KTLX` | force which radar a cut uses |
+
+To change what is shown, edit that one file — the MRMS product id (`ref_comp`)
+comes straight from `components/mrms_products.js`, and the weakest echo drawn
+in the storm view is `MIN_DBZ` in `broadcast/site_radar.js` (20 dBZ: lower and
+the palette's grey band sheets over the basemap).
+
+### Where the radar comes from
+
+Single-site scans are decoded **in the browser**, by the app's own Level 2
+parser (`dist/l2_bundle.js`) and the same rasteriser the Graphics Studio uses.
+There is no second decoder and no server-side render.
+
+The volumes themselves come through this server (`/broadcast/l2-list` and
+`/broadcast/l2-file`, the same handlers as the Studio's relay behind a public
+door) for two reasons: the page has no session, and the NEXRAD bucket refuses a
+listing request from a browser origin outright. Those two routes only ever
+touch the NEXRAD buckets and are rate limited to 40 requests a minute — the
+stream needs about two. Budget roughly **10-30 MB per scan** of extra download
+on the server while a storm is on air, every few minutes.
 
 ## About the backup ingest
 

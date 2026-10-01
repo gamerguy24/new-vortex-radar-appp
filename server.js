@@ -1966,8 +1966,36 @@ function isAllowedL2Url(raw) {
     return /_V\d{2}$/.test(u.pathname);
 }
 
+/*
+ * WHO MAY USE THE RELAY.
+ *
+ * Signed in, or the 24/7 broadcast page, which has no session by design (see
+ * the /broadcast block further down). Both relay paths only ever touch the two
+ * NEXRAD buckets — l2-file validates the URL against them before fetching —
+ * so what is public here is public NOAA radar data and nothing else.
+ *
+ * The public path is rate limited because a volume is ~10 MB and an open
+ * fetcher is a bandwidth bill. The stream itself needs about two requests a
+ * minute; the ceiling is well clear of that and nowhere near useful to anyone
+ * wanting a free mirror.
+ */
+const L2_PUBLIC_PREFIX = '/broadcast/';
+const L2_PUBLIC_MAX_PER_MIN = 40;
+let _l2PublicWindow = 0;
+let _l2PublicCount = 0;
+function l2RelayAuth(req, res, next) {
+    if (!req.path.startsWith(L2_PUBLIC_PREFIX)) return requireAuth(req, res, next);
+    const minute = Math.floor(Date.now() / 60000);
+    if (minute !== _l2PublicWindow) { _l2PublicWindow = minute; _l2PublicCount = 0; }
+    if (++_l2PublicCount > L2_PUBLIC_MAX_PER_MIN) {
+        console.warn('[L2-RELAY] public relay rate limit hit (' + _l2PublicCount + '/min)');
+        return res.status(429).json({ error: 'too many radar requests' });
+    }
+    return next();
+}
+
 // Latest volume key for a site, resolved server-side.
-app.get('/api/graphics/l2-list', requireAuth, async (req, res) => {
+app.get(['/api/graphics/l2-list', '/broadcast/l2-list'], l2RelayAuth, async (req, res) => {
     const site = String(req.query.site || '').toUpperCase().replace(/[^A-Z]/g, '');
     if (!/^[A-Z]{3,4}$/.test(site)) return res.status(400).json({ error: 'site is required' });
 
@@ -2043,7 +2071,7 @@ app.get('/api/graphics/l2-list', requireAuth, async (req, res) => {
 
 // Pipe one volume through. Streamed, never buffered — a volume is ~10 MB and
 // this must not become a memory cost per request.
-app.get('/api/graphics/l2-file', requireAuth, async (req, res) => {
+app.get(['/api/graphics/l2-file', '/broadcast/l2-file'], l2RelayAuth, async (req, res) => {
     const url = String(req.query.url || '');
     if (!isAllowedL2Url(url)) return res.status(400).json({ error: 'not a NEXRAD Level 2 volume URL' });
 
@@ -2361,6 +2389,38 @@ app.get(['/broadcast', '/broadcast/'], sendFile(path.join('broadcast', 'index.ht
 for (const f of ['mrms.js', 'mrms_products.js', 'palettes.js', 'basemap_palette.json']) {
     app.get('/components/' + f, sendFile(path.join('components', f)));
 }
+/*
+ * The broadcast page's own modules, and the two app files it borrows.
+ *
+ * It draws single-site Level 2 when a storm is warned, using the SAME
+ * in-browser decoder the Graphics Studio uses — the app's parser bundled
+ * standalone (dist/l2_bundle.js) plus the rasteriser that draws a sweep into a
+ * map projection. Both are public here because the encoder has no session;
+ * both are already public information (NOAA radar), and neither reads anything
+ * from the request.
+ *
+ * Named file by file rather than opening /dist or /graphics, which are gated:
+ * /graphics in particular is the Pro licence gate, and must not be widened.
+ */
+app.use('/broadcast', express.static(path.join(ROOT, 'broadcast'), { index: false }));
+app.get('/dist/l2_bundle.js', sendFile(path.join('dist', 'l2_bundle.js')));
+app.get('/graphics/studio/engine/radar_l2_raster.js',
+    sendFile(path.join('graphics', 'studio', 'engine', 'radar_l2_raster.js')));
+
+/*
+ * Radar site positions for the broadcast director, from the app's own table
+ * (app/radar/libnexrad/nexrad_locations.js) so the stream picks a site from the
+ * same list the radar page does. Static data, cached for a day.
+ */
+app.get('/broadcast/radar-sites.json', (req, res) => {
+    try {
+        const { NEXRAD_LOCATIONS } = require('./app/radar/libnexrad/nexrad_locations');
+        res.set('Cache-Control', 'public, max-age=86400').json(NEXRAD_LOCATIONS);
+    } catch (e) {
+        console.error('[broadcast] radar-sites failed:', e.message);
+        res.status(500).json({ error: 'radar site table unavailable' });
+    }
+});
 
 // Everything past this point requires a valid (unlocked) session.
 app.use(requireAuth);
