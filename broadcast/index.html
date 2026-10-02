@@ -312,6 +312,10 @@ const MAX_SCAN_AGE_MS = 30 * 60 * 1000;
 // The director runs once a minute. Ten is far past "quiet" and well short of
 // anyone noticing a reload.
 const DIRECTOR_STALL_MS = 10 * 60 * 1000;
+// A map with no radar on it, for longer than it takes the director to notice
+// and put the national view back. Past this, something is wrong that this page
+// cannot reason about.
+const EMPTY_MAP_MS = 3 * 60 * 1000;
 const CONUS = [[-127, 23.5], [-66, 50.5]];
 const NATIONAL_PAD = { top: 110, bottom: 120, left: 40, right: 40 };
 // The left padding clears the storm panel, so a storm is never hidden behind
@@ -342,6 +346,28 @@ function fitStage() {
   el.style.transform = `scale(${stageScale})`;
   el.style.left = Math.round((innerWidth - 1920 * stageScale) / 2) + 'px';
   el.style.top = Math.round((innerHeight - 1080 * stageScale) / 2) + 'px';
+}
+
+/**
+ * Move the camera, and never let it take anything else down with it.
+ *
+ * fitBounds throws when the padding does not leave room in the canvas, and it
+ * used to be called on the line before the national radar was started — so one
+ * refused camera move left the map with no radar on it at all, permanently.
+ * A shot framed badly is worth having; a blank map is not.
+ */
+function moveCamera(fn, what) {
+  try { fn(); return true; } catch (e) {
+    console.warn('[broadcast] camera move refused for ' + what + ': ' + e.message);
+    return false;
+  }
+}
+
+/** Is there any radar on the map at all? */
+function hasRadarLayer() {
+  try {
+    return !!(map.getLayer('mrms-img-layer') || map.getLayer('site-radar-layer'));
+  } catch (e) { return false; }
 }
 
 /*
@@ -690,6 +716,7 @@ function paintWarnings() {
  * whether this number is moving.
  */
 let lastDecisionAt = Date.now();
+let emptySince = 0;        // when the map was first seen with no radar on it
 
 async function runDirector() {
   if (FORCED_MODE === 'national') { lastDecisionAt = Date.now(); return; }
@@ -726,7 +753,13 @@ async function runDirector() {
   lastDecisionAt = Date.now();
 
   if (d.mode === 'national') {
+    /*
+     * Also when we are ALREADY national but have nothing on the map. The flag
+     * said national while the national radar had never actually started, and
+     * this guard was what made that permanent rather than a bad minute.
+     */
     if (mode !== 'national') await goNational(d.reason);
+    else if (!hasRadarLayer()) await goNational('the map had no radar on it');
     return;
   }
   // !onAir.site means a cut was set up but its radar never arrived — retry it,
@@ -873,7 +906,8 @@ async function goStorm(target, reason) {
     onAir = { kind: 'warning', id: target.id, specs: target.specs, geometry: target.geometry, site: null };
     paintWarnings();         // marks the on-air box
     renderPanel();
-    map.fitBounds(box, { padding: pad(STORM_PAD), maxZoom: 10.5, duration: 1600, bearing: 0, pitch: 0 });
+    moveCamera(() => map.fitBounds(box, { padding: pad(STORM_PAD), maxZoom: 10.5, duration: 1600, bearing: 0, pitch: 0 }),
+      'the warned area');
     got = await loading;
   } finally {
     cutting = false;         // whatever happened, the director must run again
@@ -917,7 +951,8 @@ async function goWatch(target, reason) {
     onAir = { kind: 'watch', id: target.id, specs: target.specs, centre: target.centre, site: null };
     paintWarnings();
     renderPanel();
-    map.easeTo({ center: target.centre, zoom: TOUR_ZOOM, duration: 1600, bearing: 0, pitch: 0 });
+    moveCamera(() => map.easeTo({ center: target.centre, zoom: TOUR_ZOOM, duration: 1600, bearing: 0, pitch: 0 }),
+      'the weather');
     got = await loading;
   } finally {
     cutting = false;
@@ -957,7 +992,8 @@ async function goTour(target, reason) {
     onAir = { kind: 'tour', id: target.id, centre: target.centre, dbz: target.dbz, site: null };
     paintWarnings();
     renderPanel();
-    map.easeTo({ center: target.centre, zoom: TOUR_ZOOM, duration: 1600, bearing: 0, pitch: 0 });
+    moveCamera(() => map.easeTo({ center: target.centre, zoom: TOUR_ZOOM, duration: 1600, bearing: 0, pitch: 0 }),
+      'the weather');
     got = await loading;
   } finally {
     cutting = false;
@@ -983,7 +1019,8 @@ async function goNational(reason) {
   showRefLegend(false);
   paintWarnings();
   renderPanel();
-  map.fitBounds(CONUS, { padding: pad(NATIONAL_PAD), duration: 1200, bearing: 0, pitch: 0 });
+  moveCamera(() => map.fitBounds(CONUS, { padding: pad(NATIONAL_PAD), duration: 1200, bearing: 0, pitch: 0 }),
+    'the national view');
   try {
     await setMRMSProduct('ref_comp');
     await addMRMS(window.vortexMap);
@@ -1110,7 +1147,9 @@ function renderPanel() {
 /** The loop marker: how many frames are playing, or that one is being built. */
 function showLoopChip() {
   const chip = $('loopchip');
-  if (!onSite()) { chip.classList.add('hide'); return; }
+  // Also requires a scan to actually be loaded: the marker was seen still up
+  // over a national view with no radar at all, which is a lie twice over.
+  if (!onSite() || !siteRadarState().loaded) { chip.classList.add('hide'); return; }
   const lp = loopState();
   if (lp.playing && lp.frames > 1) {
     $('loopcount').textContent = 'LOOP ' + lp.frames;
@@ -1372,6 +1411,25 @@ map.on('load', async () => {
       reload('the director stopped deciding '
         + Math.round((Date.now() - lastDecisionAt) / 60000) + ' minutes ago');
       return;
+    }
+
+    /*
+     * NO RADAR AT ALL.
+     *
+     * Staleness below is measured on the frame, and reads `if (t && ...)`, so
+     * when there is no frame it measured nothing — blind to the worst state the
+     * page can be in. The director retries the national view once a minute now,
+     * so reaching this means that is not working either, and a reload is the
+     * last thing left.
+     */
+    if (hasRadarLayer()) {
+      emptySince = 0;
+    } else {
+      emptySince = emptySince || Date.now();
+      if (Date.now() - emptySince > EMPTY_MAP_MS) {
+        reload('no radar on the map for ' + Math.round((Date.now() - emptySince) / 1000) + 's');
+        return;
+      }
     }
 
     const limit = onSite() ? STALE_SITE_MS : STALE_FRAME_MS;
