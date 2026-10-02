@@ -192,6 +192,51 @@ touch the NEXRAD buckets and are rate limited to 40 requests a minute — the
 stream needs about two. Budget roughly **10-30 MB per scan** of extra download
 on the server while a storm is on air, every few minutes.
 
+## When YouTube sits on "Preparing stream"
+
+Check the connection quality YouTube reports first, because it splits the
+problem in half:
+
+* **No health shown at all** — nothing is reaching YouTube. The encoder is not
+  running, or the key is wrong. `systemctl status echo-stream` and
+  `journalctl -u echo-stream -n 50`.
+* **Excellent / Good, but stuck on "Preparing stream"** — YouTube IS receiving
+  your bytes and cannot make a broadcast out of them. That is an encoder
+  settings problem, not a network one.
+
+Two commands tell you which half you are in:
+
+```bash
+# 1. Send colour bars and a tone straight to YouTube. No browser involved.
+bash tools/broadcast/echo-stream.sh --check
+```
+
+If the bars appear in YouTube Studio, the key, the ingest and the encoder
+settings are all good — and the problem is the page. If the bars ALSO sit on
+"Preparing stream", the page is irrelevant: it is the key, the ingest, or the
+channel itself.
+
+```bash
+# 2. With the stream running, see what is actually being sent.
+bash tools/broadcast/echo-stream.sh --probe
+```
+
+That records ten seconds off the virtual screen and prints the codec, size,
+frame rate and the gap between keyframes, plus a still frame you can look at.
+The keyframe gap should be **2**. If it is not, YouTube will prepare for ever
+with a perfectly healthy connection, which is the single most common cause of
+this.
+
+Also worth ruling out, in rough order of how often it is the answer:
+
+* **A newly enabled channel.** Live streaming takes up to 24 hours to activate
+  on a channel that has never streamed. Until then it prepares and never goes.
+* **A stream key with a carriage return in it.** A `.env` edited on Windows and
+  copied to Linux ends every line with CR, which lands inside the key. The
+  script strips it now; older copies did not.
+* **The wrong stream.** The key in `.env` must be the key shown in the Studio
+  page you are watching, not another one on the channel.
+
 ## About the backup ingest
 
 `rtmp://b.rtmp.youtube.com/live2?backup=1` is for a **second encoder on other

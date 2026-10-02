@@ -31,6 +31,10 @@ if [ -f "$ROOT/.env" ]; then
   while IFS='=' read -r k v; do
     case "$k" in
       YT_STREAM_KEY|BROADCAST_URL|STREAM_WIDTH|STREAM_HEIGHT|STREAM_FPS|STREAM_BITRATE|STREAM_DISPLAY|STREAM_BACKUP|YT_PRIMARY_URL|YT_BACKUP_URL)
+        # A .env edited on Windows ends its lines with CR. A carriage return on
+        # the end of the stream key makes an RTMP URL that no ingest will accept,
+        # and the error it produces says nothing about a carriage return.
+        v="${v%$'\r'}"
         v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
         export "$k=$v" ;;
     esac
@@ -57,8 +61,39 @@ fi
 for bin in Xvfb ffmpeg; do
   command -v "$bin" >/dev/null 2>&1 || { echo "$bin is not installed. See tools/BROADCAST_SETUP.md"; exit 1; }
 done
-CHROME="$(command -v chromium || command -v chromium-browser || command -v google-chrome || true)"
-[ -n "$CHROME" ] || { echo "No chromium/google-chrome found. See tools/BROADCAST_SETUP.md"; exit 1; }
+
+# ── diagnostics ─────────────────────────────────────────────────────────────
+#   --check    stream SMPTE bars and a tone straight to YouTube, no browser.
+#              If the bars go live, the ingest, the key and the encoder
+#              settings are all fine and the problem is the page. If the bars
+#              also sit on "Preparing stream", it is not the page.
+#   --probe    record ten seconds of what the browser is actually showing and
+#              report the codec, size, frame rate and keyframe spacing of it.
+MODE="${1:-run}"
+
+# A browser is only needed to put the PAGE on air. --check deliberately does
+# not use one: its whole purpose is to take the page out of the question.
+if [ "$MODE" != "--check" ]; then
+  CHROME="$(command -v chromium || command -v chromium-browser || command -v google-chrome || true)"
+  [ -n "$CHROME" ] || { echo "No chromium/google-chrome found. See tools/BROADCAST_SETUP.md"; exit 1; }
+fi
+
+if [ "$MODE" = "--check" ]; then
+  echo "Streaming test bars to YouTube for 60 seconds (no browser, no page)."
+  echo "Watch the preview in YouTube Studio."
+  ffmpeg -hide_banner -loglevel warning \
+    -f lavfi -i "smptebars=size=${W}x${H}:rate=${FPS}" \
+    -f lavfi -i "sine=frequency=440:sample_rate=44100" \
+    -t 60 -map 0:v:0 -map 1:a:0 \
+    -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p \
+    -profile:v high -level 4.1 \
+    -b:v "$BITRATE" -maxrate "$BITRATE" -bufsize "$(( ${BITRATE%k} * 2 ))k" \
+    -g "$(( FPS * 2 ))" -keyint_min "$(( FPS * 2 ))" -sc_threshold 0 -r "$FPS" \
+    -c:a aac -b:a 128k -ar 44100 -ac 2 -flvflags no_duration_filesize \
+    -f flv "${PRIMARY}/${KEY}"
+  echo "Test finished. Bars live = encoder and key are good."
+  exit 0
+fi
 
 echo "Echo Radar broadcast"
 echo "  page    $URL"
@@ -107,17 +142,52 @@ DISPLAY="$DISP" "$CHROME" \
 CHROME_PID=$!
 sleep 12   # first paint: style, MRMS fetch, the CONUS grid
 
+if [ "$MODE" = "--probe" ]; then
+  OUT="$(mktemp -d)/probe.mp4"
+  echo "Recording 10s of the page to $OUT ..."
+  ffmpeg -hide_banner -loglevel error -y \
+    -f x11grab -framerate "$FPS" -video_size "${W}x${H}" -draw_mouse 0 -i "$DISP" \
+    -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
+    -t 10 -map 0:v:0 -map 1:a:0 \
+    -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p \
+    -profile:v high -level 4.1 -g "$(( FPS * 2 ))" -keyint_min "$(( FPS * 2 ))" \
+    -sc_threshold 0 -r "$FPS" -c:a aac -b:a 128k -ar 44100 -ac 2 "$OUT"
+  echo
+  echo "--- what the encoder is sending ---"
+  ffprobe -hide_banner -v error -show_entries stream=codec_name,width,height,r_frame_rate,pix_fmt,channels \
+    -of default=noprint_wrappers=1 "$OUT"
+  echo
+  echo "--- keyframe spacing (seconds between them; YouTube wants 2) ---"
+  ffprobe -v error -select_streams v:0 -show_entries frame=pkt_pts_time,key_frame \
+    -of csv=p=0 "$OUT" | awk -F, '$2==1 { if (prev != "") print $1 - prev; prev = $1 }'
+  echo
+  echo "A still frame of what is on screen:"
+  SHOT="$(dirname "$OUT")/frame.png"
+  ffmpeg -hide_banner -loglevel error -y -i "$OUT" -frames:v 1 "$SHOT" && echo "  $SHOT"
+  exit 0
+fi
+
 # ── the encoder ─────────────────────────────────────────────────────────────
 # anullsrc because YouTube treats a stream with no audio track as unhealthy.
-# keyint = 2s, which is what YouTube asks for.
+#
+# KEYFRAMES ARE THE WHOLE GAME. YouTube wants one every two seconds and will
+# sit on "Preparing stream" indefinitely if it does not get them — with the
+# connection still reported as Excellent, because the bytes are arriving fine.
+# -g alone is not enough: x264 also inserts keyframes at scene cuts, which
+# makes the interval irregular, so scenecut is turned off and the GOP is fixed
+# from both ends.
 GOP=$(( FPS * 2 ))
 COMMON=(
-  -f x11grab -framerate "$FPS" -video_size "${W}x${H}" -i "$DISP"
+  -f x11grab -framerate "$FPS" -video_size "${W}x${H}" -draw_mouse 0 -i "$DISP"
   -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100
+  # Explicit, so stream selection can never pick something unexpected.
+  -map 0:v:0 -map 1:a:0
   -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p
+  -profile:v high -level 4.1
   -b:v "$BITRATE" -maxrate "$BITRATE" -bufsize "$(( ${BITRATE%k} * 2 ))k"
-  -g "$GOP" -keyint_min "$GOP" -r "$FPS"
-  -c:a aac -b:a 128k -ar 44100
+  -g "$GOP" -keyint_min "$GOP" -sc_threshold 0 -r "$FPS"
+  -c:a aac -b:a 128k -ar 44100 -ac 2
+  -flvflags no_duration_filesize
 )
 
 if [ "$USE_BACKUP" = "1" ]; then
@@ -130,6 +200,7 @@ fi
 FF_PID=$!
 
 echo "streaming (pid $FF_PID) — systemd will restart this if it stops"
+echo "  keyframes every $(( GOP / FPS ))s (scenecut off), audio aac 44.1k stereo"
 wait "$FF_PID"
 EXIT=$?
 echo "ffmpeg exited ($EXIT)"
