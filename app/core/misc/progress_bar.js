@@ -2,11 +2,13 @@
  * progress_bar.js
  * DOM-optional: the Level 2 parser calls these while decoding, and that parser
  * is also bundled standalone for pages that have no progress bar (the Graphics
- * Studio). Every lookup is therefore guarded — a missing element is a no-op,
- * not a TypeError that aborts the decode.
+ * Studio) and for a Web Worker, which has no document at all (the broadcast
+ * view). Every lookup is therefore guarded — a missing element, or a missing
+ * document, is a no-op rather than an error that aborts the decode.
  */
 function set_progress_bar_width(width_percent) {
     if (width_percent >= 100) { width_percent = 100 }
+    if (typeof document === 'undefined') return;
     const elem = document.getElementById('mainProgressBarInner');
     if (!elem) return;
     elem.style.right = '4px';
@@ -15,6 +17,7 @@ function set_progress_bar_width(width_percent) {
 }
 
 function set_progress_bar_text(text) {
+    if (typeof document === 'undefined') return;
     const elem = document.getElementById('mainProgressBarText');
     if (!elem) return;
     elem.innerHTML = text;

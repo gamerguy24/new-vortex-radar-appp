@@ -53,7 +53,12 @@ function colortable_parser(colortable_string, should_print = false) {
                     }
                 }
 
-                check_length = 5;
+                // Declared, rather than assigned into the global scope. Without
+                // `let` this leaked a `check_length` global in the app, and threw
+                // outright anywhere the code runs in strict mode — which is how it
+                // was found: the broadcast view's Web Worker is an ES module, and
+                // every radar decode in it failed with "check_length is not defined".
+                let check_length = 5;
                 if (has_alpha) {
                     check_length = 6;
                 }

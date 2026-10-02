@@ -352,6 +352,19 @@ export function tierOf(c) {
 
 export const MIN_DWELL_MS = 90 * 1000;       // never cut away from a storm sooner
 export const ROTATE_MS = 3 * 60 * 1000;      // share the air during an outbreak
+/*
+ * How long a shot with NO peers keeps the air before handing it to a lesser
+ * one, as a multiple of a normal turn.
+ *
+ * Two turns for ordinary weather: on screen two thirds of the time, and the
+ * rest of the country still gets seen. Four for the things people take shelter
+ * from — a tornado, or a declared emergency — which hold the air 80% of the
+ * time but, crucially, not all of it. The alternative is what was reported: one
+ * warning on screen for hours while twenty others went unmentioned.
+ */
+export const SOLO_TURNS = 2;
+export const SOLO_TURNS_URGENT = 4;
+const URGENT_TIERS = new Set(['tornado-emergency', 'tornado-confirmed', 'tornado', 'flood-emergency']);
 
 /**
  * Turns a list of active warnings into a decision, poll after poll.
@@ -375,6 +388,9 @@ export class Director {
     this.targetId = null;
     this.since = 0;
     this.shown = [];           // ids already given a turn, oldest first
+    // id -> when it may be chosen again. Only ever set on a shot that has just
+    // had its turn, so it can never delay something new and urgent.
+    this.cooldown = new Map();
   }
 
   /**
@@ -395,10 +411,17 @@ export class Director {
       return { mode: 'national', target: null, changed, reason: 'nothing to show' };
     }
 
-    const sorted = [...live].sort((a, b) => (b.score - a.score)
+    // A shot that has just had its turn is held back briefly, so handing over
+    // is not undone by the next poll. If that leaves nothing, the hold is
+    // ignored: an empty screen is never the better answer.
+    for (const [id, until] of this.cooldown) if (until <= now) this.cooldown.delete(id);
+    const ready = live.filter((c) => c.id === this.targetId || !this.cooldown.has(c.id));
+    const pool = ready.length ? ready : live;
+
+    const sorted = [...pool].sort((a, b) => (b.score - a.score)
       || ((b.issued || 0) - (a.issued || 0)));
     const top = sorted[0];
-    const current = live.find((c) => c.id === this.targetId) || null;
+    const current = pool.find((c) => c.id === this.targetId) || null;
 
     const cut = (to, reason) => {
       const changed = to.id !== this.targetId;
@@ -432,6 +455,21 @@ export class Director {
       if (peers.length) {
         peers.sort((a, b) => this.shown.indexOf(a.id) - this.shown.indexOf(b.id));
         return cut(peers[0], 'sharing the air');
+      }
+    }
+
+    /*
+     * Alone in its tier. There was one flash flood emergency in the country and
+     * it held the air for hours on exactly this path. After a longer turn it
+     * hands over to the best of whatever else is out there, and is held back
+     * from reclaiming it for one turn.
+     */
+    const turns = URGENT_TIERS.has(tierOf(current)) ? SOLO_TURNS_URGENT : SOLO_TURNS;
+    if (held >= Math.max(this.minDwell, this.rotate * turns)) {
+      const others = sorted.filter((c) => c.id !== current.id);
+      if (others.length) {
+        this.cooldown.set(current.id, now + this.rotate);
+        return cut(others[0], 'giving the rest of the weather a turn');
       }
     }
     const mode = current.kind === 'national' ? 'national' : current.kind === 'tour' ? 'tour' : 'storm';

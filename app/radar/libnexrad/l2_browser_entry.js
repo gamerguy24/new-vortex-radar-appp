@@ -175,6 +175,15 @@ const api = {
   chroma,
 };
 
+/*
+ * Published on globalThis, not just window.
+ *
+ * The broadcast view decodes volumes in a Web Worker so a 2.6 second parse
+ * does not freeze the page on air, and a worker has no `window`. globalThis is
+ * the same object as window in a page, so nothing changes for the radar page
+ * or the Graphics Studio.
+ */
+if (typeof globalThis !== 'undefined') globalThis.VortexL2 = api;
 if (typeof window !== 'undefined') window.VortexL2 = api;
 
 module.exports = api;

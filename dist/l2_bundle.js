@@ -3,11 +3,13 @@
  * progress_bar.js
  * DOM-optional: the Level 2 parser calls these while decoding, and that parser
  * is also bundled standalone for pages that have no progress bar (the Graphics
- * Studio). Every lookup is therefore guarded — a missing element is a no-op,
- * not a TypeError that aborts the decode.
+ * Studio) and for a Web Worker, which has no document at all (the broadcast
+ * view). Every lookup is therefore guarded — a missing element, or a missing
+ * document, is a no-op rather than an error that aborts the decode.
  */
 function set_progress_bar_width(width_percent) {
     if (width_percent >= 100) { width_percent = 100 }
+    if (typeof document === 'undefined') return;
     const elem = document.getElementById('mainProgressBarInner');
     if (!elem) return;
     elem.style.right = '4px';
@@ -16,6 +18,7 @@ function set_progress_bar_width(width_percent) {
 }
 
 function set_progress_bar_text(text) {
+    if (typeof document === 'undefined') return;
     const elem = document.getElementById('mainProgressBarText');
     if (!elem) return;
     elem.innerHTML = text;
@@ -1756,7 +1759,12 @@ function colortable_parser(colortable_string, should_print = false) {
                     }
                 }
 
-                check_length = 5;
+                // Declared, rather than assigned into the global scope. Without
+                // `let` this leaked a `check_length` global in the app, and threw
+                // outright anywhere the code runs in strict mode — which is how it
+                // was found: the broadcast view's Web Worker is an ES module, and
+                // every radar decode in it failed with "check_length is not defined".
+                let check_length = 5;
                 if (has_alpha) {
                     check_length = 6;
                 }
@@ -2220,6 +2228,15 @@ const api = {
   chroma,
 };
 
+/*
+ * Published on globalThis, not just window.
+ *
+ * The broadcast view decodes volumes in a Web Worker so a 2.6 second parse
+ * does not freeze the page on air, and a worker has no `window`. globalThis is
+ * the same object as window in a page, so nothing changes for the radar page
+ * or the Graphics Studio.
+ */
+if (typeof globalThis !== 'undefined') globalThis.VortexL2 = api;
 if (typeof window !== 'undefined') window.VortexL2 = api;
 
 module.exports = api;

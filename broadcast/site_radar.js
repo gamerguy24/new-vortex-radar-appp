@@ -13,17 +13,22 @@
  * The app already decodes Level 2 in the browser, and the Graphics Studio
  * already drew a sweep into a map projection. Both live in
  * graphics/studio/engine/radar_l2_raster.js, which imports nothing and reads the
- * app's own parser out of window.VortexL2 (dist/l2_bundle.js). This file is only
+ * app's own parser out of globalThis.VortexL2 (dist/l2_bundle.js). This file is
  * the bridge from that raster to a Mapbox image source. A second decoder is how
  * two views of the same radar start disagreeing with each other.
  *
- * The download and the draw are separate on purpose: on a cut to a new storm the
- * volume starts downloading WHILE the camera flies, which is the difference
- * between a two-second basemap-only shot and a five-second one.
+ * WHY IT ALL HAPPENS IN A WORKER
+ * Measured on the live page: decoding a newly arrived volume blocked the main
+ * thread for 2.6 SECONDS, during which nothing renders — about eighty frozen
+ * frames to an encoder capturing at a fixed rate, every few minutes. That was
+ * the shudder. The decode and the rasterisation now happen in
+ * broadcast/radar_worker.js and this file receives a finished PNG. If a worker
+ * cannot be created the old in-page path still runs: it stutters, but an
+ * unattended stream never goes dark for want of a worker.
  */
 
 import { listLatestVolume, loadSweepFromUrl, rasterize, chosenPalette, setL2Relay }
-  from '/graphics/studio/engine/radar_l2_raster.js?v=bcast2';
+  from '/graphics/studio/engine/radar_l2_raster.js?v=bcast3';
 
 /*
  * THROUGH OUR OWN ORIGIN, NOT STRAIGHT TO S3.
@@ -47,24 +52,21 @@ const LAYER = 'site-radar-layer';
  *
  * This was 2200 — finer than the 1920 stage, on the reasoning that super-res
  * gates carry more detail than one screen pixel per gate. They do, but the
- * rasteriser inverts the projection per output pixel, and at 2200 that was 364
- * milliseconds of blocked main thread per redraw. The encoder captures the
- * screen at a fixed frame rate, so that is a third of a second of frozen
- * picture every camera move and every scan: the shudder.
- *
- * 1600 is the Graphics Studio default and costs roughly half as much. Mapbox
- * scales it the rest of the way, which is a far smaller loss than a stutter.
+ * rasteriser inverts the projection per output pixel, and at 2200 that cost 364
+ * milliseconds per redraw. The work is off the main thread now so it freezes
+ * nothing, but there is still no point drawing detail the stage cannot show:
+ * 1600 is the Graphics Studio default and Mapbox scales it the rest of the way.
  */
 const QUALITY = 1600;
+
 /*
  * The weakest echo drawn, in dBZ.
  *
  * The studio uses 15, which is right for a graphic of one storm. On air it is
  * not: this palette paints 9.9-25 dBZ light grey, so 15 lays a grey sheet of
- * clear-air return and ground clutter across the whole in-range disc and the
- * map underneath disappears. 20 keeps real light rain and drops most of the
- * clutter. Exported because the legend must describe the same range that was
- * actually drawn.
+ * clear-air return and ground clutter across the whole in-range disc and the map
+ * underneath disappears. 20 keeps real light rain and drops most of the clutter.
+ * Exported because the legend must describe the same range that was drawn.
  */
 export const MIN_DBZ = 20;
 
@@ -74,85 +76,138 @@ let state = {
   site: null,
   product: 'reflectivity',
   volumeUrl: null,
-  radar: null,            // last decoded { sweep, location, time, ... }
+  radar: null,            // only the in-page fallback holds a decoded volume
   scanTime: null,
+  elevationAngle: null,
+  superRes: false,
+  volumeKey: null,
   busy: false,
 };
 
 export function siteRadarState() {
-  const sweep = state.radar ? state.radar.sweep : null;
   return {
     site: state.site,
     product: state.product,
     scanTime: state.scanTime,
-    elevationAngle: sweep ? sweep.elevationAngle : null,
-    superRes: !!(sweep && sweep.superRes),
-    volumeKey: state.volumeUrl ? state.volumeUrl.split('/').pop() : null,
-    loaded: !!state.radar,
+    elevationAngle: state.elevationAngle,
+    superRes: state.superRes,
+    volumeKey: state.volumeKey,
+    loaded: !!(state.radar || state.volumeKey),
   };
 }
 
+/* ── the worker ───────────────────────────────────────────────────────────── */
+
+let worker = null;
+let workerBroken = false;
+let nextId = 1;
+const pending = new Map();
+
+function getWorker() {
+  if (worker || workerBroken) return worker;
+  try {
+    if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
+      throw new Error('workers or OffscreenCanvas unavailable');
+    }
+    worker = new Worker('/broadcast/radar_worker.js?v=bcast1', { type: 'module' });
+    worker.onmessage = (e) => {
+      const { id, result } = e.data || {};
+      const resolve = pending.get(id);
+      if (resolve) { pending.delete(id); resolve(result); }
+    };
+    worker.onerror = (e) => {
+      /*
+       * One failure disables it for the life of the page. Whatever is wrong with
+       * the worker will still be wrong on the next scan, and retrying it every
+       * few minutes would mean a broken stream rather than a stuttering one.
+       */
+      console.error('[broadcast] radar worker failed, decoding in the page instead:', e.message || e);
+      workerBroken = true;
+      for (const [, resolve] of pending) resolve(null);   // null = fall back
+      pending.clear();
+      try { worker.terminate(); } catch (err) { /* already gone */ }
+      worker = null;
+    };
+  } catch (e) {
+    console.warn('[broadcast] no radar worker (' + e.message + '); decoding in the page instead');
+    workerBroken = true;
+    worker = null;
+  }
+  return worker;
+}
+
 /**
- * The map's own projection, in the shape rasterize() wants.
+ * A failure that says the worker itself is unusable, rather than that a radar
+ * has no data or the network was slow.
  *
- * rasterize() inverts a projection per output pixel, and takes a fast path when
- * longitude depends only on x and latitude only on y. A north-up Mapbox mercator
- * map satisfies that exactly, which is why this view never rotates or tilts the
- * camera. unproject() is the map's real inverse, so the raster lands on the
- * basemap to the pixel.
+ * A TIMEOUT is deliberately not one of these. A volume is tens of megabytes and
+ * a slow minute proves nothing about the worker; retiring it for that would
+ * trade one slow scan for a permanently stuttering stream.
  */
-function sceneFor(map) {
+function isWorkerFault(reason) {
+  const r = String(reason || "");
+  if (/timed out/i.test(r)) return false;
+  return /decoder not loaded|OffscreenCanvas|not defined|import|module|Worker/.test(r);
+}
+
+function retireWorker() {
+  workerBroken = true;
+  try { if (worker) worker.terminate(); } catch (e) { /* already gone */ }
+  worker = null;
+}
+
+/** Ask the worker. Resolves null when there is no worker, so callers fall back. */
+function ask(type, payload) {
+  const w = getWorker();
+  if (!w) return Promise.resolve(null);
+  const id = nextId++;
+  return new Promise((resolve) => {
+    pending.set(id, resolve);
+    /*
+     * A worker that never answers must not wedge the page forever. Generous,
+     * because this covers listing, downloading tens of megabytes and decoding,
+     * and the only cost of waiting is that this scan is late.
+     */
+    setTimeout(() => {
+      if (pending.has(id)) {
+        pending.delete(id);
+        resolve({ ok: false, reason: 'radar worker timed out' });
+      }
+    }, 180000);
+    w.postMessage({ id, type, payload });
+  });
+}
+
+/* ── the map's viewport, as numbers a worker can use ──────────────────────── */
+
+function viewOf(map) {
   const el = map.getContainer();
+  const width = el.clientWidth || 1920;
+  const height = el.clientHeight || 1080;
+  const nw = map.unproject([0, 0]);
+  const se = map.unproject([width, height]);
   return {
-    width: el.clientWidth || 1920,
-    height: el.clientHeight || 1080,
-    projection: {
-      invert: ([x, y]) => {
-        const ll = map.unproject([x, y]);
-        return [ll.lng, ll.lat];
-      },
-    },
+    west: nw.lng, north: nw.lat, east: se.lng, south: se.lat,
+    width, height, quality: QUALITY, minDbz: MIN_DBZ,
   };
 }
 
 /**
  * Corners of the current view, in the order an image source expects.
  *
- * The raster was drawn THROUGH the map's projection, and Mapbox interpolates an
+ * The raster is drawn THROUGH the map's projection, and Mapbox interpolates an
  * image quad linearly in mercator space — the same space the rows and columns
  * were sampled in. So pinning the image to the view corners is exact rather than
  * an approximation, as long as the camera stays north-up.
  */
-function viewQuad(map, scene) {
-  const c = (x, y) => { const ll = map.unproject([x, y]); return [ll.lng, ll.lat]; };
-  return [c(0, 0), c(scene.width, 0), c(scene.width, scene.height), c(0, scene.height)];
+function quadOf(view) {
+  return [[view.west, view.north], [view.east, view.north],
+    [view.east, view.south], [view.west, view.south]];
 }
 
-/*
- * Hand the canvas to Mapbox without stalling the page.
- *
- * toDataURL() base64-encodes the PNG synchronously on the main thread; at this
- * size that is a freeze long enough for a 30fps capture to record it as a
- * shudder, once per camera move and once per scan. toBlob does the same work
- * off-thread and hands back an object URL, which is revoked when the next one
- * replaces it so a week of scans does not accumulate in memory.
- */
-let _objectUrl = null;
-function canvasUrl(canvas) {
-  return new Promise((resolve) => {
-    if (typeof canvas.toBlob !== 'function') { resolve(canvas.toDataURL('image/png')); return; }
-    canvas.toBlob((blob) => {
-      if (!blob) { resolve(canvas.toDataURL('image/png')); return; }
-      const url = URL.createObjectURL(blob);
-      if (_objectUrl) { try { URL.revokeObjectURL(_objectUrl); } catch (e) {} }
-      _objectUrl = url;
-      resolve(url);
-    }, 'image/png');
-  });
-}
+let objectUrl = null;
 
-async function putImage(map, canvas, quad) {
-  const url = await canvasUrl(canvas);
+function showImage(map, url, quad) {
   const src = map.getSource(SRC);
   if (src) {
     // One call: setCoordinates() followed by a separate image swap shows the
@@ -171,6 +226,51 @@ async function putImage(map, canvas, quad) {
   }, before);
 }
 
+function useBlob(map, blob, quad) {
+  const url = URL.createObjectURL(blob);
+  if (objectUrl) { try { URL.revokeObjectURL(objectUrl); } catch (e) { /* already gone */ } }
+  objectUrl = url;
+  showImage(map, url, quad);
+}
+
+/* ── the in-page fallback, for when a worker cannot be had ────────────────── */
+
+function sceneFor(map) {
+  const el = map.getContainer();
+  return {
+    width: el.clientWidth || 1920,
+    height: el.clientHeight || 1080,
+    projection: {
+      invert: ([x, y]) => {
+        const ll = map.unproject([x, y]);
+        return [ll.lng, ll.lat];
+      },
+    },
+  };
+}
+
+async function drawInPage(map) {
+  if (!state.radar) return false;
+  const canvas = rasterize(state.radar, sceneFor(map), {
+    quality: QUALITY, smooth: true, minDbz: MIN_DBZ, palette: chosenPalette(state.product),
+  });
+  /*
+   * A null canvas means every gate in view was below the floor: clear air, not a
+   * broken radar. A transparent frame is drawn so the previous scan is not left
+   * smeared across the new camera position.
+   */
+  const c = canvas || Object.assign(document.createElement('canvas'), { width: 2, height: 2 });
+  const blob = await new Promise((resolve) => {
+    if (typeof c.toBlob === 'function') c.toBlob(resolve, 'image/png');
+    else resolve(null);
+  });
+  if (!blob) return false;
+  useBlob(map, blob, quadOf(viewOf(map)));
+  return true;
+}
+
+/* ── what the page calls ──────────────────────────────────────────────────── */
+
 /**
  * Download and decode the newest volume for a site. Does not touch the map.
  *
@@ -185,19 +285,51 @@ export async function loadSite(site, { product = 'reflectivity', force = false }
   if (state.busy) return { ok: false, reason: BUSY };
   state.busy = true;
   try {
-    const found = await listLatestVolume(id);
-    if (!found.url) return { ok: false, reason: found.reason || 'no scan listed' };
-
-    if (found.url === state.volumeUrl && state.site === id && state.product === product && !force) {
-      return { ok: true, changed: false };     // nothing new posted yet
+    const viaWorker = await ask('load', { site: id, product, force });
+    if (viaWorker) {
+      /*
+       * Tell a BROKEN worker apart from a radar that has no data.
+       *
+       * The first version of this believed everything the worker said, so when
+       * the worker could not find the decoder it reported failure for every
+       * site in turn and the page stood down from five working radars and went
+       * back to the national view. A worker that cannot do the job at all is
+       * not evidence about the weather: retire it and decode here instead.
+       */
+      if (!viaWorker.ok && isWorkerFault(viaWorker.reason)) {
+        console.warn('[broadcast] radar worker is not usable (' + viaWorker.reason
+          + '); decoding in the page from now on');
+        retireWorker();
+      } else if (!viaWorker.ok) {
+        return { ok: false, reason: viaWorker.reason };
+      } else {
+        const m = viaWorker.meta || {};
+        state.site = m.site || id;
+        state.product = product;
+        state.scanTime = m.scanTime;
+        state.elevationAngle = m.elevationAngle;
+        state.superRes = m.superRes;
+        state.volumeKey = m.volumeKey;
+        state.radar = null;               // the worker holds the decoded volume
+        return { ok: true, changed: viaWorker.changed };
+      }
     }
 
+    // No worker: decode here instead. Slower, and it stutters, but it works.
+    const found = await listLatestVolume(id);
+    if (!found.url) return { ok: false, reason: found.reason || 'no scan listed' };
+    if (found.url === state.volumeUrl && state.site === id && state.product === product && !force) {
+      return { ok: true, changed: false };          // nothing new posted yet
+    }
     const radar = await loadSweepFromUrl({ url: found.url, site: id, product });
     state.site = id;
     state.product = product;
     state.volumeUrl = found.url;
     state.radar = radar;
     state.scanTime = radar.time ? radar.time.getTime() : null;
+    state.elevationAngle = radar.sweep ? radar.sweep.elevationAngle : null;
+    state.superRes = !!(radar.sweep && radar.sweep.superRes);
+    state.volumeKey = found.url.split('/').pop();
     return { ok: true, changed: true };
   } catch (e) {
     return { ok: false, reason: e.message || String(e) };
@@ -206,37 +338,20 @@ export async function loadSite(site, { product = 'reflectivity', force = false }
   }
 }
 
-/**
- * Draw the sweep we already hold into the current view. No download.
- *
- * Async only because the PNG encode is: see canvasUrl(). Callers that do not
- * await it still get the draw, just not a promise of when.
- */
+/** Draw the scan we already hold into the current view. No download. */
 export async function redrawSite(map) {
-  if (!state.radar) return false;
   try {
-    const scene = sceneFor(map);
-    const canvas = rasterize(state.radar, scene, {
-      quality: QUALITY,
-      smooth: true,
-      minDbz: MIN_DBZ,
-      palette: chosenPalette(state.product),
-    });
-    /*
-     * A null canvas means the rasteriser painted NOTHING — every gate in view
-     * was below the 15 dBZ floor. That is clear air, not a broken radar, and it
-     * must not be reported as a failure or this site gets stood down from for
-     * being quiet. A transparent frame is drawn so the previous scan is not left
-     * smeared across the new camera position.
-     */
-    if (!canvas) {
-      const blank = document.createElement('canvas');
-      blank.width = 2; blank.height = 2;
-      await putImage(map, blank, viewQuad(map, scene));
-      return true;
+    const view = viewOf(map);
+    const viaWorker = await ask('draw', { view, palette: chosenPalette(state.product) });
+    if (viaWorker) {
+      if (viaWorker.ok && viaWorker.blob) {
+        useBlob(map, viaWorker.blob, quadOf(view));
+        return true;
+      }
+      if (!isWorkerFault(viaWorker.reason)) return false;
+      retireWorker();          // fall through and draw here instead
     }
-    await putImage(map, canvas, viewQuad(map, scene));
-    return true;
+    return await drawInPage(map);
   } catch (e) {
     console.warn('[broadcast] site radar draw failed:', e.message);
     return false;
@@ -256,8 +371,12 @@ export async function showSite(map, site, opts = {}) {
 export function clearSite(map) {
   try { if (map.getLayer(LAYER)) map.removeLayer(LAYER); } catch (e) { /* style reloading */ }
   try { if (map.getSource(SRC)) map.removeSource(SRC); } catch (e) { /* style reloading */ }
-  if (_objectUrl) { try { URL.revokeObjectURL(_objectUrl); } catch (e) {} _objectUrl = null; }
-  state = { site: null, product: 'reflectivity', volumeUrl: null, radar: null, scanTime: null, busy: false };
+  if (objectUrl) { try { URL.revokeObjectURL(objectUrl); } catch (e) { /* already gone */ } objectUrl = null; }
+  ask('clear', {});
+  state = {
+    site: null, product: 'reflectivity', volumeUrl: null, radar: null,
+    scanTime: null, elevationAngle: null, superRes: false, volumeKey: null, busy: false,
+  };
 }
 
 export function siteRadarLayerId() { return LAYER; }

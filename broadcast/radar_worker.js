@@ -1,0 +1,146 @@
+/*
+ * broadcast/radar_worker.js
+ * Decodes and draws NEXRAD Level 2 off the main thread.
+ *
+ * WHY THIS EXISTS
+ * Measured on the live page: when a new volume arrives, decoding it blocked the
+ * main thread for 2.6 SECONDS. Everything else about the page was smooth — a
+ * median frame of 7ms either side of it — but nothing renders during a parse, so
+ * an encoder capturing at a fixed frame rate records about eighty frozen frames
+ * every few minutes. That is the shudder.
+ *
+ * Nothing here touches the DOM. The volume is fetched and parsed here, the sweep
+ * is rasterised into an OffscreenCanvas here, and the main thread receives a
+ * finished PNG blob — its only remaining job is URL.createObjectURL.
+ *
+ * THE PROJECTION IS REBUILT, NOT SENT
+ * The rasteriser draws through the map's own projection, and a Mapbox map cannot
+ * cross a worker boundary. It does not need to: with the camera north-up and
+ * unpitched — which this page enforces — a Web Mercator viewport is completely
+ * described by its four edges and its size. Longitude is linear in x, and
+ * latitude is linear in y once passed through the mercator transform. What is
+ * rebuilt below is exact, not an approximation.
+ */
+
+/*
+ * THE DECODER, AND A `window` THAT IS REALLY THIS WORKER.
+ *
+ * The page gets the decoder from a <script> tag; a worker has none, so it is
+ * imported here for its side effect (the bundle's UMD header resolves the global
+ * to `self`, and the entry publishes on globalThis). Without it every scan fails
+ * with "Level 2 decoder not loaded".
+ *
+ * The shim is for the Level 2 parser's own decompression path, which reaches for
+ * window.URL. The parser now decompresses inline when there is no document, so
+ * this should no longer be needed — it stays because anything else in that
+ * dependency tree that probes for a window should find one rather than throw on
+ * air, and the cost is a single assignment.
+ *
+ * Imported dynamically, and started BEFORE the message handler is installed
+ * below rather than awaited at the top level: with a top-level await the handler
+ * is registered only after the module finishes evaluating, and the first message
+ * — which is the one that matters — arrives before that and is lost. The worker
+ * simply never answered.
+ */
+globalThis.window = globalThis;
+const ready = import('/dist/l2_bundle.js?v=bcast3');
+
+import { listLatestVolume, loadSweepFromUrl, rasterize, setL2Relay }
+  from '/graphics/studio/engine/radar_l2_raster.js?v=bcast4';
+
+// Same public relay the page uses, and for the same reasons: no session here
+// either, and the bucket will not accept a listing request from a browser.
+setL2Relay('/broadcast', { preferRelay: true });
+
+const D2R = Math.PI / 180;
+const R2D = 180 / Math.PI;
+const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * D2R) / 2));
+const invMercY = (y) => (2 * (Math.atan(Math.exp(y)) - Math.PI / 4)) * R2D;
+
+/** The map's viewport, as a projection the rasteriser can invert. */
+function projectionFor(view) {
+  const { west, east, north, south, width, height } = view;
+  const yTop = mercY(north);
+  const yBot = mercY(south);
+  return {
+    invert: ([x, y]) => [
+      west + (x / width) * (east - west),
+      invMercY(yTop + (y / height) * (yBot - yTop)),
+    ],
+  };
+}
+
+let radar = null;        // the decoded volume currently held
+let volumeUrl = null;
+
+function meta() {
+  const sweep = radar ? radar.sweep : null;
+  return {
+    site: radar ? radar.site : null,
+    scanTime: radar && radar.time ? radar.time.getTime() : null,
+    elevationAngle: sweep ? sweep.elevationAngle : null,
+    superRes: !!(sweep && sweep.superRes),
+    volumeKey: volumeUrl ? volumeUrl.split('/').pop() : null,
+    loaded: !!radar,
+  };
+}
+
+async function load({ site, product = 'reflectivity', force = false }) {
+  const id = String(site || '').toUpperCase();
+  if (!/^[A-Z]{4}$/.test(id)) return { ok: false, reason: '"' + site + '" is not a radar id' };
+
+  const found = await listLatestVolume(id);
+  if (!found.url) return { ok: false, reason: found.reason || 'no scan listed' };
+
+  if (found.url === volumeUrl && radar && radar.site === id && radar.product === product && !force) {
+    return { ok: true, changed: false, meta: meta() };    // nothing new posted yet
+  }
+
+  radar = await loadSweepFromUrl({ url: found.url, site: id, product });
+  volumeUrl = found.url;
+  return { ok: true, changed: true, meta: meta() };
+}
+
+async function draw({ view, palette }) {
+  if (!radar) return { ok: false, reason: 'no scan loaded' };
+  const canvas = rasterize(radar, {
+    width: view.width,
+    height: view.height,
+    projection: projectionFor(view),
+  }, { quality: view.quality, smooth: true, minDbz: view.minDbz, palette: palette || null });
+
+  /*
+   * A null canvas means every gate in view was below the floor: clear air, not a
+   * broken radar. A 2x2 transparent frame clears the previous scan rather than
+   * leaving it smeared across the new camera position.
+   */
+  const out = canvas || new OffscreenCanvas(2, 2);
+  const blob = await out.convertToBlob({ type: 'image/png' });
+  return { ok: true, blob, painted: !!canvas, meta: meta() };
+}
+
+self.onmessage = async (e) => {
+  const { id, type, payload } = e.data || {};
+  let result;
+  try {
+    await ready;              // the decoder, which may still be loading
+    if (type === 'load') result = await load(payload || {});
+    else if (type === 'draw') result = await draw(payload || {});
+    else if (type === 'clear') { radar = null; volumeUrl = null; result = { ok: true }; }
+    else result = { ok: false, reason: 'unknown request: ' + type };
+  } catch (err) {
+    /*
+     * Never throw out of the worker: an unattended page must keep whatever is
+     * already on screen rather than go black because one scan failed. The stack
+     * travels with the reason, because a failure in here is otherwise invisible
+     * — the page only ever sees "it did not work".
+     */
+    const stack = String((err && err.stack) || '');
+    result = {
+      ok: false,
+      reason: (err && err.message) || String(err),
+      where: stack.split('\n').slice(0, 5).join(' | '),
+    };
+  }
+  self.postMessage({ id, result });
+};

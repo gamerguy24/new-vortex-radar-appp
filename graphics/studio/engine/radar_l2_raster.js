@@ -58,9 +58,14 @@ export function setL2Relay(base, { preferRelay = false } = {}) {
   PREFER_RELAY = !!preferRelay;
 }
 
-/** window.VortexL2, or null if dist/l2_bundle.js has not loaded. */
+/**
+ * The decoder bundle, or null if dist/l2_bundle.js has not loaded.
+ *
+ * globalThis rather than window so this also works inside a Web Worker, which
+ * is where the broadcast view does its decoding.
+ */
 function lib() {
-  return (typeof window !== 'undefined' && window.VortexL2) || null;
+  return (typeof globalThis !== 'undefined' && globalThis.VortexL2) || null;
 }
 
 /* ── AWS volume resolution ────────────────────────────────────────────────────
@@ -567,7 +572,11 @@ export function rasterize(radar, scene, o = {}) {
   const OH = Math.max(1, Math.round(scene.height * scale));
   const inv = 1 / scale;
 
-  const canvas = document.createElement('canvas');
+  // OffscreenCanvas in a worker, a real one in a page. Same 2d context either
+  // way; this is the only DOM thing rasterisation touches.
+  const canvas = (typeof document !== 'undefined')
+    ? document.createElement('canvas')
+    : new OffscreenCanvas(OW, OH);
   canvas.width = OW; canvas.height = OH;
   const ctx = canvas.getContext('2d');
   const img = ctx.createImageData(OW, OH);

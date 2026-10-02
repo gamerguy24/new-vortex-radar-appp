@@ -473,6 +473,7 @@ const setVeto = (k, why) => {
  * is added BELOW them by construction and needs none of this.)
  */
 const WARN_LAYERS = ['watch-line', 'warn-fill', 'warn-halo', 'warn-line', 'warn-onair', 'warn-label'];
+let lastWarningSig = null;
 function keepWarningsOnTop() {
   for (const id of WARN_LAYERS) {
     try { if (map.getLayer(id)) map.moveLayer(id); } catch (e) { /* style reloading */ }
@@ -584,10 +585,22 @@ function paintWarnings() {
       + `<span class="${w.key}">${(props.event || '').replace(' Warning', '')}</span> ${area}`);
   }
   for (const k of Object.keys(counts)) document.getElementById('c_' + k).textContent = counts[k];
-  const src = map.getSource('warnings');
-  if (src) { src.setData({ type: 'FeatureCollection', features: feats }); keepWarningsOnTop(); }
-  const labelSrc = map.getSource('warning-labels');
-  if (labelSrc) labelSrc.setData({ type: 'FeatureCollection', features: labels });
+  /*
+   * Only hand Mapbox new data when it IS new.
+   *
+   * setData rebuilds the tiles and re-runs symbol placement across every box,
+   * label and radar pill on screen. Warnings change every few minutes at most,
+   * and this runs every sixty seconds; the rest were stalls for nothing.
+   */
+  const sig = feats.map((x) => x.properties.tag + x.properties.on_air).join()
+    + '|' + feats.length + '|' + labels.length;
+  if (sig !== lastWarningSig) {
+    lastWarningSig = sig;
+    const src = map.getSource('warnings');
+    if (src) { src.setData({ type: 'FeatureCollection', features: feats }); keepWarningsOnTop(); }
+    const labelSrc = map.getSource('warning-labels');
+    if (labelSrc) labelSrc.setData({ type: 'FeatureCollection', features: labels });
+  }
   /*
    * Only rewritten when it actually changes.
    *
@@ -1209,7 +1222,13 @@ map.on('load', async () => {
   setInterval(() => {
     const t = showFrameTime();
     setProductName();
-    keepFurnitureOnTop();  // a radar refresh between polls must not bury them
+    /*
+     * Only the mosaic rebuilds its layer underneath the furniture. A single
+     * site raster is added below the boxes once and updated in place after
+     * that, so re-ordering six layers every twenty seconds in storm mode was a
+     * style invalidation for nothing.
+     */
+    if (mode === 'national') keepFurnitureOnTop();
 
     /*
      * Staleness is measured on the DATA, because a frozen radar during severe
