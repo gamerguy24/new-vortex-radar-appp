@@ -274,6 +274,8 @@ const STALE_SITE_MS = 22 * 60 * 1000;         // a volume every ~5 min; 22 means
 const SITE_REFRESH_MS = 45 * 1000;            // how often to look for the next volume
 const VETO_MS = 10 * 60 * 1000;               // how long a failing radar or storm is left alone
 const ALERTS_MS = 60 * 1000;
+// How long a warning list is still worth believing after the feed goes quiet.
+const ALERTS_TRUST_MS = 15 * 60 * 1000;
 const STATUS_MS = 10 * 60 * 1000;      // how often to recheck which radars are down
 // What counts as weather worth leaving the national view for, and how close to
 // stand. 45 dBZ is a thunderstorm core rather than a rain shower.
@@ -282,6 +284,9 @@ const TOUR_ZOOM = 8.2;
 // Older than this and it is not what is happening now, whatever the archive
 // handed us. A WSR-88D posts a volume every few minutes.
 const MAX_SCAN_AGE_MS = 30 * 60 * 1000;
+// The director runs once a minute. Ten is far past "quiet" and well short of
+// anyone noticing a reload.
+const DIRECTOR_STALL_MS = 10 * 60 * 1000;
 const CONUS = [[-127, 23.5], [-66, 50.5]];
 const NATIONAL_PAD = { top: 110, bottom: 120, left: 40, right: 40 };
 // The left padding clears the storm panel, so a storm is never hidden behind
@@ -423,6 +428,7 @@ const director = new Director();
 let mode = 'national';         // national | storm (warned) | tour (quiet weather)
 let onAir = null;             // { kind, id, specs?, geometry?, centre?, site }
 let rawFeatures = [];         // last good warning list from the NWS
+let lastAlertsOk = Date.now();
 let sites = {};               // id -> { lat, lon, name, type }
 let siteStatus = {};          // id -> up | down, for the pill colours
 let siteTimer = null;
@@ -538,9 +544,26 @@ async function loadAlerts() {
     const data = await r.json();
     rawFeatures = data.features || [];
   } catch (e) {
-    console.warn('[broadcast] alerts failed:', e.message);   // keep the last good list on screen
+    /*
+     * Keep the last good list — briefly.
+     *
+     * A warning we cannot refresh is a warning we cannot see END. Holding one
+     * indefinitely because the feed went away is the same thing, to a viewer,
+     * as the stream having stopped: one box on screen, hours after it expired.
+     * After a quarter of an hour of silence the list is dropped and the stream
+     * falls back to radar we CAN still verify.
+     */
+    console.warn('[broadcast] alerts failed:', e.message);
+    if (rawFeatures.length && Date.now() - lastAlertsOk > ALERTS_TRUST_MS) {
+      console.warn('[broadcast] no warning feed for '
+        + Math.round((Date.now() - lastAlertsOk) / 60000) + ' minutes; dropping the stale list');
+      rawFeatures = [];
+      paintWarnings();
+      await runDirector();
+    }
     return;
   }
+  lastAlertsOk = Date.now();
   paintWarnings();
   // Where the weather is, before deciding what to point at.
   refreshHotspots();
@@ -630,8 +653,17 @@ function paintWarnings() {
  * instead of sitting on either forever. A warning outranks both by a factor of
  * five, and interrupts immediately.
  */
+/*
+ * When the director last reached a decision.
+ *
+ * Not when it last ran: when it last got all the way through. A stream that is
+ * wedged looks exactly like a stream with nothing to do, and the difference is
+ * whether this number is moving.
+ */
+let lastDecisionAt = Date.now();
+
 async function runDirector() {
-  if (FORCED_MODE === 'national') return;
+  if (FORCED_MODE === 'national') { lastDecisionAt = Date.now(); return; }
   // A cut already in flight finishes on its own; starting a second one here is
   // how two radars end up fighting over one camera.
   if (cutting) return;
@@ -662,6 +694,7 @@ async function runDirector() {
   }
 
   const d = director.decide(candidates, now);
+  lastDecisionAt = Date.now();
 
   if (d.mode === 'national') {
     if (mode !== 'national') await goNational(d.reason);
@@ -670,16 +703,27 @@ async function runDirector() {
   // !onAir.site means a cut was set up but its radar never arrived — retry it,
   // or the page holds a camera with nothing under it until the next rotation.
   const kind = d.target && d.target.kind;
-  if (kind === 'tour') {
-    if (d.changed || !onAir || !onAir.site) await goTour(d.target, d.reason);
+  /*
+   * A cut that throws is logged and left behind, not allowed out of here.
+   * Unhandled, it is an unhandled rejection on a page nobody is watching, and
+   * the next poll is the recovery — so the only thing that matters is that
+   * there IS a next poll.
+   */
+  try {
+    if (kind === 'tour') {
+      if (d.changed || !onAir || !onAir.site) await goTour(d.target, d.reason);
+      return;
+    }
+    if (kind === 'watch') {
+      if (d.changed || !onAir || !onAir.site) await goWatch(d.target, d.reason);
+      else { onAir.specs = d.target.specs; renderPanel(); }
+      return;
+    }
+    if (d.changed || !onAir || !onAir.site) { await goStorm(d.target, d.reason); return; }
+  } catch (e) {
+    console.error('[broadcast] that cut failed (' + (e && e.message) + '); carrying on');
     return;
   }
-  if (kind === 'watch') {
-    if (d.changed || !onAir || !onAir.site) await goWatch(d.target, d.reason);
-    else { onAir.specs = d.target.specs; renderPanel(); }
-    return;
-  }
-  if (d.changed || !onAir || !onAir.site) { await goStorm(d.target, d.reason); return; }
 
   // Same storm: an escalation from "radar indicated" to "confirmed tornado" is
   // an update to the panel, not a reason to move the camera.
@@ -781,16 +825,19 @@ async function goStorm(target, reason) {
 
   const ticket = ++cutSeq;
   cutting = true;
-  dropStaleRaster(picks[0].id);
-  if (mode === 'national') { try { removeMRMS(); } catch (e) { /* was not up */ } }
-  mode = 'storm';
-  onAir = { kind: 'warning', id: target.id, specs: target.specs, geometry: target.geometry, site: null };
-  paintWarnings();           // marks the on-air box
-  renderPanel();
-  map.fitBounds(box, { padding: pad(STORM_PAD), maxZoom: 10.5, duration: 1600, bearing: 0, pitch: 0 });
-
   let got;
-  try { got = await loading; } finally { cutting = false; }
+  try {
+    dropStaleRaster(picks[0].id);
+    if (mode === 'national') { try { removeMRMS(); } catch (e) { /* was not up */ } }
+    mode = 'storm';
+    onAir = { kind: 'warning', id: target.id, specs: target.specs, geometry: target.geometry, site: null };
+    paintWarnings();         // marks the on-air box
+    renderPanel();
+    map.fitBounds(box, { padding: pad(STORM_PAD), maxZoom: 10.5, duration: 1600, bearing: 0, pitch: 0 });
+    got = await loading;
+  } finally {
+    cutting = false;         // whatever happened, the director must run again
+  }
   if (got === 'busy') return;          // an earlier cut is still downloading; the next poll retries
   if (!got) {
     setVeto(target.id, 'every nearby radar failed');
@@ -822,16 +869,19 @@ async function goWatch(target, reason) {
   const loading = loadFirstWorking(picks);
   const ticket = ++cutSeq;
   cutting = true;
-  dropStaleRaster(picks[0].id);
-  if (mode === 'national') { try { removeMRMS(); } catch (e) { /* was not up */ } }
-  mode = 'storm';
-  onAir = { kind: 'watch', id: target.id, specs: target.specs, centre: target.centre, site: null };
-  paintWarnings();
-  renderPanel();
-  map.easeTo({ center: target.centre, zoom: TOUR_ZOOM, duration: 1600, bearing: 0, pitch: 0 });
-
   let got;
-  try { got = await loading; } finally { cutting = false; }
+  try {
+    dropStaleRaster(picks[0].id);
+    if (mode === 'national') { try { removeMRMS(); } catch (e) { /* was not up */ } }
+    mode = 'storm';
+    onAir = { kind: 'watch', id: target.id, specs: target.specs, centre: target.centre, site: null };
+    paintWarnings();
+    renderPanel();
+    map.easeTo({ center: target.centre, zoom: TOUR_ZOOM, duration: 1600, bearing: 0, pitch: 0 });
+    got = await loading;
+  } finally {
+    cutting = false;
+  }
   if (got === 'busy') return;
   if (!got) {
     setVeto(target.id, 'every radar in that watch failed');
@@ -859,16 +909,19 @@ async function goTour(target, reason) {
 
   const ticket = ++cutSeq;
   cutting = true;
-  dropStaleRaster(picks[0].id);
-  if (mode === 'national') { try { removeMRMS(); } catch (e) { /* was not up */ } }
-  mode = 'tour';
-  onAir = { kind: 'tour', id: target.id, centre: target.centre, dbz: target.dbz, site: null };
-  paintWarnings();
-  renderPanel();
-  map.easeTo({ center: target.centre, zoom: TOUR_ZOOM, duration: 1600, bearing: 0, pitch: 0 });
-
   let got;
-  try { got = await loading; } finally { cutting = false; }
+  try {
+    dropStaleRaster(picks[0].id);
+    if (mode === 'national') { try { removeMRMS(); } catch (e) { /* was not up */ } }
+    mode = 'tour';
+    onAir = { kind: 'tour', id: target.id, centre: target.centre, dbz: target.dbz, site: null };
+    paintWarnings();
+    renderPanel();
+    map.easeTo({ center: target.centre, zoom: TOUR_ZOOM, duration: 1600, bearing: 0, pitch: 0 });
+    got = await loading;
+  } finally {
+    cutting = false;
+  }
   if (got === 'busy') return;
   if (!got) {
     setVeto(target.id, 'the radar nearest that weather failed');
@@ -1237,6 +1290,19 @@ map.on('load', async () => {
      * down from it and show the country, rather than reloading the page and
      * asking the same dead station again.
      */
+    /*
+     * Has the director stopped deciding? Nothing should be able to stop it —
+     * every failure path inside a cut now clears its own flag — but "nothing
+     * should be able to" is exactly what was true of the flag that wedged it,
+     * and a stream that quietly holds one picture for hours is the worst
+     * failure this page has. If the heartbeat stops, start over.
+     */
+    if (Date.now() - lastDecisionAt > DIRECTOR_STALL_MS) {
+      reload('the director stopped deciding '
+        + Math.round((Date.now() - lastDecisionAt) / 60000) + ' minutes ago');
+      return;
+    }
+
     const limit = onSite() ? STALE_SITE_MS : STALE_FRAME_MS;
     if (t && Date.now() - t > limit) {
       const age = Math.round((Date.now() - t) / 60000);
@@ -1264,6 +1330,7 @@ map.on('load', async () => {
     poll: () => loadAlerts(),
     goStorm, goTour, goNational, director, sites: () => sites,
     hotspots: () => ({ found: hotspots, at: hotspotsAt }),
+    heartbeat: () => ({ lastDecisionAt, cutting, ageMs: Date.now() - lastDecisionAt }),
     status: () => siteStatus,
   };
 });
