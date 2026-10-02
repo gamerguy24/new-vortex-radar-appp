@@ -20,7 +20,7 @@ sudo apt install -y xvfb ffmpeg chromium curl
 No GPU required — Chromium renders WebGL in software (SwiftShader). That is
 most of the CPU cost; see **Sizing** below.
 
-## 2. Put the stream key in .env
+## 2. Put the stream keys in .env
 
 YouTube Studio → **Go Live** → **Stream key** (use a *reusable* key so the URL
 never changes).
@@ -28,10 +28,14 @@ never changes).
 ```bash
 # in the app's .env — gitignored, never commit this
 YT_STREAM_KEY=xxxx-xxxx-xxxx-xxxx-xxxx
+TWITCH_STREAM_KEY=live_000000000_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Anyone holding that key can broadcast to your channel. If it leaks, reset it in
-YouTube Studio and update `.env`.
+Either one may be left out; at least one is required. Both services are fed
+from a single encode — see **Twitch** below.
+
+Anyone holding a key can broadcast to your channel. If one leaks, reset it
+(YouTube Studio, or Twitch → Settings → Stream) and update `.env`.
 
 Optional, all with sensible defaults:
 
@@ -254,6 +258,54 @@ Also worth ruling out, in rough order of how often it is the answer:
   script strips it now; older copies did not.
 * **The wrong stream.** The key in `.env` must be the key shown in the Studio
   page you are watching, not another one on the channel.
+
+## Twitch
+
+Twitch runs from the same service, the same browser and the same encode as
+YouTube — ffmpeg splits the finished stream and sends it to both, so adding
+Twitch costs upload bandwidth and nothing else. No second encoder, no second
+CPU load.
+
+```bash
+# in .env, alongside YT_STREAM_KEY
+TWITCH_STREAM_KEY=live_000000000_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+The key is Twitch → Creator Dashboard → Settings → Stream → Primary Stream Key.
+Either key may be left out: with only one set, that is the only place it goes.
+
+```bash
+bash tools/broadcast/echo-stream.sh --where   # where this would stream, keys masked
+```
+
+The environment beats `.env`, so one service can be turned off for a single run
+without editing anything:
+
+```bash
+TWITCH_STREAM_KEY= bash tools/broadcast/echo-stream.sh   # YouTube only, this run
+YT_STREAM_KEY= bash tools/broadcast/echo-stream.sh       # Twitch only, this run
+```
+
+If one service drops out at 3am the other carries on: each destination is
+written with `onfail=ignore`, so a dead ingest cannot take the broadcast down
+with it. `--check` sends its colour bars to every configured destination, so
+you can confirm both at once.
+
+### What Twitch wants that YouTube does not care about
+
+* **Bitrate.** Twitch drops streams much above ~6000 kbps. The default 4500k is
+  fine; the script warns if `STREAM_BITRATE` is set above the limit while
+  Twitch is a destination.
+* **Transcoding is not guaranteed.** YouTube re-encodes for every viewer;
+  Twitch only offers quality options to partners and some affiliates. Everyone
+  else watches the source, so 1080p30 at 4500k is what a viewer on a weak
+  connection has to manage. If they buffer, drop `STREAM_HEIGHT=720` and
+  `STREAM_BITRATE=3500k` — that changes BOTH services, since it is one encode.
+* **Ingest server.** `rtmp://live.twitch.tv/app` routes automatically and is the
+  default. A nearer ingest can be set with `TWITCH_INGEST_URL`, e.g.
+  `rtmp://sfo.contribute.live-video.net/app`.
+* **One encoder per key.** Running this and OBS on the same key at once will
+  fight; Twitch has no separate backup ingest the way YouTube does.
 
 ## About the backup ingest
 

@@ -11,7 +11,11 @@
 #
 # Settings come from the app's .env (or the environment):
 #
-#   YT_STREAM_KEY     required — YouTube Studio -> Go Live -> Stream key
+#   YT_STREAM_KEY     YouTube Studio -> Go Live -> Stream key
+#   TWITCH_STREAM_KEY Twitch -> Creator Dashboard -> Settings -> Stream -> Primary Key
+#                     At least one of the two is required; both streams the same
+#                     picture to both services from a single encode.
+#   TWITCH_INGEST_URL default rtmp://live.twitch.tv/app
 #   BROADCAST_URL     default http://127.0.0.1:3333/broadcast
 #   STREAM_WIDTH      default 1920      STREAM_HEIGHT  default 1080
 #   STREAM_FPS        default 30        STREAM_BITRATE default 4500k
@@ -30,18 +34,25 @@ if [ -f "$ROOT/.env" ]; then
   # Only the keys this script uses, so a stray line in .env cannot execute.
   while IFS='=' read -r k v; do
     case "$k" in
-      YT_STREAM_KEY|BROADCAST_URL|STREAM_WIDTH|STREAM_HEIGHT|STREAM_FPS|STREAM_BITRATE|STREAM_DISPLAY|STREAM_BACKUP|YT_PRIMARY_URL|YT_BACKUP_URL)
+      YT_STREAM_KEY|TWITCH_STREAM_KEY|TWITCH_INGEST_URL|BROADCAST_URL|STREAM_WIDTH|STREAM_HEIGHT|STREAM_FPS|STREAM_BITRATE|STREAM_DISPLAY|STREAM_BACKUP|YT_PRIMARY_URL|YT_BACKUP_URL)
         # A .env edited on Windows ends its lines with CR. A carriage return on
         # the end of the stream key makes an RTMP URL that no ingest will accept,
         # and the error it produces says nothing about a carriage return.
         v="${v%$'\r'}"
         v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-        export "$k=$v" ;;
+        # The environment wins: .env supplies defaults, it does not override. That
+        # lets a single run turn one service off without editing the file:
+        #   TWITCH_STREAM_KEY= bash tools/broadcast/echo-stream.sh
+        # Set-but-empty counts as set, which is what makes that work.
+        eval "already=\${$k+set}"
+        [ -n "${already:-}" ] || export "$k=$v" ;;
     esac
   done < <(grep -E '^[A-Z_]+=' "$ROOT/.env" || true)
 fi
 
 KEY="${YT_STREAM_KEY:-}"
+TWITCH_KEY="${TWITCH_STREAM_KEY:-}"
+TWITCH_URL="${TWITCH_INGEST_URL:-rtmp://live.twitch.tv/app}"
 URL="${BROADCAST_URL:-http://127.0.0.1:3333/broadcast}"
 W="${STREAM_WIDTH:-1920}"
 H="${STREAM_HEIGHT:-1080}"
@@ -52,10 +63,73 @@ PRIMARY="${YT_PRIMARY_URL:-rtmp://a.rtmp.youtube.com/live2}"
 BACKUP="${YT_BACKUP_URL:-rtmp://b.rtmp.youtube.com/live2?backup=1}"
 USE_BACKUP="${STREAM_BACKUP:-0}"
 
-if [ -z "$KEY" ]; then
-  echo "YT_STREAM_KEY is not set. Put it in $ROOT/.env:"
+if [ -z "$KEY" ] && [ -z "$TWITCH_KEY" ]; then
+  echo "No stream key. Put at least one in $ROOT/.env:"
   echo "  YT_STREAM_KEY=xxxx-xxxx-xxxx-xxxx-xxxx"
+  echo "  TWITCH_STREAM_KEY=live_000000000_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   exit 1
+fi
+
+# ── where this is going ─────────────────────────────────────────────────────
+# Built once and used by both the stream and --check, so a test cannot end up
+# pointed somewhere the real stream is not.
+DESTS=()
+LABELS=()
+if [ -n "$KEY" ]; then
+  DESTS+=("${PRIMARY}/${KEY}");           LABELS+=("YouTube")
+  if [ "$USE_BACKUP" = "1" ]; then
+    DESTS+=("${BACKUP}/${KEY}");          LABELS+=("YouTube backup")
+  fi
+fi
+if [ -n "$TWITCH_KEY" ]; then
+  DESTS+=("${TWITCH_URL}/${TWITCH_KEY}"); LABELS+=("Twitch")
+fi
+
+# Twitch refuses anything much over 6000 kbps and will simply drop the stream;
+# YouTube is happy far higher, so the cap is only worth mentioning when Twitch
+# is actually one of the destinations.
+if [ -n "$TWITCH_KEY" ] && [ "${BITRATE%k}" -gt 6000 ] 2>/dev/null; then
+  echo "WARNING: $BITRATE is above the ~6000k Twitch accepts; Twitch may drop the stream."
+fi
+
+# A destination list with every key masked. Never print $DESTS itself.
+describe_dests() {
+  local i
+  for i in "${!DESTS[@]}"; do
+    echo "    ${LABELS[$i]}: $(echo "${DESTS[$i]}" | sed -E 's#/[^/]+$#/********#')"
+  done
+}
+
+# ── one encode, every destination ───────────────────────────────────────────
+# tee splits the ALREADY ENCODED stream, so adding Twitch costs upload and
+# nothing else. Encoding a second time would double the CPU on a box that is
+# already rendering a map in software.
+#
+# onfail=ignore is the whole reason for using tee rather than two ffmpeg runs:
+# if one service drops at 3am the other keeps going, instead of one dead ingest
+# taking the broadcast down with it.
+OUTPUT_ARGS=()
+if [ "${#DESTS[@]}" -eq 1 ]; then
+  OUTPUT_ARGS=(-f flv "${DESTS[0]}")
+else
+  TEE=""
+  for d in "${DESTS[@]}"; do
+    [ -n "$TEE" ] && TEE="${TEE}|"
+    TEE="${TEE}[f=flv:onfail=ignore]${d}"
+  done
+  OUTPUT_ARGS=(-f tee "$TEE")
+fi
+
+if [ "${1:-run}" = "--where" ]; then
+  echo "This stream would go to:"
+  describe_dests
+  if [ "${#DESTS[@]}" -eq 1 ]; then
+    echo "  ffmpeg output: -f flv (single destination)"
+  else
+    echo "  ffmpeg output: -f tee, ${#DESTS[@]} destinations, each onfail=ignore"
+    echo "    $(echo "$TEE" | sed -E 's#/[^/|]+(\||$)#/********\1#g')"
+  fi
+  exit 0
 fi
 
 for bin in Xvfb ffmpeg; do
@@ -90,7 +164,7 @@ if [ "$MODE" = "--check" ]; then
     -b:v "$BITRATE" -maxrate "$BITRATE" -bufsize "$(( ${BITRATE%k} * 2 ))k" \
     -g "$(( FPS * 2 ))" -keyint_min "$(( FPS * 2 ))" -sc_threshold 0 -r "$FPS" \
     -c:a aac -b:a 128k -ar 44100 -ac 2 -flvflags no_duration_filesize \
-    -f flv "${PRIMARY}/${KEY}"
+    "${OUTPUT_ARGS[@]}"
   echo "Test finished. Bars live = encoder and key are good."
   exit 0
 fi
@@ -99,7 +173,8 @@ echo "Echo Radar broadcast"
 echo "  page    $URL"
 echo "  video   ${W}x${H} @ ${FPS}fps, $BITRATE"
 echo "  display $DISP"
-echo "  ingest  $PRIMARY/********  (backup: $([ "$USE_BACKUP" = "1" ] && echo on || echo off))"
+echo "  ingest"
+describe_dests
 
 # ── clean up every child on the way out, however we leave ───────────────────
 XVFB_PID=""; CHROME_PID=""; FF_PID=""
@@ -190,13 +265,8 @@ COMMON=(
   -flvflags no_duration_filesize
 )
 
-if [ "$USE_BACKUP" = "1" ]; then
-  ffmpeg -hide_banner -loglevel warning "${COMMON[@]}" \
-    -f tee -map 0:v -map 1:a \
-    "[f=flv:onfail=ignore]${PRIMARY}/${KEY}|[f=flv:onfail=ignore]${BACKUP}/${KEY}" &
-else
-  ffmpeg -hide_banner -loglevel warning "${COMMON[@]}" -f flv "${PRIMARY}/${KEY}" &
-fi
+
+ffmpeg -hide_banner -loglevel warning "${COMMON[@]}" "${OUTPUT_ARGS[@]}" &
 FF_PID=$!
 
 echo "streaming (pid $FF_PID) — systemd will restart this if it stops"
