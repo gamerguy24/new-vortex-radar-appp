@@ -45,7 +45,7 @@
 globalThis.window = globalThis;
 const ready = import('/dist/l2_bundle.js?v=bcast3');
 
-import { listLatestVolume, loadSweepFromUrl, rasterize, setL2Relay }
+import { listLatestVolume, listRecentVolumes, loadSweepFromUrl, rasterize, setL2Relay }
   from '/graphics/studio/engine/radar_l2_raster.js?v=bcast4';
 
 // Same public relay the page uses, and for the same reasons: no session here
@@ -119,6 +119,49 @@ async function draw({ view, palette }) {
   return { ok: true, blob, painted: !!canvas, meta: meta() };
 }
 
+/**
+ * Render a run of recent scans into finished frames, newest last.
+ *
+ * Each frame is sent back as it is ready rather than all at the end, so the
+ * loop can start playing as soon as there are two of them instead of waiting
+ * for the whole run to download. A volume at a time, because holding five
+ * decoded volumes at once is hundreds of megabytes for no gain — once a frame
+ * is a PNG, the volume behind it can go.
+ */
+async function loop({ site, product = 'reflectivity', count = 5, view, palette }, post) {
+  const id = String(site || '').toUpperCase();
+  if (!/^[A-Z]{4}$/.test(id)) return { ok: false, reason: '"' + site + '" is not a radar id' };
+
+  const found = await listRecentVolumes(id, count);
+  if (!found.urls || !found.urls.length) return { ok: false, reason: found.reason || 'no scans listed' };
+
+  let made = 0;
+  for (const url of found.urls) {            // oldest first, as the archive lists them
+    let r;
+    try {
+      r = await loadSweepFromUrl({ url, site: id, product });
+    } catch (err) {
+      // One bad scan costs one frame, not the loop.
+      post({ type: 'frame', ok: false, reason: (err && err.message) || String(err) });
+      continue;
+    }
+    const canvas = rasterize(r, {
+      width: view.width, height: view.height, projection: projectionFor(view),
+    }, { quality: view.quality, smooth: true, minDbz: view.minDbz, palette: palette || null });
+    const out = canvas || new OffscreenCanvas(2, 2);
+    const blob = await out.convertToBlob({ type: 'image/png' });
+    made++;
+    post({
+      type: 'frame', ok: true, blob,
+      scanTime: r.time ? r.time.getTime() : null,
+      volumeKey: url.split('/').pop(),
+      painted: !!canvas,
+      index: made, of: found.urls.length,
+    });
+  }
+  return { ok: made > 0, frames: made, reason: made ? undefined : 'no frame could be drawn' };
+}
+
 self.onmessage = async (e) => {
   const { id, type, payload } = e.data || {};
   let result;
@@ -126,6 +169,9 @@ self.onmessage = async (e) => {
     await ready;              // the decoder, which may still be loading
     if (type === 'load') result = await load(payload || {});
     else if (type === 'draw') result = await draw(payload || {});
+    else if (type === 'loop') {
+      result = await loop(payload || {}, (frame) => self.postMessage({ id, frame }));
+    }
     else if (type === 'clear') { radar = null; volumeUrl = null; result = { ok: true }; }
     else result = { ok: false, reason: 'unknown request: ' + type };
   } catch (err) {

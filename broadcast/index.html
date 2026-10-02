@@ -63,6 +63,19 @@
   #product { position: absolute; top: 104px; left: 26px; z-index: 5; font-size: 13px; font-weight: 700;
     letter-spacing: .14em; text-transform: uppercase; color: #9fb2c9;
     background: rgba(5,7,10,.62); border: 1px solid rgba(255,255,255,.10); border-radius: 8px; padding: 7px 12px; }
+  /*
+   * The loop marker. The moving dot is the point: it is the one thing on screen
+   * that is unmistakably not a frozen picture, even in a still screenshot of a
+   * stream somebody is unsure about.
+   */
+  #loopchip { display: inline-flex; align-items: center; gap: 7px; margin-left: 10px; padding: 2px 9px 2px 7px;
+    border-radius: 999px; background: rgba(39,190,255,.14); border: 1px solid rgba(39,190,255,.45);
+    color: #7cc0f5; }
+  #loopchip.hide { display: none; }
+  #loopchip i { width: 0; height: 0; border-style: solid; border-width: 5px 0 5px 8px;
+    border-color: transparent transparent transparent #27beff; display: block;
+    animation: loopblink 1.6s ease-in-out infinite; }
+  @keyframes loopblink { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
 
   /* ── the storm panel ───────────────────────────────────────────────────────
    * On screen only while a storm is on air. Every row comes from the warning
@@ -182,7 +195,8 @@
     <div id="clock"><b id="t_local">--:--</b><span id="t_utc">--:--Z</span></div>
   </div>
 
-  <div id="product"><span id="prodname">MRMS Composite Reflectivity</span> · <span id="valid">updating…</span></div>
+  <div id="product"><span id="prodname">MRMS Composite Reflectivity</span> · <span id="valid">updating…</span>
+    <span id="loopchip" class="hide"><i></i><b id="loopcount"></b></span></div>
 
   <div id="storm" class="hide">
     <div class="sp-head"><b id="sp_event">WARNING</b><span id="sp_tag">—</span></div>
@@ -244,8 +258,9 @@ import { Director, candidatesFrom, quietCandidates, WARN_TYPES, boundsOf, centro
   from '/broadcast/storm_director.js?v=bcast2';
 import { addSiteMarkers, setSiteMarkerStatus, keepSiteMarkersOnTop, fetchSiteStatus }
   from '/broadcast/site_markers.js?v=bcast1';
-import { loadSite, redrawSite, showSite, clearSite, siteRadarState, BUSY, MIN_DBZ }
-  from '/broadcast/site_radar.js?v=bcast2';
+import { loadSite, redrawSite, showSite, clearSite, siteRadarState, BUSY, MIN_DBZ,
+  buildLoop, startLoop, stopLoop, loopState }
+  from '/broadcast/site_radar.js?v=bcast3';
 
 const Q = new URLSearchParams(location.search);
 
@@ -281,6 +296,16 @@ const STATUS_MS = 10 * 60 * 1000;      // how often to recheck which radars are 
 // stand. 45 dBZ is a thunderstorm core rather than a rain shower.
 const TOUR_MIN_DBZ = 45;
 const TOUR_ZOOM = 8.2;
+/*
+ * How many scans the loop plays. Five is about half an hour of weather at a
+ * typical volume rate — enough to read a storm's direction.
+ *
+ * It is also the main thing this page costs the server: each frame is a volume
+ * pulled through the relay, so five frames per cut is five downloads of tens of
+ * megabytes. ?loop=3 trims it; ?loop=1 turns looping off and leaves the still
+ * frame, which is what it did before.
+ */
+const LOOP_FRAMES = Math.max(1, Math.min(10, parseInt(Q.get('loop'), 10) || 5));
 // Older than this and it is not what is happening now, whatever the archive
 // handed us. A WSR-88D posts a volume every few minutes.
 const MAX_SCAN_AGE_MS = 30 * 60 * 1000;
@@ -348,6 +373,10 @@ setInterval(() => {
   document.getElementById('t_utc').textContent =
     `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}Z · ${tzDate.format(d)}`;
   tickUntil();
+  // The loop advances several times a second, so its caption has to keep up —
+  // and the marker has to come DOWN the moment the loop stops, rather than
+  // lingering until the next twenty-second check.
+  if (onSite()) showFrameTime(); else showLoopChip();
 }, 1000);
 
 /* ── the map ────────────────────────────────────────────────────────────── */
@@ -795,6 +824,17 @@ async function settleOnSite(got, ticket) {
   renderPanel();
   showFrameTime();
   startSiteTimer();
+
+  /*
+   * Then build the loop behind the still frame already on screen. Not awaited:
+   * it is several more volumes to fetch and decode, and the shot is already
+   * watchable. It starts playing the moment there are two frames, and a cut
+   * that happens meanwhile throws it away by token.
+   */
+  buildLoop(map, got.site.id, { count: LOOP_FRAMES }).then((r) => {
+    if (r && r.ok) console.log(`[broadcast] looping ${r.frames} frames of ${got.site.id}`);
+    else if (r && r.reason !== 'superseded') console.warn('[broadcast] no loop: ' + r.reason);
+  });
 }
 
 /** Cut to a warned storm: nearest radar, camera on the polygon, panel beside it. */
@@ -935,6 +975,7 @@ async function goTour(target, reason) {
 async function goNational(reason) {
   console.log('[broadcast] national view: ' + reason);
   cutSeq++;              // anything still downloading belongs to a shot we have left
+  stopLoop();
   stopSiteTimer();
   clearSite(map);
   mode = 'national';
@@ -976,7 +1017,11 @@ function startSiteTimer() {
   siteTimer = setInterval(async () => {
     if (!onSite() || !onAir || !onAir.site) return;
     const r = await showSite(map, onAir.site.id);
-    if (r.ok && r.changed) { keepSiteMarkersOnTop(map); keepWarningsOnTop(); renderPanel(); showFrameTime(); }
+    if (r.ok && r.changed) {
+      keepSiteMarkersOnTop(map); keepWarningsOnTop(); renderPanel(); showFrameTime();
+      // A new scan arrived: extend the loop so it ends on the newest picture.
+      buildLoop(map, onAir.site.id, { count: LOOP_FRAMES }).catch(() => null);
+    }
     else if (!r.ok && r.reason !== BUSY) console.warn('[broadcast] site refresh: ' + r.reason);
   }, SITE_REFRESH_MS);
 }
@@ -1062,6 +1107,22 @@ function renderPanel() {
   tickUntil();
 }
 
+/** The loop marker: how many frames are playing, or that one is being built. */
+function showLoopChip() {
+  const chip = $('loopchip');
+  if (!onSite()) { chip.classList.add('hide'); return; }
+  const lp = loopState();
+  if (lp.playing && lp.frames > 1) {
+    $('loopcount').textContent = 'LOOP ' + lp.frames;
+    chip.classList.remove('hide');
+  } else if (lp.building) {
+    $('loopcount').textContent = 'LOOP…';
+    chip.classList.remove('hide');
+  } else {
+    chip.classList.add('hide');
+  }
+}
+
 /** "UNTIL 3:15 PM EDT · 14 MIN" — recomputed every second, not once per poll. */
 function tickUntil() {
   if (mode !== 'storm' || !onAir || !onAir.specs) return;
@@ -1124,7 +1185,16 @@ function showRefLegend(on) {
  * the only honest answer there.
  */
 function frameTime() {
-  if (onSite()) return siteRadarState().scanTime || null;
+  /*
+   * While a loop is playing this is the time of the frame ON SCREEN, not of the
+   * newest scan held. Those differ by minutes mid-loop, and a radar picture
+   * labelled with the wrong time is worse than one with no time at all.
+   */
+  if (onSite()) {
+    const lp = loopState();
+    if (lp.playing && lp.scanTime) return lp.scanTime;
+    return siteRadarState().scanTime || null;
+  }
   const iso = getMRMSFrameTime();
   const t = iso ? Date.parse(iso) : NaN;
   return Number.isFinite(t) ? t : null;
@@ -1132,6 +1202,7 @@ function frameTime() {
 
 function showFrameTime() {
   const el = $('valid');
+  showLoopChip();
   const t = frameTime();
   if (!t) { el.textContent = onSite() ? 'acquiring scan' : 'waiting for data'; return null; }
   const d = new Date(t);
@@ -1331,6 +1402,7 @@ map.on('load', async () => {
     goStorm, goTour, goNational, director, sites: () => sites,
     hotspots: () => ({ found: hotspots, at: hotspotsAt }),
     heartbeat: () => ({ lastDecisionAt, cutting, ageMs: Date.now() - lastDecisionAt }),
+    loop: () => loopState(),
     status: () => siteStatus,
   };
 });

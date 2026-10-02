@@ -100,8 +100,17 @@ export function siteRadarState() {
 
 let worker = null;
 let workerBroken = false;
+/*
+ * How many times a dead worker is replaced before the page gives up on workers
+ * entirely. A crash is usually memory — five volumes in a row is a lot to pass
+ * through one thread — and a fresh worker handles it. A fault that survives
+ * three replacements is not going to be fixed by a fourth.
+ */
+let workerSpawns = 0;
+const MAX_WORKER_SPAWNS = 4;
 let nextId = 1;
 const pending = new Map();
+const progress = new Map();     // id -> per-frame callback, for loops
 
 function getWorker() {
   if (worker || workerBroken) return worker;
@@ -109,22 +118,28 @@ function getWorker() {
     if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
       throw new Error('workers or OffscreenCanvas unavailable');
     }
-    worker = new Worker('/broadcast/radar_worker.js?v=bcast1', { type: 'module' });
+    workerSpawns++;
+    worker = new Worker('/broadcast/radar_worker.js?v=bcast2', { type: 'module' });
     worker.onmessage = (e) => {
-      const { id, result } = e.data || {};
+      const { id, result, frame } = e.data || {};
+      // A loop reports each frame as it finishes, then resolves once at the end.
+      if (frame) { const onFrame = progress.get(id); if (onFrame) onFrame(frame); return; }
       const resolve = pending.get(id);
-      if (resolve) { pending.delete(id); resolve(result); }
+      if (resolve) { pending.delete(id); progress.delete(id); resolve(result); }
     };
     worker.onerror = (e) => {
       /*
-       * One failure disables it for the life of the page. Whatever is wrong with
-       * the worker will still be wrong on the next scan, and retrying it every
-       * few minutes would mean a broken stream rather than a stuttering one.
+       * Let the in-flight work fall back to the page, then allow a fresh worker
+       * on the next request. Only after several deaths is the page assumed to be
+       * somewhere workers simply do not work.
        */
-      console.error('[broadcast] radar worker failed, decoding in the page instead:', e.message || e);
-      workerBroken = true;
-      for (const [, resolve] of pending) resolve(null);   // null = fall back
+      const fatal = workerSpawns >= MAX_WORKER_SPAWNS;
+      console.error('[broadcast] radar worker died (' + (e.message || e) + '); '
+        + (fatal ? 'decoding in the page from now on' : 'a new one will be started'));
+      workerBroken = fatal;
+      for (const [, resolve] of pending) resolve(null);   // null = fall back for now
       pending.clear();
+      progress.clear();
       try { worker.terminate(); } catch (err) { /* already gone */ }
       worker = null;
     };
@@ -150,19 +165,21 @@ function isWorkerFault(reason) {
   return /decoder not loaded|OffscreenCanvas|not defined|import|module|Worker/.test(r);
 }
 
+/** Give up on the CURRENT worker. Permanent only once it has happened enough. */
 function retireWorker() {
-  workerBroken = true;
+  workerBroken = workerSpawns >= MAX_WORKER_SPAWNS;
   try { if (worker) worker.terminate(); } catch (e) { /* already gone */ }
   worker = null;
 }
 
 /** Ask the worker. Resolves null when there is no worker, so callers fall back. */
-function ask(type, payload) {
+function ask(type, payload, onFrame) {
   const w = getWorker();
   if (!w) return Promise.resolve(null);
   const id = nextId++;
   return new Promise((resolve) => {
     pending.set(id, resolve);
+    if (onFrame) progress.set(id, onFrame);
     /*
      * A worker that never answers must not wedge the page forever. Generous,
      * because this covers listing, downloading tens of megabytes and decoding,
@@ -171,6 +188,7 @@ function ask(type, payload) {
     setTimeout(() => {
       if (pending.has(id)) {
         pending.delete(id);
+        progress.delete(id);
         resolve({ ok: false, reason: 'radar worker timed out' });
       }
     }, 180000);
@@ -367,8 +385,147 @@ export async function showSite(map, site, opts = {}) {
   return r;
 }
 
+/* ── the loop ─────────────────────────────────────────────────────────────
+ * A still radar picture is indistinguishable from a broken stream. Looping the
+ * last few scans is what tells a viewer this is live — and it is also simply
+ * how radar is read: one frame says where the rain is, five say where it is
+ * going.
+ *
+ * Frames are rendered for ONE camera position. The camera only moves when the
+ * shot changes, and a shot change throws the loop away, so they stay valid for
+ * exactly as long as they are used.
+ */
+const LOOP_HOLD_LAST_MS = 1300;      // pause on the newest frame, as radar loops do
+const LOOP_STEP_MS = 420;
+const LOOP_MAX_FRAMES = 8;
+
+let loop = {
+  frames: [],        // [{ url, scanTime }] oldest first
+  timer: null,
+  idx: 0,
+  token: 0,          // bumped on every rebuild, so a late frame is dropped
+  building: false,
+};
+
+function revokeFrames(frames) {
+  for (const fr of frames) { try { URL.revokeObjectURL(fr.url); } catch (e) { /* already gone */ } }
+}
+
+/** What the loop is doing, for the caption on screen. */
+export function loopState() {
+  const cur = loop.frames[loop.idx];
+  return {
+    frames: loop.frames.length,
+    playing: !!loop.timer,
+    building: loop.building,
+    index: loop.idx,
+    scanTime: cur ? cur.scanTime : null,
+    newest: loop.frames.length ? loop.frames[loop.frames.length - 1].scanTime : null,
+  };
+}
+
+/** Stop playing. Says nothing about what is being built. */
+export function stopLoop() {
+  if (loop.timer) { clearTimeout(loop.timer); loop.timer = null; }
+}
+
+/**
+ * Leave the loop behind entirely: stop it, free the frames, and abandon any
+ * build still running for it.
+ *
+ * Separate from stopLoop on purpose. An earlier version bumped the token inside
+ * stopLoop, and since buildLoop takes its token and THEN calls stopLoop, every
+ * frame it rendered was immediately discarded as superseded — the loop built
+ * nothing, for ever, while reporting that it was still building.
+ */
+function abandonLoop() {
+  stopLoop();
+  revokeFrames(loop.frames);
+  loop.frames = [];
+  loop.idx = 0;
+  loop.token++;
+  loop.building = false;
+}
+
+/** Show frame `i`, then schedule the next. */
+function showFrame(map, i) {
+  if (!loop.frames.length) return;
+  loop.idx = ((i % loop.frames.length) + loop.frames.length) % loop.frames.length;
+  const fr = loop.frames[loop.idx];
+  try {
+    const src = map.getSource(SRC);
+    if (src) src.updateImage({ url: fr.url });
+  } catch (e) {
+    stopLoop();
+    return;
+  }
+  const last = loop.idx === loop.frames.length - 1;
+  loop.timer = setTimeout(() => showFrame(map, loop.idx + 1), last ? LOOP_HOLD_LAST_MS : LOOP_STEP_MS);
+}
+
+export function startLoop(map) {
+  stopLoop();
+  if (loop.frames.length < 2) return false;      // one frame is not a loop
+  showFrame(map, 0);
+  return true;
+}
+
+/**
+ * Build the loop for whatever is on air, and start playing as soon as there are
+ * two frames rather than waiting for the whole run.
+ *
+ * Never throws: a failure leaves the still frame on screen, which is what was
+ * there before.
+ */
+export async function buildLoop(map, site, opts = {}) {
+  const product = opts.product || 'reflectivity';
+  const count = opts.count || 5;
+  const token = ++loop.token;
+  stopLoop();
+  revokeFrames(loop.frames);
+  loop.frames = [];
+  loop.idx = 0;
+  loop.building = true;
+  const view = viewOf(map);
+  try {
+    const r = await ask('loop', { site, product, count, view, palette: chosenPalette(product) },
+      (frame) => {
+        if (token !== loop.token) return;        // the shot moved on while this rendered
+        if (!frame.ok || !frame.blob) return;
+        loop.frames.push({ url: URL.createObjectURL(frame.blob), scanTime: frame.scanTime });
+        if (loop.frames.length === 2) startLoop(map);
+      });
+    if (token !== loop.token) return { ok: false, reason: 'superseded' };
+    /*
+     * Play whatever arrived, whatever else went wrong.
+     *
+     * These returns used to come first, so a run that produced four good frames
+     * and then lost the worker left all four sitting still — a frozen picture
+     * produced by the very code that exists to stop pictures freezing.
+     */
+    if (loop.frames.length >= 2 && !loop.timer) startLoop(map);
+    if (!r) return { ok: loop.frames.length >= 2, frames: loop.frames.length, reason: 'worker went away' };
+    if (!r.ok) return { ok: loop.frames.length >= 2, frames: loop.frames.length, reason: r.reason };
+    return { ok: true, frames: loop.frames.length };
+  } catch (e) {
+    return { ok: false, reason: e.message || String(e) };
+  } finally {
+    if (token === loop.token) loop.building = false;
+  }
+}
+
+/** Put the scan just loaded on the end of the loop, dropping the oldest. */
+export function appendToLoop(blob, scanTime) {
+  if (!loop.frames.length || !blob) return false;
+  if (loop.frames.some((fr) => fr.scanTime === scanTime)) return false;   // already have it
+  loop.frames.push({ url: URL.createObjectURL(blob), scanTime });
+  while (loop.frames.length > LOOP_MAX_FRAMES) revokeFrames(loop.frames.splice(0, 1));
+  return true;
+}
+
 /** Take the site radar off the map (going back to the national view). */
 export function clearSite(map) {
+  abandonLoop();
   try { if (map.getLayer(LAYER)) map.removeLayer(LAYER); } catch (e) { /* style reloading */ }
   try { if (map.getSource(SRC)) map.removeSource(SRC); } catch (e) { /* style reloading */ }
   if (objectUrl) { try { URL.revokeObjectURL(objectUrl); } catch (e) { /* already gone */ } objectUrl = null; }

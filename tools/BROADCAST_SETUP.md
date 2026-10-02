@@ -155,6 +155,7 @@ Useful query strings, mostly for checking it:
 | `?tz=America/Chicago` | the zone every time on screen is shown in |
 | `?mode=national` | never cut away; the quiet view only |
 | `?site=KTLX` | force which radar a cut uses |
+| `?loop=3` | how many scans the loop plays (default 5; `?loop=1` turns it off) |
 
 Full order of precedence, highest first: tornado warning (emergency, then
 confirmed, then radar indicated), flash flood EMERGENCY, severe thunderstorm,
@@ -177,6 +178,23 @@ strong an echo has to be before the stream leaves the national view for it,
 and the weakest echo drawn
 in the storm view is `MIN_DBZ` in `broadcast/site_radar.js` (20 dBZ: lower and
 the palette's grey band sheets over the basemap).
+
+### The loop
+
+Single-site shots play the last five scans rather than holding one frame. A
+still radar picture is indistinguishable from a dead stream, and a loop is
+also simply how radar is read: one frame says where the rain is, five say
+where it is going. The frame being shown has its own valid time on the chip,
+so what is on screen is never ambiguous.
+
+It is built behind the still frame and starts as soon as two scans are ready,
+so a cut is never held up by it.
+
+**This is the main thing the stream costs you.** Every frame is a volume
+pulled through the relay, so five frames is five downloads of tens of
+megabytes each time the stream moves to a new storm. `?loop=3` halves it and
+`?loop=1` turns looping off entirely, leaving the single newest scan as
+before. If bandwidth matters more than motion, that is the knob.
 
 ### Where the radar comes from
 

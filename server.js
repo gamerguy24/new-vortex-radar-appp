@@ -1773,6 +1773,27 @@ function pickLatestFolder(nums) {
     clusters.sort((a, b) => b.length - a.length);
     return clusters[0][clusters[0].length - 1];
 }
+/**
+ * The run of folders ending at `end`, newest last, at most `count` of them.
+ *
+ * For a loop. Only folders from the same contiguous cluster are taken, for the
+ * same reason pickLatestFolder clusters at all: a leftover folder from two days
+ * ago is still listed, and a loop that opens on it would show yesterday's
+ * weather as though it were five minutes old.
+ */
+function folderRunEndingAt(nums, end, count) {
+    const want = Math.max(1, Math.min(16, count | 0));
+    const sorted = [...new Set(nums)].filter((n) => n <= end).sort((a, b) => a - b);
+    const run = [];
+    for (let i = sorted.length - 1; i >= 0 && run.length < want; i--) {
+        // Stop at a gap: volumes are numbered consecutively while a radar runs,
+        // so a break means a different session, not an earlier scan.
+        if (run.length && sorted[i] !== run[0] - 1) break;
+        run.unshift(sorted[i]);
+    }
+    return run;
+}
+
 async function listVolumeChunks(station, folder) {
     const xml = await s3ListText(`${L2_CHUNKS}/?list-type=2&prefix=${station}/${folder}/`);
     return [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1]).sort((a, b) => chunkSeq(a) - chunkSeq(b));
@@ -2050,9 +2071,27 @@ app.get(['/api/graphics/l2-list', '/broadcast/l2-list'], l2RelayAuth, async (req
         const resolved = await resolveLatestFolder(site);
         if (resolved) {
             res.setHeader('Cache-Control', 'no-store');
-            console.log(`[L2-LIST] ${site} -> archive failed (${lastFailure}), chunks fallback OK (folder ${resolved.folder})`);
+            /*
+             * A RUN of volumes, not just the newest, when the caller asked for
+             * several. This used to answer every request with one marker however
+             * many were wanted, so anything building a loop through the chunks
+             * fallback — which is the only path that works where the archive
+             * bucket refuses to be listed — got a single frame and stood still.
+             */
+            const marker = (n) => `${CHUNKS_MARKER_PREFIX}${site}:${n}`;
+            let run = [resolved.folder];
+            if (want > 1) {
+                try {
+                    run = folderRunEndingAt(await listVolumeFolders(site), resolved.folder, want);
+                } catch (e) {
+                    console.warn(`[L2-LIST] ${site} -> could not list the folder run: ${e.message}`);
+                }
+            }
+            console.log(`[L2-LIST] ${site} -> archive failed (${lastFailure}), chunks fallback OK `
+                + `(${run.length} of ${want}, newest folder ${resolved.folder})`);
             return res.json({
-                url: `${CHUNKS_MARKER_PREFIX}${site}:${resolved.folder}`,
+                urls: run.map(marker),
+                url: marker(resolved.folder),
                 key: `${site} vol#${resolved.folder} (realtime chunks)`,
                 via: 'chunks',
             });
