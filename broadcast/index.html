@@ -1440,20 +1440,33 @@ map.on('load', async () => {
   }
 
   /*
-   * A heartbeat the ENCODER can see.
+   * THE HEARTBEAT, and what it carries.
    *
    * Everything else here watches for ways this page can go wrong while it is
    * still running. It cannot watch for the renderer crashing, because that
    * takes this code with it — and a crash page streams just as happily as a
    * radar map. So the encoder watches instead, and this is what it watches.
-   */
-  /*
-   * The heartbeat carries the shot with it.
    *
-   * There is no console to read on a box with no screen, and working out why
-   * the map was empty meant guessing at a screenshot. All of this is known
-   * here, and the beat was already going out every thirty seconds.
+   * It carries what is on air as well, because there is no console to read on
+   * a box with no screen: working out why the map was empty meant guessing at
+   * a screenshot, when the page knew the answer and was already calling home
+   * every thirty seconds.
+   *
+   * The stalls go with it. A long task is the main thread occupied and the
+   * page unable to draw, which is exactly what a shudder is whatever caused
+   * it — the same observer found the 2.6-second scan decode that the worker
+   * now does elsewhere. Kept to a rolling minute, so it describes now rather
+   * than the worst thing that ever happened.
    */
+  let stalls = [];
+  try {
+    new PerformanceObserver((list) => {
+      const t = Date.now();
+      for (const e of list.getEntries()) stalls.push({ at: t, ms: Math.round(e.duration) });
+      stalls = stalls.filter((x) => t - x.at < 60000);
+    }).observe({ entryTypes: ['longtask'] });
+  } catch (e) { /* no long-task support: the other numbers still stand */ }
+
   const shotReport = () => {
     const st = (typeof siteRadarState === 'function') ? siteRadarState() : {};
     const lp = (typeof loopState === 'function') ? loopState() : {};
@@ -1472,6 +1485,12 @@ map.on('load', async () => {
       scanLoaded: !!st.loaded,
       scanAgeSeconds: t ? Math.round((Date.now() - t) / 1000) : null,
       loopFrames: lp.playing ? lp.frames : 0,
+      // "420 asked, 418/612/441 got" — the cadence against what it wanted.
+      loopSteps: (lp.steps && lp.steps.length)
+        ? `${lp.stepMs} asked, got ${lp.steps.join('/')}`
+        : null,
+      stallWorstMs: stalls.length ? Math.max(...stalls.map((x) => x.ms)) : 0,
+      stallCount: stalls.length,
       lat: c ? c.lat : null,
       lon: c ? c.lng : null,
       zoom: map.getZoom(),

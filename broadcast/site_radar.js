@@ -433,6 +433,10 @@ let loop = {
   idx: 0,
   token: 0,          // bumped on every rebuild, so a late frame is dropped
   building: false,
+  // When each frame actually went up. A step that takes longer than it was
+  // scheduled for is the shudder, measured rather than guessed at.
+  lastStepAt: 0,
+  steps: [],         // ms between the last dozen frames
 };
 
 function revokeFrames(frames) {
@@ -447,6 +451,10 @@ export function loopState() {
     playing: !!loop.timer,
     building: loop.building,
     index: loop.idx,
+    // What the cadence asked for, and what it got. They differ by the cost of
+    // putting a frame on screen, which is the thing being chased.
+    stepMs: LOOP_STEP_MS,
+    steps: loop.steps.slice(),
     scanTime: cur ? cur.scanTime : null,
     newest: loop.frames.length ? loop.frames[loop.frames.length - 1].scanTime : null,
   };
@@ -478,6 +486,12 @@ function abandonLoop() {
 /** Show frame `i`, then schedule the next. */
 function showFrame(map, i) {
   if (!loop.frames.length) return;
+  const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  if (loop.lastStepAt) {
+    loop.steps.push(Math.round(now - loop.lastStepAt));
+    if (loop.steps.length > 12) loop.steps.shift();
+  }
+  loop.lastStepAt = now;
   loop.idx = ((i % loop.frames.length) + loop.frames.length) % loop.frames.length;
   const fr = loop.frames[loop.idx];
   try {
@@ -514,6 +528,8 @@ export async function buildLoop(map, site, opts = {}) {
   loop.frames = [];
   loop.idx = 0;
   loop.building = true;
+  loop.lastStepAt = 0;
+  loop.steps = [];
   const view = viewOf(map);
   try {
     const r = await ask('loop', { site, product, count, view, palette: chosenPalette(product) },

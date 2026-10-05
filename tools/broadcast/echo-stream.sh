@@ -182,6 +182,7 @@ diagnose_report() {
     echo
     echo "   on air:"
     for k in mode shot site event where radarLayer scanLoaded scanAgeSeconds \
+             loopSteps stallWorstMs stallCount \
              loopFrames lat lon zoom warnings; do
       printf "     %-15s %s\n" "$k" "$(shotfield "$k")"
     done

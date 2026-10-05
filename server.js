@@ -2463,6 +2463,9 @@ app.post('/broadcast/alive', (req, res) => {
         lon: _shotNum(b.lon),
         zoom: _shotNum(b.zoom),
         warnings: _shotText(b.warnings),
+        loopSteps: _shotText(b.loopSteps),
+        stallWorstMs: _shotNum(b.stallWorstMs),
+        stallCount: _shotNum(b.stallCount),
     };
     res.set('Cache-Control', 'no-store').json({ ok: true });
 });
