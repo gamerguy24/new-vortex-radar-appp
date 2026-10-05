@@ -81,6 +81,9 @@ let state = {
   elevationAngle: null,
   superRes: false,
   volumeKey: null,
+  // What the worker says it is holding. The decoding happens over there, so
+  // this is the only view the page gets of the memory that actually matters.
+  heapMB: null,
   busy: false,
 };
 
@@ -92,6 +95,7 @@ export function siteRadarState() {
     elevationAngle: state.elevationAngle,
     superRes: state.superRes,
     volumeKey: state.volumeKey,
+    heapMB: state.heapMB,
     loaded: !!(state.radar || state.volumeKey),
   };
 }
@@ -163,6 +167,26 @@ function isWorkerFault(reason) {
   const r = String(reason || "");
   if (/timed out/i.test(r)) return false;
   return /decoder not loaded|OffscreenCanvas|not defined|import|module|Worker/.test(r);
+}
+
+/**
+ * Throw this worker away; the next request starts a fresh one.
+ *
+ * Used after a loop, which is where the memory goes: five decoded volumes pass
+ * through one thread, and measurement showed that capping the decoder caches
+ * was not enough to get it back. Terminating frees all of it, whatever was
+ * holding it. Nothing is lost — by now the frames are PNGs on the page.
+ */
+function recycleWorker() {
+  if (!worker) return;
+  try { worker.terminate(); } catch (e) { /* already gone */ }
+  worker = null;
+  for (const [, resolve] of pending) resolve(null);
+  pending.clear();
+  progress.clear();
+  // A deliberate recycle is not a failure, and must not count towards the
+  // spawn limit that decides this page has no usable worker at all.
+  workerSpawns = 0;
 }
 
 /** Give up on the CURRENT worker. Permanent only once it has happened enough. */
@@ -303,7 +327,7 @@ export async function loadSite(site, { product = 'reflectivity', force = false }
   if (state.busy) return { ok: false, reason: BUSY };
   state.busy = true;
   try {
-    const viaWorker = await ask('load', { site: id, product, force });
+    const viaWorker = await ask('load', { site: id, product, force, known: state.volumeUrl });
     if (viaWorker) {
       /*
        * Tell a BROKEN worker apart from a radar that has no data.
@@ -328,6 +352,10 @@ export async function loadSite(site, { product = 'reflectivity', force = false }
         state.elevationAngle = m.elevationAngle;
         state.superRes = m.superRes;
         state.volumeKey = m.volumeKey;
+        state.heapMB = m.heapMB ?? null;
+        // Remembered on THIS side, so a freshly started worker can be told what
+        // is already on screen instead of decoding it again to find out.
+        if (viaWorker.url) state.volumeUrl = viaWorker.url;
         state.radar = null;               // the worker holds the decoded volume
         return { ok: true, changed: viaWorker.changed };
       }
@@ -511,6 +539,8 @@ export async function buildLoop(map, site, opts = {}) {
     return { ok: false, reason: e.message || String(e) };
   } finally {
     if (token === loop.token) loop.building = false;
+    // The decoding is done with either way. Let the thread go.
+    recycleWorker();
   }
 }
 

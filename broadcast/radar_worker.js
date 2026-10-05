@@ -45,12 +45,23 @@
 globalThis.window = globalThis;
 const ready = import('/dist/l2_bundle.js?v=bcast3');
 
-import { listLatestVolume, listRecentVolumes, loadSweepFromUrl, rasterize, setL2Relay }
-  from '/graphics/studio/engine/radar_l2_raster.js?v=bcast4';
+import {
+  listLatestVolume, listRecentVolumes, loadSweepFromUrl, rasterize,
+  setL2Relay, setCacheLimits, releaseVolumeCaches,
+} from '/graphics/studio/engine/radar_l2_raster.js?v=bcast5';
 
 // Same public relay the page uses, and for the same reasons: no session here
 // either, and the bucket will not accept a listing request from a browser.
 setL2Relay('/broadcast', { preferRelay: true });
+
+/*
+ * Keep almost nothing. The decoder defaults to ten downloaded volumes and two
+ * decoded ones, which is right for the Graphics Studio — a Play loop steps back
+ * and forth over the same frames there. Here every scan is rasterised once and
+ * never revisited, so a cache is just memory held until something gets killed.
+ * One of each is enough to cover a retry.
+ */
+setCacheLimits({ volumes: 1, bytes: 1 });
 
 const D2R = Math.PI / 180;
 const R2D = 180 / Math.PI;
@@ -73,9 +84,25 @@ function projectionFor(view) {
 let radar = null;        // the decoded volume currently held
 let volumeUrl = null;
 
+/*
+ * What this worker is holding, in megabytes, when the browser will say.
+ *
+ * performance.memory is Chrome-only and non-standard, which is fine: the thing
+ * that runs this unattended for weeks is Chrome. It is the only view the page
+ * gets of the memory that actually matters, because the decoding all happens
+ * in here and the page cannot see a worker heap from outside.
+ */
+function heapMB() {
+  try {
+    const m = performance.memory;
+    return m ? Math.round(m.usedJSHeapSize / 1048576) : null;
+  } catch (e) { return null; }
+}
+
 function meta() {
   const sweep = radar ? radar.sweep : null;
   return {
+    heapMB: heapMB(),
     site: radar ? radar.site : null,
     scanTime: radar && radar.time ? radar.time.getTime() : null,
     elevationAngle: sweep ? sweep.elevationAngle : null,
@@ -85,20 +112,28 @@ function meta() {
   };
 }
 
-async function load({ site, product = 'reflectivity', force = false }) {
+async function load({ site, product = 'reflectivity', force = false, known = null }) {
   const id = String(site || '').toUpperCase();
   if (!/^[A-Z]{4}$/.test(id)) return { ok: false, reason: '"' + site + '" is not a radar id' };
 
   const found = await listLatestVolume(id);
   if (!found.url) return { ok: false, reason: found.reason || 'no scan listed' };
 
-  if (found.url === volumeUrl && radar && radar.site === id && radar.product === product && !force) {
-    return { ok: true, changed: false, meta: meta() };    // nothing new posted yet
+  /*
+   * `known` is what the PAGE already has on screen. This worker may have been
+   * started seconds ago and decoded nothing, but that says nothing about what
+   * the viewer is looking at — without this, every refresh would decode the
+   * current volume again only to discover it had not changed.
+   */
+  const haveIt = (found.url === volumeUrl && radar && radar.site === id && radar.product === product)
+    || (known && found.url === known);
+  if (haveIt && !force) {
+    return { ok: true, changed: false, url: found.url, meta: meta() };
   }
 
   radar = await loadSweepFromUrl({ url: found.url, site: id, product });
   volumeUrl = found.url;
-  return { ok: true, changed: true, meta: meta() };
+  return { ok: true, changed: true, url: found.url, meta: meta() };
 }
 
 async function draw({ view, palette }) {
@@ -150,6 +185,16 @@ async function loop({ site, product = 'reflectivity', count = 5, view, palette }
     }, { quality: view.quality, smooth: true, minDbz: view.minDbz, palette: palette || null });
     const out = canvas || new OffscreenCanvas(2, 2);
     const blob = await out.convertToBlob({ type: 'image/png' });
+
+    /*
+     * The frame is a PNG now, so the volume behind it — hundreds of megabytes of
+     * decoded sweeps — has done its job. Dropping the reference and clearing the
+     * caches is what keeps a five-frame loop costing one volume instead of five.
+     */
+    radar = r;                 // newest wins, so a camera move redraws this one
+    volumeUrl = url;
+    releaseVolumeCaches();
+
     made++;
     post({
       type: 'frame', ok: true, blob,
@@ -172,7 +217,11 @@ self.onmessage = async (e) => {
     else if (type === 'loop') {
       result = await loop(payload || {}, (frame) => self.postMessage({ id, frame }));
     }
-    else if (type === 'clear') { radar = null; volumeUrl = null; result = { ok: true }; }
+    else if (type === 'clear') {
+      radar = null; volumeUrl = null;
+      releaseVolumeCaches();     // going back to the national view: hold nothing
+      result = { ok: true };
+    }
     else result = { ok: false, reason: 'unknown request: ' + type };
   } catch (err) {
     /*

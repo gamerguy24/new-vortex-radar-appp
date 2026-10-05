@@ -212,13 +212,13 @@ export async function awsLatestVolumeUrl(site) {
  * between reflectivity and velocity, or flipping back to the previous site,
  * costs nothing, without holding a whole scan history in memory.
  */
-const MAX_CACHED_VOLUMES = 2;
+let maxCachedVolumes = 2;
 const volumeCache = new Map();      // url -> { factory, promise }
 const inflight = new Map();         // url -> Promise<factory>
 
 function rememberVolume(url, factory) {
   volumeCache.set(url, factory);
-  while (volumeCache.size > MAX_CACHED_VOLUMES) {
+  while (volumeCache.size > maxCachedVolumes) {
     volumeCache.delete(volumeCache.keys().next().value);
   }
 }
@@ -235,7 +235,32 @@ function rememberVolume(url, factory) {
  */
 const byteCache = new Map();      // url -> ArrayBuffer
 const byteInflight = new Map();   // url -> Promise<ArrayBuffer>
-const MAX_CACHED_BYTES = 10;
+let maxCachedBytes = 10;
+
+/**
+ * How much the decoder is allowed to hold on to.
+ *
+ * The defaults suit the Studio, where a Play loop steps back and forth over
+ * the same frames and a cache hit is the difference between instant and thirty
+ * seconds. A consumer that renders each scan once and never looks back wants
+ * neither: on a small machine, ten downloaded volumes and two decoded ones is
+ * most of a gigabyte held for nothing.
+ */
+export function setCacheLimits({ volumes, bytes } = {}) {
+  if (Number.isFinite(volumes)) maxCachedVolumes = Math.max(0, volumes);
+  if (Number.isFinite(bytes)) maxCachedBytes = Math.max(0, bytes);
+  while (volumeCache.size > maxCachedVolumes) volumeCache.delete(volumeCache.keys().next().value);
+  while (byteCache.size > maxCachedBytes) byteCache.delete(byteCache.keys().next().value);
+}
+
+/**
+ * Drop everything cached. Downloads already in flight are left alone — they
+ * have callers waiting on them.
+ */
+export function releaseVolumeCaches() {
+  volumeCache.clear();
+  byteCache.clear();
+}
 
 async function downloadVolumeBytes(url, onProgress) {
   if (byteCache.has(url)) return byteCache.get(url);
@@ -279,7 +304,7 @@ async function downloadVolumeBytes(url, onProgress) {
     }
 
     byteCache.set(url, buf);
-    while (byteCache.size > MAX_CACHED_BYTES) byteCache.delete(byteCache.keys().next().value);
+    while (byteCache.size > maxCachedBytes) byteCache.delete(byteCache.keys().next().value);
     return buf;
   })();
 
