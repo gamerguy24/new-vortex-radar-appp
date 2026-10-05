@@ -218,6 +218,27 @@ if [ "$MODE" = "--check" ]; then
   exit 0
 fi
 
+# ── one encoder per key ─────────────────────────────────────────────────────
+# Two streams on one ingest is not a settings problem and does not look like
+# one: YouTube says "More than one ingestion is using the primary URL", the
+# preview sits on "Preparing stream" for ever, and the health reads Poor.
+# Twitch has no backup ingest at all, so there the two simply fight.
+OTHER_FF="$(pgrep -af "ffmpeg.*rtmp" 2>/dev/null | grep -v "^$$ " | head -3)"
+if [ -n "$OTHER_FF" ] && [ "${STREAM_FORCE:-0}" != "1" ]; then
+  echo "Another encoder is already streaming from this machine:"
+  echo "$OTHER_FF" | sed "s|/[^/ ]*\$|/********|" | sed "s/^/    /"
+  echo
+  echo "Two encoders on one key is what makes YouTube sit on \"Preparing stream\"."
+  echo "Stop the other one first:"
+  echo "    sudo systemctl stop echo-stream"
+  echo "    pkill -f \"ffmpeg.*rtmp\"        # if it was started by hand"
+  echo
+  echo "If the other encoder is on a DIFFERENT machine — the box this was moved"
+  echo "from, say — stop it there; nothing here can see it. STREAM_FORCE=1"
+  echo "overrides this check if you are certain."
+  exit 1
+fi
+
 echo "Echo Radar broadcast"
 echo "  page    $URL"
 echo "  video   ${W}x${H} @ ${FPS}fps, $BITRATE"
