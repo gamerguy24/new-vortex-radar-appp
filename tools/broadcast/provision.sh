@@ -137,10 +137,10 @@ fi
 # and without fontconfig and a real fallback installed, every label on air
 # renders as empty boxes.
 if [ "$PKG" = "apt" ]; then
-  pkg_install xvfb ffmpeg curl ca-certificates gnupg git \
+  pkg_install xvfb ffmpeg curl ca-certificates gnupg git nano \
     fontconfig fonts-liberation fonts-dejavu-core
 else
-  pkg_install xorg-x11-server-Xvfb curl ca-certificates gnupg2 git \
+  pkg_install xorg-x11-server-Xvfb curl ca-certificates gnupg2 git nano \
     fontconfig liberation-fonts dejavu-sans-fonts tar xz
   # ffmpeg is not in the base or EPEL repositories on Enterprise Linux. Try the
   # package anyway in case a third-party repo is already enabled, then fall back
@@ -228,18 +228,36 @@ if command -v node >/dev/null 2>&1; then
   NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
   [ "$NODE_MAJOR" -ge 18 ] && NODE_OK=1
 fi
+node_major() { node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0; }
+
 if [ "$NODE_OK" = "1" ]; then
   ok "node $(node -v) already installed"
 else
-  if [ "$PKG" = "apt" ]; then
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
+  # The distribution first. Current Ubuntu and Debian both carry a Node new
+  # enough for this, and it is the version that will keep getting security
+  # updates from the same place as everything else on the box.
+  pkg_install nodejs npm 2>/dev/null || pkg_install nodejs 2>/dev/null || true
+  if command -v node >/dev/null 2>&1 && [ "$(node_major)" -ge 18 ]; then
+    ok "node $(node -v) from the distribution"
   else
-    curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
+    # NodeSource keeps per-release repositories and a just-released Ubuntu has
+    # no entry for months, so this is the fallback rather than the first move.
+    warn "the distribution has no usable node; trying NodeSource"
+    if [ "$PKG" = "apt" ]; then
+      curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1 || true
+    else
+      curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - >/dev/null 2>&1 || true
+    fi
+    pkg_install nodejs || true
+    command -v node >/dev/null 2>&1 \
+      || die "node could not be installed from the distribution or NodeSource."
+    [ "$(node_major)" -ge 18 ] \
+      || die "node $(node -v) is too old; this needs 18 or newer."
+    ok "node $(node -v) from NodeSource"
   fi
-  pkg_install nodejs
-  command -v node >/dev/null 2>&1 || die "node did not install."
-  ok "node $(node -v)"
 fi
+
+command -v npm >/dev/null 2>&1 || pkg_install npm || die "npm is missing and could not be installed."
 
 say "Installing app dependencies"
 sudo -u "$RUN_USER" npm ci --no-audit --no-fund --prefix "$ROOT" >/dev/null 2>&1 \
