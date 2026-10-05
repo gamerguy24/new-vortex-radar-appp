@@ -109,19 +109,31 @@ fi
 
 # ── packages ────────────────────────────────────────────────────────────────
 say "Installing packages"
+
+# Answer the questions before they are asked. DEBIAN_FRONTEND stops dpkg
+# prompting; needrestart is the one that catches people out, because on Ubuntu
+# it interrupts an install to ask which services to restart — and a script that
+# hides output turns that into a blinking cursor and no explanation.
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
 
 # One place that knows the difference, so the rest of the script does not.
+# Output is NOT hidden. Installing a browser on a small ARM box takes minutes,
+# and silence for minutes is indistinguishable from a hang — which is exactly
+# how this was first reported.
 pkg_install() {
   case "$PKG" in
-    apt) apt-get install -y -qq "$@" >/dev/null ;;
-    dnf) dnf install -y -q "$@" >/dev/null ;;
-    yum) yum install -y -q "$@" >/dev/null ;;
+    apt) apt-get install -y \
+           -o Dpkg::Options::=--force-confold \
+           -o Dpkg::Options::=--force-confdef "$@" ;;
+    dnf) dnf install -y "$@" ;;
+    yum) yum install -y "$@" ;;
   esac
 }
 
 if [ "$PKG" = "apt" ]; then
-  apt-get update -qq
+  apt-get update
 else
   # EPEL carries the pieces Red Hat leaves out. Oracle Linux ships its own
   # EPEL release package; everyone else uses the upstream one.
@@ -194,7 +206,7 @@ elif [ "$ARCH" = "amd64" ]; then
     | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg
   echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
     > /etc/apt/sources.list.d/google-chrome.list
-  apt-get update -qq
+  apt-get update
   apt-get install -y -qq google-chrome-stable >/dev/null
   ok "google-chrome-stable"
 else
