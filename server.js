@@ -2435,8 +2435,35 @@ app.get(['/broadcast', '/broadcast/'], sendFile(path.join('broadcast', 'index.ht
  * Memory only. It is a heartbeat, not a record.
  */
 let _broadcastAliveAt = 0;
+/*
+ * What the page says it is showing, kept only so a person can ask.
+ *
+ * This route is public, so nothing here trusts what arrives: only known
+ * fields are read, strings are clipped, numbers must be numbers, and
+ * anything else is dropped. The worst a stranger can do is make this report
+ * wrong, which is why the page also reports when it last spoke.
+ */
+let _broadcastShot = null;
+const _shotText = (v) => (typeof v === 'string' ? v.slice(0, 80) : undefined);
+const _shotNum = (v) => (Number.isFinite(v) ? Math.round(v * 100) / 100 : undefined);
 app.post('/broadcast/alive', (req, res) => {
     _broadcastAliveAt = Date.now();
+    const b = (req.body && typeof req.body === 'object') ? req.body : {};
+    _broadcastShot = {
+        mode: _shotText(b.mode),
+        shot: _shotText(b.shot),
+        site: _shotText(b.site),
+        event: _shotText(b.event),
+        where: _shotText(b.where),
+        radarLayer: b.radarLayer === true,
+        scanLoaded: b.scanLoaded === true,
+        scanAgeSeconds: _shotNum(b.scanAgeSeconds),
+        loopFrames: _shotNum(b.loopFrames),
+        lat: _shotNum(b.lat),
+        lon: _shotNum(b.lon),
+        zoom: _shotNum(b.zoom),
+        warnings: _shotText(b.warnings),
+    };
     res.set('Cache-Control', 'no-store').json({ ok: true });
 });
 app.get('/broadcast/alive', (req, res) => {
@@ -2444,6 +2471,7 @@ app.get('/broadcast/alive', (req, res) => {
     res.set('Cache-Control', 'no-store').json({
         seen: !!_broadcastAliveAt,
         ageSeconds: ageMs === null ? null : Math.round(ageMs / 1000),
+        shot: _broadcastShot,
     });
 });
 // The three front-end modules that page imports — named one by one rather than

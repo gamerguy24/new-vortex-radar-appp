@@ -126,9 +126,18 @@
   #tickerlabel { flex: 0 0 auto; height: 100%; display: flex; align-items: center; padding: 0 16px;
     position: relative; z-index: 2;
     background: #d1402f; font-weight: 800; letter-spacing: .14em; font-size: 13px; }
-  #ticker { white-space: nowrap; font-size: 16px; font-weight: 600; padding-left: 100%;
-    animation: scroll 80s linear infinite; }
-  @keyframes scroll { from { transform: translateX(0) } to { transform: translateX(-100%) } }
+  /* A ticker scrolls at a constant speed and never visibly restarts. Moving
+     the element by a percentage of ITSELF did neither: with one short warning
+     the line crossed, left an empty strip, and snapped back to the beginning
+     in full view, and the fixed 80s made one warning crawl while fifty raced
+     past. The line is repeated until it covers the strip twice over and
+     shifted by exactly one copy, so the restart lands on identical pixels and
+     cannot be seen; both numbers are measured in renderTicker. */
+  #ticker { display: flex; white-space: nowrap; font-size: 16px; font-weight: 600;
+    animation: scroll var(--ticker-dur, 60s) linear infinite; }
+  @keyframes scroll { from { transform: translateX(0) }
+    to { transform: translateX(calc(-1 * var(--ticker-shift, 100%))) } }
+  #ticker .run { flex: 0 0 auto; padding-right: 64px; }
   #ticker .sep { color: #5d6b7c; padding: 0 14px; }
   #ticker .tor { color: #ff7a6f; } #ticker .svr { color: #ffd98a; } #ticker .ffw { color: #7ce8a8; }
   #ticker .onair { background: #fff; color: #0b0f14; border-radius: 4px; padding: 1px 6px; margin-right: 7px;
@@ -229,7 +238,7 @@
   <div id="bottom">
     <div id="tickerwrap">
       <div id="tickerlabel">ACTIVE WARNINGS</div>
-      <div id="ticker">Loading active warnings…</div>
+      <div id="ticker"><span class="run">Loading active warnings…</span></div>
     </div>
     <div id="foot">
       <span id="foot_src">Radar: NOAA MRMS · Warnings: NWS api.weather.gov</span>
@@ -254,8 +263,8 @@
 import { addMRMS, removeMRMS, setMRMSProduct, getMRMSFrameTime, findMRMSHotspots }
   from '/components/mrms.js?v=bcast4';
 import { paletteStops } from '/graphics/studio/engine/radar_l2_raster.js?v=bcast1';
-import { Director, candidatesFrom, quietCandidates, WARN_TYPES, boundsOf, centroidOf, nearestSites }
-  from '/broadcast/storm_director.js?v=bcast2';
+import { Director, candidatesFrom, quietCandidates, WARN_TYPES, boundsOf, centroidOf, nearestSites,
+  SITE_RANGE_KM } from '/broadcast/storm_director.js?v=bcast3';
 import { addSiteMarkers, setSiteMarkerStatus, keepSiteMarkersOnTop, fetchSiteStatus }
   from '/broadcast/site_markers.js?v=bcast1';
 import { loadSite, redrawSite, showSite, clearSite, siteRadarState, BUSY, MIN_DBZ,
@@ -535,6 +544,7 @@ const setVeto = (k, why) => {
  */
 const WARN_LAYERS = ['watch-line', 'warn-fill', 'warn-halo', 'warn-line', 'warn-onair', 'warn-label'];
 let lastWarningSig = null;
+let lastTickerHtml = null;
 function keepWarningsOnTop() {
   for (const id of WARN_LAYERS) {
     try { if (map.getLayer(id)) map.moveLayer(id); } catch (e) { /* style reloading */ }
@@ -686,11 +696,43 @@ function paintWarnings() {
    * it — so polling every 60 seconds made the whole line snap back to the
    * beginning every 60 seconds, whether or not a single warning had changed.
    */
-  const t = document.getElementById('ticker');
   const html = lines.length
     ? lines.join('<span class="sep">•</span>')
     : 'No active tornado, severe thunderstorm or flash flood warnings, and no watches.';
-  if (html !== t.innerHTML) t.innerHTML = html;
+  if (html !== lastTickerHtml) { lastTickerHtml = html; renderTicker(html); }
+}
+
+/*
+ * Lay the ticker out so it scrolls seamlessly at a readable speed.
+ *
+ * Measured rather than assumed, because the right numbers depend entirely on
+ * how much text there is: one flash flood warning is a few hundred pixels and
+ * an outbreak is tens of thousands. The line is repeated until it covers the
+ * strip twice over, the animation shifts by exactly ONE copy, and the
+ * duration is that distance at a fixed speed. The loop point therefore lands
+ * on pixels identical to the start, which is what makes it invisible.
+ */
+const TICKER_SPEED_PX_S = 90;   // about right to read at a glance at 1080p
+function renderTicker(html) {
+  const t = document.getElementById('ticker');
+  const wrap = t.parentElement;
+  // Lay one copy out first, with the animation off, purely to measure it.
+  t.style.animation = 'none';
+  t.innerHTML = `<span class="run">${html}</span>`;
+  // offsetWidth, not getBoundingClientRect: the stage is CSS-scaled, and the
+  // transform works in the element's own unscaled pixels.
+  const runW = t.firstElementChild ? t.firstElementChild.offsetWidth : 0;
+  const wrapW = wrap ? wrap.offsetWidth : 1920;
+  if (!runW) { t.style.animation = ''; return; }   // not laid out yet; next change retries
+
+  const copies = Math.max(2, Math.ceil((wrapW * 2) / runW));
+  let out = '';
+  for (let i = 0; i < copies; i++) out += `<span class="run">${html}</span>`;
+  t.innerHTML = out;
+  t.style.setProperty('--ticker-shift', runW + 'px');
+  t.style.setProperty('--ticker-dur', (runW / TICKER_SPEED_PX_S) + 's');
+  void t.offsetWidth;        // force the layout before the animation is restored
+  t.style.animation = '';
 }
 
 /* ── the director: decide, then cut ─────────────────────────────────────── */
@@ -881,11 +923,17 @@ async function goStorm(target, reason) {
     return;
   }
 
+  // Nearest is not the same as near enough. Beyond SITE_RANGE_KM the beam is
+  // over the top of the storm and the warned county is off the edge of the
+  // picture — which looked exactly like a broken radar feed: right site name,
+  // recent scan, empty map. The tour has checked this since it was written.
   const picks = (FORCED_SITE
     ? [{ id: FORCED_SITE, name: FORCED_SITE, km: 0 }]
-    : nearestSites(sites, centre[1], centre[0], 4)).filter((site) => !vetoed(site.id));
+    : nearestSites(sites, centre[1], centre[0], 4))
+    .filter((site) => !vetoed(site.id))
+    .filter((site) => FORCED_SITE || site.km <= SITE_RANGE_KM);
   if (!picks.length) {
-    setVeto(target.id, 'no usable radar within range');
+    setVeto(target.id, 'no radar close enough to see it');
     if (onSite()) await goNational('no radar for the warned storm');
     return;
   }
@@ -906,8 +954,19 @@ async function goStorm(target, reason) {
     onAir = { kind: 'warning', id: target.id, specs: target.specs, geometry: target.geometry, site: null };
     paintWarnings();         // marks the on-air box
     renderPanel();
-    moveCamera(() => map.fitBounds(box, { padding: pad(STORM_PAD), maxZoom: 10.5, duration: 1600, bearing: 0, pitch: 0 }),
-      'the warned area');
+    /*
+     * If the framed move is refused — it needs room for the panel, and a
+     * sliver of a polygon can leave none — take the plain centred one, which
+     * has no padding to run out of room for. Ignoring the refusal left the
+     * camera wherever the last shot had put it while the panel announced this
+     * one: a chip naming one radar over a map of somewhere else entirely,
+     * with nothing on screen because the radar was drawn outside the view.
+     */
+    if (!moveCamera(() => map.fitBounds(box, { padding: pad(STORM_PAD), maxZoom: 10.5, duration: 1600, bearing: 0, pitch: 0 }),
+      'the warned area')) {
+      moveCamera(() => map.easeTo({ center: centre, zoom: TOUR_ZOOM, duration: 1200, bearing: 0, pitch: 0 }),
+        'the warned area, centred instead of framed');
+    }
     got = await loading;
   } finally {
     cutting = false;         // whatever happened, the director must run again
@@ -932,9 +991,11 @@ async function goStorm(target, reason) {
 async function goWatch(target, reason) {
   const picks = (FORCED_SITE
     ? [{ id: FORCED_SITE, name: FORCED_SITE, km: 0 }]
-    : nearestSites(sites, target.centre[1], target.centre[0], 4)).filter((site) => !vetoed(site.id));
+    : nearestSites(sites, target.centre[1], target.centre[0], 4))
+    .filter((site) => !vetoed(site.id))
+    .filter((site) => FORCED_SITE || site.km <= SITE_RANGE_KM);
   if (!picks.length) {
-    setVeto(target.id, 'no usable radar inside that watch');
+    setVeto(target.id, 'no radar close enough to that watch');
     return;
   }
   console.log(`[broadcast] standing by on ${target.specs.event} — ${target.specs.counties} `
@@ -1386,8 +1447,49 @@ map.on('load', async () => {
    * takes this code with it — and a crash page streams just as happily as a
    * radar map. So the encoder watches instead, and this is what it watches.
    */
-  const beat = () => fetch('/broadcast/alive', { method: 'POST', cache: 'no-store' })
-    .catch(() => null);
+  /*
+   * The heartbeat carries the shot with it.
+   *
+   * There is no console to read on a box with no screen, and working out why
+   * the map was empty meant guessing at a screenshot. All of this is known
+   * here, and the beat was already going out every thirty seconds.
+   */
+  const shotReport = () => {
+    const st = (typeof siteRadarState === 'function') ? siteRadarState() : {};
+    const lp = (typeof loopState === 'function') ? loopState() : {};
+    const t = frameTime();
+    const c = map.getCenter();
+    const counts = ['tor', 'svr', 'ffw', 'watch']
+      .map((k) => k + ':' + (document.getElementById('c_' + k) || {}).textContent)
+      .join(' ');
+    return {
+      mode,
+      shot: onAir ? onAir.kind : null,
+      site: onAir && onAir.site ? onAir.site.id : null,
+      event: onAir && onAir.specs ? onAir.specs.event : null,
+      where: onAir && onAir.specs ? onAir.specs.counties : null,
+      radarLayer: hasRadarLayer(),
+      scanLoaded: !!st.loaded,
+      scanAgeSeconds: t ? Math.round((Date.now() - t) / 1000) : null,
+      loopFrames: lp.playing ? lp.frames : 0,
+      lat: c ? c.lat : null,
+      lon: c ? c.lng : null,
+      zoom: map.getZoom(),
+      warnings: counts,
+    };
+  };
+
+  const beat = () => {
+    let body = {};
+    // A report that cannot be built must not stop the heartbeat: the beat is
+    // what keeps the encoder from restarting, and it matters more than this.
+    try { body = shotReport(); } catch (e) { body = { mode: 'unknown' }; }
+    return fetch('/broadcast/alive', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+  };
   beat();
   setInterval(beat, 30000);
 

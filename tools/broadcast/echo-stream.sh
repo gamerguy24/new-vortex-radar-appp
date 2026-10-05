@@ -163,6 +163,29 @@ diagnose_report() {
   ANS="$(curl -fsS --max-time 5 "$ALIVE_URL" 2>/dev/null)"
   echo "   $ALIVE_URL"
   echo "   -> ${ANS:-<no answer: is the app new enough to have /broadcast/alive?>}"
+
+  # The page reports what it is showing, which is the difference between "the
+  # stream is running" and "the stream is showing the right thing". Printed
+  # one field per line, because the one that matters is never the same one.
+  # One field at a time, on the whole line. Splitting on commas would have cut
+  # "Franklin, FL" in half — a value with a comma in it, and the very field
+  # somebody runs this to read.
+  shotfield() {
+    V="$(echo "$ANS" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p" | head -1)"
+    [ -n "$V" ] || V="$(echo "$ANS" | sed -E -n "s/.*\"$1\":([^,}\"]*).*/\1/p" | head -1)"
+    echo "$V"
+  }
+
+  # "shot":{ and not just "shot": — a server that has never had a beat replies
+  # with shot:null, which would otherwise print a block of empty fields.
+  if echo "$ANS" | grep -q '"shot":{'; then
+    echo
+    echo "   on air:"
+    for k in mode shot site event where radarLayer scanLoaded scanAgeSeconds \
+             loopFrames lat lon zoom warnings; do
+      printf "     %-15s %s\n" "$k" "$(shotfield "$k")"
+    done
+  fi
   D_AGE="$(echo "$ANS" | sed -n 's/.*"ageSeconds":\([0-9]*\).*/\1/p')"
 
   echo

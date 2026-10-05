@@ -296,6 +296,17 @@ export function kmBetween(lat1, lon1, lat2, lon2) {
  * Only WSR-88D: the TDWRs in the same list are Level 3 only, and asking the
  * Level 2 archive for one returns nothing at all.
  */
+/*
+ * How far a WSR-88D can usefully see.
+ *
+ * Base reflectivity runs to 460 km, but the 0.5 degree beam is far above the
+ * storm by then and the picture is not worth cutting to. 230 km is the range
+ * the tour has always used; the warning path did not check at all, and would
+ * frame a warned county on a radar that cannot see it — a correct site name,
+ * a valid recent scan, and an empty map.
+ */
+export const SITE_RANGE_KM = 230;
+
 export function nearestSites(sites, lat, lon, limit = 4) {
   const out = [];
   for (const id of Object.keys(sites || {})) {
@@ -516,8 +527,8 @@ export function quietCandidates(hotspots, sites) {
   for (const h of hotspots || []) {
     if (!h || !Number.isFinite(h.lat) || !Number.isFinite(h.lon)) continue;
     const near = nearestSites(sites, h.lat, h.lon, 1)[0];
-    // Beyond ~230 km the site cannot see it, so there is nothing to cut to.
-    if (!near || near.km > 230) continue;
+    // Beyond this the site cannot see it, so there is nothing to cut to.
+    if (!near || near.km > SITE_RANGE_KM) continue;
     if (used.has(near.id)) continue;      // one shot per radar, not per cell
     used.add(near.id);
     out.push({
