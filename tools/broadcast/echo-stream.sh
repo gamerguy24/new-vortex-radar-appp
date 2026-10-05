@@ -350,6 +350,34 @@ FF_PID=$!
 
 echo "streaming (pid $FF_PID) — systemd will restart this if it stops"
 echo "  keyframes every $(( GOP / FPS ))s (scenecut off), audio aac 44.1k stereo"
+# ── watch the picture, not just the encoder ─────────────────────────────────
+# ffmpeg will happily stream a browser crash page for hours: a dead tab is a
+# screen like any other, and that is exactly what went to air. So the page
+# reports in every thirty seconds and this checks that it is still doing so.
+# Anything that stops it — a crashed renderer, a hung tab, the browser killed
+# for memory — ends this run, and systemd starts a clean one.
+ALIVE_URL="${URL%%\?*}"
+ALIVE_URL="${ALIVE_URL%/}/alive"
+STALE_AFTER=180
+
+while kill -0 "$FF_PID" 2>/dev/null; do
+  sleep 30
+
+  if ! kill -0 "$CHROME_PID" 2>/dev/null; then
+    echo "the browser exited — restarting the stream"
+    exit 1
+  fi
+
+  AGE="$(curl -fsS --max-time 5 "$ALIVE_URL" 2>/dev/null \
+    | sed -n 's/.*"ageSeconds":\([0-9]*\).*/\1/p')"
+  # No answer at all means the app is down, which is its own service's problem
+  # to solve; only a page that has genuinely gone quiet is acted on here.
+  if [ -n "$AGE" ] && [ "$AGE" -gt "$STALE_AFTER" ]; then
+    echo "the page has not checked in for ${AGE}s (crashed or hung) — restarting"
+    exit 1
+  fi
+done
+
 wait "$FF_PID"
 EXIT=$?
 echo "ffmpeg exited ($EXIT)"

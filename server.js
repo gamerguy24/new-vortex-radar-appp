@@ -2423,6 +2423,29 @@ app.use('/broadcast', (req, res, next) => {
     next();
 });
 app.get(['/broadcast', '/broadcast/'], sendFile(path.join('broadcast', 'index.html')));
+
+/*
+ * Liveness for the broadcast page, for the encoder to watch.
+ *
+ * The page pings this; the encoder asks how long ago. That is deliberately
+ * outside the page: a renderer crash takes the page with it, so nothing
+ * running inside it can report its own death. The symptom this exists for is
+ * a Chromium crash page being streamed to YouTube for hours.
+ *
+ * Memory only. It is a heartbeat, not a record.
+ */
+let _broadcastAliveAt = 0;
+app.post('/broadcast/alive', (req, res) => {
+    _broadcastAliveAt = Date.now();
+    res.set('Cache-Control', 'no-store').json({ ok: true });
+});
+app.get('/broadcast/alive', (req, res) => {
+    const ageMs = _broadcastAliveAt ? Date.now() - _broadcastAliveAt : null;
+    res.set('Cache-Control', 'no-store').json({
+        seen: !!_broadcastAliveAt,
+        ageSeconds: ageMs === null ? null : Math.round(ageMs / 1000),
+    });
+});
 // The three front-end modules that page imports — named one by one rather than
 // opening /components, so nothing else becomes public by accident.
 for (const f of ['mrms.js', 'mrms_products.js', 'palettes.js', 'basemap_palette.json']) {

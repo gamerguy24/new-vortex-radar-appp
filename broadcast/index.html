@@ -1378,6 +1378,19 @@ map.on('load', async () => {
     setTimeout(() => reload('MRMS failed to start'), 60000);
   }
 
+  /*
+   * A heartbeat the ENCODER can see.
+   *
+   * Everything else here watches for ways this page can go wrong while it is
+   * still running. It cannot watch for the renderer crashing, because that
+   * takes this code with it — and a crash page streams just as happily as a
+   * radar map. So the encoder watches instead, and this is what it watches.
+   */
+  const beat = () => fetch('/broadcast/alive', { method: 'POST', cache: 'no-store' })
+    .catch(() => null);
+  beat();
+  setInterval(beat, 30000);
+
   loadAlerts();
   setInterval(loadAlerts, ALERTS_MS);
 
