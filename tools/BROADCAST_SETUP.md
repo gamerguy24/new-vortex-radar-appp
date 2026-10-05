@@ -9,6 +9,68 @@ can be off.
 Xvfb (virtual screen) → Chromium (kiosk, /broadcast) → FFmpeg (x11grab) → YouTube RTMP
 ```
 
+## 0. Which machine runs this
+
+The encoder is the expensive part: a browser rendering a map in software, the
+Level 2 decoding, and ffmpeg between them, continuously. That wants a couple
+of cores and a few gigabytes and never stops wanting them — which is exactly
+what you do not want sharing a box with the app your users are on.
+
+On its own machine, one command does the whole thing:
+
+```bash
+git clone <your repo> ~/VortexRadar && cd ~/VortexRadar
+scp your-main-box:/path/to/.env .env
+sudo bash tools/broadcast/provision.sh
+```
+
+That installs Xvfb, ffmpeg, fonts, a browser and Node; adds swap on a small
+box; writes both systemd units with the right user and paths; starts the app;
+and proves the broadcast page is actually being served before it hands back.
+It will not invent a `.env` — copy yours over first, it holds the stream keys.
+
+Sizing, from what the pipeline actually does:
+
+| | |
+|---|---|
+| CPU | ~2 cores for x264 1080p30 veryfast, ~1-1.5 for the browser. **3-4 vCPU** comfortable; 2 is the floor |
+| RAM | **4 GB**. 2 GB works with `?loop=2`; under 2 GB the browser alone will not fit |
+| Upload | 4.5 Mbps per destination. YouTube + Twitch together is ~9 Mbps sustained, about **2.9 TB/month** |
+
+That bandwidth figure is the one that catches people out — check the transfer
+allowance before the price. A host with 20 TB included and a host with 1 TB
+included are not the same product at the same price.
+
+### Two things provision.sh does that are easy to miss
+
+**It runs the app on the broadcast node too, and binds it to 127.0.0.1.**
+Radar volumes reach the browser through the app's own relay, because the
+NEXRAD bucket refuses a listing request from a browser origin. Point this node
+at the app on your main box and every scan travels S3 → your box → here, and
+your bandwidth goes *up*. With its own copy it talks to S3 directly. And since
+that copy is your whole application — admin pages included — it is pinned to
+localhost: nothing on this node needs a port open to the internet.
+
+**It sizes the loop to the box.** Each loop frame is a radar volume decoded in
+the browser, and that is the biggest thing this page costs in memory. Under
+4 GB it writes `?loop=2` into `BROADCAST_URL` rather than letting a five-frame
+loop find the OOM killer for you.
+
+### What cannot host this
+
+Serverless platforms cannot: Cloudflare Workers, Lambda, Deno Deploy and the
+rest run request-scoped code with no processes and no filesystem, so there is
+nowhere for Chromium or ffmpeg to live. Managed headless-browser services
+(including Cloudflare Browser Rendering) are built for screenshots and
+scraping — they give you a page, not a video stream, and the sessions are not
+meant to stay open for weeks.
+
+Restreaming services — Cloudflare Stream Live, Restream, Castr — take **one**
+RTMP push and fan it out to YouTube and Twitch for you. That halves your
+upload and is worth having, but it relays a stream you are already producing.
+It does not remove the machine. See **Twitch** below for how to point this at
+one (`CF_STREAM_KEY`, or `EXTRA_RTMP_URLS` for anything else).
+
 ## 1. Install what it needs
 
 ```bash
