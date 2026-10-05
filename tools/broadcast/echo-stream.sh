@@ -186,6 +186,12 @@ done
 #              If the bars go live, the ingest, the key and the encoder
 #              settings are all fine and the problem is the page. If the bars
 #              also sit on "Preparing stream", it is not the page.
+#   --diagnose why the picture is black. Says whether the browser is running,
+#              whether the PAGE is running — which a black screen cannot tell
+#              you, and which separates "never loaded" from "loaded, painted
+#              nothing" — how bright the screen actually is, what the browser
+#              complained about, and whether the kernel has been killing
+#              things for memory.
 #   --probe    record ten seconds of what the browser is actually showing and
 #              report the codec, size, frame rate and keyframe spacing of it.
 MODE="${1:-run}"
@@ -263,6 +269,11 @@ XVFB_PID=$!
 sleep 2
 kill -0 "$XVFB_PID" 2>/dev/null || { echo "Xvfb failed to start"; exit 1; }
 
+# Where the page reports in. Derived once: both the watchdog and --diagnose
+# ask the same question of it.
+ALIVE_URL="${URL%%\?*}"
+ALIVE_URL="${ALIVE_URL%/}/alive"
+
 # ── wait for the page to be servable, so we never air a connection error ────
 for i in $(seq 1 60); do
   if curl -fsS -o /dev/null --max-time 3 "$URL"; then break; fi
@@ -283,6 +294,12 @@ done
 PROFILE="${HOME:-/tmp}/.cache/echo-broadcast-profile"
 rm -rf "$PROFILE"
 mkdir -p "$PROFILE"
+
+# Keep what the browser says. This went to /dev/null for the whole of this
+# script's life, and the one time it mattered — a black picture on a box with
+# no screen — the only account of what went wrong had been thrown away.
+# Error level only, and truncated each run, so it cannot grow without bound.
+BROWSER_LOG="${HOME:-/tmp}/.cache/echo-broadcast-browser.log"
 DISPLAY="$DISP" "$CHROME" \
   --kiosk --window-size="${W},${H}" --window-position=0,0 \
   --user-data-dir="$PROFILE" \
@@ -292,9 +309,61 @@ DISPLAY="$DISP" "$CHROME" \
   --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader \
   --autoplay-policy=no-user-gesture-required \
   --hide-scrollbars --disable-notifications \
-  "$URL" >/dev/null 2>&1 &
+  --enable-logging=stderr --log-level=2 \
+  "$URL" >"$BROWSER_LOG" 2>&1 &
 CHROME_PID=$!
 sleep 12   # first paint: style, MRMS fetch, the CONUS grid
+
+if [ "$MODE" = "--diagnose" ]; then
+  echo
+  echo "── is the browser running? ─────────────────────────────────────────"
+  if kill -0 "$CHROME_PID" 2>/dev/null; then
+    echo "   yes (pid $CHROME_PID)"
+  else
+    echo "   NO — it exited within twelve seconds of starting."
+  fi
+
+  echo
+  echo "── is the PAGE running? ────────────────────────────────────────────"
+  # The decisive test. A black screen looks identical whether the browser
+  # never loaded the page or loaded it and then painted nothing, and those
+  # two have nothing in common to fix. The heartbeat tells them apart: the
+  # page posts it itself, so an answer means the page is alive.
+  echo "   waiting 35s for a heartbeat (the page posts one every 30)…"
+  sleep 35
+  ANS="$(curl -fsS --max-time 5 "$ALIVE_URL" 2>/dev/null)"
+  echo "   $ALIVE_URL"
+  echo "   -> ${ANS:-<no answer: is the app new enough to have /broadcast/alive?>}"
+
+  echo
+  echo "── what is actually on the screen? ─────────────────────────────────"
+  SHOT="${HOME:-/tmp}/echo-broadcast-frame.png"
+  ffmpeg -hide_banner -loglevel error -y -f x11grab -video_size "${W}x${H}" \
+    -draw_mouse 0 -i "$DISP" -frames:v 1 "$SHOT" 2>/dev/null
+  YAVG="$(ffmpeg -hide_banner -v error -i "$SHOT" \
+    -vf signalstats,metadata=print:file=- -f null - 2>/dev/null \
+    | sed -n "s/.*YAVG=//p" | head -1)"
+  echo "   a still frame is saved at $SHOT"
+  echo "   average brightness: ${YAVG:-unknown}   (0 = entirely black)"
+
+  echo
+  echo "── what the browser complained about ───────────────────────────────"
+  if [ -s "$BROWSER_LOG" ]; then
+    tail -40 "$BROWSER_LOG" | sed "s/^/   /"
+  else
+    echo "   (it logged nothing, which is what a happy browser does)"
+  fi
+
+  echo
+  echo "── memory ──────────────────────────────────────────────────────────"
+  free -m 2>/dev/null | sed "s/^/   /"
+  KILLED="$(journalctl -k --no-pager 2>/dev/null | grep -i "killed process" | tail -3)"
+  if [ -n "$KILLED" ]; then
+    echo "   the kernel has been killing things for memory:"
+    echo "$KILLED" | sed "s/^/     /"
+  fi
+  exit 0
+fi
 
 if [ "$MODE" = "--probe" ]; then
   OUT="$(mktemp -d)/probe.mp4"
@@ -356,8 +425,6 @@ echo "  keyframes every $(( GOP / FPS ))s (scenecut off), audio aac 44.1k stereo
 # reports in every thirty seconds and this checks that it is still doing so.
 # Anything that stops it — a crashed renderer, a hung tab, the browser killed
 # for memory — ends this run, and systemd starts a clean one.
-ALIVE_URL="${URL%%\?*}"
-ALIVE_URL="${ALIVE_URL%/}/alive"
 STALE_AFTER=180
 
 while kill -0 "$FF_PID" 2>/dev/null; do
