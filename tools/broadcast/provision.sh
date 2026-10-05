@@ -250,13 +250,31 @@ elif [ "$ARCH" = "amd64" ]; then
   apt-get install -y -qq google-chrome-stable >/dev/null
   ok "google-chrome-stable"
 else
-  apt-get install -y -qq chromium >/dev/null 2>&1 || apt-get install -y -qq chromium-browser >/dev/null
+  # No Chrome .deb for this architecture, so: chromium. On Ubuntu that package
+  # is a shim for the snap, and going through snapd directly is both faster to
+  # explain and the only way to see a 150 MB download happening.
+  if command -v snap >/dev/null 2>&1; then
+    echo "   waiting for snapd to finish first-boot seeding (can take a few minutes)…"
+    snap wait system seed.loaded || true
+    echo "   installing the chromium snap — progress below"
+    snap install chromium || true
+  fi
+  if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
+    pkg_install chromium || pkg_install chromium-browser || true
+  fi
+  command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 \
+    || die "no chromium could be installed for $ARCH.
+   Try by hand to see why:   sudo snap install chromium"
   ok "chromium ($ARCH)"
 fi
 
 # Does it actually run? A snap that cannot start, or a chromium missing a
 # library, looks exactly like a working install until the stream is black.
-BROWSER="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+# /snap/bin is not on root's secure_path, so a snap-installed browser is
+# invisible to `command -v` under sudo even though it is perfectly installed.
+PATH="$PATH:/snap/bin"
+BROWSER="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+[ -n "$BROWSER" ] || die "a browser was installed but cannot be found on PATH (checked /snap/bin too)."
 SMOKE="/home/$RUN_USER/.cache/echo-provision-smoke"
 rm -rf "$SMOKE"; mkdir -p "$SMOKE"; chown -R "$RUN_USER" "$SMOKE"
 if sudo -u "$RUN_USER" env HOME="/home/$RUN_USER" timeout 90 xvfb-run -a "$BROWSER" \
