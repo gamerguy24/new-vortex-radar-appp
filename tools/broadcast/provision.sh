@@ -452,9 +452,19 @@ sed -e "s|^User=.*|User=$RUN_USER|" \
     "$ROOT/tools/broadcast/echo-stream.service" > /etc/systemd/system/echo-stream.service
 
 systemctl daemon-reload
-systemctl enable echo-radar >/dev/null 2>&1
-systemctl enable echo-stream >/dev/null 2>&1
-ok "echo-radar and echo-stream installed and enabled"
+# Enabled is checked, not assumed. A unit that fails to enable here is a
+# channel that stays dead after the next reboot, and the failure is silent at
+# precisely the moment nobody is watching.
+for unit in echo-radar echo-stream; do
+  systemctl enable "$unit" >/dev/null 2>&1 || true
+  if [ "$(systemctl is-enabled "$unit" 2>/dev/null)" = "enabled" ]; then
+    ok "$unit will start at boot"
+  else
+    warn "$unit is NOT enabled — it will not come back after a reboot"
+    echo "   enable it by hand and check why:"
+    echo "     sudo systemctl enable $unit"
+  fi
+done
 
 # ── start the app and prove it serves the page ──────────────────────────────
 say "Starting the app"
