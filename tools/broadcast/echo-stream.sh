@@ -87,17 +87,26 @@ DISP="${STREAM_DISPLAY:-:99}"
 ALIVE_URL="${URL%%\?*}"
 ALIVE_URL="${ALIVE_URL%/}/alive"
 
+# ── where this keeps its things ─────────────────────────────────────────────
+# Plainly named, and NOT hidden. Snap confinement gives a snap its own $HOME
+# but only the non-hidden parts of it, so a browser profile under ~/.cache is
+# refused — as root, where that looks like confinement, and as the user who
+# owns the directory, where it looks impossible. It cost an evening of black
+# stream to work out, and it is one dot.
+WORKDIR="${HOME:-/tmp}/echo-broadcast"
+mkdir -p "$WORKDIR"
+
 # Keep what the browser says. This went to /dev/null for the whole of this
 # script's life, and the one time it mattered — a black picture on a box with
 # no screen — the only account of what went wrong had been thrown away.
 # Error level only, and truncated each run, so it cannot grow without bound.
-BROWSER_LOG="${HOME:-/tmp}/.cache/echo-broadcast-browser.log"
+BROWSER_LOG="$WORKDIR/browser.log"
 
 # ── looking at the picture ──────────────────────────────────────────────────
 # Average luma of one frame off the virtual screen, 0-255. The page is a dark
 # theme, so a good picture still reads low — but not zero, which is the whole
 # point: zero means nothing was drawn at all.
-BLACK_SHOT="${HOME:-/tmp}/.cache/echo-broadcast-check.png"
+BLACK_SHOT="$WORKDIR/screen.png"
 screen_brightness() {
   ffmpeg -hide_banner -loglevel error -y -f x11grab -video_size "${W}x${H}" \
     -draw_mouse 0 -i "$DISP" -frames:v 1 "$BLACK_SHOT" 2>/dev/null || return 1
@@ -388,15 +397,15 @@ done
 # directory created with mktemp is then invisible to the browser that is
 # supposed to use it, and it fails in a way that looks nothing like the cause.
 # HOME is readable under confinement and works everywhere else unchanged.
-PROFILE="${HOME:-/tmp}/.cache/echo-broadcast-profile"
+PROFILE="$WORKDIR/profile"
 rm -rf "$PROFILE"
 mkdir -p "$PROFILE"
 
 # Chromium wants a runtime directory, and tries to create /run/user/<uid> if
 # it has none — which fails under sudo and for any user without a login
-# session. Handing it one inside the profile removes a failure that has
-# nothing to do with streaming.
-export XDG_RUNTIME_DIR="$PROFILE/run"
+# session. Handing it one removes a failure that has nothing to do with
+# streaming. Here too: not hidden, or a confined browser cannot use it.
+export XDG_RUNTIME_DIR="$WORKDIR/run"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 
@@ -462,11 +471,13 @@ if ! kill -0 "$CHROME_PID" 2>/dev/null; then
   # /root by its confinement whoever runs it, so under sudo it cannot create
   # its own profile and aborts — and "permission denied as root" is confusing
   # enough to be worth spelling out where it happens.
-  if [ "$(id -u)" = "0" ] && grep -qi "permission denied" "$BROWSER_LOG" 2>/dev/null; then
+  if grep -qi "permission denied" "$BROWSER_LOG" 2>/dev/null; then
     echo
-    echo "This is running as root. A snap-packaged browser cannot reach /root —"
-    echo "its confinement denies it — so it cannot create a profile there and"
-    echo "gives up. Run this as the user the service runs as, without sudo."
+    echo "A permission error on $WORKDIR, from a browser running as $(id -un)."
+    echo "If this is a snap (it says which, above), check nothing in that path"
+    echo "is hidden: confinement allows a snap its own \$HOME, but refuses"
+    echo "anything under a dot directory, and reports it as permission denied"
+    echo "even to the user who owns it."
   fi
   exit 1
 fi

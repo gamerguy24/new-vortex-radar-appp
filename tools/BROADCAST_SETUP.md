@@ -406,13 +406,13 @@ look at the screen yourself:
 
 ```bash
 # copy it to your own machine and open it
-scp ubuntu@your-box:~/.cache/echo-broadcast-check.png .
+scp ubuntu@your-box:~/echo-broadcast/screen.png .
 ```
 
 Read the result like this:
 
 * **No browser process** — it crashed or was killed. The browser log at
-  `~/.cache/echo-broadcast-browser.log` says why, and the memory section says
+  `~/echo-broadcast/browser.log` says why, and the memory section says
   whether the kernel did it. On a small box, lower `STREAM_WIDTH`/
   `STREAM_HEIGHT` to 1280×720 and `?loop=2` on `BROADCAST_URL`.
 * **Browser running, no heartbeat** — the browser is up and the page is not.
@@ -422,6 +422,24 @@ Read the result like this:
 * **Browser running, heartbeat fine, brightness 0** — the page is alive and
   drawing nothing, which almost always means WebGL failed and the map never
   initialised. The browser log will say so.
+
+### If the browser log says "Permission denied"
+
+On a snap-packaged browser — `--diagnose` tells you whether yours is one —
+this is almost never really a permissions problem. Snap confinement gives a
+snap its own `$HOME`, but only the parts of it that are **not hidden**.
+Anything under a dot directory is refused, and it is reported as permission
+denied even to the user who owns it, and even to root:
+
+```
+Failed to create /home/ubuntu/.cache/echo-broadcast-profile/SingletonLock:
+Permission denied (13)
+Aborting now to avoid profile corruption.
+```
+
+Everything this script gives the browser now lives in `~/echo-broadcast/`,
+which is visible and therefore allowed. If you move any of it by hand, keep
+it out of dot directories.
 
 The encoder now checks this itself, so it should not be possible to find a
 black screen that has been broadcasting for hours: it refuses to go live with
