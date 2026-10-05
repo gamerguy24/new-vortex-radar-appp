@@ -131,6 +131,25 @@ else
   ok "chromium ($ARCH)"
 fi
 
+# Does it actually run? A snap that cannot start, or a chromium missing a
+# library, looks exactly like a working install until the stream is black.
+BROWSER="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+SMOKE="/home/$RUN_USER/.cache/echo-provision-smoke"
+rm -rf "$SMOKE"; mkdir -p "$SMOKE"; chown -R "$RUN_USER" "$SMOKE"
+if sudo -u "$RUN_USER" env HOME="/home/$RUN_USER" timeout 90 xvfb-run -a "$BROWSER" \
+     --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+     --user-data-dir="$SMOKE/profile" --screenshot="$SMOKE/shot.png" \
+     --window-size=800,600 about:blank >/dev/null 2>&1 \
+   && [ -s "$SMOKE/shot.png" ]; then
+  ok "the browser renders ($(basename "$BROWSER"))"
+  rm -rf "$SMOKE"
+else
+  warn "$(basename "$BROWSER") did not produce a screenshot."
+  warn "On Ubuntu ARM this is usually snap confinement. Try:"
+  warn "  sudo snap install chromium   # then re-run this script"
+  warn "Continuing, but the stream will be black until the browser runs."
+fi
+
 # ── node ────────────────────────────────────────────────────────────────────
 say "Installing Node"
 NODE_OK=0
@@ -227,6 +246,7 @@ Wants=network-online.target
 Type=simple
 User=$RUN_USER
 WorkingDirectory=$ROOT
+Environment=HOME=/home/$RUN_USER
 ExecStart=/usr/bin/env node server.js
 Restart=always
 RestartSec=10
@@ -237,8 +257,10 @@ StandardError=journal
 WantedBy=multi-user.target
 UNIT
 
+# HOME is added explicitly: a confined snap browser needs one, and a unit
+# that merely inherits it is a unit that works until it does not.
 sed -e "s|^User=.*|User=$RUN_USER|" \
-    -e "s|^WorkingDirectory=.*|WorkingDirectory=$ROOT|" \
+    -e "s|^WorkingDirectory=.*|WorkingDirectory=$ROOT\nEnvironment=HOME=/home/$RUN_USER|" \
     -e "s|^After=.*|After=network-online.target echo-radar.service|" \
     -e "s|^Wants=.*|Wants=network-online.target echo-radar.service|" \
     "$ROOT/tools/broadcast/echo-stream.service" > /etc/systemd/system/echo-stream.service
