@@ -232,7 +232,16 @@ done
 # ── the browser ─────────────────────────────────────────────────────────────
 # SwiftShader because the box has no GPU: Mapbox needs WebGL, and without this
 # the page renders a blank canvas. --kiosk hides every scrap of browser chrome.
-PROFILE="$(mktemp -d)"
+# The browser profile lives under HOME, not in /tmp.
+#
+# On Ubuntu ARM — which is what the free Oracle tier gives you — chromium is a
+# snap, and snap confinement hands each snap its OWN private /tmp. A profile
+# directory created with mktemp is then invisible to the browser that is
+# supposed to use it, and it fails in a way that looks nothing like the cause.
+# HOME is readable under confinement and works everywhere else unchanged.
+PROFILE="${HOME:-/tmp}/.cache/echo-broadcast-profile"
+rm -rf "$PROFILE"
+mkdir -p "$PROFILE"
 DISPLAY="$DISP" "$CHROME" \
   --kiosk --window-size="${W},${H}" --window-position=0,0 \
   --user-data-dir="$PROFILE" \

@@ -56,6 +56,53 @@ the browser, and that is the biggest thing this page costs in memory. Under
 4 GB it writes `?loop=2` into `BROADCAST_URL` rather than letting a five-frame
 loop find the OOM killer for you.
 
+### Running it for nothing: Oracle Cloud Always Free
+
+One free tier can actually do this, and it is not close. Oracle's **Ampere A1**
+shape is free *forever* — not a twelve-month trial — and the allowance is
+**4 ARM cores, 24 GB of RAM and 10 TB of egress a month**. The two feeds need
+about two cores, 4 GB and 3 TB, so there is room to spare in every direction.
+
+```bash
+# on the instance, as the default ubuntu user
+sudo apt-get update && sudo apt-get install -y git
+git clone <your repo> ~/VortexRadar && cd ~/VortexRadar
+# copy .env across from your main box (it holds the stream keys)
+sudo bash tools/broadcast/provision.sh
+```
+
+`provision.sh` already knows about ARM: Chrome has no arm64 build, so it
+installs Chromium from apt instead.
+
+**What to actually click:** Compute → Instances → Create. Change the shape to
+**Ampere / VM.Standard.A1.Flex**, set it to **2 OCPU and 12 GB** (half the free
+allowance — a smaller ask is likelier to be granted, and it is still three
+times what this needs). Image: **Ubuntu 22.04 or 24.04**. Save the SSH key it
+gives you. You do not need to open any ports: the app binds to localhost and
+the stream only makes outbound connections.
+
+**The one real catch.** Ampere capacity is in demand and instance creation
+often fails with *"Out of host capacity."* It is not a billing problem and not
+your account. What works:
+
+* try a different **availability domain** in the same region, then a different
+  region — some are far emptier than others;
+* ask for less (1 OCPU / 6 GB will still run this) — small requests get placed
+  when large ones do not;
+* retry at a quiet hour. Capacity frees up constantly.
+
+Two things to know so it stays free: a card is required for identity
+verification but Always Free resources are not billed against it, and you must
+stay inside the free allowance — 4 OCPU and 24 GB of A1 **in total** across
+every instance on the account. Keep the account on the Always Free plan rather
+than upgrading to pay-as-you-go and nothing can quietly start charging.
+
+**If you cannot get an instance**, the next cheapest that comfortably fits is
+Hetzner at roughly $5 a month, and the honest zero-cost alternative is to keep
+it on the box you already have with a shorter loop (`?loop=2` in
+`BROADCAST_URL`) — each loop frame is a radar volume decoded in the browser,
+and that is the single biggest thing this page costs in memory.
+
 ### What cannot host this
 
 Serverless platforms cannot: Cloudflare Workers, Lambda, Deno Deploy and the
