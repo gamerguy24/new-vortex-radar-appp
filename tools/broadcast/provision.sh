@@ -123,6 +123,7 @@ export NEEDRESTART_SUSPEND=1
 # and silence for minutes is indistinguishable from a hang — which is exactly
 # how this was first reported.
 pkg_install() {
+  wait_for_apt
   case "$PKG" in
     apt) apt-get install -y \
            -o Dpkg::Options::=--force-confold \
@@ -132,7 +133,46 @@ pkg_install() {
   esac
 }
 
+# Is something else mid-install? fuser is the precise answer but lives in
+# psmisc, which a minimal image may not carry — and a missing command returns
+# non-zero, which would have turned this whole wait into a silent no-op.
+lock_held() {
+  if command -v fuser >/dev/null 2>&1; then
+    fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  pgrep -f unattended-upgrade >/dev/null 2>&1 && return 0
+  pgrep -x dpkg >/dev/null 2>&1 && return 0
+  return 1
+}
+
+wait_for_apt() {
+  [ "$PKG" = "apt" ] || return 0
+  local waited=0 holder
+  while lock_held; do
+    if [ "$waited" = "0" ]; then
+      holder="$(pgrep -a -f "unattended-upgrade|apt-get|dpkg" 2>/dev/null | head -1 | cut -d" " -f2-)"
+      warn "another package manager holds the lock${holder:+ ($holder)} — waiting."
+      warn "A fresh instance runs its own updates first; this is normal and finishes."
+    fi
+    sleep 5
+    waited=$(( waited + 5 ))
+    [ $(( waited % 30 )) = 0 ] && printf "   still waiting (%ss)\n" "$waited"
+    if [ "$waited" -ge 900 ]; then
+      die "the package lock has been held for 15 minutes.
+   Something is wedged rather than busy. In another session:
+     sudo systemctl stop unattended-upgrades
+     sudo pkill -f unattended-upgrade
+     sudo dpkg --configure -a
+   then run this again."
+    fi
+  done
+  [ "$waited" -gt 0 ] && ok "lock released after ${waited}s"
+  return 0
+}
+
 if [ "$PKG" = "apt" ]; then
+  wait_for_apt
   apt-get update
 else
   # EPEL carries the pieces Red Hat leaves out. Oracle Linux ships its own
