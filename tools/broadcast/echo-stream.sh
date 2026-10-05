@@ -131,11 +131,16 @@ diagnose_report() {
   echo
   echo "── is the browser running? ─────────────────────────────────────────"
   BPID="${CHROME_PID:-}"
-  [ -n "$BPID" ] || BPID="$(pgrep -f "echo-broadcast-profile" 2>/dev/null | head -1)"
+  # Matched on the directory this script hands the browser, so that renaming
+  # it cannot quietly turn this into a report of a browser that is not there.
+  [ -n "$BPID" ] || BPID="$(pgrep -f "user-data-dir=$WORKDIR" 2>/dev/null | head -1)"
+  [ -n "$BPID" ] || BPID="$(pgrep -f "$WORKDIR" 2>/dev/null | head -1)"
   if [ -n "$BPID" ] && kill -0 "$BPID" 2>/dev/null; then
     echo "   yes (pid $BPID)"
+    D_BROWSER=1
   else
     echo "   NO — there is no browser process, which on its own explains a black screen."
+    D_BROWSER=
   fi
   # Which browser it is changes what the answer can be: a snap is confined and
   # cannot reach /root, a .deb is not and can.
@@ -158,6 +163,7 @@ diagnose_report() {
   ANS="$(curl -fsS --max-time 5 "$ALIVE_URL" 2>/dev/null)"
   echo "   $ALIVE_URL"
   echo "   -> ${ANS:-<no answer: is the app new enough to have /broadcast/alive?>}"
+  D_AGE="$(echo "$ANS" | sed -n 's/.*"ageSeconds":\([0-9]*\).*/\1/p')"
 
   echo
   echo "── what is actually on the screen? ─────────────────────────────────"
@@ -181,6 +187,32 @@ diagnose_report() {
   if [ -n "$KILLED" ]; then
     echo "   the kernel has been killing things for memory:"
     echo "$KILLED" | sed "s/^/     /"
+  fi
+
+  # The facts above have twice been right and still needed interpreting, so
+  # here is the reading of them. The page reporting in and the screen being
+  # drawn are what matter; a browser this cannot find while both of those are
+  # true is this script failing to look, not the stream failing to run.
+  echo
+  echo "── in short ────────────────────────────────────────────────────────"
+  D_PAGE=
+  [ -n "$D_AGE" ] && [ "$D_AGE" -lt 60 ] && D_PAGE=1
+  D_DRAWN=
+  [ -n "$YAVG" ] && awk -v v="$YAVG" 'BEGIN { exit !(v >= 1.0) }' && D_DRAWN=1
+
+  if [ -n "$D_PAGE" ] && [ -n "$D_DRAWN" ]; then
+    echo "   The page is alive and the screen is being drawn. The stream itself"
+    echo "   is working — if it looks wrong, look at the page rather than here."
+  elif [ -n "$D_PAGE" ]; then
+    echo "   The page is alive and drawing nothing. That is the page failing, not"
+    echo "   the browser or the encoder; the browser log above says why."
+  elif [ -n "$D_BROWSER" ]; then
+    echo "   The browser is running but the page is not reporting in. Check the"
+    echo "   app is up (systemctl status echo-radar) and that BROADCAST_URL"
+    echo "   points at it."
+  else
+    echo "   Nothing is running: no browser and no page. The browser log above is"
+    echo "   where the reason will be."
   fi
 }
 PRIMARY="${YT_PRIMARY_URL:-rtmp://a.rtmp.youtube.com/live2}"
