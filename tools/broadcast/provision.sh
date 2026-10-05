@@ -229,8 +229,9 @@ ffmpeg -hide_banner -protocols 2>/dev/null | grep -qw rtmps \
 # Google Chrome has no arm64 .deb, and Ubuntu's chromium is a snap stub that is
 # awkward inside a systemd unit. So: Chrome on amd64, Chromium from apt on arm.
 say "Installing a browser"
+PATH="$PATH:/snap/bin"
 if command -v google-chrome >/dev/null 2>&1 || command -v chromium >/dev/null 2>&1 \
-   || command -v chromium-browser >/dev/null 2>&1; then
+   || command -v chromium-browser >/dev/null 2>&1 || command -v brave-browser >/dev/null 2>&1; then
   ok "a browser is already installed"
 elif [ "$PKG" != "apt" ]; then
   # EPEL carries chromium for Enterprise Linux, including aarch64 on EL9.
@@ -250,22 +251,36 @@ elif [ "$ARCH" = "amd64" ]; then
   apt-get install -y -qq google-chrome-stable >/dev/null
   ok "google-chrome-stable"
 else
-  # No Chrome .deb for this architecture, so: chromium. On Ubuntu that package
-  # is a shim for the snap, and going through snapd directly is both faster to
-  # explain and the only way to see a 150 MB download happening.
-  if command -v snap >/dev/null 2>&1; then
-    echo "   waiting for snapd to finish first-boot seeding (can take a few minutes)…"
-    snap wait system seed.loaded || true
+  # No Chrome build for this architecture. Brave FIRST, because it is a real
+  # .deb on arm64 while Ubuntu chromium is a snap — and snapd on a fresh cloud
+  # instance seeds at first boot, which has cost half an hour of staring at an
+  # unmoving screen. Same engine, same flags, installs like a normal package.
+  echo "   adding the Brave repository (a real .deb for $ARCH; chromium on Ubuntu is a snap)"
+  install -d -m 0755 /usr/share/keyrings
+  if curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg \
+       https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg; then
+    echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" \
+      > /etc/apt/sources.list.d/brave-browser-release.list
+    apt-get update || true
+    pkg_install brave-browser || true
+  fi
+
+  # Still nothing? Then the snap, saying what it is waiting for as it waits.
+  if ! command -v brave-browser >/dev/null 2>&1 && command -v snap >/dev/null 2>&1; then
+    warn "Brave unavailable; falling back to the chromium snap"
+    echo "   waiting for snapd first-boot seeding (minutes, and it does finish)…"
+    timeout 600 snap wait system seed.loaded || warn "seeding did not settle in 10 minutes"
     echo "   installing the chromium snap — progress below"
-    snap install chromium || true
+    timeout 900 snap install chromium || true
+    PATH="$PATH:/snap/bin"
   fi
-  if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
-    pkg_install chromium || pkg_install chromium-browser || true
-  fi
-  command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 \
-    || die "no chromium could be installed for $ARCH.
-   Try by hand to see why:   sudo snap install chromium"
-  ok "chromium ($ARCH)"
+
+  command -v brave-browser >/dev/null 2>&1 || command -v chromium >/dev/null 2>&1 \
+    || command -v chromium-browser >/dev/null 2>&1 \
+    || die "no browser could be installed for $ARCH. Try one by hand to see why:
+     sudo apt-get install -y brave-browser
+     sudo snap install chromium"
+  ok "browser installed ($ARCH)"
 fi
 
 # Does it actually run? A snap that cannot start, or a chromium missing a
@@ -273,7 +288,7 @@ fi
 # /snap/bin is not on root's secure_path, so a snap-installed browser is
 # invisible to `command -v` under sudo even though it is perfectly installed.
 PATH="$PATH:/snap/bin"
-BROWSER="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+BROWSER="$(command -v google-chrome || command -v brave-browser || command -v chromium || command -v chromium-browser || true)"
 [ -n "$BROWSER" ] || die "a browser was installed but cannot be found on PATH (checked /snap/bin too)."
 SMOKE="/home/$RUN_USER/.cache/echo-provision-smoke"
 rm -rf "$SMOKE"; mkdir -p "$SMOKE"; chown -R "$RUN_USER" "$SMOKE"

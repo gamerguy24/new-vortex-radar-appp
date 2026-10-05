@@ -177,7 +177,11 @@ MODE="${1:-run}"
 # A browser is only needed to put the PAGE on air. --check deliberately does
 # not use one: its whole purpose is to take the page out of the question.
 if [ "$MODE" != "--check" ]; then
-  CHROME="$(command -v chromium || command -v chromium-browser || command -v google-chrome || true)"
+  # /snap/bin is not on root's secure_path, so a snap browser is invisible to
+  # a systemd unit that merely inherits PATH.
+  PATH="$PATH:/snap/bin"
+  CHROME="$(command -v chromium || command -v chromium-browser \
+    || command -v google-chrome || command -v brave-browser || true)"
   [ -n "$CHROME" ] || { echo "No chromium/google-chrome found. See tools/BROADCAST_SETUP.md"; exit 1; }
 fi
 
