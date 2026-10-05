@@ -56,6 +56,66 @@ the browser, and that is the biggest thing this page costs in memory. Under
 4 GB it writes `?loop=2` into `BROADCAST_URL` rather than letting a five-frame
 loop find the OOM killer for you.
 
+### Moving it onto the node, once you have one
+
+From your own machine, with the instance's SSH key:
+
+```bash
+ssh -i your-oracle-key.key ubuntu@<instance-ip>
+```
+
+Then on the node:
+
+```bash
+sudo apt-get update && sudo apt-get install -y git
+git clone https://github.com/<you>/<repo>.git ~/VortexRadar
+cd ~/VortexRadar
+```
+
+A private repo will ask for a password — GitHub stopped accepting account
+passwords, so use a **fine-grained personal access token** with read-only
+Contents access to this one repository, and paste that as the password.
+
+**Then the .env — and copy as little as possible:**
+
+```bash
+cp tools/broadcast/env.broadcast.example .env
+nano .env          # paste YT_STREAM_KEY and TWITCH_STREAM_KEY, nothing else
+```
+
+Do **not** copy the `.env` from your main server. That file holds payment
+keys, mail credentials, session secrets and the admin account; a broadcast
+node needs none of them. It renders a public page and pushes video out.
+Copying the lot would put every secret you own on a machine whose entire job
+is talking to the open internet, and buy nothing. The app has been booted with
+exactly the lines in that template — it serves `/broadcast` and the radar
+relay, and nothing complains.
+
+Then:
+
+```bash
+sudo bash tools/broadcast/provision.sh
+```
+
+It installs everything, writes both services, starts the app, and proves the
+page is served before it hands back. Finish with:
+
+```bash
+sudo -u ubuntu bash tools/broadcast/echo-stream.sh --check   # bars to both services
+sudo systemctl start echo-stream                             # go live
+journalctl -u echo-stream -f                                 # watch it
+```
+
+Nothing needs a port opening. The app listens on localhost and the stream only
+makes outbound connections, so Oracle's default firewall is already right.
+
+**Updating it later** is a pull and a restart:
+
+```bash
+cd ~/VortexRadar && git pull && npm ci --omit=dev
+sudo systemctl restart echo-radar echo-stream
+```
+
 ### Running it for nothing: Oracle Cloud Always Free
 
 One free tier can actually do this, and it is not close. Oracle's **Ampere A1**
