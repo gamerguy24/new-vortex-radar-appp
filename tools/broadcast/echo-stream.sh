@@ -33,6 +33,15 @@ cd "$(dirname "$0")/../.."
 ROOT="$(pwd)"
 
 # ── settings ────────────────────────────────────────────────────────────────
+# Which of these the CALLER set, captured before the file is read.
+PRESET=""
+for k in YT_STREAM_KEY TWITCH_STREAM_KEY TWITCH_INGEST_URL CF_STREAM_KEY CF_INGEST_URL \
+         EXTRA_RTMP_URLS BROADCAST_URL STREAM_WIDTH STREAM_HEIGHT STREAM_FPS \
+         STREAM_BITRATE STREAM_DISPLAY STREAM_BACKUP YT_PRIMARY_URL YT_BACKUP_URL; do
+  eval "preset_v=\${$k+set}"
+  [ -n "${preset_v:-}" ] && PRESET="$PRESET $k"
+done
+
 if [ -f "$ROOT/.env" ]; then
   # Only the keys this script uses, so a stray line in .env cannot execute.
   while IFS='=' read -r k v; do
@@ -43,12 +52,19 @@ if [ -f "$ROOT/.env" ]; then
         # and the error it produces says nothing about a carriage return.
         v="${v%$'\r'}"
         v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-        # The environment wins: .env supplies defaults, it does not override. That
-        # lets a single run turn one service off without editing the file:
+        # The real environment wins, so a single run can turn one service off
+        # without editing the file:
         #   TWITCH_STREAM_KEY= bash tools/broadcast/echo-stream.sh
         # Set-but-empty counts as set, which is what makes that work.
-        eval "already=\${$k+set}"
-        [ -n "${already:-}" ] || export "$k=$v" ;;
+        #
+        # Within the FILE, though, a later line beats an earlier one — the
+        # template ships empty placeholders and people append real values below
+        # them. PRESET is captured before any parsing precisely so that a value
+        # this loop exported a moment ago is not mistaken for one the caller set.
+        case " $PRESET " in
+          *" $k "*) ;;
+          *) [ -n "$v" ] && export "$k=$v" ;;
+        esac ;;
     esac
   done < <(grep -E '^[A-Z_]+=' "$ROOT/.env" || true)
 fi

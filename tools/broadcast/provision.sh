@@ -354,7 +354,14 @@ say "Checking .env"
 [ -f "$ROOT/.env" ] || die "no .env. Copy the one from your main box into $ROOT/.env first.
    It holds the stream keys and the app's settings; this script will not invent one."
 
-envget() { grep -E "^$1=" "$ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r"'"'"''; }
+# The LAST non-empty definition wins. The template ships empty placeholders and
+# people append the real values beneath them, so taking the first match meant
+# the placeholder won and a key that was plainly set read as missing.
+envget() {
+  grep -E "^$1=" "$ROOT/.env" 2>/dev/null \
+    | cut -d= -f2- | tr -d '\r"'"'"'' \
+    | grep -v '^$' | tail -1
+}
 
 # Rewritten with awk, and the value handed over through the environment rather
 # than interpolated. The obvious `sed -i "s|^$1=.*|$1=$2|"` corrupts the line
