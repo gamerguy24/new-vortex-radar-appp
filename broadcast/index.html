@@ -1074,23 +1074,40 @@ async function goNational(reason) {
   cutSeq++;              // anything still downloading belongs to a shot we have left
   stopLoop();
   stopSiteTimer();
-  clearSite(map);
   mode = 'national';
   onAir = null;
   showRefLegend(false);
   paintWarnings();
   renderPanel();
-  moveCamera(() => map.fitBounds(CONUS, { padding: pad(NATIONAL_PAD), duration: 1200, bearing: 0, pitch: 0 }),
-    'the national view');
+
+  /*
+   * The mosaic FIRST, with the camera still.
+   *
+   * Fetching and decoding the national grid is the heaviest thing this page
+   * does, and it used to run on top of a 1.2-second flight — which is what
+   * made zooming out lurch. It also used to run after the site radar had
+   * been cleared, so the flight crossed an empty map.
+   *
+   * Done here it goes UNDER the storm picture that is still up, which is then
+   * taken away, so there is radar on screen the whole way through.
+   */
   try {
     await setMRMSProduct('ref_comp');
     await addMRMS(window.vortexMap);
-    keepSiteMarkersOnTop(map);
-    keepWarningsOnTop();
   } catch (e) {
     console.error('[broadcast] MRMS failed to restart:', e.message);
     setTimeout(() => reload('MRMS failed to restart'), 60000);
   }
+
+  // Whether or not the mosaic came up: the storm shot is over, and staying
+  // on it with no site timer running would freeze that picture on air.
+  clearSite(map);
+  keepSiteMarkersOnTop(map);
+  keepWarningsOnTop();
+
+  // Last, with nothing else running.
+  moveCamera(() => map.fitBounds(CONUS, { padding: pad(NATIONAL_PAD), duration: 1200, bearing: 0, pitch: 0 }),
+    'the national view');
 }
 
 /**

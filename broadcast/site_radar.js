@@ -58,6 +58,10 @@ const LAYER = 'site-radar-layer';
  * 1600 is the Graphics Studio default and Mapbox scales it the rest of the way.
  */
 const QUALITY = 1600;
+// How strongly the radar sits over the map, and how long it takes to get
+// there when a shot begins. Short enough to be a cut, not a dissolve.
+const RASTER_OPACITY = 0.9;
+const FADE_IN_MS = 220;
 
 /*
  * The weakest echo drawn, in dBZ.
@@ -260,12 +264,32 @@ function showImage(map, url, quad) {
   map.addSource(SRC, { type: 'image', url, coordinates: quad });
   // Beneath the warning boxes by construction, not by being re-raised later.
   const before = map.getLayer('warn-fill') ? 'warn-fill' : undefined;
+  /*
+   * Fade the first picture of a shot in.
+   *
+   * A cut that snaps from the map to full-strength reflectivity reads as a
+   * glitch; a fifth of a second of fade reads as a cut. This runs ONLY when
+   * the layer is created, which is once per shot — the loop swaps images on
+   * an existing layer and is untouched, as it must be: a fade between frames
+   * would ghost one scan over the next and make the storm look like it was
+   * in two places.
+   */
   map.addLayer({
     id: LAYER,
     type: 'raster',
     source: SRC,
-    paint: { 'raster-opacity': 0.9, 'raster-fade-duration': 0, 'raster-resampling': 'linear' },
+    paint: {
+      'raster-opacity': 0,
+      'raster-opacity-transition': { duration: FADE_IN_MS },
+      'raster-fade-duration': 0,
+      'raster-resampling': 'linear',
+    },
   }, before);
+  // Next frame, so the zero is painted once and the transition has somewhere
+  // to start from. Setting both in the same frame fades from nothing.
+  requestAnimationFrame(() => {
+    try { map.setPaintProperty(LAYER, 'raster-opacity', RASTER_OPACITY); } catch (e) { /* the shot moved on */ }
+  });
 }
 
 function useBlob(map, blob, quad) {
