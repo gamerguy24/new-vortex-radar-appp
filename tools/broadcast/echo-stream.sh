@@ -128,6 +128,13 @@ diagnose_report() {
   else
     echo "   NO — there is no browser process, which on its own explains a black screen."
   fi
+  # Which browser it is changes what the answer can be: a snap is confined and
+  # cannot reach /root, a .deb is not and can.
+  echo "   using: ${CHROME:-none found}"
+  case "$CHROME" in
+    /snap/*) echo "   (a snap — confined, and cannot be run as root)" ;;
+  esac
+  echo "   running as: $(id -un) (uid $(id -u)), HOME=${HOME:-unset}"
 
   echo
   echo "── is the PAGE running? ────────────────────────────────────────────"
@@ -385,6 +392,14 @@ PROFILE="${HOME:-/tmp}/.cache/echo-broadcast-profile"
 rm -rf "$PROFILE"
 mkdir -p "$PROFILE"
 
+# Chromium wants a runtime directory, and tries to create /run/user/<uid> if
+# it has none — which fails under sudo and for any user without a login
+# session. Handing it one inside the profile removes a failure that has
+# nothing to do with streaming.
+export XDG_RUNTIME_DIR="$PROFILE/run"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+
 DISPLAY="$DISP" "$CHROME" \
   --kiosk --window-size="${W},${H}" --window-position=0,0 \
   --user-data-dir="$PROFILE" \
@@ -430,24 +445,66 @@ if [ "$MODE" = "--probe" ]; then
   exit 0
 fi
 
-# ── is there a picture at all? ──────────────────────────────────────────────
-# A black screen is invisible to every other check: it encodes cleanly, it
-# uploads cleanly, and the services call it Excellent. This looks before the
-# stream goes out, and gives a slow first paint a fair chance — an ARM box
-# fetching the national grid can take considerably longer than twelve seconds.
-for i in $(seq 1 12); do
-  is_black || break
-  sleep 5
-done
-
-if is_black; then
-  echo "Nothing is being drawn: the screen is entirely black after a minute."
-  echo "A still frame is at $BLACK_SHOT, and the browser said:"
+# ── is there anything to broadcast? ─────────────────────────────────────────
+# A browser that aborts at startup is invisible to everything downstream: Xvfb
+# is still running, ffmpeg still encodes it, and both services still call the
+# result Excellent. What goes out is an empty screen, for as long as it takes
+# somebody to look at it.
+browser_log_tail() {
   if [ -s "$BROWSER_LOG" ]; then tail -20 "$BROWSER_LOG" | sed "s/^/   /"
-  else echo "   (nothing)"; fi
-  echo
-  echo "Not broadcasting a black rectangle. Run this for the full picture:"
-  echo "    bash tools/broadcast/echo-stream.sh --diagnose"
+  else echo "   (it logged nothing at all)"; fi
+}
+
+if ! kill -0 "$CHROME_PID" 2>/dev/null; then
+  echo "The browser exited within twelve seconds of starting. It said:"
+  browser_log_tail
+  # The one cause specific enough to name. A snap-packaged browser is denied
+  # /root by its confinement whoever runs it, so under sudo it cannot create
+  # its own profile and aborts — and "permission denied as root" is confusing
+  # enough to be worth spelling out where it happens.
+  if [ "$(id -u)" = "0" ] && grep -qi "permission denied" "$BROWSER_LOG" 2>/dev/null; then
+    echo
+    echo "This is running as root. A snap-packaged browser cannot reach /root —"
+    echo "its confinement denies it — so it cannot create a profile there and"
+    echo "gives up. Run this as the user the service runs as, without sudo."
+  fi
+  exit 1
+fi
+
+# A running browser is not yet a page that is drawing. Where the app is new
+# enough to answer for itself, wait for the page to report in before going
+# live — an ARM box fetching the national grid takes a good deal longer than
+# the twelve seconds allowed for the window to appear.
+if curl -fsS --max-time 5 "$ALIVE_URL" 2>/dev/null | grep -q "seen"; then
+  PAGE_OK=""
+  for i in $(seq 1 18); do
+    AGE="$(curl -fsS --max-time 5 "$ALIVE_URL" 2>/dev/null | sed -n 's/.*"ageSeconds":\([0-9]*\).*/\1/p')"
+    if [ -n "$AGE" ] && [ "$AGE" -lt 60 ]; then PAGE_OK=1; break; fi
+    if ! kill -0 "$CHROME_PID" 2>/dev/null; then
+      echo "The browser died while the page was loading. It said:"
+      browser_log_tail
+      exit 1
+    fi
+    sleep 5
+  done
+  if [ -z "$PAGE_OK" ]; then
+    echo "The browser is running, but the page never reported in (90 seconds)."
+    echo "That is the page failing rather than the stream. The browser said:"
+    browser_log_tail
+    echo
+    echo "    bash tools/broadcast/echo-stream.sh --diagnose     # for the rest"
+    exit 1
+  fi
+fi
+
+# Brightness last, and only as a backstop. An empty display measures about 16
+# rather than 0, so this does NOT catch a missing browser — the checks above
+# do. What it catches is the case they cannot see: a page that is running,
+# answering, and drawing nothing.
+if is_black; then
+  echo "The page is running but the screen is entirely black."
+  echo "A still frame is at $BLACK_SHOT, and the browser said:"
+  browser_log_tail
   exit 1
 fi
 
