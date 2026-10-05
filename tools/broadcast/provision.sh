@@ -58,14 +58,27 @@ die()  { printf '\n\033[31mstopped:\033[0m %s\n' "$*" >&2; exit 1; }
 say "Checking the box"
 
 [ "$(id -u)" = "0" ] || die "run this with sudo."
-command -v apt-get >/dev/null 2>&1 || die "this expects Debian or Ubuntu (apt-get)."
+# Which package manager? Oracle Cloud hands out Oracle Linux unless you change
+# the image, so this is the first thing most people trip over.
+if command -v apt-get >/dev/null 2>&1; then PKG=apt
+elif command -v dnf >/dev/null 2>&1; then PKG=dnf
+elif command -v yum >/dev/null 2>&1; then PKG=yum
+else die "no apt-get, dnf or yum — this needs Debian/Ubuntu or Enterprise Linux."; fi
 id "$RUN_USER" >/dev/null 2>&1 || die "no such user: $RUN_USER (pass --user NAME)."
 
 ARCH="$(dpkg --print-architecture)"
 RAM_MB="$(awk '/MemTotal/ { print int($2/1024) }' /proc/meminfo)"
 DISK_MB="$(df -Pm "$ROOT" | awk 'NR==2 { print $4 }')"
 CORES="$(nproc)"
+OS_NAME="$( . /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-unknown}" )"
 ok "user $RUN_USER, $ARCH, ${CORES} core(s), ${RAM_MB} MB RAM, ${DISK_MB} MB free"
+ok "$OS_NAME (package manager: $PKG)"
+if [ "$PKG" != "apt" ]; then
+  warn "Debian/Ubuntu is the tested path. On Enterprise Linux neither ffmpeg nor"
+  warn "chromium ships in the base repositories, so this will add EPEL and fall"
+  warn "back to a static ffmpeg. Each piece is verified before it is relied on;"
+  warn "if one cannot be had, you will be told which."
+fi
 
 [ "$DISK_MB" -ge 3000 ] || die "needs ~3 GB free; this box has ${DISK_MB} MB."
 if [ "$CORES" -lt 2 ]; then
@@ -97,14 +110,64 @@ fi
 # ── packages ────────────────────────────────────────────────────────────────
 say "Installing packages"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
+
+# One place that knows the difference, so the rest of the script does not.
+pkg_install() {
+  case "$PKG" in
+    apt) apt-get install -y -qq "$@" >/dev/null ;;
+    dnf) dnf install -y -q "$@" >/dev/null ;;
+    yum) yum install -y -q "$@" >/dev/null ;;
+  esac
+}
+
+if [ "$PKG" = "apt" ]; then
+  apt-get update -qq
+else
+  # EPEL carries the pieces Red Hat leaves out. Oracle Linux ships its own
+  # EPEL release package; everyone else uses the upstream one.
+  EL_VER="$( . /etc/os-release 2>/dev/null && echo "${VERSION_ID%%.*}" )"
+  pkg_install "oracle-epel-release-el${EL_VER}" 2>/dev/null \
+    || pkg_install epel-release 2>/dev/null \
+    || warn "could not add EPEL; chromium and ffmpeg may not be installable"
+  if command -v dnf >/dev/null 2>&1; then
+    dnf config-manager --set-enabled ol${EL_VER}_developer_EPEL >/dev/null 2>&1 || true
+  fi
+fi
 # fonts matter more than they look: the page asks for Onest from Google Fonts,
 # and without fontconfig and a real fallback installed, every label on air
 # renders as empty boxes.
-apt-get install -y -qq \
-  xvfb ffmpeg curl ca-certificates gnupg git \
-  fontconfig fonts-liberation fonts-dejavu-core >/dev/null
-ok "xvfb, ffmpeg, fonts"
+if [ "$PKG" = "apt" ]; then
+  pkg_install xvfb ffmpeg curl ca-certificates gnupg git \
+    fontconfig fonts-liberation fonts-dejavu-core
+else
+  pkg_install xorg-x11-server-Xvfb curl ca-certificates gnupg2 git \
+    fontconfig liberation-fonts dejavu-sans-fonts tar xz
+  # ffmpeg is not in the base or EPEL repositories on Enterprise Linux. Try the
+  # package anyway in case a third-party repo is already enabled, then fall back
+  # to an official static build, which is self-contained and works on any glibc.
+  if ! command -v ffmpeg >/dev/null 2>&1; then
+    pkg_install ffmpeg 2>/dev/null || true
+  fi
+  if ! command -v ffmpeg >/dev/null 2>&1; then
+    case "$ARCH" in
+      aarch64|arm64) FF_ARCH=arm64 ;;
+      x86_64|amd64)  FF_ARCH=amd64 ;;
+      *) FF_ARCH="" ;;
+    esac
+    if [ -n "$FF_ARCH" ]; then
+      warn "no ffmpeg package; fetching a static build"
+      TMPF="$(mktemp -d)"
+      if curl -fsSL "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${FF_ARCH}-static.tar.xz" \
+           -o "$TMPF/ff.tar.xz" && tar xf "$TMPF/ff.tar.xz" -C "$TMPF"; then
+        install -m 0755 "$TMPF"/ffmpeg-*/ffmpeg "$TMPF"/ffmpeg-*/ffprobe /usr/local/bin/ 2>/dev/null || true
+      fi
+      rm -rf "$TMPF"
+    fi
+  fi
+fi
+command -v ffmpeg >/dev/null 2>&1 \
+  || die "no ffmpeg, and none could be installed. Nothing can be encoded without it."
+ok "Xvfb, ffmpeg, fonts"
 
 ffmpeg -hide_banner -protocols 2>/dev/null | grep -qw rtmps \
   && ok "ffmpeg has rtmps (needed for Cloudflare Stream)" \
@@ -117,6 +180,14 @@ say "Installing a browser"
 if command -v google-chrome >/dev/null 2>&1 || command -v chromium >/dev/null 2>&1 \
    || command -v chromium-browser >/dev/null 2>&1; then
   ok "a browser is already installed"
+elif [ "$PKG" != "apt" ]; then
+  # EPEL carries chromium for Enterprise Linux, including aarch64 on EL9.
+  pkg_install chromium 2>/dev/null || true
+  command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 \
+    || die "no chromium available from EPEL for $ARCH.
+   The tested path is an Ubuntu 22.04 or 24.04 image; on Oracle Cloud that means
+   creating the instance with the image changed from the Oracle Linux default."
+  ok "chromium (EPEL)"
 elif [ "$ARCH" = "amd64" ]; then
   install -d -m 0755 /etc/apt/keyrings
   curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
@@ -160,8 +231,13 @@ fi
 if [ "$NODE_OK" = "1" ]; then
   ok "node $(node -v) already installed"
 else
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
-  apt-get install -y -qq nodejs >/dev/null
+  if [ "$PKG" = "apt" ]; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
+  else
+    curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
+  fi
+  pkg_install nodejs
+  command -v node >/dev/null 2>&1 || die "node did not install."
   ok "node $(node -v)"
 fi
 
