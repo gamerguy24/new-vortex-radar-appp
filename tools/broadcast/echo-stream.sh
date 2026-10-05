@@ -331,10 +331,19 @@ fi
 # one: YouTube says "More than one ingestion is using the primary URL", the
 # preview sits on "Preparing stream" for ever, and the health reads Poor.
 # Twitch has no backup ingest at all, so there the two simply fight.
-OTHER_FF="$(pgrep -af "ffmpeg.*rtmp" 2>/dev/null | grep -v "^$$ " | head -3)"
+# --diagnose, --probe and --where push nothing anywhere, and refusing to look
+# at a stream because a stream is running would fail exactly when the answer
+# is most wanted. --check is guarded with the real run: it does push.
+case "${1:-run}" in
+  --diagnose|--probe|--where) OTHER_FF="" ;;
+  *) OTHER_FF="$(pgrep -af "ffmpeg.*rtmp" 2>/dev/null | grep -v "^$$ " | head -3)" ;;
+esac
 if [ -n "$OTHER_FF" ] && [ "${STREAM_FORCE:-0}" != "1" ]; then
   echo "Another encoder is already streaming from this machine:"
-  echo "$OTHER_FF" | sed "s|/[^/ ]*\$|/********|" | sed "s/^/    /"
+  # Every key on the line. The previous mask anchored on end-of-line, so with
+  # a tee string — several destinations separated by "|" — it hid the last key
+  # and printed the rest, in output written to be shown to somebody.
+  echo "$OTHER_FF" | sed -E "s#(rtmps?://[^ |]*/)[^ |]*#\1********#g" | sed "s/^/    /"
   echo
   echo "Two encoders on one key is what makes YouTube sit on \"Preparing stream\"."
   echo "Stop the other one first:"
