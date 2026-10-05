@@ -383,6 +383,52 @@ touch the NEXRAD buckets and are rate limited to 40 requests a minute — the
 stream needs about two. Budget roughly **10-30 MB per scan** of extra download
 on the server while a storm is on air, every few minutes.
 
+## When the stream is live and the picture is black
+
+This one is worth separating from everything below, because every signal you
+have says the stream is fine, and every one of them is right. The bytes are
+arriving, the keyframes are spaced correctly, YouTube and Twitch both say
+Excellent, and the page is answering. None of those is looking at the picture.
+
+Ask the one thing that does:
+
+```bash
+bash tools/broadcast/echo-stream.sh --diagnose
+```
+
+Run it with the stream running — it will inspect the stream that is actually
+on air rather than starting a second one, and stopping the stream first would
+throw away the evidence you are trying to look at. It reports whether the
+browser is running, whether the PAGE is running, how bright the screen
+actually is, what the browser complained about, and whether the kernel has
+been killing things for memory. It leaves a still frame behind, so you can
+look at the screen yourself:
+
+```bash
+# copy it to your own machine and open it
+scp ubuntu@your-box:~/.cache/echo-broadcast-check.png .
+```
+
+Read the result like this:
+
+* **No browser process** — it crashed or was killed. The browser log at
+  `~/.cache/echo-broadcast-browser.log` says why, and the memory section says
+  whether the kernel did it. On a small box, lower `STREAM_WIDTH`/
+  `STREAM_HEIGHT` to 1280×720 and `?loop=2` on `BROADCAST_URL`.
+* **Browser running, no heartbeat** — the browser is up and the page is not.
+  It never loaded, or its JavaScript died early. Check that the app is
+  running (`systemctl status echo-radar`) and that `BROADCAST_URL` points at
+  it.
+* **Browser running, heartbeat fine, brightness 0** — the page is alive and
+  drawing nothing, which almost always means WebGL failed and the map never
+  initialised. The browser log will say so.
+
+The encoder now checks this itself, so it should not be possible to find a
+black screen that has been broadcasting for hours: it refuses to go live with
+nothing on screen (after giving the page a minute to paint), and ends the run
+if the screen goes black for two minutes while live. Either way systemd
+restarts it, and `journalctl -u echo-stream` says which happened.
+
 ## When YouTube sits on "Preparing stream"
 
 Check the connection quality YouTube reports first, because it splits the

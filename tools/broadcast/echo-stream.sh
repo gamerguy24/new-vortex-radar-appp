@@ -81,6 +81,92 @@ H="${STREAM_HEIGHT:-1080}"
 FPS="${STREAM_FPS:-30}"
 BITRATE="${STREAM_BITRATE:-4500k}"
 DISP="${STREAM_DISPLAY:-:99}"
+
+# Where the page reports in. Derived once: the watchdog and --diagnose both
+# ask the same question of it.
+ALIVE_URL="${URL%%\?*}"
+ALIVE_URL="${ALIVE_URL%/}/alive"
+
+# Keep what the browser says. This went to /dev/null for the whole of this
+# script's life, and the one time it mattered — a black picture on a box with
+# no screen — the only account of what went wrong had been thrown away.
+# Error level only, and truncated each run, so it cannot grow without bound.
+BROWSER_LOG="${HOME:-/tmp}/.cache/echo-broadcast-browser.log"
+
+# ── looking at the picture ──────────────────────────────────────────────────
+# Average luma of one frame off the virtual screen, 0-255. The page is a dark
+# theme, so a good picture still reads low — but not zero, which is the whole
+# point: zero means nothing was drawn at all.
+BLACK_SHOT="${HOME:-/tmp}/.cache/echo-broadcast-check.png"
+screen_brightness() {
+  ffmpeg -hide_banner -loglevel error -y -f x11grab -video_size "${W}x${H}" \
+    -draw_mouse 0 -i "$DISP" -frames:v 1 "$BLACK_SHOT" 2>/dev/null || return 1
+  ffmpeg -hide_banner -v error -i "$BLACK_SHOT" \
+    -vf signalstats,metadata=print:file=- -f null - 2>/dev/null \
+    | sed -n "s/.*YAVG=//p" | head -1
+}
+
+# True only when there IS a reading and it is zero. A failed measurement is
+# not evidence of a black screen, and must never be acted on as if it were.
+is_black() {
+  BRIGHT="$(screen_brightness)"
+  [ -n "$BRIGHT" ] || return 1
+  awk -v v="$BRIGHT" 'BEGIN { exit !(v < 1.0) }'
+}
+
+# ── the report ──────────────────────────────────────────────────────────────
+# Written once, used twice: against a stream already on air, and against one
+# started for the purpose. $1 is how long to wait for a heartbeat — nothing,
+# when the page has been up for hours already.
+diagnose_report() {
+  echo
+  echo "── is the browser running? ─────────────────────────────────────────"
+  BPID="${CHROME_PID:-}"
+  [ -n "$BPID" ] || BPID="$(pgrep -f "echo-broadcast-profile" 2>/dev/null | head -1)"
+  if [ -n "$BPID" ] && kill -0 "$BPID" 2>/dev/null; then
+    echo "   yes (pid $BPID)"
+  else
+    echo "   NO — there is no browser process, which on its own explains a black screen."
+  fi
+
+  echo
+  echo "── is the PAGE running? ────────────────────────────────────────────"
+  # The decisive test. A black screen looks identical whether the browser
+  # never loaded the page or loaded it and then painted nothing, and those two
+  # have nothing in common to fix. The heartbeat tells them apart: the page
+  # posts it itself, so an answer means the page is alive.
+  if [ "${1:-0}" -gt 0 ]; then
+    echo "   waiting ${1}s for a heartbeat (the page posts one every 30)…"
+    sleep "$1"
+  fi
+  ANS="$(curl -fsS --max-time 5 "$ALIVE_URL" 2>/dev/null)"
+  echo "   $ALIVE_URL"
+  echo "   -> ${ANS:-<no answer: is the app new enough to have /broadcast/alive?>}"
+
+  echo
+  echo "── what is actually on the screen? ─────────────────────────────────"
+  YAVG="$(screen_brightness)"
+  echo "   a still frame is saved at $BLACK_SHOT"
+  echo "   average brightness: ${YAVG:-could not measure}   (0 = entirely black)"
+
+  echo
+  echo "── what the browser complained about ───────────────────────────────"
+  if [ -s "$BROWSER_LOG" ]; then
+    tail -40 "$BROWSER_LOG" | sed "s/^/   /"
+  else
+    echo "   (nothing — which is what a happy browser logs, and also what one"
+    echo "    that started before this build was deployed logs)"
+  fi
+
+  echo
+  echo "── memory ──────────────────────────────────────────────────────────"
+  free -m 2>/dev/null | sed "s/^/   /"
+  KILLED="$(journalctl -k --no-pager 2>/dev/null | grep -i "killed process" | tail -3)"
+  if [ -n "$KILLED" ]; then
+    echo "   the kernel has been killing things for memory:"
+    echo "$KILLED" | sed "s/^/     /"
+  fi
+}
 PRIMARY="${YT_PRIMARY_URL:-rtmp://a.rtmp.youtube.com/live2}"
 BACKUP="${YT_BACKUP_URL:-rtmp://b.rtmp.youtube.com/live2?backup=1}"
 USE_BACKUP="${STREAM_BACKUP:-0}"
@@ -263,16 +349,20 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# If a stream is already running, --diagnose inspects THAT one rather than
+# starting a second Xvfb on the same display, which would fail and would then
+# report on Xvfb instead of on the picture it was run to explain.
+if [ "$MODE" = "--diagnose" ] && pgrep -f "Xvfb $DISP" >/dev/null 2>&1; then
+  echo "A stream is already running on $DISP — reporting on that one."
+  diagnose_report 0
+  exit 0
+fi
+
 # ── the virtual screen ──────────────────────────────────────────────────────
 Xvfb "$DISP" -screen 0 "${W}x${H}x24" -nolisten tcp &
 XVFB_PID=$!
 sleep 2
 kill -0 "$XVFB_PID" 2>/dev/null || { echo "Xvfb failed to start"; exit 1; }
-
-# Where the page reports in. Derived once: both the watchdog and --diagnose
-# ask the same question of it.
-ALIVE_URL="${URL%%\?*}"
-ALIVE_URL="${ALIVE_URL%/}/alive"
 
 # ── wait for the page to be servable, so we never air a connection error ────
 for i in $(seq 1 60); do
@@ -295,11 +385,6 @@ PROFILE="${HOME:-/tmp}/.cache/echo-broadcast-profile"
 rm -rf "$PROFILE"
 mkdir -p "$PROFILE"
 
-# Keep what the browser says. This went to /dev/null for the whole of this
-# script's life, and the one time it mattered — a black picture on a box with
-# no screen — the only account of what went wrong had been thrown away.
-# Error level only, and truncated each run, so it cannot grow without bound.
-BROWSER_LOG="${HOME:-/tmp}/.cache/echo-broadcast-browser.log"
 DISPLAY="$DISP" "$CHROME" \
   --kiosk --window-size="${W},${H}" --window-position=0,0 \
   --user-data-dir="$PROFILE" \
@@ -314,54 +399,9 @@ DISPLAY="$DISP" "$CHROME" \
 CHROME_PID=$!
 sleep 12   # first paint: style, MRMS fetch, the CONUS grid
 
+# The browser has had its twelve seconds; now say what came of it.
 if [ "$MODE" = "--diagnose" ]; then
-  echo
-  echo "── is the browser running? ─────────────────────────────────────────"
-  if kill -0 "$CHROME_PID" 2>/dev/null; then
-    echo "   yes (pid $CHROME_PID)"
-  else
-    echo "   NO — it exited within twelve seconds of starting."
-  fi
-
-  echo
-  echo "── is the PAGE running? ────────────────────────────────────────────"
-  # The decisive test. A black screen looks identical whether the browser
-  # never loaded the page or loaded it and then painted nothing, and those
-  # two have nothing in common to fix. The heartbeat tells them apart: the
-  # page posts it itself, so an answer means the page is alive.
-  echo "   waiting 35s for a heartbeat (the page posts one every 30)…"
-  sleep 35
-  ANS="$(curl -fsS --max-time 5 "$ALIVE_URL" 2>/dev/null)"
-  echo "   $ALIVE_URL"
-  echo "   -> ${ANS:-<no answer: is the app new enough to have /broadcast/alive?>}"
-
-  echo
-  echo "── what is actually on the screen? ─────────────────────────────────"
-  SHOT="${HOME:-/tmp}/echo-broadcast-frame.png"
-  ffmpeg -hide_banner -loglevel error -y -f x11grab -video_size "${W}x${H}" \
-    -draw_mouse 0 -i "$DISP" -frames:v 1 "$SHOT" 2>/dev/null
-  YAVG="$(ffmpeg -hide_banner -v error -i "$SHOT" \
-    -vf signalstats,metadata=print:file=- -f null - 2>/dev/null \
-    | sed -n "s/.*YAVG=//p" | head -1)"
-  echo "   a still frame is saved at $SHOT"
-  echo "   average brightness: ${YAVG:-unknown}   (0 = entirely black)"
-
-  echo
-  echo "── what the browser complained about ───────────────────────────────"
-  if [ -s "$BROWSER_LOG" ]; then
-    tail -40 "$BROWSER_LOG" | sed "s/^/   /"
-  else
-    echo "   (it logged nothing, which is what a happy browser does)"
-  fi
-
-  echo
-  echo "── memory ──────────────────────────────────────────────────────────"
-  free -m 2>/dev/null | sed "s/^/   /"
-  KILLED="$(journalctl -k --no-pager 2>/dev/null | grep -i "killed process" | tail -3)"
-  if [ -n "$KILLED" ]; then
-    echo "   the kernel has been killing things for memory:"
-    echo "$KILLED" | sed "s/^/     /"
-  fi
+  diagnose_report 35
   exit 0
 fi
 
@@ -388,6 +428,27 @@ if [ "$MODE" = "--probe" ]; then
   SHOT="$(dirname "$OUT")/frame.png"
   ffmpeg -hide_banner -loglevel error -y -i "$OUT" -frames:v 1 "$SHOT" && echo "  $SHOT"
   exit 0
+fi
+
+# ── is there a picture at all? ──────────────────────────────────────────────
+# A black screen is invisible to every other check: it encodes cleanly, it
+# uploads cleanly, and the services call it Excellent. This looks before the
+# stream goes out, and gives a slow first paint a fair chance — an ARM box
+# fetching the national grid can take considerably longer than twelve seconds.
+for i in $(seq 1 12); do
+  is_black || break
+  sleep 5
+done
+
+if is_black; then
+  echo "Nothing is being drawn: the screen is entirely black after a minute."
+  echo "A still frame is at $BLACK_SHOT, and the browser said:"
+  if [ -s "$BROWSER_LOG" ]; then tail -20 "$BROWSER_LOG" | sed "s/^/   /"
+  else echo "   (nothing)"; fi
+  echo
+  echo "Not broadcasting a black rectangle. Run this for the full picture:"
+  echo "    bash tools/broadcast/echo-stream.sh --diagnose"
+  exit 1
 fi
 
 # ── the encoder ─────────────────────────────────────────────────────────────
@@ -433,6 +494,20 @@ while kill -0 "$FF_PID" 2>/dev/null; do
   if ! kill -0 "$CHROME_PID" 2>/dev/null; then
     echo "the browser exited — restarting the stream"
     exit 1
+  fi
+
+  # The heartbeat proves the page is running, not that it is drawing. A page
+  # that loads and paints nothing answers every check and shows nothing, so
+  # the picture is checked on its own account. Two minutes of solid black,
+  # rather than one sample, so a momentary blank between shots is not enough.
+  if is_black; then
+    BLACK_STRIKES=$(( ${BLACK_STRIKES:-0} + 1 ))
+    if [ "$BLACK_STRIKES" -ge 4 ]; then
+      echo "the screen has been entirely black for two minutes — restarting"
+      exit 1
+    fi
+  else
+    BLACK_STRIKES=0
   fi
 
   AGE="$(curl -fsS --max-time 5 "$ALIVE_URL" 2>/dev/null \
