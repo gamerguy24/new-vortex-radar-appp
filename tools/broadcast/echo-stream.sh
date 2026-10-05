@@ -16,6 +16,9 @@
 #                     At least one of the two is required; both streams the same
 #                     picture to both services from a single encode.
 #   TWITCH_INGEST_URL default rtmp://live.twitch.tv/app
+#   CF_STREAM_KEY     Cloudflare Stream -> Live Inputs -> the key (RTMPS)
+#   CF_INGEST_URL     default rtmps://live.cloudflare.com:443/live
+#   EXTRA_RTMP_URLS   anything else, space separated, complete URLs with keys
 #   BROADCAST_URL     default http://127.0.0.1:3333/broadcast
 #   STREAM_WIDTH      default 1920      STREAM_HEIGHT  default 1080
 #   STREAM_FPS        default 30        STREAM_BITRATE default 4500k
@@ -34,7 +37,7 @@ if [ -f "$ROOT/.env" ]; then
   # Only the keys this script uses, so a stray line in .env cannot execute.
   while IFS='=' read -r k v; do
     case "$k" in
-      YT_STREAM_KEY|TWITCH_STREAM_KEY|TWITCH_INGEST_URL|BROADCAST_URL|STREAM_WIDTH|STREAM_HEIGHT|STREAM_FPS|STREAM_BITRATE|STREAM_DISPLAY|STREAM_BACKUP|YT_PRIMARY_URL|YT_BACKUP_URL)
+      YT_STREAM_KEY|TWITCH_STREAM_KEY|TWITCH_INGEST_URL|CF_STREAM_KEY|CF_INGEST_URL|EXTRA_RTMP_URLS|BROADCAST_URL|STREAM_WIDTH|STREAM_HEIGHT|STREAM_FPS|STREAM_BITRATE|STREAM_DISPLAY|STREAM_BACKUP|YT_PRIMARY_URL|YT_BACKUP_URL)
         # A .env edited on Windows ends its lines with CR. A carriage return on
         # the end of the stream key makes an RTMP URL that no ingest will accept,
         # and the error it produces says nothing about a carriage return.
@@ -53,6 +56,9 @@ fi
 KEY="${YT_STREAM_KEY:-}"
 TWITCH_KEY="${TWITCH_STREAM_KEY:-}"
 TWITCH_URL="${TWITCH_INGEST_URL:-rtmp://live.twitch.tv/app}"
+CF_KEY="${CF_STREAM_KEY:-}"
+CF_URL="${CF_INGEST_URL:-rtmps://live.cloudflare.com:443/live}"
+EXTRA="${EXTRA_RTMP_URLS:-}"
 URL="${BROADCAST_URL:-http://127.0.0.1:3333/broadcast}"
 W="${STREAM_WIDTH:-1920}"
 H="${STREAM_HEIGHT:-1080}"
@@ -63,10 +69,11 @@ PRIMARY="${YT_PRIMARY_URL:-rtmp://a.rtmp.youtube.com/live2}"
 BACKUP="${YT_BACKUP_URL:-rtmp://b.rtmp.youtube.com/live2?backup=1}"
 USE_BACKUP="${STREAM_BACKUP:-0}"
 
-if [ -z "$KEY" ] && [ -z "$TWITCH_KEY" ]; then
+if [ -z "$KEY" ] && [ -z "$TWITCH_KEY" ] && [ -z "$CF_KEY" ] && [ -z "$EXTRA" ]; then
   echo "No stream key. Put at least one in $ROOT/.env:"
   echo "  YT_STREAM_KEY=xxxx-xxxx-xxxx-xxxx-xxxx"
   echo "  TWITCH_STREAM_KEY=live_000000000_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  echo "  CF_STREAM_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   exit 1
 fi
 
@@ -84,6 +91,28 @@ fi
 if [ -n "$TWITCH_KEY" ]; then
   DESTS+=("${TWITCH_URL}/${TWITCH_KEY}"); LABELS+=("Twitch")
 fi
+if [ -n "$CF_KEY" ]; then
+  DESTS+=("${CF_URL}/${CF_KEY}");         LABELS+=("Cloudflare Stream")
+fi
+for u in $EXTRA; do
+  DESTS+=("$u");                          LABELS+=("Extra")
+done
+
+# RTMPS needs an ffmpeg built with TLS. Most distro builds have it; finding out
+# at 3am from a cryptic protocol error does not.
+case " ${DESTS[*]} " in
+  *rtmps://*)
+    # A MISSING ffmpeg is not an ffmpeg without TLS, and saying so sends you off
+    # to install the wrong thing. The binary check further down reports that
+    # case properly, so this one only speaks when there is an ffmpeg to judge.
+    if command -v ffmpeg >/dev/null 2>&1; then
+      if ! ffmpeg -hide_banner -protocols 2>/dev/null | grep -qw rtmps; then
+        echo "ERROR: a destination uses rtmps:// but this ffmpeg has no rtmps support."
+        echo "       ffmpeg -protocols | grep rtmps   (install a build with TLS)"
+        exit 1
+      fi
+    fi ;;
+esac
 
 # Twitch refuses anything much over 6000 kbps and will simply drop the stream;
 # YouTube is happy far higher, so the cap is only worth mentioning when Twitch
