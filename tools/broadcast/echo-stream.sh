@@ -123,6 +123,28 @@ is_black() {
   awk -v v="$BRIGHT" 'BEGIN { exit !(v < 1.0) }'
 }
 
+# ── how much memory the browser is using ────────────────────────────────────
+# All of it: a browser is a dozen processes and the renderer that dies is not
+# the one with the recognisable name. Summed by command name, which catches
+# chromium, chrome and brave alike, and the renderers they spawn.
+# A ceiling on the browser, because the crash this keeps catching is a
+# renderer dying for memory ("Aw, Snap!", SIGTRAP) after hours of decoding
+# radar into textures. Restarting at a number of our choosing costs the same
+# few seconds as any other restart; waiting for the crash costs a crash page
+# on air and the time it takes to notice.
+#
+# The page reloading itself every six hours does not help here: a same-origin
+# reload reuses the process that is leaking.
+#
+# 3 GB suits a box with a few spare; lower it on a small one. 0 turns the
+# ceiling off and goes back to waiting for the crash.
+MAX_BROWSER_MB="${STREAM_MAX_BROWSER_MB:-3000}"
+
+browser_mb() {
+  ps -eo rss,comm 2>/dev/null \
+    | awk '$2 ~ /chrom|brave/ { s += $1 } END { if (s > 0) print int(s / 1024) }'
+}
+
 # ── the report ──────────────────────────────────────────────────────────────
 # Written once, used twice: against a stream already on air, and against one
 # started for the purpose. $1 is how long to wait for a heartbeat — nothing,
@@ -182,7 +204,7 @@ diagnose_report() {
     echo
     echo "   on air:"
     for k in mode shot site event where radarLayer scanLoaded scanAgeSeconds \
-             loopSteps stallWorstMs stallCount \
+             loopSteps stallWorstMs stallCount heapMb \
              loopFrames lat lon zoom warnings; do
       printf "     %-15s %s\n" "$k" "$(shotfield "$k")"
     done
@@ -206,6 +228,10 @@ diagnose_report() {
 
   echo
   echo "── memory ──────────────────────────────────────────────────────────"
+  # The browser first: it is the number that explains a crashed renderer, and
+  # the machine having plenty free says nothing about one process hitting its
+  # own ceiling.
+  echo "   the browser is using: $(browser_mb) MB (restarts past ${MAX_BROWSER_MB} MB)"
   free -m 2>/dev/null | sed "s/^/   /"
   KILLED="$(journalctl -k --no-pager 2>/dev/null | grep -i "killed process" | tail -3)"
   if [ -n "$KILLED" ]; then
@@ -619,7 +645,11 @@ echo "  keyframes every $(( GOP / FPS ))s (scenecut off), audio aac 44.1k stereo
 # reports in every thirty seconds and this checks that it is still doing so.
 # Anything that stops it — a crashed renderer, a hung tab, the browser killed
 # for memory — ends this run, and systemd starts a clean one.
-STALE_AFTER=180
+#
+# Three missed beats, not six. The page beats every 30 seconds, so 90 is as
+# certain as 180 and holds a dead screen on air for half as long.
+STALE_AFTER=90
+
 
 while kill -0 "$FF_PID" 2>/dev/null; do
   sleep 30
@@ -650,6 +680,15 @@ while kill -0 "$FF_PID" 2>/dev/null; do
   if [ -n "$AGE" ] && [ "$AGE" -gt "$STALE_AFTER" ]; then
     echo "the page has not checked in for ${AGE}s (crashed or hung) — restarting"
     exit 1
+  fi
+
+  # Restart BEFORE the renderer dies of it, rather than after.
+  if [ "$MAX_BROWSER_MB" -gt 0 ] 2>/dev/null; then
+    MB="$(browser_mb)"
+    if [ -n "$MB" ] && [ "$MB" -gt "$MAX_BROWSER_MB" ]; then
+      echo "the browser is using ${MB} MB (limit ${MAX_BROWSER_MB}) — restarting before it crashes"
+      exit 1
+    fi
   fi
 done
 

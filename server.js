@@ -2466,6 +2466,7 @@ app.post('/broadcast/alive', (req, res) => {
         loopSteps: _shotText(b.loopSteps),
         stallWorstMs: _shotNum(b.stallWorstMs),
         stallCount: _shotNum(b.stallCount),
+        heapMb: _shotNum(b.heapMb),
     };
     res.set('Cache-Control', 'no-store').json({ ok: true });
 });

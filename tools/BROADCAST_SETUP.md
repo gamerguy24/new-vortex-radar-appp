@@ -383,6 +383,44 @@ touch the NEXRAD buckets and are rate limited to 40 requests a minute — the
 stream needs about two. Budget roughly **10-30 MB per scan** of extra download
 on the server while a storm is on air, every few minutes.
 
+## When the stream shows "Aw, Snap!"
+
+That is Chromium's crash page: the renderer died and the browser is still
+running, so the encoder carries on capturing a screen that happens to say
+"Aw, Snap!" on it. The error code is almost always `SIGTRAP`, which despite
+the name is usually **the renderer running out of memory** — Chromium aborts
+rather than continue, and that abort surfaces as SIGTRAP.
+
+It recovers on its own. The page stops reporting in, the encoder notices
+within 90 seconds, and systemd starts a clean run. You do not need to do
+anything, and if the channel came back by itself, that is what happened.
+
+It should also now be rare, because the encoder restarts the stream *before*
+the browser gets there:
+
+```bash
+# in .env — how much memory the browser may use before a clean restart
+STREAM_MAX_BROWSER_MB=3000     # the default; 0 turns the ceiling off
+```
+
+Lower it on a small box, raise it on a large one. `--diagnose` prints what
+the browser is using right now, so pick the number from the measurement
+rather than from the size of the machine:
+
+```
+── memory ──────────────────────────────────────────────────────────
+   the browser is using: 1886 MB (restarts past 3000 MB)
+```
+
+Note that the page reloading itself every six hours does **not** solve this:
+a same-origin reload reuses the same renderer process, leak and all. Only a
+new browser starts clean.
+
+If it happens every few hours rather than every few days, send the browser
+memory figure and the `heapMb` line from `--diagnose` over a couple of hours.
+A climb in both points at the page; a climb in only the first points at the
+textures, which the page cannot see or free.
+
 ## When the stream is live and the picture is black
 
 This one is worth separating from everything below, because every signal you

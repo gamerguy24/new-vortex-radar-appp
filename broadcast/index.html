@@ -1507,6 +1507,12 @@ map.on('load', async () => {
         ? `${lp.stepMs} asked, got ${lp.steps.join('/')}`
         : null,
       stallWorstMs: stalls.length ? Math.max(...stalls.map((x) => x.ms)) : 0,
+      // The JS heap only, which is a fraction of what a renderer holds — the
+      // textures are the bulk and are invisible from in here. It is still the
+      // half we can see climbing, and the encoder measures the whole.
+      heapMb: (performance && performance.memory)
+        ? Math.round(performance.memory.usedJSHeapSize / 1048576)
+        : null,
       stallCount: stalls.length,
       lat: c ? c.lat : null,
       lon: c ? c.lng : null,
