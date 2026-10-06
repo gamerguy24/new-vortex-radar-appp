@@ -138,7 +138,15 @@ is_black() {
 #
 # 3 GB suits a box with a few spare; lower it on a small one. 0 turns the
 # ceiling off and goes back to waiting for the crash.
-MAX_BROWSER_MB="${STREAM_MAX_BROWSER_MB:-3000}"
+# OFF by default, because the number was a guess and the guess was wrong.
+# Summing RSS across a browser counts shared memory once per process, so a
+# perfectly healthy Chromium reads far higher than it is really using — and at
+# 3000 this restarted the stream every time it checked, which is a worse
+# failure than the crash it was meant to prevent.
+#
+# Set it to a number taken from --diagnose on YOUR box, well above what it
+# reads when the stream is healthy. Empty or 0 leaves it off.
+MAX_BROWSER_MB="${STREAM_MAX_BROWSER_MB:-0}"
 
 browser_mb() {
   ps -eo rss,comm 2>/dev/null \

@@ -400,12 +400,17 @@ the browser gets there:
 
 ```bash
 # in .env — how much memory the browser may use before a clean restart
-STREAM_MAX_BROWSER_MB=3000     # the default; 0 turns the ceiling off
+STREAM_MAX_BROWSER_MB=4000     # OFF by default; 0 also means off
 ```
 
-Lower it on a small box, raise it on a large one. `--diagnose` prints what
-the browser is using right now, so pick the number from the measurement
-rather than from the size of the machine:
+**Measure before you set it.** Summing RSS across a browser counts shared
+memory once per process, so a healthy Chromium reads much higher than it is
+really using. Set at 3000 on a box that idled above it, this restarted the
+stream on every check — a far worse failure than the crash it prevents. That
+is why it ships off.
+
+`--diagnose` prints what the browser is using right now. Take that number
+when the stream is healthy and set the limit well above it:
 
 ```
 ── memory ──────────────────────────────────────────────────────────
