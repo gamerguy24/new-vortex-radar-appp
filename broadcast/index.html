@@ -305,6 +305,9 @@ const STATUS_MS = 10 * 60 * 1000;      // how often to recheck which radars are 
 // stand. 45 dBZ is a thunderstorm core rather than a rain shower.
 const TOUR_MIN_DBZ = 45;
 const TOUR_ZOOM = 8.2;
+// A pull-back to the whole country should read as a pull-back. 1.2 seconds
+// across the continent is a snap zoom; this is still brisk for television.
+const NATIONAL_FLY_MS = 1800;
 /*
  * How many scans the loop plays. Five is about half an hour of weather at a
  * typical volume rate — enough to read a storm's direction.
@@ -370,6 +373,31 @@ function moveCamera(fn, what) {
     console.warn('[broadcast] camera move refused for ' + what + ': ' + e.message);
     return false;
   }
+}
+
+/*
+ * Resolve once the camera has stopped, or after a cap.
+ *
+ * The cap matters more than the event: a move that is refused never fires
+ * moveend at all, and waiting on an event that will not arrive would strand
+ * the page mid-cut with no radar coming. Late is survivable; never is not.
+ */
+function cameraSettled(maxMs = 2600) {
+  // Nothing moving: there is no moveend coming, and waiting for one would
+  // hold the radar off the screen for the whole cap.
+  try { if (typeof map.isMoving === 'function' && !map.isMoving()) return Promise.resolve(); }
+  catch (e) { /* ask the event instead */ }
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try { map.off('moveend', finish); } catch (e) { /* already gone */ }
+      resolve();
+    };
+    try { map.on('moveend', finish); } catch (e) { /* no map: fall through to the cap */ }
+    setTimeout(finish, maxMs);
+  });
 }
 
 /** Is there any radar on the map at all? */
@@ -887,6 +915,15 @@ async function settleOnSite(got, ticket) {
   }
   onAir.site = got.site;
   /*
+   * Let the camera land first. The raster is rendered through the projection
+   * it is drawn for, so a draw during the flight both stalls the move and is
+   * thrown away by the moveend handler redrawing it for the view the camera
+   * actually reached. Usually this waits for nothing: fetching a volume takes
+   * longer than the flight.
+   */
+  await cameraSettled();
+  if (ticket !== cutSeq) return;      // a newer shot took over while we waited
+  /*
    * Awaited, because the raster LAYER is only added once the draw completes —
    * and the radar is inserted below the warning boxes, which puts it above the
    * site pills. Raising the furniture before that happens raises it above
@@ -1081,15 +1118,26 @@ async function goNational(reason) {
   renderPanel();
 
   /*
-   * The mosaic FIRST, with the camera still.
+   * Fly FIRST, with the storm picture still on screen.
    *
-   * Fetching and decoding the national grid is the heaviest thing this page
-   * does, and it used to run on top of a 1.2-second flight — which is what
-   * made zooming out lurch. It also used to run after the site radar had
-   * been cleared, so the flight crossed an empty map.
+   * Nothing heavy may run while the camera is moving — that is what made this
+   * lurch — and the storm radar staying up means the flight is never over an
+   * empty map. It shrinks to a speck as the country comes into view, which is
+   * what pulling back from a storm should look like.
+   */
+  moveCamera(() => map.fitBounds(CONUS, { padding: pad(NATIONAL_PAD), duration: NATIONAL_FLY_MS, bearing: 0, pitch: 0 }),
+    'the national view');
+  await cameraSettled(NATIONAL_FLY_MS + 1000);
+
+  /*
+   * Then the mosaic, with the camera still AND at the national view.
    *
-   * Done here it goes UNDER the storm picture that is still up, which is then
-   * taken away, so there is radar on screen the whole way through.
+   * Both halves of that matter. Fetching and decoding the national grid is the
+   * heaviest thing this page does, so it cannot share the screen with an
+   * animation. And it sizes its canvas to the CURRENT view: rendered while
+   * still zoomed into a storm it asks for a canvas far wider than the screen
+   * and gets the 3600px ceiling, about four times the work of the ~1920 it
+   * needs once the country is in frame.
    */
   try {
     await setMRMSProduct('ref_comp');
@@ -1099,15 +1147,11 @@ async function goNational(reason) {
     setTimeout(() => reload('MRMS failed to restart'), 60000);
   }
 
-  // Whether or not the mosaic came up: the storm shot is over, and staying
-  // on it with no site timer running would freeze that picture on air.
+  // Whether or not the mosaic came up: the storm shot is over, and keeping
+  // that picture with no site timer running would freeze it on air.
   clearSite(map);
   keepSiteMarkersOnTop(map);
   keepWarningsOnTop();
-
-  // Last, with nothing else running.
-  moveCamera(() => map.fitBounds(CONUS, { padding: pad(NATIONAL_PAD), duration: 1200, bearing: 0, pitch: 0 }),
-    'the national view');
 }
 
 /**
