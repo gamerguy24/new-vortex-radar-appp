@@ -661,16 +661,24 @@ while kill -0 "$FF_PID" 2>/dev/null; do
 
   # The heartbeat proves the page is running, not that it is drawing. A page
   # that loads and paints nothing answers every check and shows nothing, so
-  # the picture is checked on its own account. Two minutes of solid black,
-  # rather than one sample, so a momentary blank between shots is not enough.
-  if is_black; then
-    BLACK_STRIKES=$(( ${BLACK_STRIKES:-0} + 1 ))
-    if [ "$BLACK_STRIKES" -ge 4 ]; then
-      echo "the screen has been entirely black for two minutes — restarting"
-      exit 1
+  # the picture is checked on its own account.
+  #
+  # Every FOURTH pass, though. Measuring it costs two ffmpeg runs against the
+  # X server that is being captured, on the CPU that is encoding — four times
+  # a minute of that reaches the picture. The heartbeat already covers every
+  # way of losing the page except this one, which is rare and can afford to be
+  # caught in four minutes rather than two.
+  TICK=$(( ${TICK:-0} + 1 ))
+  if [ $(( TICK % 4 )) -eq 0 ]; then
+    if is_black; then
+      BLACK_STRIKES=$(( ${BLACK_STRIKES:-0} + 1 ))
+      if [ "$BLACK_STRIKES" -ge 2 ]; then
+        echo "the screen has been entirely black for four minutes — restarting"
+        exit 1
+      fi
+    else
+      BLACK_STRIKES=0
     fi
-  else
-    BLACK_STRIKES=0
   fi
 
   AGE="$(curl -fsS --max-time 5 "$ALIVE_URL" 2>/dev/null \

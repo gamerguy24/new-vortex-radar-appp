@@ -126,17 +126,20 @@
   #tickerlabel { flex: 0 0 auto; height: 100%; display: flex; align-items: center; padding: 0 16px;
     position: relative; z-index: 2;
     background: #d1402f; font-weight: 800; letter-spacing: .14em; font-size: 13px; }
-  /* A ticker scrolls at a constant speed and never visibly restarts. Moving
-     the element by a percentage of ITSELF did neither: with one short warning
-     the line crossed, left an empty strip, and snapped back to the beginning
-     in full view, and the fixed 80s made one warning crawl while fifty raced
-     past. The line is repeated until it covers the strip twice over and
-     shifted by exactly one copy, so the restart lands on identical pixels and
-     cannot be seen; both numbers are measured in renderTicker. */
+  /* THE KEYFRAME VALUES MUST BE STATIC, or this animation runs on the main
+     thread — restyling and repainting four thousand pixels of text sixty
+     times a second, for ever, alongside the map. A var() in the transform is
+     enough to cost the compositor, and it showed: the scroll stuttered and
+     took the camera down with it.
+
+     So the distance is a plain -50%, and renderTicker makes that mean the
+     right thing by building the strip as two identical halves. Half the
+     element is exactly one half, so the loop lands on identical pixels and
+     cannot be seen. Only the DURATION varies, set on the element, which is a
+     number the animation reads once rather than a value it interpolates. */
   #ticker { display: flex; white-space: nowrap; font-size: 16px; font-weight: 600;
-    animation: scroll var(--ticker-dur, 60s) linear infinite; }
-  @keyframes scroll { from { transform: translateX(0) }
-    to { transform: translateX(calc(-1 * var(--ticker-shift, 100%))) } }
+    will-change: transform; animation: scroll 60s linear infinite; }
+  @keyframes scroll { from { transform: translateX(0) } to { transform: translateX(-50%) } }
   #ticker .run { flex: 0 0 auto; padding-right: 64px; }
   #ticker .sep { color: #5d6b7c; padding: 0 14px; }
   #ticker .tor { color: #ff7a6f; } #ticker .svr { color: #ffd98a; } #ticker .ffw { color: #7ce8a8; }
@@ -305,9 +308,10 @@ const STATUS_MS = 10 * 60 * 1000;      // how often to recheck which radars are 
 // stand. 45 dBZ is a thunderstorm core rather than a rain shower.
 const TOUR_MIN_DBZ = 45;
 const TOUR_ZOOM = 8.2;
-// A pull-back to the whole country should read as a pull-back. 1.2 seconds
-// across the continent is a snap zoom; this is still brisk for television.
-const NATIONAL_FLY_MS = 1800;
+// Back to 1.2s. A longer move is only more graceful if every frame of it
+// lands, and while the ticker was holding the main thread it just meant more
+// of the stutter to sit through.
+const NATIONAL_FLY_MS = 1200;
 /*
  * How many scans the loop plays. Five is about half an hour of weather at a
  * typical volume rate — enough to read a storm's direction.
@@ -753,12 +757,19 @@ function renderTicker(html) {
   const wrapW = wrap ? wrap.offsetWidth : 1920;
   if (!runW) { t.style.animation = ''; return; }   // not laid out yet; next change retries
 
-  const copies = Math.max(2, Math.ceil((wrapW * 2) / runW));
-  let out = '';
-  for (let i = 0; i < copies; i++) out += `<span class="run">${html}</span>`;
-  t.innerHTML = out;
-  t.style.setProperty('--ticker-shift', runW + 'px');
-  t.style.setProperty('--ticker-dur', (runW / TICKER_SPEED_PX_S) + 's');
+  /*
+   * One half has to cover the strip, or there is a gap behind the text as it
+   * leaves. Two identical halves make the -50% in the keyframe mean exactly
+   * one half, which is what keeps the loop invisible without a variable.
+   */
+  const per = Math.max(1, Math.ceil(wrapW / runW));
+  let half = '';
+  for (let i = 0; i < per; i++) half += `<span class="run">${html}</span>`;
+  t.innerHTML = half + half;
+
+  // Constant speed whatever the length: one warning and fifty travel at the
+  // same pixels per second, so both are equally readable.
+  t.style.animationDuration = ((runW * per) / TICKER_SPEED_PX_S) + 's';
   void t.offsetWidth;        // force the layout before the animation is restored
   t.style.animation = '';
 }
