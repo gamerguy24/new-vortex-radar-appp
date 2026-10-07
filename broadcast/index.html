@@ -143,6 +143,18 @@
 
   #bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 92px; z-index: 5;
     background: linear-gradient(0deg, rgba(5,7,10,.95) 0%, rgba(5,7,10,.72) 62%, rgba(5,7,10,0) 100%); }
+  /* The key. Only ever lists products that are on screen. */
+  #tropkey { position: absolute; right: 26px; bottom: 104px; z-index: 6;
+    background: rgba(9,13,19,.88); border: 1px solid rgba(255,255,255,.13); border-radius: 10px;
+    padding: 9px 12px; box-shadow: 0 14px 34px rgba(0,0,0,.5); }
+  #tropkey.hide { display: none; }
+  #tropkey h4 { margin: 0 0 7px; font-size: 10.5px; letter-spacing: .14em; font-weight: 800;
+    color: #8fa6bd; text-transform: uppercase; }
+  #tropkey div { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700;
+    line-height: 1.75; }
+  #tropkey i { flex: 0 0 auto; width: 15px; height: 15px; border-radius: 3px; display: block;
+    border: 1px solid rgba(0,0,0,.45); }
+
   #tickerwrap { position: absolute; left: 0; right: 0; bottom: 30px; height: 40px; display: flex; align-items: center;
     background: rgba(9,13,19,.86); border-top: 1px solid rgba(255,255,255,.08);
     border-bottom: 1px solid rgba(255,255,255,.08); overflow: hidden; }
@@ -275,6 +287,8 @@
   </div>
 
   <div id="bottom">
+  <div id="tropkey" class="hide"><h4>In effect</h4></div>
+
     <div id="tickerwrap">
       <div id="tickerlabel">ACTIVE WARNINGS</div>
       <div id="ticker"><span class="run">Loading active warnings…</span></div>
@@ -868,10 +882,43 @@ function paintWarnings() {
    * it — so polling every 60 seconds made the whole line snap back to the
    * beginning every 60 seconds, whether or not a single warning had changed.
    */
+  // The key, in tropical mode: the products on screen and nothing else.
+  if (TROPICAL) paintKey(ordered);
+
   const html = lines.length
     ? lines.join('<span class="sep">•</span>')
     : 'No active tornado, severe thunderstorm or flash flood warnings, and no watches.';
   if (html !== lastTickerHtml) { lastTickerHtml = html; renderTicker(html); }
+}
+
+/*
+ * What the colours on the map mean, for the products that are on it.
+ *
+ * This replaces the per-polygon labels in tropical mode, where there are
+ * dozens of coastal zones and a tag on each is both unreadable and, with
+ * collision detection running against a looping raster, never still.
+ */
+function paintKey(features) {
+  const el = document.getElementById('tropkey');
+  if (!el) return;
+  const seen = [];
+  for (const f of features) {
+    const ev = (f && f.properties && f.properties.event) || '';
+    const w = TYPES[ev];
+    if (!w) continue;
+    if (!seen.some((x) => x.ev === ev)) seen.push({ ev, color: w.color });
+  }
+  if (!seen.length) { el.classList.add('hide'); return; }
+  // Longest name first reads as a block rather than a ragged edge.
+  seen.sort((a, b) => b.ev.length - a.ev.length);
+  /*
+   * The name can only be a key of TYPES, which is a literal table in this
+   * file — the loop above drops anything that is not one — so no text from
+   * the feed reaches innerHTML here.
+   */
+  el.innerHTML = '<h4>In effect</h4>' + seen.map((x) =>
+    `<div><i style="background:${x.color}"></i>${x.ev}</div>`).join('');
+  el.classList.remove('hide');
 }
 
 /*
@@ -1805,6 +1852,18 @@ map.on('load', async () => {
      * static HTML default and read "Radar: NOAA MRMS" under a satellite
      * picture, which is the one kind of mistake this page has a rule about.
      */
+    /*
+     * No per-polygon labels. They are a symbol layer with collision
+     * detection, which Mapbox re-runs on every render — and the loop renders
+     * twice a second — so on a coast with dozens of zones the tags shuffled
+     * continuously. The key in the corner says the same and holds still.
+     */
+    try {
+      if (map.getLayer('warn-label')) map.setLayoutProperty('warn-label', 'visibility', 'none');
+    } catch (e) {
+      console.warn('[broadcast] could not hide the warning labels:', e.message);
+    }
+
     renderPanel();
     const tl = document.getElementById('tickerlabel');
     if (tl) tl.textContent = 'TROPICAL WATCHES & WARNINGS';
