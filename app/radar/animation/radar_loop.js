@@ -77,6 +77,44 @@ let live = true;
  */
 let generation = 0;
 
+/*
+ * A layer that can drive this player when radar is not using it.
+ *
+ * { count(), index(), isPlaying(), play(), pause(), setIndex(i), goLive() }
+ *
+ * Radar has priority: a driver is only in charge while the radar loop holds
+ * nothing, so none of radar's own behaviour is routed through this.
+ */
+let driver = null;
+let driverTimer = null;
+
+function driving() {
+    try { return !!(driver && frames.length === 0 && driver.count() > 1); }
+    catch (e) { return false; }
+}
+
+/* Show what the driver is doing: it moves on its own clock, so the slider
+   and the play icon have to be told rather than asked once. */
+function syncDriverUi() {
+    if (!driving()) return;
+    try {
+        const n = driver.count();
+        const i = driver.index();
+        if (n > 1 && i >= 0) $('#vortexTimeline').val(Math.round((i / (n - 1)) * 100));
+        setIcon(!!driver.isPlaying());
+    } catch (e) { /* a driver that throws simply stops being followed */ }
+}
+
+function setDriver(d) {
+    driver = d || null;
+    if (driverTimer) { clearInterval(driverTimer); driverTimer = null; }
+    if (driver) driverTimer = setInterval(syncDriverUi, 250);
+    // Only reset the button if nothing else is using it: radar can have
+    // loaded frames and started playing since the driver registered, and
+    // turning that layer off must not make the icon lie about radar.
+    else if (!playing) setIcon(false);
+}
+
 function $play() { return $('#vortexPlayBtn'); }
 function $live() { return $('#vortexLiveBtn'); }
 function frameDelayMs() { return Math.round(750 / speed); }
@@ -221,6 +259,12 @@ function play() {
  * different product was picked.
  */
 function goLive() {
+    if (driving()) {
+        driver.goLive();
+        setLive(true);
+        syncDriverUi();
+        return;
+    }
     if (loading) { setLoading(false); setProgress(null); }
     const wasLive = live;
     stop();                     // also abandons a load in flight
@@ -343,6 +387,13 @@ function onPlayClick() {
     }
     if (playing) { stop(); return; }
 
+    // Radar has nothing loaded, but something else does.
+    if (driving()) {
+        if (driver.isPlaying()) driver.pause(); else { setLive(false); driver.play(); }
+        syncDriverUi();
+        return;
+    }
+
     const key = targetKey();
     if (!key) { return; } // nothing plotted yet
 
@@ -359,6 +410,13 @@ function onPlayClick() {
 // Step one frame back/forward (pauses the loop). Returns true if it handled the
 // step (a loop is loaded); false lets the caller fall back (e.g. map panning).
 function step(dir) {
+    if (driving()) {
+        driver.pause();
+        setLive(false);
+        driver.setIndex(driver.index() + dir);
+        syncDriverUi();
+        return true;
+    }
     if (frames.length === 0) { return false; }
     stop();
     setLive(false);
@@ -369,6 +427,15 @@ function step(dir) {
 }
 
 function onSliderInput() {
+    if (driving()) {
+        driver.pause();
+        setLive(false);
+        const n = driver.count();
+        const v = parseInt($('#vortexTimeline').val(), 10) || 0;
+        driver.setIndex(Math.round((v / 100) * (n - 1)));
+        setIcon(false);
+        return;
+    }
     if (frames.length === 0) { return; }
     stop();
     setLive(false);
@@ -454,4 +521,4 @@ if (typeof window !== 'undefined') {
     };
 }
 
-module.exports = { reset, togglePlay: onPlayClick, step, goLive };
+module.exports = { reset, togglePlay: onPlayClick, step, goLive, setDriver };

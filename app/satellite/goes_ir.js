@@ -409,6 +409,53 @@ function followTick() {
     if (want !== null && want !== _shown) showFrame(want);
 }
 
+/** Frame times, oldest first — the order the player scrubs through. */
+function sortedTimes() {
+    return [..._frames.keys()].sort((a, b) => a - b);
+}
+
+/* Play or pause, through the legend button when there is one, so the two
+   controls can never disagree about which state they are in. */
+function applyPlaying(on) {
+    const el = document.getElementById(LEGEND_ID);
+    if (el) { setPlaying(el, on); return; }
+    _playing = on;
+    if (on) startPlaying(); else stopPlaying();
+}
+
+/*
+ * What the app player needs in order to drive this layer.
+ *
+ * It takes over only while the radar loop is empty, so this is what the
+ * controls do when satellite is the only thing on the map.
+ */
+function playerDriver() {
+    return {
+        count: () => _frames.size,
+        index: () => {
+            const t = sortedTimes();
+            const i = t.indexOf(_shown);
+            return i < 0 ? Math.max(0, t.length - 1) : i;
+        },
+        isPlaying: () => !!_playTimer,
+        play: () => applyPlaying(true),
+        pause: () => applyPlaying(false),
+        setIndex: (i) => {
+            const t = sortedTimes();
+            if (!t.length) return;
+            // Wrapped, so stepping off either end comes round rather than
+            // sticking, which is what the radar loop does.
+            showFrame(t[((i % t.length) + t.length) % t.length]);
+        },
+        goLive: () => {
+            const t = sortedTimes();
+            if (!t.length) return;
+            applyPlaying(false);
+            showFrame(t[t.length - 1]);
+        },
+    };
+}
+
 /* The legend's own pause is meaningless while the player is driving. */
 function markFollowing() {
     const el = document.getElementById(LEGEND_ID);
@@ -482,6 +529,16 @@ function enable() {
     _timer = setInterval(() => { if (_enabled) sync(); }, 5 * 60 * 1000);
     if (_followTimer) clearInterval(_followTimer);
     _followTimer = setInterval(followTick, 250);
+    /*
+     * Required here rather than at the top of the file: the player is radar's
+     * module, and loading it the moment this file is parsed would tie the two
+     * together at startup for something only wanted once this layer is on.
+     */
+    try {
+        require('../radar/animation/radar_loop').setDriver(playerDriver());
+    } catch (e) {
+        console.warn('[GOES] could not reach the player:', e && e.message);
+    }
 }
 
 function disable() {
@@ -490,6 +547,9 @@ function disable() {
     if (_timer) { clearInterval(_timer); _timer = null; }
     if (_followTimer) { clearInterval(_followTimer); _followTimer = null; }
     _following = false;
+    try {
+        require('../radar/animation/radar_loop').setDriver(null);
+    } catch (e) { /* it was never reached */ }
     _remove();
 }
 
