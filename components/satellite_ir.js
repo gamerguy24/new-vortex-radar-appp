@@ -162,14 +162,16 @@ async function frameUrl(src, width, at) {
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const d = data.data;
     let present = 0;
-    // Is there any variation? One colour corner to corner is a placeholder.
-    let first = -1, varied = false;
+    // How dominated is this frame by one colour? A real scan is not:
+    // measured, 73,177 distinct colours with the commonest at 2.6%.
+    let first = -1, firstCount = 0;
     for (let i = 0; i < d.length; i += 4) {
         if (d[i + 3] === 0) continue;
         present++;
         const r = d[i], g = d[i + 1], b = d[i + 2];
         const packed = (r << 16) | (g << 8) | b;
-        if (first < 0) first = packed; else if (packed !== first) varied = true;
+        if (first < 0) first = packed;
+        if (packed === first) firstCount++;
         // Grey at full resolution; see greyLut.
         d[i + 3] = (r === g && g === b)
             ? G[r]
@@ -183,8 +185,9 @@ async function frameUrl(src, width, at) {
      * pixel — white being -91.1 °C, the coldest in the table, so it painted the
      * whole domain opaque. That was the white flash in the loop.
      */
-    if (!varied) {
-        console.warn('[GOES] a solid frame was served; skipping it');
+    if (firstCount / present > 0.9) {
+        console.warn('[GOES] a blank frame was served ('
+            + Math.round(100 * firstCount / present) + '% one colour); skipping it');
         return null;
     }
     ctx.putImageData(data, 0, 0);
@@ -213,15 +216,28 @@ async function exists(src, at) {
     });
 }
 
-/* The newest time EVERY satellite has, so they can share one clock. */
+/*
+ * The newest scan the FIRST satellite has, and which of the others can see
+ * their own patch at that moment.
+ *
+ * Requiring every satellite to have a frame is right when each can see the
+ * place it is being asked about, and a disaster when one cannot: a layer
+ * asked for a region outside its sector answers empty every time, which
+ * rejected every scan there has ever been and left the map bare. A satellite
+ * with nothing to show is dropped from the shot; the rest carry on together.
+ */
 async function newestCommon(st) {
     let at = scanTime(Date.now());
     for (let i = 0; i < PROBE_BACK; i++) {
-        let all = true;
-        for (const src of st.sources) {
-            if (!await exists(src, at)) { all = false; break; }
+        if (await exists(st.sources[0], at)) {
+            const keep = [st.sources[0]];
+            for (const src of st.sources.slice(1)) {
+                if (await exists(src, at)) keep.push(src);
+                else console.warn('[GOES] ' + src.wms + ' has nothing for this view; leaving it out');
+            }
+            st.sources = keep;
+            return at;
         }
-        if (all) return at;
         at -= SCAN_MS;
     }
     return null;

@@ -441,7 +441,13 @@ const TROPICS = [[-100, 7.5], [-52, 40]];
  * the Pacific side at fewer pixels, being narrower and at the edge.
  */
 const GOES_EAST_DOMAIN = { W: -126, E: -28, S: 2, N: 48 };
-const GOES_WEST_DOMAIN = { W: -168, E: -124, S: 2, N: 52 };
+/*
+ * Probed, because the first guess at this was wrong: the GIBS GOES-West
+ * layer answers with 100% coverage from about 140W eastward and 0% at 168W.
+ * It is a sector product, not the whole disk, and a domain outside it comes
+ * back empty every time.
+ */
+const GOES_WEST_DOMAIN = { W: -140, E: -104, S: 12, N: 52 };
 
 /*
  * Six frames of ten minutes is an hour of cloud — enough to see a centre

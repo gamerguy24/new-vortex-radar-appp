@@ -202,9 +202,9 @@ function buildImage(at, cb) {
             const lut = alphaLut();
             const grey = greyLut();
             let present = 0;
-            // Is there any variation at all? A frame that is one colour from
-            // corner to corner is a placeholder, not weather.
-            let first = -1, varied = false;
+            // How dominated is this frame by one colour? A real scan is not:
+            // measured, 73,177 distinct colours with the commonest at 2.6%.
+            let first = -1, firstCount = 0;
             for (let i = 0; i < d.length; i += 4) {
                 // Nothing there to begin with stays nothing: off the disk, or
                 // a gap between scans.
@@ -212,7 +212,8 @@ function buildImage(at, cb) {
                 present++;
                 const r = d[i], g = d[i + 1], b = d[i + 2];
                 const packed = (r << 16) | (g << 8) | b;
-                if (first < 0) first = packed; else if (packed !== first) varied = true;
+                if (first < 0) first = packed;
+                if (packed === first) firstCount++;
                 /*
                  * Grey gets the full-resolution table. Its cold wedge and its
                  * warm end are a level or two apart and mean opposite things,
@@ -227,14 +228,19 @@ function buildImage(at, cb) {
             // one would put a hole in the middle of the loop.
             if (!present) { cb(null); return; }
             /*
-             * And a solid frame is just as useless, while looking like data.
-             * Verified on the real service: the 16:40Z scan came back with one
-             * distinct value, 255,255,255,255, over every pixel — and white is
-             * -91.1 °C here, the coldest reading in the table, so it was drawn
-             * fully opaque across the whole domain. That was the white flash.
+             * And a blank frame is just as useless, while looking like data.
+             * Verified on the real service: one scan came back with a single
+             * value, 255,255,255,255, over every pixel — and white is -91.1 °C
+             * here, the coldest reading in the table, so it painted the whole
+             * domain opaque. That was the white flash, and the white wall.
+             *
+             * Judged on the SHARE held by the commonest colour rather than on
+             * the colour count, because a blank with a trace of variation in it
+             * passed a count and looked identical on screen.
              */
-            if (!varied) {
-                console.warn('[GOES] a solid frame was served; skipping it');
+            if (firstCount / present > 0.9) {
+                console.warn('[GOES] a blank frame was served ('
+                    + Math.round(100 * firstCount / present) + '% one colour); skipping it');
                 cb(null); return;
             }
             ctx.putImageData(imgData, 0, 0);
