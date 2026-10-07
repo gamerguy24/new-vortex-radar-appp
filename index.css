@@ -1653,7 +1653,8 @@ td.day.active, span.month.active, span.year.active {
  * point: a national mosaic and a model forecast cover the same ground and look
  * alike, and only a label says which you are looking at.
  */
-#vortexMrmsLegend {
+#vortexMrmsLegend,
+#vortexSatLegend {
     position: absolute;
     right: 16px;
     bottom: 240px;
@@ -1668,24 +1669,31 @@ td.day.active, span.month.active, span.year.active {
     min-width: 210px;
     pointer-events: none;
 }
-#vortexMrmsLegend .vml-title { font-size: 12px; font-weight: 800; margin-bottom: 8px; letter-spacing: 0.2px; }
-#vortexMrmsLegend .vml-bar {
+#vortexMrmsLegend .vml-title,
+#vortexSatLegend .vml-title { font-size: 12px; font-weight: 800; margin-bottom: 8px; letter-spacing: 0.2px; }
+#vortexMrmsLegend .vml-bar,
+#vortexSatLegend .vml-bar {
     height: 13px;
     border-radius: var(--vx-r-2, 6px);
     border: 1px solid rgba(255, 255, 255, 0.18);
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 }
-#vortexMrmsLegend .vml-scale {
+#vortexMrmsLegend .vml-scale,
+#vortexSatLegend .vml-scale {
     display: flex; justify-content: space-between;
     font-size: 10px; opacity: 0.72; margin-top: 5px; font-weight: 600;
 }
-#vortexMrmsLegend .vml-age {
+#vortexMrmsLegend .vml-age,
+#vortexSatLegend .vml-age {
     margin-top: 7px; padding-top: 6px;
     border-top: 1px solid rgba(255, 255, 255, 0.09);
     font-size: 10.5px; font-weight: 700; opacity: 0.8;
 }
 /* Amber is interface state, which a staleness warning is. */
 #vortexMrmsLegend .vml-age.stale { color: var(--vx-accent, #e8862b); opacity: 1; }
+/* Above the radar legend, so both can be up at once without overlapping. */
+#vortexSatLegend { bottom: 392px; }
+
 
 /*
  * A <select> living inside a menu row (MRMS product picker). It takes the rest
