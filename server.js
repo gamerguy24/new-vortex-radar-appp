@@ -2015,6 +2015,50 @@ function l2RelayAuth(req, res, next) {
     return next();
 }
 
+/*
+ * NHC tropical tracks, for the public broadcast page.
+ *
+ * A BASIN, not a URL. The app uses /api/proxy for this, which takes a URL
+ * and needs a session; opening that up would be an open proxy, so the two
+ * addresses live here instead and anything else is refused.
+ */
+const TRACK_SOURCES = {
+    atlantic: 'https://placefilenation.com/Placefiles/nhc.php',
+    epac: 'https://placefilenation.com/Placefiles/epnhc.php',
+};
+const TRACKS_TTL_MS = 5 * 60 * 1000;
+const _trackCache = new Map();      // basin -> { at, text }
+let _tracksWindow = 0;
+let _tracksCount = 0;
+
+app.get('/broadcast/tracks/:basin', async (req, res) => {
+    const basin = String(req.params.basin || "").toLowerCase();
+    const url = TRACK_SOURCES[basin];
+    if (!url) return res.status(400).json({ error: 'unknown basin' });
+
+    const minute = Math.floor(Date.now() / 60000);
+    if (minute !== _tracksWindow) { _tracksWindow = minute; _tracksCount = 0; }
+    if (++_tracksCount > 20) return res.status(429).json({ error: "too many requests" });
+
+    const hit = _trackCache.get(basin);
+    if (hit && Date.now() - hit.at < TRACKS_TTL_MS) {
+        return res.set('Cache-Control', 'no-store').type('text/plain').send(hit.text);
+    }
+    try {
+        const r = await fetch(url, { headers: { Accept: 'text/plain' } });
+        if (!r.ok) return res.status(502).json({ error: 'upstream ' + r.status });
+        const text = await r.text();
+        _trackCache.set(basin, { at: Date.now(), text });
+        res.set('Cache-Control', 'no-store').type('text/plain').send(text);
+    } catch (e) {
+        console.warn('[TRACKS] ' + basin + ' failed: ' + e.message);
+        // Stale beats nothing: a storm track from ten minutes ago is still
+        // where the storm is, and a blank map is not.
+        if (hit) return res.set('Cache-Control', 'no-store').type('text/plain').send(hit.text);
+        res.status(502).json({ error: 'could not reach the tracks' });
+    }
+});
+
 // Latest volume key for a site, resolved server-side.
 app.get(['/api/graphics/l2-list', '/broadcast/l2-list'], l2RelayAuth, async (req, res) => {
     const site = String(req.query.site || '').toUpperCase().replace(/[^A-Z]/g, '');
@@ -2478,9 +2522,15 @@ app.get('/broadcast/alive', (req, res) => {
         shot: _broadcastShot,
     });
 });
-// The three front-end modules that page imports — named one by one rather than
+// The front-end modules that page imports — named one by one rather than
 // opening /components, so nothing else becomes public by accident.
-for (const f of ['mrms.js', 'mrms_products.js', 'palettes.js', 'basemap_palette.json']) {
+//
+// satellite_ir and hurricane_tracks are for tropical mode, which drops radar
+// entirely and shows looping infrared with the NHC forecast tracks; the
+// colour table is the data the satellite overlay is drawn with, and is shared
+// with the bundled app so the two cannot drift apart.
+for (const f of ['mrms.js', 'mrms_products.js', 'palettes.js', 'basemap_palette.json',
+    'satellite_ir.js', 'hurricane_tracks.js', 'ir_colormap.json']) {
     app.get('/components/' + f, sendFile(path.join('components', f)));
 }
 /*

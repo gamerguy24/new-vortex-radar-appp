@@ -270,6 +270,10 @@ import { Director, candidatesFrom, quietCandidates, WARN_TYPES, boundsOf, centro
   SITE_RANGE_KM } from '/broadcast/storm_director.js?v=bcast3';
 import { addSiteMarkers, setSiteMarkerStatus, keepSiteMarkersOnTop, fetchSiteStatus }
   from '/broadcast/site_markers.js?v=bcast1';
+import { addSatelliteIR, removeSatelliteIR, satelliteState }
+  from '/components/satellite_ir.js?v=bcast1';
+import { addHurricaneTracks, setTrackEndpoint }
+  from '/components/hurricane_tracks.js?v=bcast1';
 import { loadSite, redrawSite, showSite, clearSite, siteRadarState, BUSY, MIN_DBZ,
   buildLoop, startLoop, stopLoop, loopState }
   from '/broadcast/site_radar.js?v=bcast3';
@@ -298,6 +302,13 @@ const tzDate = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short', 
 const RELOAD_EVERY_MS = 6 * 60 * 60 * 1000;   // a browser left running for weeks leaks
 const STALE_FRAME_MS = 25 * 60 * 1000;        // MRMS updates ~2 min; 25 without = something is wrong
 const STALE_SITE_MS = 22 * 60 * 1000;         // a volume every ~5 min; 22 means that radar stopped
+/*
+ * The satellite is late by nature: GIBS publishes about half an hour behind,
+ * and the loop shows an hour of frames behind THAT. Only the newest scan is
+ * evidence of anything, and 90 minutes without a new one means the feed has
+ * stopped rather than that it is being itself.
+ */
+const STALE_SAT_MS = 90 * 60 * 1000;
 const SITE_REFRESH_MS = 45 * 1000;            // how often to look for the next volume
 const VETO_MS = 10 * 60 * 1000;               // how long a failing radar or storm is left alone
 const ALERTS_MS = 60 * 1000;
@@ -345,6 +356,34 @@ const STORM_PAD = { top: 170, bottom: 150, left: 470, right: 110 };
  */
 const FORCED_MODE = Q.get('mode') || 'auto';
 const FORCED_SITE = (Q.get('site') || '').toUpperCase() || null;
+
+/*
+ * TROPICAL MODE: satellite and tracks, no radar at all.
+ *
+ * On by default while there is a system to cover. ?tropical=0 restores the
+ * radar channel exactly as it was — nothing in this mode overwrites the
+ * radar paths, it skips them.
+ */
+const TROPICAL = Q.get('tropical') !== '0';
+
+/*
+ * The Atlantic basin as a television shot: the Gulf, the Caribbean and the
+ * western Atlantic, with enough of the US coast to give a landfall somewhere
+ * to land. Wider than the radar channel ever goes, because a storm three
+ * days out is still worth showing.
+ */
+const TROPICS = [[-100, 7.5], [-52, 40]];
+const TROPICAL_DOMAIN = { W: -104, E: -48, S: 5, N: 44 };
+
+/*
+ * Six frames of ten minutes is an hour of cloud — enough to see a centre
+ * turning. 1600px across 56° is about 4 km a pixel: the satellite flies 2,
+ * but every frame of this is decoded and pushed to the GPU on a box that is
+ * also encoding video, and a loop that stutters is worse than one that is
+ * soft. ?satframes= and ?satpx= override both without a deploy.
+ */
+const SAT_FRAMES = Math.max(1, Math.min(12, parseInt(Q.get('satframes'), 10) || 6));
+const SAT_PX = Math.max(800, Math.min(2400, parseInt(Q.get('satpx'), 10) || 1600));
 
 function reload(why) {
   console.warn('[broadcast] reloading: ' + why);
@@ -405,9 +444,18 @@ function cameraSettled(maxMs = 2600) {
 }
 
 /** Is there any radar on the map at all? */
+/*
+ * Is there weather imagery on the map at all?
+ *
+ * The watchdogs use this to decide the screen has gone empty. In tropical
+ * mode the imagery is the satellite, and treating its presence as "no radar"
+ * would have the page reload itself every three minutes for showing exactly
+ * what it was asked to show.
+ */
 function hasRadarLayer() {
   try {
-    return !!(map.getLayer('mrms-img-layer') || map.getLayer('site-radar-layer'));
+    return !!(map.getLayer('mrms-img-layer') || map.getLayer('site-radar-layer')
+      || map.getLayer('goes-ir-layer'));
   } catch (e) { return false; }
 }
 
@@ -801,6 +849,13 @@ let emptySince = 0;        // when the map was first seen with no radar on it
 
 async function runDirector() {
   if (FORCED_MODE === 'national') { lastDecisionAt = Date.now(); return; }
+  /*
+   * Nothing to direct in tropical mode: there is one shot, the basin, and it
+   * does not cut. The heartbeat still has to be fed — it exists to catch a
+   * director that has stopped deciding, and "deliberately not deciding" looks
+   * identical from outside.
+   */
+  if (TROPICAL) { lastDecisionAt = Date.now(); return; }
   // A cut already in flight finishes on its own; starting a second one here is
   // how two radars end up fighting over one camera.
   if (cutting) return;
@@ -1172,6 +1227,10 @@ async function goNational(reason) {
  * MRMS comes down — which is exactly why the country stays in the rotation.
  */
 function refreshHotspots() {
+  // There is no mosaic in tropical mode, and its grid is where these come
+  // from. Letting it throw into the catch below would hide that rather than
+  // handle it.
+  if (TROPICAL) return;
   if (mode !== 'national') return;
   try {
     const found = findMRMSHotspots({ minDbz: TOUR_MIN_DBZ, limit: 5 });
@@ -1226,6 +1285,14 @@ function renderPanel() {
   if (mode !== 'storm' || !onAir || !(onAir.kind === 'warning' || onAir.kind === 'watch')) {
     panel.classList.add('hide');
     const st = siteRadarState();
+    if (TROPICAL) {
+      $('brandsub').textContent = 'Tropical Coverage';
+      $('foot_src').textContent = 'Satellite: NOAA GOES-East ABI Band 13 via NASA GIBS'
+        + ' · Tracks: NHC · Warnings: NWS api.weather.gov';
+      $('rl_src').textContent = 'GOES-East Band 13';
+      setProductName();
+      return;
+    }
     $('brandsub').textContent = mode === 'tour' ? 'Live Radar Tour' : 'National Radar';
     $('foot_src').textContent = st.site
       ? `Radar: NOAA NEXRAD ${st.site} Level II · Warnings: NWS api.weather.gov`
@@ -1280,6 +1347,17 @@ function renderPanel() {
 /** The loop marker: how many frames are playing, or that one is being built. */
 function showLoopChip() {
   const chip = $('loopchip');
+  if (TROPICAL) {
+    const sat = satelliteState();
+    if (sat.frames > 1) {
+      $('loopcount').textContent = 'LOOP ' + sat.frames;
+      chip.classList.remove('hide');
+    } else {
+      $('loopcount').textContent = 'LOOP…';
+      chip.classList.remove('hide');
+    }
+    return;
+  }
   // Also requires a scan to actually be loaded: the marker was seen still up
   // over a national view with no radar at all, which is a lie twice over.
   if (!onSite() || !siteRadarState().loaded) { chip.classList.add('hide'); return; }
@@ -1307,6 +1385,10 @@ function tickUntil() {
 
 function setProductName() {
   const el = $('prodname');
+  if (TROPICAL) {
+    el.textContent = 'GOES-East Band 13 · Clean Infrared';
+    return;
+  }
   if (onSite()) {
     const st = siteRadarState();
     const tilt = Number.isFinite(st.elevationAngle) ? ` ${st.elevationAngle.toFixed(1)}°` : '';
@@ -1357,6 +1439,12 @@ function showRefLegend(on) {
  * the only honest answer there.
  */
 function frameTime() {
+  // In tropical mode the picture IS the satellite, and the frame being shown
+  // during a loop is older than the newest one held.
+  if (TROPICAL) {
+    const sat = satelliteState();
+    return sat.shown || null;
+  }
   /*
    * While a loop is playing this is the time of the frame ON SCREEN, not of the
    * newest scan held. Those differ by minutes mid-loop, and a radar picture
@@ -1374,6 +1462,13 @@ function frameTime() {
 
 function showFrameTime() {
   const el = $('valid');
+  // "acquiring scan" is a radar phrase and the wrong one here: in tropical
+  // mode nothing is being acquired, the loop is simply still building.
+  if (TROPICAL && !satelliteState().frames) {
+    el.textContent = 'loading satellite';
+    showLoopChip();
+    return null;
+  }
   showLoopChip();
   const t = frameTime();
   if (!t) { el.textContent = onSite() ? 'acquiring scan' : 'waiting for data'; return null; }
@@ -1486,7 +1581,9 @@ map.on('load', async () => {
    * The app's radar site pills. Added before the radar so they are already in
    * the style when the first raster lands, and raised again after every refresh.
    */
-  try {
+  // Not in tropical mode: a hundred and sixty radar pills over an ocean are
+  // clutter in front of the one thing anybody is watching.
+  if (!TROPICAL) try {
     await addSiteMarkers(map, sites, siteStatus);
     fetchSiteStatus().then((st) => {
       siteStatus = st;
@@ -1502,7 +1599,45 @@ map.on('load', async () => {
     console.warn('[broadcast] radar site pills unavailable:', e.message);
   }
 
-  try {
+  /*
+   * TROPICAL MODE: looping infrared and the NHC forecast tracks, instead of
+   * radar of any kind.
+   *
+   * A tropical system spends most of its life over water, out of reach of
+   * every WSR-88D, so the mosaic would show an empty Gulf and the single-site
+   * cuts would have nothing to cut to. What there is to see is the cloud
+   * field and where the centre is forecast to go.
+   */
+  if (TROPICAL) {
+    moveCamera(() => map.fitBounds(TROPICS, { padding: pad(NATIONAL_PAD), duration: 0, bearing: 0, pitch: 0 }),
+      'the tropics');
+    try {
+      // The page has no session, so the tracks come from the basin-only
+      // endpoint rather than the app proxy, which takes a URL and needs one.
+      setTrackEndpoint((basin) => '/broadcast/tracks/' + basin);
+      addHurricaneTracks('atlantic', window.vortexMap);
+    } catch (e) {
+      console.warn('[broadcast] tropical tracks unavailable:', e.message);
+    }
+    try {
+      addSatelliteIR(window.vortexMap, {
+        domain: TROPICAL_DOMAIN,
+        width: SAT_PX,
+        count: SAT_FRAMES,
+        // Under the warning boxes, like every other imagery layer here.
+        beforeId: map.getLayer('warn-fill') ? 'warn-fill' : null,
+        onFrame: () => { keepFurnitureOnTop(); showFrameTime(); },
+      });
+    } catch (e) {
+      console.error('[broadcast] satellite failed to start:', e.message);
+      setTimeout(() => reload('satellite failed to start'), 60000);
+    }
+    keepFurnitureOnTop();
+    // Say so in the heartbeat too, so --diagnose reports what is actually on
+    // air rather than the national view this never leaves by name.
+    mode = 'tropical';
+    console.log('[broadcast] tropical mode: satellite + NHC tracks, radar off');
+  } else try {
     await setMRMSProduct('ref_comp');          // national composite reflectivity
     await addMRMS(window.vortexMap);           // paints, then refreshes itself every 2 min
     keepFurnitureOnTop();                      // the radar just went above both
@@ -1642,6 +1777,19 @@ map.on('load', async () => {
         reload('no radar on the map for ' + Math.round((Date.now() - emptySince) / 1000) + 's');
         return;
       }
+    }
+
+    /*
+     * Tropical mode is judged on the newest scan HELD, not the frame on
+     * screen: mid-loop the picture is deliberately an hour old, and reading
+     * that as a dead feed would reload the page for playing the loop.
+     */
+    if (TROPICAL) {
+      const newest = satelliteState().newest;
+      if (newest && Date.now() - newest > STALE_SAT_MS) {
+        reload('satellite is ' + Math.round((Date.now() - newest) / 60000) + ' minutes old');
+      }
+      return;
     }
 
     const limit = onSite() ? STALE_SITE_MS : STALE_FRAME_MS;

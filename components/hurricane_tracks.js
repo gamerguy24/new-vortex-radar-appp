@@ -23,6 +23,18 @@ const BASINS = {
 
 const REFRESH_MS = 15 * 60 * 1000; // 15 minutes (NHC advisories update ~6h)
 
+/*
+ * Where the placefiles are read from.
+ *
+ * The app goes through /api/proxy, which takes a URL and needs a session.
+ * The 24/7 broadcast page has no session — it sits above the auth gate on
+ * purpose — and it would be wrong to make a URL-taking proxy public just to
+ * serve it, so that page points this at its own basin-only endpoint instead.
+ */
+let _endpoint = (basin) => `/api/proxy?url=${BASINS[basin].url}`;
+function endpointFor(basin) { return _endpoint(basin); }
+export function setTrackEndpoint(fn) { if (typeof fn === 'function') _endpoint = fn; }
+
 // Storm category (placefile icon number) -> color + short label.
 const CATEGORY = {
   1: { color: '#5ba3cf', label: 'TD' },
@@ -193,7 +205,7 @@ async function load(basin) {
   const st = _state[basin];
   if (!st || !st.active) return;
   try {
-    const res = await fetch(`/api/proxy?url=${BASINS[basin].url}`, { cache: 'no-store' });
+    const res = await fetch(endpointFor(basin), { cache: 'no-store' });
     if (!res.ok || !st.active) return;
     const text = await res.text();
     if (!st.active) return;
