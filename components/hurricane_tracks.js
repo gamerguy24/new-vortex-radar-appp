@@ -54,10 +54,49 @@ function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-// Parse into { points:[{lat,lon,cat,raw}], segments:[[[lon,lat],[lon,lat]], ...] }.
+/*
+ * One system, pulled out of the summary NHC writes for it.
+ *
+ * Everything is optional: a depression has no name worth the word, a
+ * post-tropical remnant may not be moving anywhere in particular, and a
+ * field that is missing has to read as missing rather than as zero. Nothing
+ * here is calculated or inferred — it is what the advisory says, or nothing.
+ */
+function parseSummary(headline, summary, lat, lon, catNum) {
+  const text = String(summary || '').replace(/\\n/g, '\n');
+  const grab = (re, n) => { const m = text.match(re); return m ? m[n || 1] : null; };
+  const num = (v) => (v == null ? null : Number(v));
+
+  // "Tropical Storm Isaias - 45 MPH" -> the part before the dash.
+  const title = String(headline || '').split(' - ')[0].trim();
+  // The last word is the name; everything before it is what it is.
+  const bits = title.split(/\s+/);
+  const name = bits.length > 1 ? bits[bits.length - 1] : title;
+  const kind = bits.length > 1 ? bits.slice(0, -1).join(' ') : '';
+
+  return {
+    name,
+    kind,
+    title,
+    cat: catNum,
+    lat, lon,
+    windMph: num(grab(/MAXIMUM SUSTAINED WINDS\.{3}(\d+)\s*MPH/i)),
+    pressureMb: num(grab(/MINIMUM CENTRAL PRESSURE\.{3}(\d+)\s*MB/i)),
+    moveDir: grab(/PRESENT MOVEMENT\.{3}([A-Z]{1,3})\s+OR\b/i),
+    moveDeg: num(grab(/PRESENT MOVEMENT\.{3}[A-Z]{1,3}\s+OR\s+(\d+)\s*DEGREES/i)),
+    moveMph: num(grab(/DEGREES AT\s+(\d+)\s*MPH/i)),
+    // "ABOUT 260 MI...420 KM WNW OF PROGRESO MEXICO" — the line that tells a
+    // viewer where this is without reading a latitude.
+    near: (grab(/ABOUT\s+(.+?)(?:\n|$)/) || '').replace(/\.{3}/g, ' / ').trim() || null,
+    advisoryUtc: grab(/\.{3}(\d{4})\s*UTC/),
+  };
+}
+
+// Parse into { points:[{lat,lon,cat,raw}], segments:[...], storms:[...] }.
 function parsePlacefile(text) {
   const points = [];
   const segments = [];
+  const storms = [];
   const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -76,13 +115,21 @@ function parsePlacefile(text) {
     const obj = line.match(/^\s*Object:\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i);
     if (obj) {
       const lat = +obj[1], lon = +obj[2];
-      let raw = '', catNum = 0;
+      let raw = '', catNum = 0, headline = '';
       for (let j = i + 1; j < lines.length && !/^\s*End:/i.test(lines[j]); j++) {
+        /*
+         * Two lines inside the block matter. The second Text is the headline
+         * ("Tropical Storm Isaias - 45 MPH") — the first is always the words
+         * "Latest Reported Position" and says nothing about this storm.
+         */
+        const tx = lines[j].match(/^\s*Text:\s*[^,]+,\s*-?\d+\s*,\s*\d+\s*,\s*"([^"]*)"/i);
+        if (tx && !/latest reported position/i.test(tx[1])) { headline = tx[1]; continue; }
         const ci = lines[j].match(/^\s*Icon:\s*0\s*,\s*0\s*,\s*\d+\s*,\s*(\d+)\s*,\s*\d+\s*,\s*"([\s\S]*?)"/i);
-        if (ci) { catNum = +ci[1]; raw = ci[2]; break; }
+        if (ci) { catNum = +ci[1]; raw = ci[2]; }
       }
       if (Number.isFinite(lat) && Number.isFinite(lon)) {
         points.push({ lat, lon, cat: catNum, raw, latest: true });
+        if (headline || raw) storms.push(parseSummary(headline, raw, lat, lon, catNum));
       }
       continue;
     }
@@ -97,7 +144,7 @@ function parsePlacefile(text) {
       if (coords.length >= 2) segments.push(coords);
     }
   }
-  return { points, segments };
+  return { points, segments, storms };
 }
 
 function targetMaps(basin) {
@@ -188,13 +235,18 @@ function render(basin, parsed) {
       el.className = p.latest ? 'hurr-marker hurr-marker-latest' : 'hurr-marker';
       el.style.background = c.color;
       el.title = c.label || 'Forecast point';
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        new gl.Popup({ closeButton: true, closeOnClick: true, className: 'hurr-popup', maxWidth: '300px' })
-          .setLngLat([p.lon, p.lat])
-          .setHTML(html)
-          .addTo(map);
-      });
+      // A popup is for somebody with a mouse. A broadcast has neither a
+      // pointer nor anyone to close one, and an accidental click would leave
+      // a panel sitting over the storm until the page reloaded.
+      if (!st.noPopups) {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          new gl.Popup({ closeButton: true, closeOnClick: true, className: 'hurr-popup', maxWidth: '300px' })
+            .setLngLat([p.lon, p.lat])
+            .setHTML(html)
+            .addTo(map);
+        });
+      }
       const marker = new gl.Marker({ element: el, anchor: 'center' }).setLngLat([p.lon, p.lat]).addTo(map);
       st.markers.push(marker);
     }
@@ -212,20 +264,38 @@ async function load(basin) {
     // placefilenation occasionally returns an HTML 404 page with a 200 status;
     // ignore it so a transient hiccup doesn't clear the existing tracks.
     if (/^\s*</.test(text)) return;
-    render(basin, parsePlacefile(text));
+    const parsed = parsePlacefile(text);
+    // Kept so a page can show the storms as well as draw them. The broadcast
+    // builds its card from this rather than parsing the file a second time.
+    st.storms = parsed.storms;
+    st.at = Date.now();
+    render(basin, parsed);
+    if (typeof st.onUpdate === 'function') {
+      try { st.onUpdate(parsed.storms); } catch (e) { /* a reader must not stop the drawing */ }
+    }
   } catch (err) {
     console.error(`[Hurricanes:${basin}] load failed:`, err);
   }
 }
 
-export function addHurricaneTracks(basin, mapWrapper) {
+export function addHurricaneTracks(basin, mapWrapper, opts = {}) {
   if (!BASINS[basin]) return;
   const st = _state[basin] || (_state[basin] = { markers: [], lineMaps: new Set() });
   st.wrapper = mapWrapper || window.vortexMap;
+  st.onUpdate = opts.onUpdate || null;
+  // Markers carry popups, which are for a person with a mouse. A broadcast
+  // has neither, and they draw on top of the storm.
+  st.noPopups = !!opts.noPopups;
   st.active = true;
   load(basin);
   clearInterval(st.timer);
   st.timer = setInterval(() => { if (st.active) load(basin); }, REFRESH_MS);
+}
+
+/** The systems from the last fetch: name, strength, movement, position. */
+export function getStorms(basin) {
+  const st = _state[basin];
+  return st && st.storms ? st.storms.slice() : [];
 }
 
 export function removeHurricaneTracks(basin) {

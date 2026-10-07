@@ -82,6 +82,31 @@
    * itself, and a row with nothing behind it is left out rather than shown
    * empty — "HAIL: —" reads as a measurement, and it is not one.
    */
+  /* The tropical card. Same frame as the warning card, because they are the
+     same furniture doing the same job for a different kind of weather. */
+  #tropic { position: absolute; top: 150px; left: 26px; width: 406px; z-index: 6;
+    background: rgba(9,13,19,.91); border: 1px solid rgba(255,255,255,.13); border-radius: 12px;
+    box-shadow: 0 18px 44px rgba(0,0,0,.55); overflow: hidden; transition: opacity .35s ease; }
+  #tropic.hide { opacity: 0; }
+  .tc-head { display: flex; align-items: center; gap: 10px; padding: 11px 14px; color: #0b0f14; }
+  .tc-head b { font-size: 25px; font-weight: 800; line-height: 1.05; letter-spacing: .01em; }
+  .tc-head span { margin-left: auto; flex: 0 0 auto; font-size: 12px; font-weight: 800;
+    letter-spacing: .12em; background: rgba(0,0,0,.22); border-radius: 5px; padding: 4px 8px; }
+  .tc-kind { padding: 9px 14px; font-size: 13.5px; font-weight: 800; letter-spacing: .10em;
+    text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,.09); color: #cfe0f2; }
+  /* Wind is the number a viewer reads first, so it is the one that is big. */
+  .tc-wind { display: flex; align-items: baseline; gap: 10px; padding: 12px 14px 6px; }
+  .tc-wind b { font-size: 40px; font-weight: 800; line-height: 1; }
+  .tc-wind i { font-style: normal; font-size: 13px; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: #8fa6bd; }
+  .tc-row { display: flex; gap: 10px; padding: 5px 14px; font-size: 14.5px; }
+  .tc-row em { font-style: normal; flex: 0 0 104px; color: #8fa6bd; font-weight: 700;
+    font-size: 11.5px; letter-spacing: .10em; text-transform: uppercase; padding-top: 3px; }
+  .tc-row b { font-weight: 700; }
+  .tc-row.hide { display: none; }
+  .tc-foot { padding: 8px 14px 11px; margin-top: 4px; font-size: 11.5px; color: #8fa6bd;
+    border-top: 1px solid rgba(255,255,255,.09); font-weight: 700; }
+
   #storm { position: absolute; top: 150px; left: 26px; width: 406px; z-index: 6;
     background: rgba(9,13,19,.91); border: 1px solid rgba(255,255,255,.13); border-radius: 12px;
     box-shadow: 0 18px 44px rgba(0,0,0,.55); overflow: hidden; transition: opacity .35s ease; }
@@ -210,6 +235,17 @@
   <div id="product"><span id="prodname">MRMS Composite Reflectivity</span> · <span id="valid">updating…</span>
     <span id="loopchip" class="hide"><i></i><b id="loopcount"></b></span></div>
 
+  <div id="tropic" class="hide">
+    <div class="tc-head"><b id="tc_name">—</b><span id="tc_cat">—</span></div>
+    <div class="tc-kind" id="tc_kind">—</div>
+    <div class="tc-wind"><b id="tc_wind">—</b><i>mph sustained</i></div>
+    <div class="tc-row" id="tc_r_move"><em>Moving</em><b id="tc_move">—</b></div>
+    <div class="tc-row" id="tc_r_pres"><em>Pressure</em><b id="tc_pres">—</b></div>
+    <div class="tc-row" id="tc_r_pos"><em>Position</em><b id="tc_pos">—</b></div>
+    <div class="tc-row" id="tc_r_near"><em>Located</em><b id="tc_near">—</b></div>
+    <div class="tc-foot" id="tc_foot">National Hurricane Center</div>
+  </div>
+
   <div id="storm" class="hide">
     <div class="sp-head"><b id="sp_event">WARNING</b><span id="sp_tag">—</span></div>
     <div class="sp-threat hide" id="sp_threat"></div>
@@ -270,10 +306,17 @@ import { Director, candidatesFrom, quietCandidates, WARN_TYPES, boundsOf, centro
   SITE_RANGE_KM } from '/broadcast/storm_director.js?v=bcast3';
 import { addSiteMarkers, setSiteMarkerStatus, keepSiteMarkersOnTop, fetchSiteStatus }
   from '/broadcast/site_markers.js?v=bcast1';
-import { addSatelliteIR, removeSatelliteIR, satelliteState }
-  from '/components/satellite_ir.js?v=bcast1';
-import { addHurricaneTracks, setTrackEndpoint }
-  from '/components/hurricane_tracks.js?v=bcast1';
+/*
+ * Tropical mode is loaded at run time, deliberately.
+ *
+ * A static import that fails aborts this entire script before any of it
+ * runs — no clock, no warnings, no radar, just the static HTML going out on
+ * air. That is exactly what happened when the server had not yet been
+ * restarted with the routes that serve these two files. An optional layer
+ * does not get to do that: see bootTropical().
+ */
+let _sat = null;        // components/satellite_ir.js, once it is loaded
+let _tracks = null;     // components/hurricane_tracks.js, likewise
 import { loadSite, redrawSite, showSite, clearSite, siteRadarState, BUSY, MIN_DBZ,
   buildLoop, startLoop, stopLoop, loopState }
   from '/broadcast/site_radar.js?v=bcast3';
@@ -364,7 +407,7 @@ const FORCED_SITE = (Q.get('site') || '').toUpperCase() || null;
  * radar channel exactly as it was — nothing in this mode overwrites the
  * radar paths, it skips them.
  */
-const TROPICAL = Q.get('tropical') !== '0';
+let TROPICAL = Q.get('tropical') !== '0';
 
 /*
  * The Atlantic basin as a television shot: the Gulf, the Caribbean and the
@@ -441,6 +484,18 @@ function cameraSettled(maxMs = 2600) {
     try { map.on('moveend', finish); } catch (e) { /* no map: fall through to the cap */ }
     setTimeout(finish, maxMs);
   });
+}
+
+/*
+ * Satellite state, safe to call before — or without — the module.
+ *
+ * Four separate readouts and two watchdogs ask for this, and any of them
+ * throwing would be the end of the page. Nothing loaded reads as nothing
+ * showing, which is the truth in that case anyway.
+ */
+const NO_SAT = { frames: 0, shown: null, playing: false, newest: null };
+function satState() {
+  try { return _sat ? _sat.satelliteState() : NO_SAT; } catch (e) { return NO_SAT; }
 }
 
 /** Is there any radar on the map at all? */
@@ -1348,7 +1403,7 @@ function renderPanel() {
 function showLoopChip() {
   const chip = $('loopchip');
   if (TROPICAL) {
-    const sat = satelliteState();
+    const sat = satState();
     if (sat.frames > 1) {
       $('loopcount').textContent = 'LOOP ' + sat.frames;
       chip.classList.remove('hide');
@@ -1442,7 +1497,7 @@ function frameTime() {
   // In tropical mode the picture IS the satellite, and the frame being shown
   // during a loop is older than the newest one held.
   if (TROPICAL) {
-    const sat = satelliteState();
+    const sat = satState();
     return sat.shown || null;
   }
   /*
@@ -1464,7 +1519,7 @@ function showFrameTime() {
   const el = $('valid');
   // "acquiring scan" is a radar phrase and the wrong one here: in tropical
   // mode nothing is being acquired, the loop is simply still building.
-  if (TROPICAL && !satelliteState().frames) {
+  if (TROPICAL && !satState().frames) {
     el.textContent = 'loading satellite';
     showLoopChip();
     return null;
@@ -1608,19 +1663,42 @@ map.on('load', async () => {
    * cuts would have nothing to cut to. What there is to see is the cloud
    * field and where the centre is forecast to go.
    */
+  /*
+   * Load the optional modules BEFORE committing to this mode.
+   *
+   * Without the satellite there is nothing to show, so the channel goes back
+   * to radar rather than out blank. That decision is only possible because
+   * these are loaded here rather than imported at the top: a failed static
+   * import takes the whole page with it, which is precisely how this channel
+   * went out as bare HTML with a stopped clock.
+   */
   if (TROPICAL) {
+    try {
+      _sat = await import('/components/satellite_ir.js?v=bcast2');
+    } catch (e) {
+      console.error('[broadcast] no satellite module — falling back to radar:', e.message);
+      TROPICAL = false;
+    }
+  }
+
+  if (TROPICAL) {
+    try {
+      _tracks = await import('/components/hurricane_tracks.js?v=bcast2');
+      // No session on this page, so the tracks come from the basin-only
+      // endpoint rather than the app proxy, which takes a URL and needs one.
+      _tracks.setTrackEndpoint((basin) => '/broadcast/tracks/' + basin);
+      _tracks.addHurricaneTracks('atlantic', window.vortexMap, { noPopups: true });
+    } catch (e) {
+      // Worth having, not worth failing for: the satellite is the picture and
+      // the tracks are an annotation on it.
+      console.warn('[broadcast] tropical tracks unavailable:', e.message);
+      _tracks = null;
+    }
+
     moveCamera(() => map.fitBounds(TROPICS, { padding: pad(NATIONAL_PAD), duration: 0, bearing: 0, pitch: 0 }),
       'the tropics');
     try {
-      // The page has no session, so the tracks come from the basin-only
-      // endpoint rather than the app proxy, which takes a URL and needs one.
-      setTrackEndpoint((basin) => '/broadcast/tracks/' + basin);
-      addHurricaneTracks('atlantic', window.vortexMap);
-    } catch (e) {
-      console.warn('[broadcast] tropical tracks unavailable:', e.message);
-    }
-    try {
-      addSatelliteIR(window.vortexMap, {
+      _sat.addSatelliteIR(window.vortexMap, {
         domain: TROPICAL_DOMAIN,
         width: SAT_PX,
         count: SAT_FRAMES,
@@ -1637,7 +1715,9 @@ map.on('load', async () => {
     // air rather than the national view this never leaves by name.
     mode = 'tropical';
     console.log('[broadcast] tropical mode: satellite + NHC tracks, radar off');
-  } else try {
+  }
+
+  if (!TROPICAL) try {
     await setMRMSProduct('ref_comp');          // national composite reflectivity
     await addMRMS(window.vortexMap);           // paints, then refreshes itself every 2 min
     keepFurnitureOnTop();                      // the radar just went above both
@@ -1785,7 +1865,7 @@ map.on('load', async () => {
      * that as a dead feed would reload the page for playing the loop.
      */
     if (TROPICAL) {
-      const newest = satelliteState().newest;
+      const newest = satState().newest;
       if (newest && Date.now() - newest > STALE_SAT_MS) {
         reload('satellite is ' + Math.round((Date.now() - newest) / 60000) + ' minutes old');
       }
