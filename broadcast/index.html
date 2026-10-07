@@ -302,8 +302,8 @@
 import { addMRMS, removeMRMS, setMRMSProduct, getMRMSFrameTime, findMRMSHotspots }
   from '/components/mrms.js?v=bcast4';
 import { paletteStops } from '/graphics/studio/engine/radar_l2_raster.js?v=bcast1';
-import { Director, candidatesFrom, quietCandidates, WARN_TYPES, boundsOf, centroidOf, nearestSites,
-  SITE_RANGE_KM } from '/broadcast/storm_director.js?v=bcast3';
+import { Director, candidatesFrom, quietCandidates, WARN_TYPES, TROPICAL_TYPES, boundsOf, centroidOf,
+  nearestSites, SITE_RANGE_KM } from '/broadcast/storm_director.js?v=bcast4';
 import { addSiteMarkers, setSiteMarkerStatus, keepSiteMarkersOnTop, fetchSiteStatus }
   from '/broadcast/site_markers.js?v=bcast1';
 /*
@@ -416,7 +416,18 @@ let TROPICAL = Q.get('tropical') !== '0';
  * days out is still worth showing.
  */
 const TROPICS = [[-100, 7.5], [-52, 40]];
-const TROPICAL_DOMAIN = { W: -104, E: -48, S: 5, N: 44 };
+
+/*
+ * The imagery has to cover more than the shot, not the same as it.
+ *
+ * fitBounds fits these bounds INSIDE the frame, so a 16:9 screen shows a
+ * good deal more longitude than is asked for — and wherever the imagery
+ * stopped, the frame went black. East is given the whole width the shot can
+ * reach (its disk sees past 15W, so this is well inside it) and West takes
+ * the Pacific side at fewer pixels, being narrower and at the edge.
+ */
+const GOES_EAST_DOMAIN = { W: -126, E: -28, S: 2, N: 48 };
+const GOES_WEST_DOMAIN = { W: -168, E: -124, S: 2, N: 52 };
 
 /*
  * Six frames of ten minutes is an hour of cloud — enough to see a centre
@@ -509,8 +520,11 @@ function satState() {
  */
 function hasRadarLayer() {
   try {
-    return !!(map.getLayer('mrms-img-layer') || map.getLayer('site-radar-layer')
-      || map.getLayer('goes-ir-layer'));
+    // The satellite is asked for its own state rather than looked up by
+    // layer id: there is one layer per satellite now, and a presence test
+    // that knows one id would quietly stop seeing the other.
+    if (TROPICAL && satState().frames > 0) return true;
+    return !!(map.getLayer('mrms-img-layer') || map.getLayer('site-radar-layer'));
   } catch (e) { return false; }
 }
 
@@ -678,6 +692,14 @@ const setVeto = (k, why) => {
  * is added BELOW them by construction and needs none of this.)
  */
 const WARN_LAYERS = ['watch-line', 'warn-fill', 'warn-halo', 'warn-line', 'warn-onair', 'warn-label'];
+/*
+ * Which products the channel is covering.
+ *
+ * Tropical coverage listing tornado and thunderstorm products would read
+ * "no active warnings" beside a hurricane, because on a day like that there
+ * usually are none of those.
+ */
+const TYPES = TROPICAL ? TROPICAL_TYPES : WARN_TYPES;
 let lastWarningSig = null;
 let lastTickerHtml = null;
 function keepWarningsOnTop() {
@@ -781,7 +803,7 @@ function paintWarnings() {
   const lines = [];
   for (const f of rawFeatures) {
     const props = (f && f.properties) || {};
-    const w = WARN_TYPES[props.event];
+    const w = TYPES[props.event];
     if (!w) continue;
     counts[w.key]++;
     const live = !!(onAir && props.id && props.id === onAir.id);
@@ -1699,12 +1721,30 @@ map.on('load', async () => {
       'the tropics');
     try {
       _sat.addSatelliteIR(window.vortexMap, {
-        domain: TROPICAL_DOMAIN,
+        sources: [
+          { wms: _sat.GOES_EAST, domain: GOES_EAST_DOMAIN },
+          { wms: _sat.GOES_WEST, domain: GOES_WEST_DOMAIN, width: Math.round(SAT_PX * 0.55) },
+        ],
         width: SAT_PX,
         count: SAT_FRAMES,
+        /*
+         * Slower than the radar loop, which is both how a satellite loop is
+         * played on air — the cloud field moves slowly and a fast loop makes
+         * it flicker — and a third less decoding per second on a box that is
+         * encoding video at the same time.
+         */
+        stepMs: 600,
+        holdMs: 1800,
         // Under the warning boxes, like every other imagery layer here.
         beforeId: map.getLayer('warn-fill') ? 'warn-fill' : null,
-        onFrame: () => { keepFurnitureOnTop(); showFrameTime(); },
+        /*
+         * Only the readout. This used to raise the furniture as well, which
+         * is two moveLayer passes over the whole style — a recalculation,
+         * every 420 ms, for ever, on a machine that is also encoding video.
+         * Swapping an image source's picture changes no layer's order, so
+         * there was never anything to put back.
+         */
+        onFrame: () => showFrameTime(),
       });
     } catch (e) {
       console.error('[broadcast] satellite failed to start:', e.message);
@@ -1714,6 +1754,19 @@ map.on('load', async () => {
     // Say so in the heartbeat too, so --diagnose reports what is actually on
     // air rather than the national view this never leaves by name.
     mode = 'tropical';
+    /*
+     * Relabel the bottom of the screen. The counters and the ticker are the
+     * same furniture, but 'Tornado / Svr T-Storm / Flash Flood' beside a
+     * hurricane is the wrong four numbers, and on a day like this they would
+     * all read zero while the coast is under a warning.
+     */
+    const relabel = { c_tor: 'Hurricane', c_svr: 'Trop Storm', c_ffw: 'Storm Surge', c_watch: 'Watches' };
+    for (const [id, text] of Object.entries(relabel)) {
+      const cap = $(id) && $(id).parentElement && $(id).parentElement.querySelector('span');
+      if (cap) cap.textContent = text;
+    }
+    const tl = document.getElementById('tickerlabel');
+    if (tl) tl.textContent = 'TROPICAL WATCHES & WARNINGS';
     console.log('[broadcast] tropical mode: satellite + NHC tracks, radar off');
   }
 

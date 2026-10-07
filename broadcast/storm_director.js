@@ -17,6 +17,32 @@
  */
 
 /* ── warning types we will break to ───────────────────────────────────────── */
+/*
+ * Tropical products, for the tropical channel.
+ *
+ * The colours are the National Hurricane Center's own, because a viewer who
+ * knows one coastal map knows them all: yellow a tropical storm watch, blue
+ * a tropical storm warning, pink a hurricane watch, red a hurricane warning,
+ * and the purples storm surge, which kills more people than the wind.
+ *
+ * Surge sits in the warning tier rather than with the watches even though
+ * one of them is a watch, because a surge watch on a populated coast is not
+ * a quiet thing and should not be counted as one.
+ */
+export const TROPICAL_TYPES = {
+  'Hurricane Warning': { key: 'tor', color: '#ff2f1f', tag: 'HURRICANE WARNING', weight: 3.6, halo: 6.4 },
+  'Tropical Storm Warning': { key: 'svr', color: '#3b7dd8', tag: 'TS WARNING', weight: 3.0, halo: 5.4 },
+  'Storm Surge Warning': { key: 'ffw', color: '#b23cf5', tag: 'SURGE WARNING', weight: 3.0, halo: 5.4 },
+  'Storm Surge Watch': { key: 'ffw', color: '#d9a0f7', tag: 'SURGE WATCH', weight: 2.2, halo: 4.0, watch: true },
+  'Hurricane Watch': { key: 'watch', color: '#ff7ab3', tag: 'HURRICANE WATCH', weight: 2.2, halo: 4.0, watch: true },
+  'Tropical Storm Watch': { key: 'watch', color: '#ffd000', tag: 'TS WATCH', weight: 2.2, halo: 4.0, watch: true },
+  // A tropical system inland is still the same storm, and these are what
+  // the local offices issue once it is ashore.
+  'Tornado Warning': { key: 'tor', color: '#ff2f1f', tag: 'TOR', weight: 3.6, halo: 6.4 },
+  'Flash Flood Warning': { key: 'ffw', color: '#19c45f', tag: 'FFW', weight: 2.6, halo: 5.0 },
+  'Flash Flood Watch': { key: 'watch', color: '#7ce8a8', tag: 'FF WATCH', weight: 2.0, halo: 3.6, watch: true },
+};
+
 export const WARN_TYPES = {
   'Tornado Warning': { key: 'tor', color: '#ff2f1f', tag: 'TOR', weight: 3.6, halo: 6.4 },
   'Severe Thunderstorm Warning': { key: 'svr', color: '#ffd000', tag: 'SVR', weight: 2.6, halo: 5.0 },

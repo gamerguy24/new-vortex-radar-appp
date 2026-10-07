@@ -1,12 +1,11 @@
 /*
  * components/satellite_ir.js
- * GOES-East ABI Band 13 "Clean" longwave infrared (10.3 µm), as a looping
- * overlay, for pages that are not part of the app bundle — the 24/7 broadcast
- * above all.
+ * GOES ABI Band 13 "Clean" longwave infrared (10.3 µm), as a looping overlay,
+ * for pages that are not part of the app bundle — the 24/7 broadcast above all.
  *
- * The app has its own copy of this in app/satellite/goes_ir.js, because that
- * one is CommonJS and bundled while this is a module served as it stands. What
- * they must NOT have two of is the colour table, so that lives in
+ * The app has its own copy in app/satellite/goes_ir.js, because that one is
+ * CommonJS and bundled while this is a module served as it stands. What they
+ * must NOT have two of is the colour table, so that lives in
  * components/ir_colormap.json and both read it.
  *
  * WHAT THE SERVICE SENDS, since it is the whole basis of this: not greyscale.
@@ -15,8 +14,8 @@
  * wedge, magenta and white as tops get colder. All 237 entries are distinct
  * colours, so a pixel's colour recovers its brightness temperature exactly,
  * and the overlay hides cloud by how COLD it is rather than how bright it
- * looks. Doing it by brightness erases the coldest tops, which are dark reds
- * and magentas — the core of every deep storm.
+ * looks. Hiding by brightness erases the coldest tops, which are dark reds and
+ * magentas — the core of every deep storm.
  *
  * Verified against the live service before this was written:
  *   - a time with no scan answers 200 with a fully transparent PNG, so an
@@ -24,27 +23,34 @@
  *   - a time between steps snaps to the nearest scan, so frames must be asked
  *     for on the exact ten-minute grid or the same picture arrives twice;
  *   - the feed runs roughly half an hour behind, and by a varying amount, so
- *     the newest scan is found by probing rather than assumed.
+ *     the newest scan is found by probing rather than assumed;
+ *   - GOES-West publishes on the same grid, so the two satellites can share
+ *     one clock.
+ *
+ * TWO SATELLITES, ONE LOOP. East and West are separate layers over separate
+ * parts of the world, and running them as two overlays with two timers would
+ * animate them out of step — the join between them would crawl. So there is
+ * one set of frame times, and a time is only kept if EVERY satellite has a
+ * scan for it. Fewer frames, all of them honest.
  */
 
 const WMS = 'https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi';
-const LAYER_NAME = 'GOES-East_ABI_Band13_Clean_Infrared';
-const SRC = 'goes-ir-src';
-const LAYER = 'goes-ir-layer';
-
 const SCAN_MS = 10 * 60 * 1000;    // the service's own cadence
 const PROBE_BACK = 18;             // three hours; past that the feed is down
 
-/* Where cloud starts being drawn, in °C of brightness temperature. Above WARM_C
-   is ground, sea and anything at their temperature: not drawn, so the map below
-   stays readable. Solid by COLD_C, which is just warmer than where the
-   enhancement's colours begin, so every coloured band is at full strength. */
+/* Where cloud starts being drawn, in °C of brightness temperature. Above
+   WARM_C is ground, sea and anything at their temperature: not drawn, so the
+   map below stays readable. Solid by COLD_C, which is just warmer than where
+   the enhancement's colours begin, so every coloured band is at full strength. */
 const WARM_C = 15;
 const COLD_C = -25;
 
-let _table = null;                 // [[r,g,b,degC], ...]
-let _lut = null;                   // RGB(5 bits each) -> alpha
-let _state = null;                 // the live overlay, or null
+export const GOES_EAST = 'GOES-East_ABI_Band13_Clean_Infrared';
+export const GOES_WEST = 'GOES-West_ABI_Band13_Clean_Infrared';
+
+let _table = null;
+let _lut = null;
+let _state = null;
 
 function merc(lon, lat) {
     const x = lon * 20037508.34 / 180;
@@ -54,13 +60,14 @@ function merc(lon, lat) {
 
 export function scanTime(ms) { return Math.floor(ms / SCAN_MS) * SCAN_MS; }
 
-function url(dom, width, at) {
+function url(src, width, at) {
+    const dom = src.domain;
     const [minx, miny] = merc(dom.W, dom.S);
     const [maxx, maxy] = merc(dom.E, dom.N);
     const height = Math.round(width * (maxy - miny) / (maxx - minx));
     const p = new URLSearchParams({
         SERVICE: 'WMS', REQUEST: 'GetMap', VERSION: '1.3.0',
-        LAYERS: LAYER_NAME, CRS: 'EPSG:3857',
+        LAYERS: src.wms, CRS: 'EPSG:3857',
         BBOX: `${minx},${miny},${maxx},${maxy}`,
         WIDTH: width, HEIGHT: height, FORMAT: 'image/png',
     });
@@ -74,8 +81,7 @@ function url(dom, width, at) {
 async function table() {
     if (_table) return _table;
     const r = await fetch('/components/ir_colormap.json', { cache: 'force-cache' });
-    const j = await r.json();
-    _table = j.table;
+    _table = (await r.json()).table;
     return _table;
 }
 
@@ -113,15 +119,15 @@ async function lut() {
     return _lut;
 }
 
-/** Load one scan and set its opacity from temperature. null if nothing is there. */
-async function frameUrl(dom, width, at) {
+/** One scan, with its opacity set from temperature. null if nothing is there. */
+async function frameUrl(src, width, at) {
     const L = await lut();
     const img = await new Promise((resolve) => {
         const i = new Image();
         i.crossOrigin = 'anonymous';
         i.onload = () => resolve(i);
         i.onerror = () => resolve(null);
-        i.src = url(dom, width, at);
+        i.src = url(src, width, at);
     });
     if (!img) return null;
     const canvas = document.createElement('canvas');
@@ -136,7 +142,7 @@ async function frameUrl(dom, width, at) {
         present++;
         d[i + 3] = L[((d[i] >> 3) << 10) | ((d[i + 1] >> 3) << 5) | (d[i + 2] >> 3)];
     }
-    // A time with no scan behind it comes back fully transparent and a 200.
+    // A time with no scan behind it comes back fully transparent, and a 200.
     if (!present) return null;
     ctx.putImageData(data, 0, 0);
     const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
@@ -144,7 +150,7 @@ async function frameUrl(dom, width, at) {
 }
 
 /** Cheap existence check: 32px wide, a couple of kilobytes. */
-async function exists(dom, at) {
+async function exists(src, at) {
     return await new Promise((resolve) => {
         const i = new Image();
         i.crossOrigin = 'anonymous';
@@ -160,14 +166,19 @@ async function exists(dom, at) {
             } catch (e) { resolve(false); }
         };
         i.onerror = () => resolve(false);
-        i.src = url(dom, 32, at);
+        i.src = url(src, 32, at);
     });
 }
 
-async function newestScan(dom) {
+/* The newest time EVERY satellite has, so they can share one clock. */
+async function newestCommon(st) {
     let at = scanTime(Date.now());
     for (let i = 0; i < PROBE_BACK; i++) {
-        if (await exists(dom, at)) return at;
+        let all = true;
+        for (const src of st.sources) {
+            if (!await exists(src, at)) { all = false; break; }
+        }
+        if (all) return at;
         at -= SCAN_MS;
     }
     return null;
@@ -182,13 +193,14 @@ function corners(dom) {
     return [[dom.W, dom.N], [dom.E, dom.N], [dom.E, dom.S], [dom.W, dom.S]];
 }
 
-function paint(st, url_) {
+function paint(st, i, url_) {
+    const src = st.sources[i];
     for (const map of maps(st)) {
-        const src = map.getSource(SRC);
-        if (src) { src.updateImage({ url: url_, coordinates: corners(st.dom) }); continue; }
-        map.addSource(SRC, { type: 'image', url: url_, coordinates: corners(st.dom) });
+        const existing = map.getSource(src.srcId);
+        if (existing) { existing.updateImage({ url: url_, coordinates: corners(src.domain) }); continue; }
+        map.addSource(src.srcId, { type: 'image', url: url_, coordinates: corners(src.domain) });
         map.addLayer({
-            id: LAYER, type: 'raster', source: SRC,
+            id: src.layerId, type: 'raster', source: src.srcId,
             paint: { 'raster-opacity': st.opacity, 'raster-fade-duration': 0 },
         }, st.beforeId && map.getLayer(st.beforeId) ? st.beforeId : undefined);
     }
@@ -197,9 +209,13 @@ function paint(st, url_) {
 function showFrame(st, at) {
     const fr = st.frames.get(at);
     if (!fr) return;
-    paint(st, fr.url);
+    for (let i = 0; i < st.sources.length; i++) {
+        if (fr.urls[i]) paint(st, i, fr.urls[i]);
+    }
     st.shown = at;
-    if (typeof st.onFrame === 'function') { try { st.onFrame(at, st.frames.size); } catch (e) { /* a readout must not stop the loop */ } }
+    if (typeof st.onFrame === 'function') {
+        try { st.onFrame(at, st.frames.size); } catch (e) { /* a readout must not stop the loop */ }
+    }
 }
 
 function stepLoop(st) {
@@ -222,6 +238,15 @@ function stop(st) {
     if (st.timer) { clearTimeout(st.timer); st.timer = null; }
 }
 
+function dropFrame(st, at) {
+    const fr = st.frames.get(at);
+    if (!fr) return;
+    st.frames.delete(at);
+    for (const u of fr.urls) {
+        if (u) { try { URL.revokeObjectURL(u); } catch (e) { /* already gone */ } }
+    }
+}
+
 /*
  * Top up rather than rebuild: a refresh is normally one new scan arriving and
  * one falling off the back, and re-fetching the whole run every time would be
@@ -229,45 +254,79 @@ function stop(st) {
  */
 async function sync(st) {
     const token = ++st.token;
-    const newest = await newestScan(st.dom);
+    const newest = await newestCommon(st);
     if (!newest || token !== st.token || !st.active) return;
 
     const want = [];
     for (let i = st.count - 1; i >= 0; i--) want.push(newest - i * SCAN_MS);
 
     for (const at of [...st.frames.keys()]) {
-        if (want.indexOf(at) !== -1) continue;
-        const fr = st.frames.get(at);
-        st.frames.delete(at);
-        try { URL.revokeObjectURL(fr.url); } catch (e) { /* already gone */ }
+        if (want.indexOf(at) === -1) dropFrame(st, at);
     }
 
     // Newest first, so something is on screen at once and the rest fills in
     // behind it. One at a time: several multi-megabyte decodes together would
-    // take the page with them, and this one has to stream.
+    // take the page with them, and this one has to keep streaming.
     for (const at of want.slice().reverse()) {
         if (token !== st.token || !st.active) return;
         if (st.frames.has(at)) continue;
-        const u = await frameUrl(st.dom, st.width, at);
-        if (!u) continue;
-        if (token !== st.token || !st.active) { URL.revokeObjectURL(u); return; }
-        st.frames.set(at, { url: u });
+
+        const urls = [];
+        let complete = true;
+        for (const src of st.sources) {
+            // A source may ask for fewer pixels than the rest: a narrow
+            // domain at the edge of the frame does not need the detail
+            // the one being watched does.
+            const u = await frameUrl(src, src.width || st.width, at);
+            if (token !== st.token || !st.active) {
+                for (const v of urls) if (v) URL.revokeObjectURL(v);
+                if (u) URL.revokeObjectURL(u);
+                return;
+            }
+            if (!u) complete = false;
+            urls.push(u);
+        }
+        /*
+         * Every satellite or none. A frame with one half missing would show
+         * one side of the country advancing while the other stood still,
+         * which looks like a fault and is worse than a shorter loop.
+         */
+        if (!complete) {
+            for (const v of urls) if (v) URL.revokeObjectURL(v);
+            continue;
+        }
+        st.frames.set(at, { urls });
         if (st.shown === null) { showFrame(st, at); play(st); }
     }
-    if (st.shown === null || !st.frames.has(st.shown)) showFrame(st, newest);
+    if (st.shown === null || !st.frames.has(st.shown)) {
+        const times = [...st.frames.keys()].sort((a, b) => a - b);
+        if (times.length) showFrame(st, times[times.length - 1]);
+    }
     play(st);
 }
 
 /**
  * Put the IR overlay on the map and keep it looping.
  *
- * opts: { domain, width, count, stepMs, holdMs, opacity, beforeId, onFrame }
+ * opts: { sources:[{wms,domain}], domain, width, count, stepMs, holdMs,
+ *         opacity, beforeId, onFrame, playing }
  */
 export function addSatelliteIR(mapWrapper, opts = {}) {
     removeSatelliteIR();
+    const sources = (opts.sources && opts.sources.length
+        ? opts.sources
+        : [{ wms: GOES_EAST, domain: opts.domain || { W: -128, E: -62, S: 18, N: 52 } }]
+    ).map((src, i) => ({
+        wms: src.wms || GOES_EAST,
+        domain: src.domain,
+        width: src.width || null,
+        srcId: 'goes-ir-src-' + i,
+        layerId: 'goes-ir-layer-' + i,
+    }));
+
     _state = {
         wrapper: mapWrapper || window.vortexMap,
-        dom: opts.domain || { W: -128, E: -62, S: 18, N: 52 },
+        sources,
         width: opts.width || 1800,
         count: Math.max(1, opts.count || 6),
         stepMs: opts.stepMs || 420,
@@ -296,27 +355,26 @@ export function removeSatelliteIR() {
     stop(st);
     if (st.refresh) clearInterval(st.refresh);
     for (const map of maps(st)) {
-        try {
-            if (map.getLayer(LAYER)) map.removeLayer(LAYER);
-            if (map.getSource(SRC)) map.removeSource(SRC);
-        } catch (e) { /* the map went first */ }
+        for (const src of st.sources) {
+            try {
+                if (map.getLayer(src.layerId)) map.removeLayer(src.layerId);
+                if (map.getSource(src.srcId)) map.removeSource(src.srcId);
+            } catch (e) { /* the map went first */ }
+        }
     }
-    for (const fr of st.frames.values()) {
-        try { URL.revokeObjectURL(fr.url); } catch (e) { /* already gone */ }
-    }
-    st.frames.clear();
+    for (const at of [...st.frames.keys()]) dropFrame(st, at);
     _state = null;
 }
 
 /** For a readout: how many frames, which one is up, and when it was taken. */
 export function satelliteState() {
-    if (!_state) return { frames: 0, shown: null, playing: false };
+    if (!_state) return { frames: 0, shown: null, playing: false, newest: null };
+    const times = [..._state.frames.keys()];
     return {
         frames: _state.frames.size,
         shown: _state.shown,
         playing: !!_state.timer,
-        newest: _state.frames.size
-            ? Math.max(...[..._state.frames.keys()])
-            : null,
+        newest: times.length ? Math.max(...times) : null,
+        satellites: _state.sources.length,
     };
 }
