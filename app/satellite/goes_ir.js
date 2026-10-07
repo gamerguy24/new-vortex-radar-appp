@@ -78,6 +78,7 @@ let _enabled = false;
 let _timer = null;             // the refresh clock
 let _playTimer = null;         // the loop clock
 let _alphaLut = null;
+let _greyLut = null;
 
 // time (epoch ms) -> { url }. The newest scan is the last key.
 const _frames = new Map();
@@ -116,6 +117,31 @@ function wmsUrl(width, at) {
     if (at) p.set('TIME', new Date(at).toISOString().replace(/\.\d+Z$/, 'Z'));
     else p.set('_', String(Date.now()));
     return 'https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?' + p.toString();
+}
+
+/*
+ * Greys, at full resolution, because this is where the table is subtle.
+ *
+ * The enhancement's -70 to -79 °C wedge is grey, and its levels sit one or
+ * two away from warm greys meaning the opposite: 102 is -74.1 °C and 100 is
+ * +18.9 °C. Eight-level buckets put those together and the warm one won, so
+ * the inside of every deep storm was drawn transparent. 256 entries is a
+ * quarter of a kilobyte and removes the whole class of error.
+ */
+function greyLut() {
+    if (_greyLut) return _greyLut;
+    const greys = IR_TABLE.filter((e) => e[0] === e[1] && e[1] === e[2]);
+    const out = new Uint8Array(256);
+    for (let v = 0; v < 256; v++) {
+        let best = greys[0], bd = Infinity;
+        for (const g of greys) {
+            const d = Math.abs(g[0] - v);
+            if (d < bd) { bd = d; best = g; }
+        }
+        out[v] = alphaForC(best[3]);
+    }
+    _greyLut = out;
+    return out;
 }
 
 /** How opaque a cloud top at `c` °C should be drawn. */
@@ -174,18 +200,43 @@ function buildImage(at, cb) {
             const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const d = imgData.data;
             const lut = alphaLut();
+            const grey = greyLut();
             let present = 0;
+            // Is there any variation at all? A frame that is one colour from
+            // corner to corner is a placeholder, not weather.
+            let first = -1, varied = false;
             for (let i = 0; i < d.length; i += 4) {
                 // Nothing there to begin with stays nothing: off the disk, or
                 // a gap between scans.
                 if (d[i + 3] === 0) continue;
                 present++;
-                d[i + 3] = lut[((d[i] >> 3) << 10) | ((d[i + 1] >> 3) << 5) | (d[i + 2] >> 3)];
+                const r = d[i], g = d[i + 1], b = d[i + 2];
+                const packed = (r << 16) | (g << 8) | b;
+                if (first < 0) first = packed; else if (packed !== first) varied = true;
+                /*
+                 * Grey gets the full-resolution table. Its cold wedge and its
+                 * warm end are a level or two apart and mean opposite things,
+                 * so a quantised lookup confuses them and erases storm cores.
+                 */
+                d[i + 3] = (r === g && g === b)
+                    ? grey[r]
+                    : lut[((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)];
             }
             // A time with no scan behind it comes back as a fully transparent
             // image and a 200, so emptiness is a property of the pixels. Airing
             // one would put a hole in the middle of the loop.
             if (!present) { cb(null); return; }
+            /*
+             * And a solid frame is just as useless, while looking like data.
+             * Verified on the real service: the 16:40Z scan came back with one
+             * distinct value, 255,255,255,255, over every pixel — and white is
+             * -91.1 °C here, the coldest reading in the table, so it was drawn
+             * fully opaque across the whole domain. That was the white flash.
+             */
+            if (!varied) {
+                console.warn('[GOES] a solid frame was served; skipping it');
+                cb(null); return;
+            }
             ctx.putImageData(imgData, 0, 0);
             canvas.toBlob((blob) => {
                 if (!blob) { cb(null); return; }

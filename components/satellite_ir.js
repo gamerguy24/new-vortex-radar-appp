@@ -50,6 +50,7 @@ export const GOES_WEST = 'GOES-West_ABI_Band13_Clean_Infrared';
 
 let _table = null;
 let _lut = null;
+let _greyLut = null;
 let _state = null;
 
 function merc(lon, lat) {
@@ -83,6 +84,29 @@ async function table() {
     const r = await fetch('/components/ir_colormap.json', { cache: 'force-cache' });
     _table = (await r.json()).table;
     return _table;
+}
+
+/*
+ * Greys, at full resolution. The enhancement's -70 to -79 °C wedge is grey
+ * and its levels sit one or two from warm greys meaning the opposite — 102
+ * is -74.1 °C, 100 is +18.9 °C — so a quantised lookup reads the inside of
+ * a storm as warm ground and draws it transparent.
+ */
+async function greyLut() {
+    if (_greyLut) return _greyLut;
+    const T = await table();
+    const greys = T.filter((e) => e[0] === e[1] && e[1] === e[2]);
+    const out = new Uint8Array(256);
+    for (let v = 0; v < 256; v++) {
+        let best = greys[0], bd = Infinity;
+        for (const g of greys) {
+            const d = Math.abs(g[0] - v);
+            if (d < bd) { bd = d; best = g; }
+        }
+        out[v] = alphaForC(best[3]);
+    }
+    _greyLut = out;
+    return out;
 }
 
 function alphaForC(c) {
@@ -122,6 +146,7 @@ async function lut() {
 /** One scan, with its opacity set from temperature. null if nothing is there. */
 async function frameUrl(src, width, at) {
     const L = await lut();
+    const G = await greyLut();
     const img = await new Promise((resolve) => {
         const i = new Image();
         i.crossOrigin = 'anonymous';
@@ -137,13 +162,31 @@ async function frameUrl(src, width, at) {
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const d = data.data;
     let present = 0;
+    // Is there any variation? One colour corner to corner is a placeholder.
+    let first = -1, varied = false;
     for (let i = 0; i < d.length; i += 4) {
         if (d[i + 3] === 0) continue;
         present++;
-        d[i + 3] = L[((d[i] >> 3) << 10) | ((d[i + 1] >> 3) << 5) | (d[i + 2] >> 3)];
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        const packed = (r << 16) | (g << 8) | b;
+        if (first < 0) first = packed; else if (packed !== first) varied = true;
+        // Grey at full resolution; see greyLut.
+        d[i + 3] = (r === g && g === b)
+            ? G[r]
+            : L[((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)];
     }
     // A time with no scan behind it comes back fully transparent, and a 200.
     if (!present) return null;
+    /*
+     * And a solid frame looks like data and is not. Verified on the service:
+     * the 16:40Z scan returned one distinct value, 255,255,255,255, over every
+     * pixel — white being -91.1 °C, the coldest in the table, so it painted the
+     * whole domain opaque. That was the white flash in the loop.
+     */
+    if (!varied) {
+        console.warn('[GOES] a solid frame was served; skipping it');
+        return null;
+    }
     ctx.putImageData(data, 0, 0);
     const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
     return blob ? URL.createObjectURL(blob) : null;
