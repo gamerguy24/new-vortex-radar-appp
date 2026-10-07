@@ -801,7 +801,22 @@ function paintWarnings() {
   const labels = [];
   const counts = { tor: 0, svr: 0, ffw: 0, watch: 0 };
   const lines = [];
-  for (const f of rawFeatures) {
+  /*
+   * A STABLE ORDER, or the crawl restarts for nothing.
+   *
+   * The alerts feed does not promise to return the same warnings in the same
+   * order twice, and both the map signature and the crawl text are built by
+   * walking this list. A reshuffle with no actual change therefore looked
+   * like a change: the boxes were re-set and the crawl jumped back to the
+   * beginning, every sixty seconds, for nothing. Sorting by id makes the
+   * comparison mean what it says.
+   */
+  const ordered = rawFeatures.slice().sort((a, b) => {
+    const ai = (a && a.properties && a.properties.id) || '';
+    const bi = (b && b.properties && b.properties.id) || '';
+    return ai < bi ? -1 : ai > bi ? 1 : 0;
+  });
+  for (const f of ordered) {
     const props = (f && f.properties) || {};
     const w = TYPES[props.event];
     if (!w) continue;
