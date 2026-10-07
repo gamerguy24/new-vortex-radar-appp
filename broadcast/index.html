@@ -883,14 +883,22 @@ const TICKER_SPEED_PX_S = Math.max(15, Math.min(200, parseInt(Q.get('crawl'), 10
 function renderTicker(html) {
   const t = document.getElementById('ticker');
   const wrap = t.parentElement;
-  // Lay one copy out first, with the animation off, purely to measure it.
-  t.style.animation = 'none';
+  /*
+   * Stop it by NAME, never through the `animation` shorthand.
+   *
+   * The shorthand covers animation-duration, so assigning to it discards the
+   * duration this function exists to set — which left the crawl running at
+   * the stylesheet's fixed 60 seconds a lap however much text it held, so it
+   * sped up as warnings were added and was quickest when there was most to
+   * read.
+   */
+  t.style.animationName = 'none';
   t.innerHTML = `<span class="run">${html}</span>`;
   // offsetWidth, not getBoundingClientRect: the stage is CSS-scaled, and the
   // transform works in the element's own unscaled pixels.
   const runW = t.firstElementChild ? t.firstElementChild.offsetWidth : 0;
   const wrapW = wrap ? wrap.offsetWidth : 1920;
-  if (!runW) { t.style.animation = ''; return; }   // not laid out yet; next change retries
+  if (!runW) { t.style.animationName = ''; return; }   // not laid out yet; next change retries
 
   /*
    * One half has to cover the strip, or there is a gap behind the text as it
@@ -903,10 +911,11 @@ function renderTicker(html) {
   t.innerHTML = half + half;
 
   // Constant speed whatever the length: one warning and fifty travel at the
-  // same pixels per second, so both are equally readable.
+  // same pixels per second, so both are equally readable. Set while the
+  // animation is stopped, so restoring the name starts it already correct.
   t.style.animationDuration = ((runW * per) / TICKER_SPEED_PX_S) + 's';
-  void t.offsetWidth;        // force the layout before the animation is restored
-  t.style.animation = '';
+  void t.offsetWidth;        // lay it out before it starts moving
+  t.style.animationName = '';
 }
 
 /* ── the director: decide, then cut ─────────────────────────────────────── */
@@ -1775,6 +1784,13 @@ map.on('load', async () => {
       const cap = $(id) && $(id).parentElement && $(id).parentElement.querySelector('span');
       if (cap) cap.textContent = text;
     }
+    /*
+     * And the credit line. Nothing calls renderPanel in this mode — the
+     * director that normally calls it stands down — so the footer kept the
+     * static HTML default and read "Radar: NOAA MRMS" under a satellite
+     * picture, which is the one kind of mistake this page has a rule about.
+     */
+    renderPanel();
     const tl = document.getElementById('tickerlabel');
     if (tl) tl.textContent = 'TROPICAL WATCHES & WARNINGS';
     console.log('[broadcast] tropical mode: satellite + NHC tracks, radar off');
