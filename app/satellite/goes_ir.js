@@ -84,6 +84,8 @@ const _frames = new Map();
 let _shown = null;             // which frame is on the map
 let _playing = true;
 let _token = 0;                // bumped to orphan work from a previous run
+let _followTimer = null;       // watches the app player
+let _following = false;
 
 function merc(lon, lat) {
     const x = lon * 20037508.34 / 180;
@@ -368,8 +370,49 @@ function step() {
 
 function startPlaying() {
     stopPlaying();
-    if (!_playing || _frames.size < 2) return;
+    // Not while the app player is driving: two clocks on one map is how the
+    // satellite ended up animating against the radar instead of with it.
+    if (_following || !_playing || _frames.size < 2) return;
     _playTimer = setTimeout(step, STEP_MS);
+}
+
+/** The scan nearest a moment in time, which is how the two loops line up. */
+function nearestFrame(ms) {
+    let best = null, bestD = Infinity;
+    for (const at of _frames.keys()) {
+        const d = Math.abs(at - ms);
+        if (d < bestD) { bestD = d; best = at; }
+    }
+    return best;
+}
+
+/*
+ * Follow the player at the bottom of the screen.
+ *
+ * Polled rather than subscribed, because the player does not announce
+ * itself and reaching into it to make it would couple the two together for
+ * no gain. Four times a second is below what anyone can see and costs a
+ * property read.
+ */
+function followTick() {
+    const vl = (typeof window !== 'undefined') ? window.vortexLoop : null;
+    const at = (vl && vl.count > 1) ? vl.frameTime : null;
+
+    if (at === null) {
+        // Nothing in the player: the satellite is on its own again.
+        if (_following) { _following = false; markFollowing(); startPlaying(); }
+        return;
+    }
+    if (!_following) { _following = true; markFollowing(); stopPlaying(); }
+
+    const want = nearestFrame(at);
+    if (want !== null && want !== _shown) showFrame(want);
+}
+
+/* The legend's own pause is meaningless while the player is driving. */
+function markFollowing() {
+    const el = document.getElementById(LEGEND_ID);
+    if (el) el.classList.toggle('vml-following', _following);
 }
 
 function stopPlaying() {
@@ -437,12 +480,16 @@ function enable() {
     sync();
     if (_timer) clearInterval(_timer);
     _timer = setInterval(() => { if (_enabled) sync(); }, 5 * 60 * 1000);
+    if (_followTimer) clearInterval(_followTimer);
+    _followTimer = setInterval(followTick, 250);
 }
 
 function disable() {
     _enabled = false;
     _token++;
     if (_timer) { clearInterval(_timer); _timer = null; }
+    if (_followTimer) { clearInterval(_followTimer); _followTimer = null; }
+    _following = false;
     _remove();
 }
 

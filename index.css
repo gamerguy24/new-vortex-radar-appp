@@ -1703,7 +1703,10 @@ td.day.active, span.month.active, span.year.active {
 /* Both controls stack in the corner the panel folds into, so the pause goes
    away with the scale and the arrow that brings it back does not. */
 #vortexSatLegend .vml-btns { display: flex; flex-direction: column; gap: 5px; flex: 0 0 auto; }
-#vortexSatLegend.vml-folded .vml-play { display: none; }
+#vortexSatLegend.vml-folded .vml-play,
+/* The player at the bottom of the screen is driving; a second pause button
+   that does nothing is worse than no pause button. */
+#vortexSatLegend.vml-following .vml-play { display: none; }
 #vortexSatLegend .vml-play,
 #vortexSatLegend .vml-toggle {
     pointer-events: auto;

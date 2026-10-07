@@ -432,6 +432,25 @@ if (typeof window !== 'undefined') {
         get loading() { return loading; },
         get budget() { return frameBudget(); },
         get live() { return live; },
+        get playing() { return playing; },
+        /*
+         * When the frame on screen was taken, so other layers can show the
+         * same moment instead of guessing from the frame number — they count
+         * their own frames differently and would land minutes apart.
+         *
+         * Level 2 dates are per elevation, as display_file_info has it.
+         */
+        get frameTime() {
+            const fr = frames[idx];
+            if (!fr || typeof fr.get_date !== 'function') return null;
+            try {
+                const d = (fr.nexrad_level === 2)
+                    ? fr.get_date(fr.elevation_number)
+                    : fr.get_date();
+                const t = d ? d.getTime() : NaN;
+                return Number.isFinite(t) ? t : null;
+            } catch (e) { return null; }
+        },
     };
 }
 
