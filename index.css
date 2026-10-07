@@ -1692,7 +1692,42 @@ td.day.active, span.month.active, span.year.active {
 /* Amber is interface state, which a staleness warning is. */
 #vortexMrmsLegend .vml-age.stale { color: var(--vx-accent, #e8862b); opacity: 1; }
 /* Above the radar legend, so both can be up at once without overlapping. */
-#vortexSatLegend { bottom: 392px; }
+#vortexSatLegend {
+    bottom: 392px;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+}
+/* The panel ignores the pointer so the map can be dragged through it; the
+   one control on it has to take the pointer back. */
+#vortexSatLegend .vml-toggle {
+    pointer-events: auto;
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: var(--vx-r-2, 6px);
+    background: rgba(255, 255, 255, 0.07);
+    color: #eef4fb;
+    font-size: 15px;
+    line-height: 1;
+    font-family: inherit;
+    padding: 0;
+}
+/* The bar should fill what the arrow leaves, not the title text alone. */
+#vortexSatLegend .vml-body { flex: 1 1 auto; min-width: 0; }
+#vortexSatLegend .vml-toggle:hover { background: rgba(255, 255, 255, 0.14); }
+/* Folded: the body goes, the panel shrinks to the arrow, and because the
+   panel is anchored on its right edge it collapses away from the map. */
+#vortexSatLegend.vml-folded {
+    min-width: 0;
+    padding: 6px;
+}
+#vortexSatLegend.vml-folded .vml-body { display: none; }
 
 
 /*

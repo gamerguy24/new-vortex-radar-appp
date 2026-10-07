@@ -33,6 +33,7 @@ const { IR_TABLE } = require('./ir_colormap');
 const SRC = 'goes19_clean_ir_src';
 const LAYER = 'goes19_clean_ir_layer';
 const LEGEND_ID = 'vortexSatLegend';
+const COLLAPSE_KEY = 'vortexSatLegendCollapsed';
 
 // GOES-East domain we render (CONUS + Gulf + nearby Atlantic, useful for storms).
 const DOM = { W: -128, E: -62, S: 18, N: 52 };
@@ -167,6 +168,25 @@ function clearLegend() {
     if (el) el.remove();
 }
 
+/* Folded or not, from last time. Storage can be unavailable; open is the
+   safe answer, since a scale nobody asked to hide should be visible. */
+function legendFolded() {
+    try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch (e) { return false; }
+}
+
+function foldLegend(el, folded) {
+    el.classList.toggle('vml-folded', folded);
+    const btn = el.querySelector('.vml-toggle');
+    if (btn) {
+        btn.textContent = folded ? '\u2039' : '\u203A';
+        const label = folded ? 'Show the temperature scale' : 'Hide the temperature scale';
+        btn.title = label;
+        btn.setAttribute('aria-label', label);
+        btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+    }
+    try { localStorage.setItem(COLLAPSE_KEY, folded ? '1' : '0'); } catch (e) { /* private mode */ }
+}
+
 /*
  * The scale, because an enhancement nobody can read is just a colourful cloud.
  *
@@ -186,11 +206,22 @@ function drawLegend() {
     }
     const el = document.createElement('div');
     el.id = LEGEND_ID;
-    el.innerHTML = `<div class="vml-title">SATELLITE · CLOUD TOP TEMPERATURE <span style="opacity:.6">(°C)</span></div>
-      <div class="vml-bar" style="background:linear-gradient(90deg, ${stops.join(', ')})"></div>
-      <div class="vml-scale"><span>-90</span><span>-60</span><span>-30</span><span>0</span><span>+30</span></div>
-      <div class="vml-age">GOES-East Band 13 · colder tops are taller storms</div>`;
+    /*
+     * The arrow sits outside the body it hides, so that folding leaves it
+     * behind rather than taking it with it — a control that disappears when
+     * used cannot be used twice.
+     */
+    el.innerHTML = `<div class="vml-body">
+        <div class="vml-title">SATELLITE · CLOUD TOP TEMPERATURE <span style="opacity:.6">(°C)</span></div>
+        <div class="vml-bar" style="background:linear-gradient(90deg, ${stops.join(', ')})"></div>
+        <div class="vml-scale"><span>-90</span><span>-60</span><span>-30</span><span>0</span><span>+30</span></div>
+        <div class="vml-age">GOES-East Band 13 · colder tops are taller storms</div>
+      </div>
+      <button class="vml-toggle" type="button"></button>`;
+    const btn = el.querySelector('.vml-toggle');
+    btn.addEventListener('click', () => foldLegend(el, !el.classList.contains('vml-folded')));
     document.body.appendChild(el);
+    foldLegend(el, legendFolded());
 }
 
 function render() {
