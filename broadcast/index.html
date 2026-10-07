@@ -869,7 +869,17 @@ function paintWarnings() {
  * duration is that distance at a fixed speed. The loop point therefore lands
  * on pixels identical to the start, which is what makes it invisible.
  */
-const TICKER_SPEED_PX_S = 90;   // about right to read at a glance at 1080p
+/*
+ * How fast the crawl moves, in pixels a second.
+ *
+ * 55 rather than 90. Two reasons, and they agree: a slower crawl is fewer
+ * composited pixels a second on a box that is also encoding video, and a
+ * television crawl is meant to be read at a glance by somebody who is not
+ * looking directly at it. 90 was a web speed.
+ *
+ * ?crawl= overrides it without a deploy.
+ */
+const TICKER_SPEED_PX_S = Math.max(15, Math.min(200, parseInt(Q.get('crawl'), 10) || 55));
 function renderTicker(html) {
   const t = document.getElementById('ticker');
   const wrap = t.parentElement;
