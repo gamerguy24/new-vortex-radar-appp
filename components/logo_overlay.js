@@ -13,6 +13,18 @@ import Dialog from "../js/ui/dialog.js";
 const CACHE_KEY = 'vortexBrandLogo';
 const MAX_DIM = 600; // longest edge of the stored image, px
 
+/*
+ * A video is stored as it was given. A still goes through a canvas and comes
+ * out at most MAX_DIM across, which is why any photograph can be dropped in;
+ * there is no cheap way to do that to a video in a browser, so the limit has
+ * to be a limit. Said before the upload rather than after it.
+ */
+const MAX_VIDEO_BYTES = 8 * 1024 * 1024;
+const VIDEO_TYPES = ['video/mp4', 'video/webm'];
+
+/** Read the kind off the data URL itself, so the two can never disagree. */
+const isVideo = (u) => /^data:video\//.test(String(u || ''));
+
 let _overlay = null;
 let _current = null; // { dataUrl, corner, size, opacity }
 
@@ -21,7 +33,13 @@ function ensureOverlay() {
     if (_overlay) return _overlay;
     _overlay = document.createElement('div');
     _overlay.id = 'vr-logo-overlay';
-    _overlay.innerHTML = '<img alt="logo" />';
+    /*
+     * Both elements, one shown. Swapping the tag would mean rebuilding the
+     * node on every change, and a video that is torn down and recreated
+     * restarts from its first frame each time the size slider moves.
+     */
+    _overlay.innerHTML = '<img alt="logo" />'
+      + '<video muted loop playsinline autoplay preload="auto"></video>';
     document.body.appendChild(_overlay);
     return _overlay;
 }
@@ -36,7 +54,26 @@ function applyLogo(cfg) {
     ov.className = 'vr-logo-' + (cfg.corner || 'top-right');
     ov.style.width = (cfg.size || 16) + 'vw';
     ov.style.opacity = cfg.opacity != null ? cfg.opacity : 1;
-    ov.querySelector('img').src = cfg.dataUrl;
+    const img = ov.querySelector('img');
+    const vid = ov.querySelector('video');
+    if (isVideo(cfg.dataUrl)) {
+      img.style.display = 'none';
+      img.removeAttribute('src');
+      // Only reassign when it actually changed: setting src restarts
+      // playback, and the size and opacity controls apply live.
+      if (vid.getAttribute('src') !== cfg.dataUrl) vid.setAttribute('src', cfg.dataUrl);
+      vid.style.display = 'block';
+      // Muted autoplay is allowed without a gesture; a rejected play() is
+      // not worth a console error on a watermark.
+      const p = vid.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } else {
+      vid.pause();
+      vid.removeAttribute('src');
+      vid.style.display = 'none';
+      img.src = cfg.dataUrl;
+      img.style.display = 'block';
+    }
     ov.style.display = 'block';
 }
 
@@ -51,11 +88,34 @@ async function api(method, body) {
     return data;
 }
 
-// Downscale + compress an uploaded image to a small data URL.
+// Downscale + compress an uploaded image, or take a video as it is.
 function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onerror = () => reject(new Error('Could not read that file.'));
+
+        /*
+         * Video goes in untouched. There is no canvas pass that would shrink
+         * it without re-encoding, so the size is the user's to control and
+         * the only honest thing to do is say so up front.
+         */
+        if (file && String(file.type || '').startsWith('video/')) {
+            if (VIDEO_TYPES.indexOf(file.type) === -1) {
+                reject(new Error('Use an MP4 or WebM video.'));
+                return;
+            }
+            if (file.size > MAX_VIDEO_BYTES) {
+                reject(new Error(`That video is ${(file.size / 1048576).toFixed(1)} MB. `
+                    + `The limit is ${MAX_VIDEO_BYTES / 1048576} MB — try a shorter loop or a smaller frame.`));
+                return;
+            }
+            const vreader = new FileReader();
+            vreader.onerror = () => reject(new Error('Could not read that file.'));
+            vreader.onload = () => resolve(vreader.result);
+            vreader.readAsDataURL(file);
+            return;
+        }
+
         reader.onload = () => {
             const img = new Image();
             img.onerror = () => reject(new Error('That file is not a valid image.'));
@@ -80,12 +140,16 @@ function openLogoDialog() {
     const cfg = _current || {};
     const content = `
         <div class="vr-logo-form">
-            <p class="vr-logo-intro">Add your own logo as a watermark on the radar — great for streaming. It's saved to your account.</p>
+            <p class="vr-logo-intro">Add your own logo or an animated bug as a watermark on the radar — great for streaming. It's saved to your account.</p>
 
             <div class="vr-logo-drop" id="vr-logo-drop">
-                <img id="vr-logo-preview" ${cfg.dataUrl ? `src="${cfg.dataUrl}"` : ''} style="${cfg.dataUrl ? '' : 'display:none;'}" />
+                <img id="vr-logo-preview" ${!isVideo(cfg.dataUrl) && cfg.dataUrl ? `src="${cfg.dataUrl}"` : ''}
+                  style="${cfg.dataUrl && !isVideo(cfg.dataUrl) ? '' : 'display:none;'}" />
+                <video id="vr-logo-preview-video" muted loop playsinline autoplay
+                  ${isVideo(cfg.dataUrl) ? `src="${cfg.dataUrl}"` : ''}
+                  style="${isVideo(cfg.dataUrl) ? '' : 'display:none;'}"></video>
                 <div id="vr-logo-placeholder"><i class="ti ti-photo-plus"></i><br>Click or drop an image</div>
-                <input type="file" id="vr-logo-file" accept="image/*" hidden />
+                <input type="file" id="vr-logo-file" accept="image/*,video/mp4,video/webm" hidden />
             </div>
 
             <div class="vr-logo-label">Corner</div>
@@ -115,6 +179,7 @@ function openLogoDialog() {
     const drop = $('vr-logo-drop');
     const fileInput = $('vr-logo-file');
     const preview = $('vr-logo-preview');
+    const previewVideo = $('vr-logo-preview-video');
     const placeholder = $('vr-logo-placeholder');
     const cornersEl = $('vr-logo-corners');
     const sizeEl = $('vr-logo-size');
@@ -137,10 +202,25 @@ function openLogoDialog() {
     async function handleFile(file) {
         if (!file) return;
         try {
-            setMsg('Processing image...');
+            const vid = file && String(file.type || '').startsWith('video/');
+            setMsg(vid ? 'Reading video…' : 'Processing image…');
             pendingDataUrl = await fileToDataUrl(file);
-            preview.src = pendingDataUrl;
-            preview.style.display = 'block';
+            // Show it in the one that can display it, and empty the other so
+            // a previous choice is not left behind it.
+            if (isVideo(pendingDataUrl)) {
+              preview.removeAttribute('src');
+              preview.style.display = 'none';
+              previewVideo.src = pendingDataUrl;
+              previewVideo.style.display = 'block';
+              const p = previewVideo.play();
+              if (p && typeof p.catch === 'function') p.catch(() => {});
+            } else {
+              previewVideo.pause();
+              previewVideo.removeAttribute('src');
+              previewVideo.style.display = 'none';
+              preview.src = pendingDataUrl;
+              preview.style.display = 'block';
+            }
             placeholder.style.display = 'none';
             saveBtn.disabled = false;
             setMsg('');

@@ -384,6 +384,19 @@ app.disable('x-powered-by');
 // MUST be mounted before express.json parses it.
 app.use('/api/billing', billing.webhookRouter());
 
+/*
+ * The brand overlay may be a VIDEO, and a video is stored as it was given —
+ * a still is downscaled through a canvas first, but there is no cheap
+ * equivalent for video in a browser. Eight megabytes of mp4 is about eleven
+ * once base64'd, which the 4 MB limit below would refuse before the route saw
+ * it.
+ *
+ * Mounted FIRST so this one path gets the room: express.json marks the
+ * request parsed and the general parser then skips it. Raising the general
+ * limit would widen every endpoint for the sake of one.
+ */
+app.use('/api/logo', express.json({ limit: '14mb' }));
+
 app.use(express.json({ limit: '4mb' })); // room for uploaded brand-logo data URLs
 
 // Parse cookies + attach the current user/session to the request.
@@ -1001,11 +1014,25 @@ app.get('/api/logo', requireAuth, (req, res) => {
 app.post('/api/logo', requireAuth, (req, res) => {
     const b = req.body || {};
     const dataUrl = String(b.dataUrl || '');
-    if (!/^data:image\/(png|jpe?g|webp|gif);base64,/.test(dataUrl)) {
-        return res.status(400).json({ error: 'Please choose a valid image file.' });
+    /*
+     * A still or a short video. The two have very different ceilings on
+     * purpose: a still has been downscaled to 600px by the browser before it
+     * gets here, so anything large is a sign something went wrong, while a
+     * video is whatever was chosen and is judged on its own terms.
+     */
+    const isImage = /^data:image\/(png|jpe?g|webp|gif);base64,/.test(dataUrl);
+    const isVideo = /^data:video\/(mp4|webm);base64,/.test(dataUrl);
+    if (!isImage && !isVideo) {
+        return res.status(400).json({ error: 'Choose an image, or an MP4 or WebM video.' });
     }
-    if (dataUrl.length > 3500000) {
-        return res.status(413).json({ error: 'That image is too large. Try a smaller logo.' });
+    // 11.5M characters of base64 is roughly the 8 MB the browser allows.
+    const cap = isVideo ? 11500000 : 3500000;
+    if (dataUrl.length > cap) {
+        return res.status(413).json({
+            error: isVideo
+                ? 'That video is too large. The limit is 8 MB — try a shorter loop.'
+                : 'That image is too large. Try a smaller logo.',
+        });
     }
     logos[req.user.id] = {
         dataUrl,
