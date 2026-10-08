@@ -78,6 +78,25 @@ const pad2 = (n) => String(n).padStart(2, '0');
 const pad3 = (n) => String(n).padStart(3, '0');
 
 // ─── Model catalog ───────────────────────────────────────────────────────────
+/*
+ * A per-storm product is "<domain>|<storm>" — "synoptic|isaias09l".
+ *
+ * Split here rather than adding an argument to the key builders, because
+ * `product` already reaches all nine of them and these models' builders can
+ * read it however they need to.
+ */
+function splitStorm(p, fallbackDomain) {
+  const [dom, storm] = String(p == null ? '' : p).split('|');
+  return { dom: dom || fallbackDomain, storm: storm || '' };
+}
+
+/*
+ * name + number + basin, as it appears at the front of every filename.
+ * l Atlantic, e east Pacific, c central Pacific, w west Pacific, a/b Indian,
+ * s/p southern hemisphere.
+ */
+const STORM_RE = /^([a-z]+)(\d{2})([lecwabsp])\./;
+
 const MODELS = {
   hrrr: {
     name: 'HRRR (3 km CONUS)', bucket: 'noaa-hrrr-bdp-pds', region: 'us-east-1',
@@ -153,6 +172,75 @@ const MODELS = {
     file: (d, c, f, p) => `rrfs.${d}/${c}/rrfs.t${c}z.${MODELS.rrfs.products[p || 'sfc']}.3km.f${pad3(f)}.conus.grib2`,
     fhrRe: (p) => new RegExp(
       `rrfs\\.t\\d{2}z\\.${MODELS.rrfs.products[p || 'sfc']}\\.3km\\.f(\\d{3})\\.conus\\.grib2$`),
+  },
+  /*
+   * HWRF. Run per storm on a nest that follows the eye, four cycles a day,
+   * out to 126 hours in three-hour steps.
+   *
+   * "prod" rather than "v13.2": it is a live alias for whatever version is
+   * operational, so an upgrade does not take this model offline.
+   */
+  hwrf: {
+    name: 'HWRF (hurricane, 1.7 km core)', bucket: 'nomads:hwrf/prod', region: 'nomads',
+    type: 'cycle', cycles: [0, 6, 12, 18], fhrMax: 126, fhrDigits: 3,
+    perStorm: true,
+    products: {
+      // Synoptic first: it is the one that reads as a map. The core nest is
+      // two degrees across and would be a postage stamp on screen.
+      synoptic: 'synoptic.0p125',
+      core: 'core.0p015',
+      storm: 'storm.0p015',
+      global: 'global.0p25',
+    },
+    defaultProduct: 'synoptic', soundingProduct: 'synoptic',
+    dir: (d, c) => `hwrf.${d}/${c}/`,
+    hoursPrefix: (d, c, p) => {
+      const { dom, storm } = splitStorm(p, 'synoptic');
+      const grid = MODELS.hwrf.products[dom] || MODELS.hwrf.products.synoptic;
+      // Without a storm this would list every storm in the cycle, so the
+      // prefix stops at the directory and fhrRe does the filtering.
+      if (!storm) return `hwrf.${d}/${c}/`;
+      return `hwrf.${d}/${c}/${storm}.${d}${c}.hwrfprs.${grid}`;
+    },
+    file: (d, c, f, p) => {
+      const { dom, storm } = splitStorm(p, 'synoptic');
+      const grid = MODELS.hwrf.products[dom] || MODELS.hwrf.products.synoptic;
+      return `hwrf.${d}/${c}/${storm}.${d}${c}.hwrfprs.${grid}.f${pad3(f)}.grb2`;
+    },
+    fhrRe: (p) => {
+      const { dom, storm } = splitStorm(p, 'synoptic');
+      const grid = (MODELS.hwrf.products[dom] || MODELS.hwrf.products.synoptic)
+        .replace(/\./g, '\\.');
+      const who = storm ? `^${storm}\\.` : '';
+      return new RegExp(`${who}.*\\.hwrfprs\\.${grid}\\.f(\\d{3})\\.grb2$`);
+    },
+  },
+  /*
+   * HMON, the other hurricane model, on the same cycles and the same 126
+   * hours. One domain is published for it: d1 at 0.20 degrees.
+   */
+  hmon: {
+    name: 'HMON (hurricane, 0.2°)', bucket: 'nomads:hmon/prod', region: 'nomads',
+    type: 'cycle', cycles: [0, 6, 12, 18], fhrMax: 126, fhrDigits: 3,
+    perStorm: true,
+    products: { d1: 'd1.0p20' },
+    defaultProduct: 'd1', soundingProduct: 'd1',
+    dir: (d, c) => `hmon.${d}/${c}/`,
+    hoursPrefix: (d, c, p) => {
+      const { storm } = splitStorm(p, 'd1');
+      if (!storm) return `hmon.${d}/${c}/`;
+      return `hmon.${d}/${c}/${storm}.${d}${c}.hmonprs.${MODELS.hmon.products.d1}`;
+    },
+    file: (d, c, f, p) => {
+      const { storm } = splitStorm(p, 'd1');
+      return `hmon.${d}/${c}/${storm}.${d}${c}.hmonprs.${MODELS.hmon.products.d1}.f${pad3(f)}.grb2`;
+    },
+    fhrRe: (p) => {
+      const { storm } = splitStorm(p, 'd1');
+      const grid = MODELS.hmon.products.d1.replace(/\./g, '\\.');
+      const who = storm ? `^${storm}\\.` : '';
+      return new RegExp(`${who}.*\\.hmonprs\\.${grid}\\.f(\\d{3})\\.grb2$`);
+    },
   },
   gefs: {
     name: 'GEFS (0.5° ensemble mean)', bucket: 'noaa-gefs-pds', region: 'us-east-1',
@@ -480,6 +568,54 @@ async function latestRun(m, product) {
 }
 
 /*
+ * Which storms a per-storm model is running, from the newest cycle that has
+ * any.
+ *
+ * This is what makes the hurricane models automatic. Nothing anywhere names a
+ * storm: the cycle directory is listed, the ids are read out of the filenames,
+ * and whatever is running is what is offered. A storm that forms overnight
+ * appears by itself; one that dissipates stops being listed.
+ *
+ * Walks back two days, newest cycle first, the same shape as latestRun —
+ * between advisories there is nothing in the current cycle yet.
+ */
+async function stormsFor(m) {
+  const now = new Date();
+  const curHour = now.getUTCHours();
+  for (let dayBack = 0; dayBack < 2; dayBack++) {
+    const d = new Date(now); d.setUTCDate(d.getUTCDate() - dayBack);
+    const dstr = `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}`;
+    const cycles = cycleList(m)
+      .filter((c) => dayBack > 0 || c <= curHour)
+      .sort((a, b) => b - a);
+    for (const c of cycles) {
+      let keys = [];
+      try { ({ keys } = await s3List(m.bucket, m.dir(dstr, pad2(c)), null)); }
+      catch (e) { continue; }          // that cycle is not there; try an older one
+      const found = new Map();
+      for (const k of keys) {
+        const name = k.split('/').pop();
+        const mm = STORM_RE.exec(name);
+        if (!mm) continue;
+        const id = mm[1] + mm[2] + mm[3];
+        if (found.has(id)) continue;
+        found.set(id, {
+          id,
+          name: mm[1].charAt(0).toUpperCase() + mm[1].slice(1),
+          number: Number(mm[2]),
+          basin: mm[3].toUpperCase(),
+        });
+      }
+      if (found.size) {
+        const storms = [...found.values()].sort((a, b) => a.number - b.number);
+        return { date: dstr, cycle: pad2(c), storms };
+      }
+    }
+  }
+  return { date: null, cycle: null, storms: [] };
+}
+
+/*
  * List available forecast hours for a run by scanning the run dir.
  *
  * Models that share a directory between products (the NAM keeps every product
@@ -507,6 +643,8 @@ function catalog() {
     id, name: m.name, bucket: m.bucket, region: m.region, type: m.type,
     products: m.products ? Object.keys(m.products) : undefined,
     defaultProduct: m.defaultProduct, fhrMax: m.fhrMax, note: m.note,
+    // The client has to ask /storms before it can build a key for these.
+    perStorm: m.perStorm || undefined,
   }));
 }
 
@@ -528,6 +666,25 @@ function attachModels(app, requireAuth) {
       if (!run) return res.status(502).json({ error: 'No recent run found' });
       res.json({ id: req.params.id, ...run, url: s3KeyUrl(m.bucket, run.key) });
     } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
+  });
+
+  /*
+   * The storms a hurricane model is running right now.
+   *
+   * Returned with the run they were found in, so a client can ask for hours
+   * and fields against the same cycle rather than guessing at one.
+   */
+  app.get('/api/models/:id/storms', guard, async (req, res) => {
+    const m = MODELS[req.params.id];
+    if (!m) return res.status(404).json({ error: 'unknown model' });
+    if (!m.perStorm) {
+      return res.json({ id: req.params.id, perStorm: false, storms: [] });
+    }
+    try {
+      res.json({ id: req.params.id, perStorm: true, ...(await stormsFor(m)) });
+    } catch (e) {
+      res.status(502).json({ error: e.message });
+    }
   });
 
   app.get('/api/models/:id/hours', guard, async (req, res) => {
