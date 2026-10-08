@@ -2468,6 +2468,15 @@ const sendFile = (file) => (req, res) => res.sendFile(path.join(ROOT, file));
 app.get('/login.html', sendFile('login.html'));
 app.get('/admin.html', sendFile('admin.html'));
 app.get('/manifest.json', sendFile('manifest.json'));
+/*
+ * The service worker, from the ROOT and before the auth gate.
+ *
+ * Root because a worker only controls the directory it is served from, and
+ * public because the browser re-fetches it on its own schedule to check for
+ * updates — behind the gate, an expired session would quietly stop those
+ * checks. It contains no secrets: it shows notifications and nothing else.
+ */
+app.get('/sw.js', sendFile('sw.js'));
 app.get('/logo.png', sendFile('logo.png'));
 // The design tokens are needed by the signed-out login page too, so they sit
 // with the other public assets rather than behind the session gate.

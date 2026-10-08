@@ -11,9 +11,11 @@
  * is a single self-hosted server. Point-in-polygon uses @turf/turf. The queue is
  * in-process/async (a paid Redis+BullMQ is unnecessary at this scale).
  *
- * ── PHASE 2 (this file, so far): data model + Saved Locations + preferences +
- *    admin config schema. Later phases add: NWS worker, polygon matcher,
- *    notification queue + channels, radar integration, history, admin dashboard.
+ * ── PHASE 2: data model + Saved Locations + preferences + admin config.
+ * ── PHASE 3 (critical_push.js + critical_worker.js): browser push, the NWS
+ *    poller and the point-in-polygon matcher. Still to come: the other
+ *    channels (email, text gateway, Discord, Telegram, ntfy), history and the
+ *    admin dashboard.
  *
  * Attached from server.js: attachCriticalAlerts({ app, requireAuth, requireAdmin,
  *   DATA_DIR, readJson, writeJson }). Guarded so it never breaks boot.
@@ -302,7 +304,56 @@ function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJs
         geocode,
     };
 
-    console.log(`[CRITICAL] Critical Weather Alerts ready (Phase 2: locations + prefs). ${Object.values(locations).reduce((a, b) => a + (b ? b.length : 0), 0)} saved location(s).`);
+    /*
+     * PHASE 3: the push channel and the poller that uses it.
+     *
+     * Wrapped separately and both non-fatal. Somebody who cannot be notified
+     * must still be able to manage the locations they would have been notified
+     * about, and nothing here may stop the radar serving.
+     */
+    let push = null;
+    try {
+        push = require('./critical_push').attachCriticalPush({
+            app, requireAuth, DATA_DIR, readJson, writeJson,
+            subject: process.env.PUSH_CONTACT || undefined,
+        });
+    } catch (e) {
+        console.error('[CRITICAL] browser push unavailable: ' + e.message);
+    }
+
+    let worker = null;
+    if (push) {
+        try {
+            worker = require('./critical_worker').attachCriticalWorker({
+                DATA_DIR, readJson, writeJson, push,
+                getLocations: () => locations,
+                getPrefs: (id) => prefs[id],
+                getConfig: () => config,
+                userAgent: NWS_UA,
+            });
+            worker.start();
+        } catch (e) {
+            console.error('[CRITICAL] warning poller unavailable: ' + e.message);
+        }
+    }
+
+    /*
+     * What the poller last did. Read by the admin page, and the first thing
+     * to look at when somebody says they were not notified: it says whether
+     * the feed is being reached at all, how many alerts were active, and how
+     * many covered a saved location.
+     */
+    app.get('/api/critical/status', requireAuth, (req, res) => {
+        res.json({
+            push: !!push,
+            devices: push ? push.hasSubscribers(req.user.id) : false,
+            poller: worker ? worker.status() : null,
+        });
+    });
+
+    console.log(`[CRITICAL] Critical Weather Alerts ready (push: ${push ? 'on' : 'off'}, `
+        + `poller: ${worker ? 'running' : 'off'}). `
+        + `${Object.values(locations).reduce((a, b) => a + (b ? b.length : 0), 0)} saved location(s).`);
 }
 
 module.exports = { attachCriticalAlerts };

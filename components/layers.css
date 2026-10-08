@@ -706,3 +706,88 @@
     .vmp-status { margin: 5px 0 9px; }
     .vmp-scrub { margin: 2px 0 9px; }
 }
+
+/* ── Alert Notifications dialog ───────────────────────────────────────────
+ * Shares the look of the Brand Logo dialog deliberately: both are reached
+ * from the same menu and do the same kind of job.
+ */
+.vr-al-backdrop {
+    position: fixed; inset: 0; z-index: 2000; display: flex;
+    align-items: center; justify-content: center; padding: 18px;
+    background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(2px);
+}
+.vr-al-panel {
+    width: min(560px, 100%); max-height: 88vh; overflow: auto;
+    background: var(--vx-surface, #11151c);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--vx-r-3, 10px);
+    box-shadow: var(--vx-shadow-lg, 0 18px 44px rgba(0, 0, 0, 0.55));
+    color: var(--vx-text, #eef4fb); font-family: var(--vx-font, system-ui, sans-serif);
+}
+.vr-al-head {
+    display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.09); font-size: 16px;
+}
+.vr-al-head b { flex: 1 1 auto; }
+.vr-al-x {
+    background: rgba(255, 255, 255, 0.07); color: inherit; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.14); border-radius: var(--vx-r-2, 6px);
+    width: 28px; height: 28px; font-size: 16px; line-height: 1; font-family: inherit;
+}
+.vr-al-body { padding: 14px 16px 18px; }
+.vr-al-blurb { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: #a8bace; }
+/* Each condition on its own line: the fix differs for each, and some are
+   things only the user can change in their browser. */
+.vr-al-state {
+    font-size: 13px; line-height: 1.7; padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.28); border-radius: var(--vx-r-2, 6px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.vr-al-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
+.vr-al-actions button {
+    padding: 9px 13px; border-radius: var(--vx-r-2, 6px); cursor: pointer;
+    font-family: inherit; font-size: 13px; font-weight: 700;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06); color: var(--vx-text, #eef4fb);
+}
+.vr-al-actions button:disabled { opacity: 0.45; cursor: default; }
+/* Amber is interface state, and "this is the thing to press" is state. */
+.vr-al-primary:not(:disabled) {
+    background: var(--vx-accent, #e8862b); border-color: var(--vx-accent, #e8862b);
+    color: #0b0f14;
+}
+.vr-al-sub {
+    margin: 18px 0 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.12em;
+    text-transform: uppercase; color: #8fa6bd;
+}
+.vr-al-locs { display: flex; flex-direction: column; gap: 7px; }
+.vr-al-loc {
+    display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+    background: rgba(255, 255, 255, 0.04); border-radius: var(--vx-r-2, 6px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.vr-al-loc-main { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vr-al-loc-main b { font-size: 13.5px; }
+.vr-al-loc-main span { font-size: 12px; color: #a8bace; }
+.vr-al-loc-main i { font-style: normal; font-size: 11px; color: #7f93a8; }
+.vr-al-del {
+    flex: 0 0 auto; padding: 6px 10px; cursor: pointer; font-family: inherit;
+    font-size: 12px; border-radius: var(--vx-r-2, 6px); color: #ff9183;
+    background: rgba(209, 64, 47, 0.14); border: 1px solid rgba(209, 64, 47, 0.4);
+}
+.vr-al-empty { font-size: 13px; color: #8fa6bd; padding: 6px 2px; }
+.vr-al-add { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.vr-al-add input {
+    flex: 1 1 140px; min-width: 0; padding: 9px 11px; font-family: inherit; font-size: 13px;
+    color: var(--vx-text, #eef4fb); background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.14); border-radius: var(--vx-r-2, 6px);
+}
+.vr-al-add button {
+    flex: 0 0 auto; padding: 9px 16px; cursor: pointer; font-family: inherit;
+    font-size: 13px; font-weight: 700; border-radius: var(--vx-r-2, 6px);
+    color: var(--vx-text, #eef4fb); background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.vr-al-msg { margin-top: 10px; font-size: 12.5px; min-height: 17px; color: #a8bace; }
+.vr-al-msg.ok { color: #7ce8a8; }
+.vr-al-msg.warn { color: var(--vx-accent, #e8862b); }

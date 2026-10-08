@@ -33,6 +33,7 @@
     "stripe": "^22.3.0",
     "uglify-js": "^3.19.3",
     "watchify": "^4.0.0",
+    "web-push": "^3.6.7",
     "webworkify": "^1.5.0",
     "ws": "^8.21.3"
   },
