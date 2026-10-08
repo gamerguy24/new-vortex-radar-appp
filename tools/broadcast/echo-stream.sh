@@ -273,7 +273,16 @@ diagnose_report() {
     echo "   where the reason will be."
   fi
 }
-PRIMARY="${YT_PRIMARY_URL:-rtmp://a.rtmp.youtube.com/live2}"
+# RTMPS on 443 is the ingest YouTube publishes; plain RTMP is legacy and
+# still connects, which is why a stream that will not go live can still
+# report Excellent. YT_PRIMARY_URL overrides this without a deploy.
+#
+# Whether this was CHOSEN or defaulted matters further down: a default that
+# this ffmpeg cannot satisfy may quietly fall back, but a URL the operator
+# typed must fail loudly rather than be changed behind their back.
+YT_URL_IS_DEFAULT=0
+if [ -z "${YT_PRIMARY_URL:-}" ]; then YT_URL_IS_DEFAULT=1; fi
+PRIMARY="${YT_PRIMARY_URL:-rtmps://a.rtmps.youtube.com/live2}"
 BACKUP="${YT_BACKUP_URL:-rtmp://b.rtmp.youtube.com/live2?backup=1}"
 USE_BACKUP="${STREAM_BACKUP:-0}"
 
@@ -315,9 +324,30 @@ case " ${DESTS[*]} " in
     # case properly, so this one only speaks when there is an ffmpeg to judge.
     if command -v ffmpeg >/dev/null 2>&1; then
       if ! ffmpeg -hide_banner -protocols 2>/dev/null | grep -qw rtmps; then
-        echo "ERROR: a destination uses rtmps:// but this ffmpeg has no rtmps support."
-        echo "       ffmpeg -protocols | grep rtmps   (install a build with TLS)"
-        exit 1
+        # A DEFAULT that cannot be met is downgraded; a chosen one is fatal.
+        #
+        # YouTube now defaults to rtmps, so on a build without TLS the old
+        # behaviour would have taken the whole channel down — including the
+        # destination that was working — over a URL nobody asked for.
+        if [ "$YT_URL_IS_DEFAULT" = "1" ] && [ "${#DESTS[@]}" -gt 0 ]; then
+          echo "This ffmpeg has no rtmps support; using plain RTMP for YouTube."
+          echo "  (install an ffmpeg with TLS, or set YT_PRIMARY_URL yourself)"
+          REBUILT=()
+          for d in "${DESTS[@]}"; do
+            case "$d" in
+              rtmps://a.rtmps.youtube.com/*)
+                REBUILT+=("${d/rtmps:\/\/a.rtmps.youtube.com/rtmp:\/\/a.rtmp.youtube.com}") ;;
+              *) REBUILT+=("$d") ;;
+            esac
+          done
+          DESTS=("${REBUILT[@]}")
+        fi
+        case " ${DESTS[*]} " in
+          *rtmps://*)
+            echo "ERROR: a destination uses rtmps:// but this ffmpeg has no rtmps support."
+            echo "       ffmpeg -protocols | grep rtmps   (install a build with TLS)"
+            exit 1 ;;
+        esac
       fi
     fi ;;
 esac
@@ -345,6 +375,20 @@ describe_dests() {
 # onfail=ignore is the whole reason for using tee rather than two ffmpeg runs:
 # if one service drops at 3am the other keeps going, instead of one dead ingest
 # taking the broadcast down with it.
+#
+# THE FLV FLAGS HAVE TO BE INSIDE THE TEE SPEC.
+#
+# -flvflags no_duration_filesize is an option for the FLV muxer, and it is
+# given further down as an output option just before the format. With ONE
+# destination the format is flv and it applies. With two the format is tee,
+# whose child muxers do not inherit it, so the flag went nowhere and ffmpeg's
+# only complaint was a line about an unused option.
+#
+# Which is why adding Twitch could break YouTube without touching anything
+# about YouTube: a live FLV header that claims a duration is something Twitch
+# ignores and YouTube does not. "Excellent health, Preparing stream for ever"
+# is what that looks like from outside.
+FLV_LIVE="flvflags=+no_duration_filesize"
 OUTPUT_ARGS=()
 if [ "${#DESTS[@]}" -eq 1 ]; then
   OUTPUT_ARGS=(-f flv "${DESTS[0]}")
@@ -352,7 +396,7 @@ else
   TEE=""
   for d in "${DESTS[@]}"; do
     [ -n "$TEE" ] && TEE="${TEE}|"
-    TEE="${TEE}[f=flv:onfail=ignore]${d}"
+    TEE="${TEE}[f=flv:${FLV_LIVE}:onfail=ignore]${d}"
   done
   OUTPUT_ARGS=(-f tee "$TEE")
 fi
