@@ -115,6 +115,25 @@ const cornersOf = (d) => [[d.W, d.N], [d.E, d.N], [d.E, d.S], [d.W, d.S]];
 const IMG_WIDTH = 2000;
 
 /*
+ * Phones get smaller frames, and fewer of them.
+ *
+ * Every step of the loop decodes a whole frame. At 2400px that is roughly
+ * three megapixels, on hardware with a fraction of the memory bandwidth of a
+ * laptop — which is where the skipping came from. Half the width is a quarter
+ * of the pixels.
+ *
+ * Judged on the screen rather than the user agent string: a small screen is
+ * the thing that correlates with a small budget, and it does not lie.
+ */
+function onPhone() {
+    try {
+        const shortest = Math.min(window.screen.width, window.screen.height);
+        return shortest > 0 && shortest <= 820;
+    } catch (e) { return false; }
+}
+const SIZE_SCALE = onPhone() ? 0.5 : 1;
+
+/*
  * Where cloud starts being drawn, in °C of brightness temperature.
  *
  * Above WARM_C is the ground, the sea and whatever sits at their temperature:
@@ -136,6 +155,9 @@ const COLD_C = -25;
  */
 const SCAN_MS = 10 * 60 * 1000;
 const FRAMES = 6;
+// Fewer on a phone: every step decodes a whole frame, and four of them is a
+// forty-minute loop, which still reads as motion.
+const FRAME_BUDGET = onPhone() ? 4 : FRAMES;
 const STEP_MS = 420;            // how long each frame is held
 const HOLD_LAST_MS = 1400;      // and the pause on the newest, as loops do
 const PROBE_BACK = 18;          // three hours; past that the feed is down
@@ -170,7 +192,7 @@ function scanTime(ms) { return Math.floor(ms / SCAN_MS) * SCAN_MS; }
  * never change again, so the cache-buster belongs only on the open-ended
  * request, where it is the whole point.
  */
-function wmsUrl(sat, width, at) {
+function wmsUrl(sat, width, at, format) {
     const [minx, miny] = merc(sat.domain.W, sat.domain.S);
     const [maxx, maxy] = merc(sat.domain.E, sat.domain.N);
     const height = Math.round(width * (maxy - miny) / (maxx - minx));
@@ -178,7 +200,7 @@ function wmsUrl(sat, width, at) {
         SERVICE: 'WMS', REQUEST: 'GetMap', VERSION: '1.3.0',
         LAYERS: product().enhanced ? sat.ir : sat.geo,
         CRS: 'EPSG:3857', BBOX: `${minx},${miny},${maxx},${maxy}`,
-        WIDTH: width, HEIGHT: height, FORMAT: 'image/png',
+        WIDTH: width, HEIGHT: height, FORMAT: format || 'image/png',
     });
     if (at) p.set('TIME', new Date(at).toISOString().replace(/\.\d+Z$/, 'Z'));
     else p.set('_', String(Date.now()));
@@ -254,16 +276,72 @@ function alphaLut() {
  * toBlob rather than toDataURL: this canvas is 2400px across, and encoding one
  * that size to base64 blocks the page for long enough to be seen.
  */
+/*
+ * A finished picture (GeoColor), fetched as BYTES and kept as a blob.
+ *
+ * It used to be handed to the map as the service's own URL, to save a decode.
+ * That was a bad trade: GIBS sends no-store, so every step of the loop
+ * re-downloaded the whole frame. A blob is local — one download per frame,
+ * and every step after that is just a decode.
+ *
+ * Asked for as JPEG: 454 KB against 3.4 MB as PNG at the size this requests.
+ * Safe because GeoColor covers the whole domain — verified 100% opaque —
+ * and JPEG, having no alpha, would otherwise paint black wherever it did not.
+ */
+function rgbFrame(sat, at, cb) {
+    const url = wmsUrl(sat, Math.round((sat.width || IMG_WIDTH) * SIZE_SCALE), at, 'image/jpeg');
+    fetch(url)
+        .then((r) => (r.ok ? r.blob() : null))
+        .then((blob) => {
+            if (!blob || !blob.size) { cb(null); return; }
+            const objectUrl = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    // Blankness on a thumbnail: the service serves the odd
+                    // empty or solid frame whatever the product, and one of
+                    // those full-screen is the white wall again.
+                    const w = 64;
+                    const h = Math.max(1, Math.round(w * img.height / img.width));
+                    const c = document.createElement('canvas');
+                    c.width = w; c.height = h;
+                    const x = c.getContext('2d');
+                    x.drawImage(img, 0, 0, w, h);
+                    const q = x.getImageData(0, 0, w, h).data;
+                    let seen = 0, head = -1, same = 0;
+                    for (let i = 0; i < q.length; i += 4) {
+                        if (!q[i + 3]) continue;
+                        seen++;
+                        const packed = (q[i] << 16) | (q[i + 1] << 8) | q[i + 2];
+                        if (head < 0) head = packed;
+                        if (packed === head) same++;
+                    }
+                    if (!seen || same / seen > 0.9) {
+                        URL.revokeObjectURL(objectUrl);
+                        cb(null);
+                        return;
+                    }
+                } catch (e) {
+                    // A check that could not run is not a reason to throw away
+                    // a frame that downloaded perfectly well.
+                }
+                cb(objectUrl);
+            };
+            img.onerror = () => { URL.revokeObjectURL(objectUrl); cb(null); };
+            img.src = objectUrl;
+        })
+        .catch(() => cb(null));
+}
+
 function buildImage(sat, at, cb) {
+    if (!product().enhanced) { rgbFrame(sat, at, cb); return; }
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
         try {
             /*
-             * A finished picture goes to the map as it came, which skips the
-             * decode, the recolour and the re-encode entirely. It is still
-             * checked for blankness, on a small scratch canvas — the service
-             * serves the odd empty frame whatever the product.
+             * Handled before this, as bytes — see rgbFrame. Reached only if
+             * something routed an enhanced product down the wrong path.
              */
             if (!product().enhanced) {
                 const w = 64;
@@ -343,7 +421,7 @@ function buildImage(sat, at, cb) {
         } catch (e) { console.warn('[GOES] recolor failed:', e); cb(null); }
     };
     img.onerror = () => { console.warn('[GOES] image load failed'); cb(null); };
-    img.src = wmsUrl(sat, sat.width || IMG_WIDTH, at);
+    img.src = wmsUrl(sat, Math.round((sat.width || IMG_WIDTH) * SIZE_SCALE), at);
 }
 
 function _beforeId() {
@@ -717,7 +795,7 @@ async function sync() {
     if (!newest || token !== _token || !_enabled) return;
 
     const want = [];
-    for (let i = FRAMES - 1; i >= 0; i--) want.push(newest - i * SCAN_MS);
+    for (let i = FRAME_BUDGET - 1; i >= 0; i--) want.push(newest - i * SCAN_MS);
 
     // Anything outside the window is gone for good; its blobs go with it.
     for (const at of [..._frames.keys()]) {

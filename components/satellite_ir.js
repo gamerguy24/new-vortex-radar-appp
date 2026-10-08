@@ -63,7 +63,7 @@ function merc(lon, lat) {
 
 export function scanTime(ms) { return Math.floor(ms / SCAN_MS) * SCAN_MS; }
 
-function url(src, width, at) {
+function url(src, width, at, format) {
     const dom = src.domain;
     const [minx, miny] = merc(dom.W, dom.S);
     const [maxx, maxy] = merc(dom.E, dom.N);
@@ -72,7 +72,7 @@ function url(src, width, at) {
         SERVICE: 'WMS', REQUEST: 'GetMap', VERSION: '1.3.0',
         LAYERS: src.wms, CRS: 'EPSG:3857',
         BBOX: `${minx},${miny},${maxx},${maxy}`,
-        WIDTH: width, HEIGHT: height, FORMAT: 'image/png',
+        WIDTH: width, HEIGHT: height, FORMAT: format || 'image/png',
     });
     // A fixed scan never changes, so it is cached hard. Only the open-ended
     // request needs busting, where that is the entire point of it.
@@ -213,15 +213,30 @@ async function frameUrl(src, width, at) {
  * and one of those drawn full-screen is the white wall again.
  */
 async function rgbFrame(src, width, at) {
-    const url_ = url(src, width, at);
+    /*
+     * Fetched as BYTES and kept as a blob, not handed over as a URL.
+     *
+     * GIBS answers with "no-store", so a service URL given to the map is
+     * downloaded again every time the loop reaches that frame. A blob is
+     * local: one download, and every step after it is a decode. Passing the
+     * URL through saved a decode and cost a network round trip per step,
+     * which is the wrong way round.
+     *
+     * JPEG because this is a photograph: 454 KB against 3.4 MB as PNG at the
+     * sizes asked for here. Safe because GeoColor covers the whole domain —
+     * JPEG has no alpha and would paint black anywhere it did not.
+     */
+    const url_ = url(src, width, at, 'image/jpeg');
+    const blob = await fetch(url_).then((r) => (r.ok ? r.blob() : null)).catch(() => null);
+    if (!blob || !blob.size) return null;
+    const objectUrl = URL.createObjectURL(blob);
     const img = await new Promise((resolve) => {
         const i = new Image();
-        i.crossOrigin = 'anonymous';
         i.onload = () => resolve(i);
         i.onerror = () => resolve(null);
-        i.src = url_;
+        i.src = objectUrl;
     });
-    if (!img) return null;
+    if (!img) { URL.revokeObjectURL(objectUrl); return null; }
     const w = 64;
     const h = Math.max(1, Math.round(w * img.height / img.width));
     const c = document.createElement('canvas');
@@ -237,8 +252,8 @@ async function rgbFrame(src, width, at) {
         if (head < 0) head = packed;
         if (packed === head) same++;
     }
-    if (!seen || same / seen > 0.9) return null;
-    return url_;
+    if (!seen || same / seen > 0.9) { URL.revokeObjectURL(objectUrl); return null; }
+    return objectUrl;
 }
 
 /** Cheap existence check: 32px wide, a couple of kilobytes. */
