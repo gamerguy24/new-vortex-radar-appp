@@ -274,12 +274,52 @@ const DOMAINS = {
   gefs: [-179, -85, 179, 85],       // global
   ecmwf: [-179, -85, 179, 85],      // global
 };
+/*
+ * A hurricane model has no fixed domain: its grid follows the storm. The
+ * basin is in the storm id, though — l Atlantic, e east Pacific, c central —
+ * so the shot is framed on the basin, which is both stable between runs and
+ * the view somebody wants anyway when looking at a tropical forecast.
+ */
+const BASIN_DOMAIN = {
+  L: [-100, 5, -20, 50],      // Atlantic, Gulf and Caribbean
+  E: [-160, 5, -85, 40],      // east Pacific
+  C: [-180, 5, -140, 35],     // central Pacific
+  W: [100, 2, 180, 45],       // west Pacific
+  A: [45, 2, 100, 30],        // north Indian
+  B: [45, 2, 100, 30],
+};
+
+const BASIN_NAME = {
+  L: 'Atlantic', E: 'E Pacific', C: 'C Pacific',
+  W: 'W Pacific', A: 'Indian', B: 'Indian', S: 'S Hemisphere', P: 'S Pacific',
+};
+
 const DEFAULT_DOMAIN = [-134, 21, -60.5, 53];
 const DOMAIN_W = 1600;              // the server's maximum
 
+/*
+ * The extra query a per-storm model needs, as "&product=<domain>|<storm>".
+ *
+ * Empty for every other model, which is why appending it unconditionally is
+ * safe: they take their default product and nothing changes for them.
+ */
+function productParam() {
+  const m = state.model;
+  if (!m || !m.perStorm || !state.storm) return '';
+  const dom = state.stormDomain || m.defaultProduct || '';
+  return `&product=${encodeURIComponent(dom + '|' + state.storm.id)}`;
+}
+
 /** The bounds an overlay for this model should be rendered at. */
 function domainBounds(modelId) {
-  const [W, S, E, N] = DOMAINS[modelId] || DEFAULT_DOMAIN;
+  /*
+   * A hurricane model has no entry in DOMAINS, and could not: its grid
+   * follows the eye. The storm's basin frames it instead — stable between
+   * runs, and the view somebody wants anyway for a tropical forecast.
+   */
+  const perStorm = state.model && state.model.id === modelId && state.model.perStorm;
+  const basin = perStorm && state.storm ? state.storm.basin : null;
+  const [W, S, E, N] = (basin && BASIN_DOMAIN[basin]) || DOMAINS[modelId] || DEFAULT_DOMAIN;
   return { W, E, S, N, bbox: `${W},${S},${E},${N}` };
 }
 
@@ -297,7 +337,7 @@ async function plotField(m, msg, btn) {
   if (state.plotted && state.plotted.model === m.id && state.plotted.msg === msg.n
       && String(state.plotted.msg2) === String(msg.n2 == null ? null : msg.n2)) { clearOverlay(); return; }
   const { W, E, S, N, bbox } = domainBounds(m.id);
-  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${msg.n}${msg2Param(msg)}&bbox=${bbox}&w=${DOMAIN_W}`;
+  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}${productParam()}&fhr=${state.fhr}&msg=${msg.n}${msg2Param(msg)}&bbox=${bbox}&w=${DOMAIN_W}`;
   const label = btn ? btn.textContent : '';
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
   try {
@@ -386,11 +426,47 @@ async function selectModel(m) {
       await browse(m);
       return;
     }
-    const run = await j(`${API}/${m.id}/latest`);
+    /*
+     * A hurricane model needs a storm before anything can be asked for,
+     * because the storm is part of every filename. The list comes from the
+     * server, which reads it out of the cycle directory — so this follows
+     * whatever is running without anything being configured.
+     */
+    if (m.perStorm) {
+      state.stormDomain = m.defaultProduct;
+      const info = await j(`${API}/${m.id}/storms`);
+      state.storms = info.storms || [];
+      if (!state.storms.length) {
+        status.innerHTML = `<span class="vmp-src">Live · <b>${esc(m.bucket)}</b> (NOAA NOMADS)</span>`
+          + '<br>No tropical cyclones are running, so this model has nothing to show.';
+        document.getElementById('vmpControls').innerHTML = '';
+        return;
+      }
+      /*
+       * Pick one rather than asking: the Atlantic first, then the lowest
+       * numbered. The panel should land on a forecast, not on a question.
+       */
+      if (!state.storm || !state.storms.some((x) => x.id === state.storm.id)) {
+        state.storm = state.storms.find((x) => x.basin === 'L') || state.storms[0];
+      }
+    } else {
+      state.storm = null;
+      state.storms = [];
+      state.stormDomain = null;
+    }
+
+    // /latest has no other parameters, so the storm is the whole query.
+    const pq = productParam().replace(/^&/, '?');
+    const run = await j(`${API}/${m.id}/latest${pq}`);
     state.run = run;
-    const { hours } = await j(`${API}/${m.id}/hours?date=${run.date}&cycle=${run.cycle}`);
+    const { hours } = await j(`${API}/${m.id}/hours?date=${run.date}&cycle=${run.cycle}${productParam()}`);
     status.innerHTML = `<span class="vmp-src">Live · <b>${esc(m.bucket)}</b> (NOAA Open Data on AWS)</span><br>Run <b>${fmtRun(run)}</b> · ${hours.length} forecast hours`;
     state.hours = hours; state.hourIdx = 0; state.activePreset = null;
+    if (m.perStorm && state.storm) {
+      status.innerHTML += `<br>Storm <b>${esc(state.storm.name)}</b>`
+        + ` · ${esc(BASIN_NAME[state.storm.basin] || state.storm.basin)}`
+        + ` · ${state.storms.length} running`;
+    }
     document.getElementById('vmpControls').innerHTML = `
       <div class="vmp-scrub">
         <button id="vmpPrev" title="Previous hour">◀</button>
@@ -399,6 +475,13 @@ async function selectModel(m) {
         <button id="vmpPlay" title="Animate forecast hours">▶︎</button>
         <span class="vmp-fhrlabel" id="vmpFhrLabel"></span>
       </div>
+      ${m.perStorm && state.storms.length > 1 ? `
+      <div class="vmp-scrub" style="margin-bottom:8px">
+        <span class="vmp-fhrlabel">Storm</span>
+        <select id="vmpStorm">${state.storms.map((x) =>
+          `<option value="${esc(x.id)}"${x.id === state.storm.id ? ' selected' : ''}>`
+          + `${esc(x.name)} · ${esc(BASIN_NAME[x.basin] || x.basin)}</option>`).join('')}</select>
+      </div>` : ''}
       <div class="vmp-sub">Quick fields</div>
       <div id="vmpPresets" class="vmp-cards"></div>
       <div class="vmp-sub" style="margin-top:14px">Products</div>
@@ -411,6 +494,19 @@ async function selectModel(m) {
         </div>
       </div>`;
     document.getElementById('vmpFhr').onchange = (e) => { stopPlay(); setHour(state.hours.indexOf(Number(e.target.value))); };
+    /*
+     * Changing storm is changing forecast: a different run directory, a
+     * different set of hours, a different part of the world. Reloading the
+     * model is the honest way to do it, and it is one request.
+     */
+    const stormSel = document.getElementById('vmpStorm');
+    if (stormSel) stormSel.onchange = (e) => {
+      const next = state.storms.find((x) => x.id === e.target.value);
+      if (!next) return;
+      stopPlay();
+      state.storm = next;
+      selectModel(m);
+    };
     document.getElementById('vmpPrev').onclick = () => { stopPlay(); setHour(state.hourIdx - 1); };
     document.getElementById('vmpNext').onclick = () => { stopPlay(); setHour(state.hourIdx + 1); };
     document.getElementById('vmpPlay').onclick = togglePlay;
@@ -438,7 +534,7 @@ async function renderCategories(m) {
   wrap.innerHTML = '<div class="vmp-hint">Loading products…</div>';
   let cats = [];
   try {
-    const r = await j(`${API}/${m.id}/products?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}`);
+    const r = await j(`${API}/${m.id}/products?date=${state.run.date}&cycle=${state.run.cycle}${productParam()}&fhr=${state.fhr}`);
     cats = r.categories || [];
   } catch (e) {
     wrap.innerHTML = `<span class="vmp-err">${esc(e.message)}</span>`;
@@ -495,7 +591,7 @@ async function plotProduct(m, it) {
   const map = mapObj();
   if (!map) { alert('Map is not ready yet.'); return; }
   const { W, E, S, N, bbox } = domainBounds(m.id);
-  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&${productQuery(it)}&bbox=${bbox}&w=${DOMAIN_W}`;
+  const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}${productParam()}&fhr=${state.fhr}&${productQuery(it)}&bbox=${bbox}&w=${DOMAIN_W}`;
   try {
     await plotOverlayFromUrl(url, W, E, S, N, { model: m.id, msg: null, msg2: null, product: it.id }, it.label);
   } catch (e) {
@@ -552,7 +648,7 @@ function loadThumbs(m, thumbs) {
   const worker = async () => {
     while (i < thumbs.length && seq === _thumbSeq) {
       const t = thumbs[i++];
-      const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${state.fhr}&msg=${t.msg.n}${msg2Param(t.msg)}&bbox=${CONUS_BBOX}&w=240`;
+      const url = `${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}${productParam()}&fhr=${state.fhr}&msg=${t.msg.n}${msg2Param(t.msg)}&bbox=${CONUS_BBOX}&w=240`;
       try {
         const res = await fetch(url);
         if (!res.ok || seq !== _thumbSeq) continue;
@@ -586,14 +682,14 @@ async function setHour(idx) {
 function prefetchHour(idx) {
   if (!state.activePreset || idx < 0 || idx >= state.hours.length) return;
   const m = state.model, fhr = state.hours[idx];
-  fetch(`${API}/${m.id}/index?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${fhr}`)
+  fetch(`${API}/${m.id}/index?date=${state.run.date}&cycle=${state.run.cycle}${productParam()}&fhr=${fhr}`)
     .then((r) => r.json()).then((idxData) => {
       const msg = resolvePreset(idxData.messages || [], state.activePreset);
       if (!msg) return;
       // Same bbox and width as the real request, or this warms a cache entry
       // nothing ever asks for.
       const { bbox } = domainBounds(m.id);
-      fetch(`${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}&fhr=${fhr}&msg=${msg.n}${msg2Param(msg)}&bbox=${bbox}&w=${DOMAIN_W}`).catch(() => {});
+      fetch(`${API}/${m.id}/field?date=${state.run.date}&cycle=${state.run.cycle}${productParam()}&fhr=${fhr}&msg=${msg.n}${msg2Param(msg)}&bbox=${bbox}&w=${DOMAIN_W}`).catch(() => {});
     }).catch(() => {});
 }
 
@@ -620,7 +716,7 @@ async function loadIndex(m, run, fhr) {
   const list = document.getElementById('vmpList');
   list.innerHTML = '<div class="vmp-hint">Loading variables…</div>';
   try {
-    const idx = await j(`${API}/${m.id}/index?date=${run.date}&cycle=${run.cycle}&fhr=${fhr}`);
+    const idx = await j(`${API}/${m.id}/index?date=${run.date}&cycle=${run.cycle}${productParam()}&fhr=${fhr}`);
     state.messages = idx.messages || [];
     renderPresets(m);
     // The menu is rebuilt per hour: message numbers shift between forecast
@@ -641,7 +737,7 @@ async function loadIndex(m, run, fhr) {
     list.innerHTML = '';
     for (const mm of idx.messages) {
       const kb = mm.end != null ? Math.round((mm.end - mm.start + 1) / 1024) : null;
-      const dl = `${API}/${m.id}/grib?date=${run.date}&cycle=${run.cycle}&fhr=${fhr}&msg=${mm.n}`;
+      const dl = `${API}/${m.id}/grib?date=${run.date}&cycle=${run.cycle}${productParam()}&fhr=${fhr}&msg=${mm.n}`;
       const row = el(`<div class="vmp-row" data-msg="${mm.n}" data-txt="${esc((mm.variable + ' ' + mm.level + ' ' + mm.forecast).toLowerCase())}">
         <div class="vmp-info"><div class="vmp-var">${esc(mm.variable)}</div><div class="vmp-meta">${esc(mm.level)} · ${esc(mm.forecast)}${kb ? ` · ${kb} KB` : ''}</div></div>
         <button class="vmp-plot" title="Toggle this field on the map">Plot</button>
