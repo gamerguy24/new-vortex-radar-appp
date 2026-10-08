@@ -616,6 +616,40 @@ async function stormsFor(m) {
 }
 
 /*
+ * The product a request should actually be served with.
+ *
+ * For every ordinary model this is just what was asked for, or the default.
+ * For a per-storm model with no storm named, one is chosen — because the
+ * alternative is a key with an empty name in the middle of it, which matches
+ * no file and surfaces as "no recent run found" several routes later.
+ *
+ * The Atlantic first, then the lowest numbered: whoever asked without saying
+ * wants the storm that matters, and that is the one nearest the people this
+ * is for.
+ */
+const _stormMemo = new Map();          // model id -> { at, storms }
+const STORM_MEMO_MS = 2 * 60 * 1000;
+
+async function stormsCached(id, m) {
+  const hit = _stormMemo.get(id);
+  if (hit && Date.now() - hit.at < STORM_MEMO_MS) return hit.storms;
+  const { storms } = await stormsFor(m);
+  _stormMemo.set(id, { at: Date.now(), storms });
+  return storms;
+}
+
+async function resolveProduct(id, m, requested) {
+  const p = requested || m.defaultProduct;
+  if (!m.perStorm) return p;
+  const { dom, storm } = splitStorm(p, m.defaultProduct);
+  if (storm) return p;
+  const storms = await stormsCached(id, m);
+  if (!storms.length) return p;        // nothing running; the caller says so
+  const pick = storms.find((x) => x.basin === 'L') || storms[0];
+  return `${dom}|${pick.id}`;
+}
+
+/*
  * List available forecast hours for a run by scanning the run dir.
  *
  * Models that share a directory between products (the NAM keeps every product
@@ -661,7 +695,7 @@ function attachModels(app, requireAuth) {
     if (!m) return res.status(404).json({ error: 'Unknown model' });
     if (m.type !== 'cycle') return res.status(400).json({ error: `${req.params.id} is browse-only; use /list` });
     try {
-      const product = req.query.product || m.defaultProduct;
+      const product = await resolveProduct(req.params.id, m, req.query.product);
       const run = await latestRun(m, product);
       if (!run) return res.status(502).json({ error: 'No recent run found' });
       res.json({ id: req.params.id, ...run, url: s3KeyUrl(m.bucket, run.key) });
@@ -693,7 +727,7 @@ function attachModels(app, requireAuth) {
     const { date, cycle } = req.query;
     if (!VALID_DATE.test(date || '') || !VALID_CYCLE.test(cycle || '')) return res.status(400).json({ error: 'date=YYYYMMDD & cycle=HH required' });
     try {
-      res.json({ hours: await availableHours(m, date, cycle, req.query.product || m.defaultProduct) });
+      res.json({ hours: await availableHours(m, date, cycle, await resolveProduct(req.params.id, m, req.query.product)) });
     } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
   });
 
@@ -706,7 +740,7 @@ function attachModels(app, requireAuth) {
       return res.status(400).json({ error: 'date=YYYYMMDD & cycle=HH & fhr required' });
     }
     try {
-      const key = m.file(date, cycle, fhr, req.query.product || m.defaultProduct);
+      const key = m.file(date, cycle, fhr, await resolveProduct(req.params.id, m, req.query.product));
       const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
       if (!messages) return res.status(404).json({ error: 'No .idx for that file (not posted yet?)' });
       res.json({ key, count: messages.length, messages });
@@ -730,7 +764,7 @@ function attachModels(app, requireAuth) {
       return res.status(400).json({ error: 'date=YYYYMMDD & cycle=HH & fhr required' });
     }
     try {
-      const key = m.file(date, cycle, fhr, req.query.product || m.defaultProduct);
+      const key = m.file(date, cycle, fhr, await resolveProduct(req.params.id, m, req.query.product));
       const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
       if (!messages) return res.status(404).json({ error: 'No .idx for that file' });
       /*
@@ -742,7 +776,7 @@ function attachModels(app, requireAuth) {
        */
       let hours = null;
       try {
-        hours = await availableHours(m, date, cycle, req.query.product || m.defaultProduct);
+        hours = await availableHours(m, date, cycle, await resolveProduct(req.params.id, m, req.query.product));
       } catch (e) { hours = null; }
       res.json({
         id: req.params.id, date, cycle, fhr,
@@ -766,7 +800,7 @@ function attachModels(app, requireAuth) {
         const { date, cycle } = req.query;
         const fhr = Number(req.query.fhr || 0);
         if (!VALID_DATE.test(date || '') || !VALID_CYCLE.test(cycle || '')) return res.status(400).json({ error: 'date & cycle required' });
-        key = m.file(date, cycle, fhr, req.query.product || m.defaultProduct);
+        key = m.file(date, cycle, fhr, await resolveProduct(req.params.id, m, req.query.product));
         const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
         if (!messages) return res.status(404).json({ error: 'No .idx for that file' });
         let msg = null;
@@ -812,7 +846,7 @@ function attachModels(app, requireAuth) {
       }
     }
     try {
-      const key = m.file(date, cycle, fhr, req.query.product || m.defaultProduct);
+      const key = m.file(date, cycle, fhr, await resolveProduct(req.params.id, m, req.query.product));
       const messages = await fetchIdx(m.bucket, key, { idxKey: m.idxKey, indexType: m.indexType, fhr });
       if (!messages) return res.status(404).json({ error: 'No .idx for that file' });
 
@@ -869,7 +903,7 @@ function attachModels(app, requireAuth) {
             // answer — no second file, and nothing to subtract.
             png = renderField(await grabRange(here), 'APCP', bbox, maxW, 'precip', here.scale, here.sub || 1).png;
           } else {
-            const startKey = m.file(date, cycle, startFhr, req.query.product || m.defaultProduct);
+            const startKey = m.file(date, cycle, startFhr, await resolveProduct(req.params.id, m, req.query.product));
             const startMsgs = await fetchIdx(m.bucket, startKey, { idxKey: m.idxKey, indexType: m.indexType, fhr: startFhr });
             if (!startMsgs) return res.status(404).json({ error: `Forecast hour ${startFhr} is not posted yet` });
             const before = findAccTotal(startMsgs);
