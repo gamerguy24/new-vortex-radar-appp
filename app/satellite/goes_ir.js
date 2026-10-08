@@ -34,6 +34,40 @@ const SRC = 'goes19_clean_ir_src';
 const LAYER = 'goes19_clean_ir_layer';
 const LEGEND_ID = 'vortexSatLegend';
 const COLLAPSE_KEY = 'vortexSatLegendCollapsed';
+const PRODUCT_KEY = 'vortexSatProduct';
+
+/*
+ * What can be shown, and how each has to be treated.
+ *
+ * `enhanced` is the distinction that matters: Band 13 is NASA's enhancement
+ * of a single temperature channel, so its colours are data and this file
+ * reads them back. GeoColor is a finished picture — true colour by day, an
+ * infrared blend and city lights by night — with nothing to read out of it
+ * and nothing to recolour.
+ */
+const PRODUCTS = {
+    ir: {
+        wms: 'GOES-East_ABI_Band13_Clean_Infrared',
+        label: 'Infrared',
+        name: 'GOES-East Band 13 · Clean Infrared',
+        enhanced: true,
+    },
+    geocolor: {
+        wms: 'GOES-East_ABI_GeoColor',
+        label: 'GeoColor',
+        name: 'GOES-East · GeoColor',
+        enhanced: false,
+    },
+};
+
+function storedProduct() {
+    try {
+        const v = localStorage.getItem(PRODUCT_KEY);
+        return PRODUCTS[v] ? v : 'ir';
+    } catch (e) { return 'ir'; }
+}
+let _product = storedProduct();
+function product() { return PRODUCTS[_product]; }
 
 // GOES-East domain we render (CONUS + Gulf + nearby Atlantic, useful for storms).
 const DOM = { W: -128, E: -62, S: 18, N: 52 };
@@ -110,7 +144,7 @@ function wmsUrl(width, at) {
     const height = Math.round(width * (maxy - miny) / (maxx - minx));
     const p = new URLSearchParams({
         SERVICE: 'WMS', REQUEST: 'GetMap', VERSION: '1.3.0',
-        LAYERS: 'GOES-East_ABI_Band13_Clean_Infrared',
+        LAYERS: product().wms,
         CRS: 'EPSG:3857', BBOX: `${minx},${miny},${maxx},${maxy}`,
         WIDTH: width, HEIGHT: height, FORMAT: 'image/png',
     });
@@ -193,6 +227,32 @@ function buildImage(at, cb) {
     img.crossOrigin = 'anonymous';
     img.onload = () => {
         try {
+            /*
+             * A finished picture goes to the map as it came, which skips the
+             * decode, the recolour and the re-encode entirely. It is still
+             * checked for blankness, on a small scratch canvas — the service
+             * serves the odd empty frame whatever the product.
+             */
+            if (!product().enhanced) {
+                const w = 64;
+                const h = Math.max(1, Math.round(w * img.height / img.width));
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                const x = c.getContext('2d');
+                x.drawImage(img, 0, 0, w, h);
+                const q = x.getImageData(0, 0, w, h).data;
+                let seen = 0, head = -1, same = 0;
+                for (let i = 0; i < q.length; i += 4) {
+                    if (!q[i + 3]) continue;
+                    seen++;
+                    const packed = (q[i] << 16) | (q[i + 1] << 8) | q[i + 2];
+                    if (head < 0) head = packed;
+                    if (packed === head) same++;
+                }
+                if (!seen || same / seen > 0.9) { cb(null); return; }
+                cb(img.src);
+                return;
+            }
             const canvas = document.createElement('canvas');
             canvas.width = img.width; canvas.height = img.height;
             const ctx = canvas.getContext('2d');
@@ -315,6 +375,41 @@ function setPlaying(el, on) {
 }
 
 /*
+ * Change product, and start that one from nothing.
+ *
+ * The frames in hand are pictures of a different kind and cannot be mixed
+ * with the new ones — a loop that alternated infrared and GeoColor would be
+ * unreadable — so they are thrown away and the run begins again. The choice
+ * is remembered, because it is a preference rather than a moment.
+ */
+/*
+ * Let a frame go.
+ *
+ * revokeObjectURL on a plain https URL is a no-op, which is what makes this
+ * safe for both products: the infrared frames are blobs we made and must
+ * release, and the GeoColor ones are the service's own URLs, passed through
+ * untouched and owned by nobody.
+ */
+function dropFrame(at) {
+    const fr = _frames.get(at);
+    if (!fr) return;
+    _frames.delete(at);
+    try { URL.revokeObjectURL(fr.url); } catch (e) { /* already gone */ }
+}
+
+function setProduct(next) {
+    if (!PRODUCTS[next] || next === _product) return;
+    _product = next;
+    try { localStorage.setItem(PRODUCT_KEY, next); } catch (e) { /* not remembered, still applied */ }
+    _token++;                 // orphan anything still downloading
+    stopPlaying();
+    for (const at of [..._frames.keys()]) dropFrame(at);
+    _shown = null;
+    drawLegend();             // the scale belongs to the product
+    if (_enabled) sync();
+}
+
+/*
  * The scale, because an enhancement nobody can read is just a colourful cloud.
  *
  * Cold on the left, warm on the right, the way every published IR scale is
@@ -338,11 +433,26 @@ function drawLegend() {
      * behind rather than taking it with it — a control that disappears when
      * used cannot be used twice.
      */
-    el.innerHTML = `<div class="vml-body">
-        <div class="vml-title">SATELLITE · CLOUD TOP TEMPERATURE <span style="opacity:.6">(°C)</span></div>
+    /*
+     * Only the infrared gets a temperature bar. Its colours are temperatures,
+     * so the bar is what makes it readable. GeoColor is a picture — true
+     * colour by day, infrared and city lights by night — and a temperature
+     * scale beside it would be inventing a meaning its colours do not carry.
+     */
+    const scale = product().enhanced
+        ? `<div class="vml-title">SATELLITE · CLOUD TOP TEMPERATURE <span style="opacity:.6">(°C)</span></div>
         <div class="vml-bar" style="background:linear-gradient(90deg, ${stops.join(', ')})"></div>
-        <div class="vml-scale"><span>-90</span><span>-60</span><span>-30</span><span>0</span><span>+30</span></div>
-        <div class="vml-age">GOES-East Band 13 · <span class="vml-when">loading…</span></div>
+        <div class="vml-scale"><span>-90</span><span>-60</span><span>-30</span><span>0</span><span>+30</span></div>`
+        : '<div class="vml-title">SATELLITE · GEOCOLOR</div>'
+          + '<div class="vml-note">True colour by day, infrared and city lights by night.</div>';
+
+    const pick = (id) => `<button class="vml-pick${_product === id ? ' on' : ''}"
+        type="button" data-product="${id}">${PRODUCTS[id].label}</button>`;
+
+    el.innerHTML = `<div class="vml-body">
+        ${scale}
+        <div class="vml-picks">${pick('geocolor')}${pick('ir')}</div>
+        <div class="vml-age">${product().name} · <span class="vml-when">loading…</span></div>
       </div>
       <div class="vml-btns">
         <button class="vml-play" type="button"></button>
@@ -352,6 +462,9 @@ function drawLegend() {
         .addEventListener('click', () => foldLegend(el, !el.classList.contains('vml-folded')));
     el.querySelector('.vml-play')
         .addEventListener('click', () => setPlaying(el, !_playing));
+    for (const b of el.querySelectorAll('.vml-pick')) {
+        b.addEventListener('click', () => setProduct(b.dataset.product));
+    }
     document.body.appendChild(el);
     foldLegend(el, legendFolded());
     setPlaying(el, _playing);

@@ -459,6 +459,16 @@ const GOES_WEST_DOMAIN = { W: -140, E: -104, S: 12, N: 52 };
 const SAT_FRAMES = Math.max(1, Math.min(12, parseInt(Q.get('satframes'), 10) || 6));
 const SAT_PX = Math.max(800, Math.min(2400, parseInt(Q.get('satpx'), 10) || 1600));
 
+/*
+ * Which satellite picture. ?sat=geocolor for the finished one — true colour
+ * by day, infrared and city lights by night — or the default infrared, where
+ * the colours are cloud-top temperatures and cold tops are the story.
+ *
+ * For a tropical system GeoColor is the handsomer picture and the infrared
+ * is the more useful one, which is why both exist and neither is hidden.
+ */
+const SAT_GEOCOLOR = Q.get('sat') === 'geocolor';
+
 function reload(why) {
   console.warn('[broadcast] reloading: ' + why);
   location.reload();
@@ -1550,7 +1560,7 @@ function tickUntil() {
 function setProductName() {
   const el = $('prodname');
   if (TROPICAL) {
-    el.textContent = 'GOES-East Band 13 · Clean Infrared';
+    el.textContent = SAT_GEOCOLOR ? 'GOES-East · GeoColor' : 'GOES-East Band 13 · Clean Infrared';
     return;
   }
   if (onSite()) {
@@ -1809,8 +1819,17 @@ map.on('load', async () => {
     try {
       _sat.addSatelliteIR(window.vortexMap, {
         sources: [
-          { wms: _sat.GOES_EAST, domain: GOES_EAST_DOMAIN },
-          { wms: _sat.GOES_WEST, domain: GOES_WEST_DOMAIN, width: Math.round(SAT_PX * 0.55) },
+          {
+            wms: SAT_GEOCOLOR ? _sat.GEO_EAST : _sat.GOES_EAST,
+            domain: GOES_EAST_DOMAIN,
+            mode: SAT_GEOCOLOR ? 'rgb' : 'ir',
+          },
+          {
+            wms: SAT_GEOCOLOR ? _sat.GEO_WEST : _sat.GOES_WEST,
+            domain: GOES_WEST_DOMAIN,
+            width: Math.round(SAT_PX * 0.55),
+            mode: SAT_GEOCOLOR ? 'rgb' : 'ir',
+          },
         ],
         width: SAT_PX,
         count: SAT_FRAMES,

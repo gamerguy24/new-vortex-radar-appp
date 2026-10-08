@@ -47,6 +47,8 @@ const COLD_C = -25;
 
 export const GOES_EAST = 'GOES-East_ABI_Band13_Clean_Infrared';
 export const GOES_WEST = 'GOES-West_ABI_Band13_Clean_Infrared';
+export const GEO_EAST = 'GOES-East_ABI_GeoColor';
+export const GEO_WEST = 'GOES-West_ABI_GeoColor';
 
 let _table = null;
 let _lut = null;
@@ -143,8 +145,16 @@ async function lut() {
     return _lut;
 }
 
-/** One scan, with its opacity set from temperature. null if nothing is there. */
+/*
+ * One scan, ready to go on the map. null if there is nothing usable there.
+ *
+ * An ENHANCEMENT (Band 13) has its opacity set from the temperature its
+ * colours encode. A finished picture (GeoColor) is passed through as the
+ * service sent it: there is nothing to read out of it, nothing to recolour,
+ * and rewriting it would cost a decode and a re-encode for no change.
+ */
 async function frameUrl(src, width, at) {
+    if (src.mode === 'rgb') return await rgbFrame(src, width, at);
     const L = await lut();
     const G = await greyLut();
     const img = await new Promise((resolve) => {
@@ -193,6 +203,42 @@ async function frameUrl(src, width, at) {
     ctx.putImageData(data, 0, 0);
     const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
     return blob ? URL.createObjectURL(blob) : null;
+}
+
+/*
+ * A finished picture, checked and handed over as it stands.
+ *
+ * Only the blankness test needs pixels, and that can be done on a thumbnail
+ * — the service serves the odd empty or solid frame whatever the product,
+ * and one of those drawn full-screen is the white wall again.
+ */
+async function rgbFrame(src, width, at) {
+    const url_ = url(src, width, at);
+    const img = await new Promise((resolve) => {
+        const i = new Image();
+        i.crossOrigin = 'anonymous';
+        i.onload = () => resolve(i);
+        i.onerror = () => resolve(null);
+        i.src = url_;
+    });
+    if (!img) return null;
+    const w = 64;
+    const h = Math.max(1, Math.round(w * img.height / img.width));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0, w, h);
+    const q = x.getImageData(0, 0, w, h).data;
+    let seen = 0, head = -1, same = 0;
+    for (let i = 0; i < q.length; i += 4) {
+        if (!q[i + 3]) continue;
+        seen++;
+        const packed = (q[i] << 16) | (q[i + 1] << 8) | q[i + 2];
+        if (head < 0) head = packed;
+        if (packed === head) same++;
+    }
+    if (!seen || same / seen > 0.9) return null;
+    return url_;
 }
 
 /** Cheap existence check: 32px wide, a couple of kilobytes. */
@@ -297,6 +343,12 @@ function stop(st) {
     if (st.timer) { clearTimeout(st.timer); st.timer = null; }
 }
 
+/*
+ * revokeObjectURL on a plain https URL is a no-op, which is what makes this
+ * right for both kinds: the enhanced frames are blobs we built and must
+ * release, and the finished ones are the service's own URLs, owned by
+ * nobody and passed straight through.
+ */
 function dropFrame(st, at) {
     const fr = st.frames.get(at);
     if (!fr) return;
@@ -379,6 +431,8 @@ export function addSatelliteIR(mapWrapper, opts = {}) {
         wms: src.wms || GOES_EAST,
         domain: src.domain,
         width: src.width || null,
+        // 'rgb' for a finished picture, anything else for an enhancement.
+        mode: src.mode || 'ir',
         srcId: 'goes-ir-src-' + i,
         layerId: 'goes-ir-layer-' + i,
     }));
