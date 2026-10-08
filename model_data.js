@@ -125,6 +125,35 @@ const MODELS = {
     file: (d, c, f) => `nam.${d}/nam.t${c}z.conusnest.hiresf${pad2(f)}.tm00.grib2`,
     fhrRe: () => /nam\.t\d{2}z\.conusnest\.hiresf(\d{2})\.tm00\.grib2$/,
   },
+  /*
+   * RRFS — the convection-allowing model that will eventually replace the
+   * NAM. Added BESIDE it: both NAM entries above are untouched and both
+   * remain in the catalogue.
+   *
+   * From NOMADS rather than S3, because the operational model is not on S3
+   * at all — noaa-rrfs-pds carries reruns and samples only.
+   *
+   * Hourly cycles, with the long runs at 00/06/12/18z. fhrMax is the longest
+   * any run goes; availableHours() scans what a given cycle has actually
+   * produced, so a short run advertises only its own hours.
+   *
+   * 2dfld is the surface and single-level fields, prslev the pressure levels
+   * — the same division as HRRR's wrfsfc and wrfprs, which is why soundings
+   * point at the latter.
+   */
+  rrfs: {
+    name: 'RRFS (3 km CONUS)', bucket: 'nomads:rrfs/v1.0', region: 'nomads',
+    type: 'cycle', hourly: true, fhrMax: 84, fhrDigits: 3,
+    products: { sfc: '2dfld', prs: 'prslev' },
+    defaultProduct: 'sfc', soundingProduct: 'prs',
+    dir: (d, c) => `rrfs.${d}/${c}/`,
+    // One directory holds every product and every domain for the cycle, so
+    // the hour scan is narrowed to this product and the CONUS grid.
+    hoursPrefix: (d, c, p) => `rrfs.${d}/${c}/rrfs.t${c}z.${MODELS.rrfs.products[p || 'sfc']}.3km`,
+    file: (d, c, f, p) => `rrfs.${d}/${c}/rrfs.t${c}z.${MODELS.rrfs.products[p || 'sfc']}.3km.f${pad3(f)}.conus.grib2`,
+    fhrRe: (p) => new RegExp(
+      `rrfs\\.t\\d{2}z\\.${MODELS.rrfs.products[p || 'sfc']}\\.3km\\.f(\\d{3})\\.conus\\.grib2$`),
+  },
   gefs: {
     name: 'GEFS (0.5° ensemble mean)', bucket: 'noaa-gefs-pds', region: 'us-east-1',
     type: 'cycle', cycles: [0, 6, 12, 18], fhrMax: 240, fhrDigits: 3,
@@ -166,7 +195,67 @@ function headerJson(obj) {
     .replace(/[^\x20-\x7E]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 }
 
-function s3Base(bucket) { return `https://${bucket}.s3.amazonaws.com`; }
+/*
+ * Where a "bucket" actually lives.
+ *
+ * Almost all of these are public S3. The operational RRFS is not — it is
+ * served from NOMADS over plain HTTP — so a bucket named "nomads:<path>"
+ * resolves into that tree instead. Doing it here means every function that
+ * builds a URL or lists a directory carries on unchanged.
+ */
+const NOMADS_ROOT = 'https://nomads.ncep.noaa.gov/pub/data/nccf/com';
+const NOMADS = 'nomads:';
+const isNomads = (bucket) => String(bucket || '').startsWith(NOMADS);
+
+function s3Base(bucket) {
+  if (isNomads(bucket)) {
+    return NOMADS_ROOT + '/' + bucket.slice(NOMADS.length).replace(/^\/+|\/+$/g, '');
+  }
+  return `https://${bucket}.s3.amazonaws.com`;
+}
+
+/*
+ * List a NOMADS directory by reading its index page.
+ *
+ * The prefix is split the way an S3 prefix behaves: everything up to the last
+ * slash is the directory to read, and what follows filters the filenames. So
+ * a caller asking for "rrfs.20261008/00/rrfs.t00z.2dfld.3km" gets exactly the
+ * files it meant, out of a page listing every product and domain for that
+ * cycle.
+ */
+async function nomadsList(bucket, prefix) {
+  const p = String(prefix || '');
+  const cut = p.lastIndexOf('/');
+  const dir = cut >= 0 ? p.slice(0, cut + 1) : '';
+  const namePrefix = cut >= 0 ? p.slice(cut + 1) : p;
+
+  const res = await fetchRetry(`${s3Base(bucket)}/${dir}`);
+  /*
+   * A directory that is not there yet answers 403, not 404. Measured: at
+   * 11:19Z the 00z and 02z cycles returned 200 and the 12z and 23z returned
+   * 403. So a miss has to read as an EMPTY listing, the way an S3 prefix
+   * with no keys does — throwing would turn "that run has not started" into
+   * an error and stop the caller walking back to the run that has.
+   */
+  if (res.status === 403 || res.status === 404) return { keys: [], prefixes: [] };
+  if (!res.ok) throw new Error(`NOMADS list ${res.status}`);
+  const html = await res.text();
+
+  const keys = [];
+  const prefixes = [];
+  for (const m of html.matchAll(/href="([^"]+)"/gi)) {
+    const name = m[1];
+    // Skip the parent link and anything absolute: only this directory counts.
+    if (!name || name.startsWith('/') || name.startsWith('?') || /^[a-z]+:/i.test(name)) continue;
+    if (name.endsWith('/')) {
+      if (!namePrefix || name.startsWith(namePrefix)) prefixes.push(dir + name);
+      continue;
+    }
+    if (namePrefix && !name.startsWith(namePrefix)) continue;
+    keys.push(dir + name);
+  }
+  return { keys, prefixes };
+}
 function s3KeyUrl(bucket, key) {
   return `${s3Base(bucket)}/${key.split('/').map(encodeURIComponent).join('/')}`;
 }
@@ -185,6 +274,8 @@ function s3KeyUrl(bucket, key) {
  * an unbounded walk of the bucket.
  */
 async function s3List(bucket, prefix, delimiter, maxPages = 20) {
+  // NOMADS has no ListObjectsV2; its directory page is the listing.
+  if (isNomads(bucket)) return nomadsList(bucket, prefix);
   const keys = [];
   const prefixes = [];
   let token = null;

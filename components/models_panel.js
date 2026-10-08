@@ -268,6 +268,7 @@ const DOMAINS = {
   hrrr: [-134, 21, -60.5, 53],      // 3 km CONUS Lambert grid
   nam: [-140, 18, -57, 58],         // 12 km CONUS, a little beyond the coasts
   nam3km: [-134, 21, -60.5, 53],    // CONUS nest
+  rrfs: [-134, 21, -60.5, 53],      // RRFS 3 km CONUS, the same grid as HRRR
   ndfd: [-127, 22, -65, 50],        // 2.5 km CONUS
   gfs: [-179, -85, 179, 85],        // global
   gefs: [-179, -85, 179, 85],       // global
