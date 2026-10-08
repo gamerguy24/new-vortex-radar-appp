@@ -30,8 +30,41 @@
 const map = require('../core/map/map');
 const { IR_TABLE } = require('./ir_colormap');
 
-const SRC = 'goes19_clean_ir_src';
-const LAYER = 'goes19_clean_ir_layer';
+/*
+ * The satellites, and the piece of the world each is asked for.
+ *
+ * They meet at 126W rather than overlapping: two rasters over the same
+ * ground would double the opacity along the join and draw a bright seam down
+ * the Rockies. East reaches to 30W, which is well inside its disk, so the
+ * Atlantic is covered as far as the map is likely to be taken.
+ *
+ * West's coverage moves with its scan schedule — asked for 168W it answered
+ * empty one afternoon and 100% that night — so a satellite with nothing to
+ * show is dropped for that run rather than emptying the whole loop.
+ */
+const SATS = [
+    {
+        id: 'east',
+        ir: 'GOES-East_ABI_Band13_Clean_Infrared',
+        geo: 'GOES-East_ABI_GeoColor',
+        domain: { W: -126, E: -30, S: 2, N: 52 },
+        // 96 degrees across; the wider patch earns the larger picture.
+        width: 2400,
+    },
+    {
+        id: 'west',
+        ir: 'GOES-West_ABI_Band13_Clean_Infrared',
+        geo: 'GOES-West_ABI_GeoColor',
+        domain: { W: -152, E: -126, S: 2, N: 56 },
+        // A quarter the longitude, so a quarter the pixels for the same detail.
+        width: 800,
+    },
+];
+const srcIdOf = (sat) => `goes-${sat.id}-src`;
+const layerIdOf = (sat) => `goes-${sat.id}-layer`;
+
+// Trimmed each run to the satellites that can actually see their patch.
+let _sats = SATS.slice();
 const LEGEND_ID = 'vortexSatLegend';
 const COLLAPSE_KEY = 'vortexSatLegendCollapsed';
 const PRODUCT_KEY = 'vortexSatProduct';
@@ -70,8 +103,7 @@ let _product = storedProduct();
 function product() { return PRODUCTS[_product]; }
 
 // GOES-East domain we render (CONUS + Gulf + nearby Atlantic, useful for storms).
-const DOM = { W: -128, E: -62, S: 18, N: 52 };
-const CORNERS = [[DOM.W, DOM.N], [DOM.E, DOM.N], [DOM.E, DOM.S], [DOM.W, DOM.S]];
+const cornersOf = (d) => [[d.W, d.N], [d.E, d.N], [d.E, d.S], [d.W, d.S]];
 
 /*
  * 2000px across 66° of longitude is about 3 km per pixel, against ABI's
@@ -138,13 +170,13 @@ function scanTime(ms) { return Math.floor(ms / SCAN_MS) * SCAN_MS; }
  * never change again, so the cache-buster belongs only on the open-ended
  * request, where it is the whole point.
  */
-function wmsUrl(width, at) {
-    const [minx, miny] = merc(DOM.W, DOM.S);
-    const [maxx, maxy] = merc(DOM.E, DOM.N);
+function wmsUrl(sat, width, at) {
+    const [minx, miny] = merc(sat.domain.W, sat.domain.S);
+    const [maxx, maxy] = merc(sat.domain.E, sat.domain.N);
     const height = Math.round(width * (maxy - miny) / (maxx - minx));
     const p = new URLSearchParams({
         SERVICE: 'WMS', REQUEST: 'GetMap', VERSION: '1.3.0',
-        LAYERS: product().wms,
+        LAYERS: product().enhanced ? sat.ir : sat.geo,
         CRS: 'EPSG:3857', BBOX: `${minx},${miny},${maxx},${maxy}`,
         WIDTH: width, HEIGHT: height, FORMAT: 'image/png',
     });
@@ -222,7 +254,7 @@ function alphaLut() {
  * toBlob rather than toDataURL: this canvas is 2400px across, and encoding one
  * that size to base64 blocks the page for long enough to be seen.
  */
-function buildImage(at, cb) {
+function buildImage(sat, at, cb) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
@@ -311,7 +343,7 @@ function buildImage(at, cb) {
         } catch (e) { console.warn('[GOES] recolor failed:', e); cb(null); }
     };
     img.onerror = () => { console.warn('[GOES] image load failed'); cb(null); };
-    img.src = wmsUrl(IMG_WIDTH, at);
+    img.src = wmsUrl(sat, sat.width || IMG_WIDTH, at);
 }
 
 function _beforeId() {
@@ -394,7 +426,9 @@ function dropFrame(at) {
     const fr = _frames.get(at);
     if (!fr) return;
     _frames.delete(at);
-    try { URL.revokeObjectURL(fr.url); } catch (e) { /* already gone */ }
+    for (const u of fr.urls) {
+        if (u) { try { URL.revokeObjectURL(u); } catch (e) { /* already gone */ } }
+    }
 }
 
 function setProduct(next) {
@@ -405,6 +439,9 @@ function setProduct(next) {
     stopPlaying();
     for (const at of [..._frames.keys()]) dropFrame(at);
     _shown = null;
+    // Both satellites are back in play: one may have been dropped for having
+    // nothing in the OTHER product, which says nothing about this one.
+    _sats = SATS.slice();
     drawLegend();             // the scale belongs to the product
     if (_enabled) sync();
 }
@@ -479,7 +516,7 @@ function drawLegend() {
  * transparent image rather than an error. Guessing would put a hole in the
  * loop; this costs one small request to be sure.
  */
-function probe(at) {
+function probe(sat, at) {
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -495,26 +532,54 @@ function probe(at) {
             } catch (e) { resolve(false); }
         };
         img.onerror = () => resolve(false);
-        img.src = wmsUrl(32, at);
+        img.src = wmsUrl(sat, 32, at);
     });
 }
 
-/** The newest scan actually published, walking back from now. */
+/*
+ * The newest scan the first satellite has, and which of the others can see
+ * their own patch at that moment.
+ *
+ * Requiring every satellite to have a frame is right when each can see what
+ * it is asked about, and a disaster when one cannot: it would reject every
+ * scan there has ever been and leave the map bare.
+ */
 async function newestScan() {
     let at = scanTime(Date.now());
     for (let i = 0; i < PROBE_BACK; i++) {
-        if (await probe(at)) return at;
+        if (await probe(SATS[0], at)) {
+            const keep = [SATS[0]];
+            for (const sat of SATS.slice(1)) {
+                if (await probe(sat, at)) keep.push(sat);
+                else console.warn('[GOES] ' + sat.id + ' has nothing for its area right now');
+            }
+            /*
+             * A frame holds one picture PER SATELLITE, in this order, so a
+             * change to the list makes every frame already held unreadable —
+             * showFrame would pair the west picture with the east domain. The
+             * loop restarts rather than being drawn wrong.
+             */
+            const before = _sats.map((x) => x.id).join();
+            _sats = keep;
+            if (before !== keep.map((x) => x.id).join()) {
+                for (const t of [..._frames.keys()]) dropFrame(t);
+                _shown = null;
+            }
+            return at;
+        }
         at -= SCAN_MS;
     }
     return null;
 }
 
-function putOnMap(url) {
-    const src = map.getSource(SRC);
-    if (src) { src.updateImage({ url, coordinates: CORNERS }); return; }
-    map.addSource(SRC, { type: 'image', url, coordinates: CORNERS });
+function putOnMap(sat, url) {
+    const srcId = srcIdOf(sat);
+    const existing = map.getSource(srcId);
+    const coordinates = cornersOf(sat.domain);
+    if (existing) { existing.updateImage({ url, coordinates }); return; }
+    map.addSource(srcId, { type: 'image', url, coordinates });
     map.addLayer({
-        id: LAYER, type: 'raster', source: SRC,
+        id: layerIdOf(sat), type: 'raster', source: srcId,
         paint: { 'raster-opacity': 0.95, 'raster-fade-duration': 0 },
     }, _beforeId());
 }
@@ -522,7 +587,9 @@ function putOnMap(url) {
 function showFrame(at) {
     const fr = _frames.get(at);
     if (!fr) return;
-    putOnMap(fr.url);
+    for (let i = 0; i < _sats.length; i++) {
+        if (fr.urls[i]) putOnMap(_sats[i], fr.urls[i]);
+    }
     _shown = at;
     setLegendTime(at);
 }
@@ -652,12 +719,9 @@ async function sync() {
     const want = [];
     for (let i = FRAMES - 1; i >= 0; i--) want.push(newest - i * SCAN_MS);
 
-    // Anything outside the window is gone for good; its blob goes with it.
+    // Anything outside the window is gone for good; its blobs go with it.
     for (const at of [..._frames.keys()]) {
-        if (want.indexOf(at) !== -1) continue;
-        const fr = _frames.get(at);
-        _frames.delete(at);
-        try { URL.revokeObjectURL(fr.url); } catch (e) { /* already gone */ }
+        if (want.indexOf(at) === -1) dropFrame(at);
     }
 
     /*
@@ -668,24 +732,51 @@ async function sync() {
     for (const at of want.slice().reverse()) {
         if (token !== _token || !_enabled) return;
         if (_frames.has(at)) continue;
-        const url = await new Promise((res) => buildImage(at, res));
-        if (!url) continue;                       // no scan at that minute
-        if (token !== _token || !_enabled) { URL.revokeObjectURL(url); return; }
-        _frames.set(at, { url });
+
+        const urls = [];
+        let complete = true;
+        for (const sat of _sats) {
+            const url = await new Promise((res) => buildImage(sat, at, res));
+            if (token !== _token || !_enabled) {
+                for (const u of urls) if (u) URL.revokeObjectURL(u);
+                if (url) URL.revokeObjectURL(url);
+                return;
+            }
+            if (!url) complete = false;
+            urls.push(url);
+        }
+        /*
+         * Every satellite or none, among the ones still in the shot. A frame
+         * with one half missing shows the west coast standing still while the
+         * east advances, which looks like a fault and is worse than a shorter
+         * loop. A satellite that can never see its patch was already dropped
+         * from _sats, so this cannot empty the loop on its own.
+         */
+        if (!complete) {
+            for (const u of urls) if (u) URL.revokeObjectURL(u);
+            continue;
+        }
+        _frames.set(at, { urls });
         if (_shown === null) { showFrame(at); startPlaying(); }
     }
-    if (_shown === null || !_frames.has(_shown)) showFrame(newest);
+    if (_shown === null || !_frames.has(_shown)) {
+        const times = [..._frames.keys()].sort((a, b) => a - b);
+        if (times.length) showFrame(times[times.length - 1]);
+    }
     startPlaying();
 }
 
 function _remove() {
     stopPlaying();
-    if (map.getLayer(LAYER)) map.removeLayer(LAYER);
-    if (map.getSource(SRC)) map.removeSource(SRC);
-    for (const fr of _frames.values()) {
-        try { URL.revokeObjectURL(fr.url); } catch (e) { /* already gone */ }
+    // Every satellite, not just the ones in the shot right now: one dropped
+    // for having nothing to show may still have a layer from an earlier run.
+    for (const sat of SATS) {
+        try {
+            if (map.getLayer(layerIdOf(sat))) map.removeLayer(layerIdOf(sat));
+            if (map.getSource(srcIdOf(sat))) map.removeSource(srcIdOf(sat));
+        } catch (e) { /* the style went first */ }
     }
-    _frames.clear();
+    for (const at of [..._frames.keys()]) dropFrame(at);
     _shown = null;
     clearLegend();
 }
