@@ -1854,7 +1854,10 @@ map.on('load', async () => {
    */
   (function liveCam() {
     /*
-     * The Pensacola Beach camera's own page. earthcamtv.com was the wrong
+     * The Pensacola Beach camera (EarthCam id 20691), in EarthCam's own
+     * single-camera container: a black full-bleed page that loads their embed
+     * script and nothing else. The cam's ordinary web page works too but puts
+     * site navigation in a 428px box, and earthcamtv.com was the wrong
      * host: it is their ROTATING channel and ignores the cam parameter, so it
      * put Bourbon Street on a hurricane broadcast. This page is one camera and
      * sets no framing restriction, so it shows the coast and only the coast.
@@ -1862,7 +1865,8 @@ map.on('load', async () => {
      * Their camera, offered for embedding, with
      * no account between it and the screen — which is the whole requirement.
      */
-    const DEFAULT_EMBED = 'https://www.earthcam.com/usa/florida/pensacola/beach/?cam=pensacolabeach';
+    const DEFAULT_EMBED = 'https://www.earthcam.com/cams/includes/twittercards/container.php'
+      + '?name=20691.flv&timezone=America/Chicago&metar=KPNS';
 
     const hls = (Q.get('camhls') || '').trim();
     const id = (Q.get('cam') || '').trim();
