@@ -1853,11 +1853,24 @@ map.on('load', async () => {
    * channel told ?cam=0 never contacts YouTube at all.
    */
   (function liveCam() {
+    /*
+     * EarthCam's own embed host. Their camera, offered for embedding, with
+     * no account between it and the screen — which is the whole requirement.
+     */
+    const DEFAULT_EMBED = 'https://www.earthcamtv.com/embed.php?sz=1&width=1280&height=720&cam=pensacolabeach';
+
     const hls = (Q.get('camhls') || '').trim();
-    const id = (Q.get('cam') || '').trim();   // off unless asked for: a walled cam is worse than none
+    const id = (Q.get('cam') || '').trim();
+    let url = (Q.get('camurl') || '').trim();
     const box = document.getElementById('livecam');
-    if (!box || (!hls && (!id || id === "0"))) return;
-    const name = (Q.get('camname') || 'Panama City Beach, Florida').trim();
+    if (!box) return;
+
+    // Nothing asked for at all: the beach camera, because a tropical
+    // channel with a live coast on it is the point. ?cam=0 still means none.
+    if (!hls && !url && !id) url = DEFAULT_EMBED;
+    if (!hls && !url && (!id || id === "0")) return;
+
+    const name = (Q.get('camname') || 'Pensacola Beach, Florida').trim();
 
     const label = document.getElementById('lc_name');
     if (label) label.textContent = name;
@@ -1912,6 +1925,25 @@ map.on('load', async () => {
      * there is nobody at this screen to allow it. The rest strips YouTube
      * chrome so the inset is picture only.
      */
+    /*
+     * An embeddable page, played as given. Only http(s) is allowed through:
+     * the value comes off the query string, and a javascript: URL in an
+     * iframe would be running somebody else's script on the channel.
+     */
+    if (url && host) {
+      if (!/^https?:\/\//i.test(url)) {
+        console.warn('[broadcast] camurl must be http(s); ignoring');
+        return;
+      }
+      const f2 = document.createElement('iframe');
+      f2.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+      f2.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      f2.src = url;
+      host.appendChild(f2);
+      box.classList.remove('hide');
+      return;
+    }
+
     const src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id)
       + '?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&iv_load_policy=3';
     const fr = document.createElement('iframe');
