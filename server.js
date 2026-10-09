@@ -84,6 +84,7 @@ let logos = readJson(LOGOS_FILE, {}); // userId -> { dataUrl, corner, size, opac
 let pushTokens = readJson(PUSH_FILE, {}); // userId -> [{ token, platform, updatedAt }]
 let userSettings = readJson(SETTINGS_FILE, {}); // userId -> { switches: { id: bool } }
 let streamConfigs = readJson(STREAM_FILE, {}); // userId -> { discordWebhook, obs, titleTemplate, ... }
+let fieldTracking = null;                      // set once field_tracking.js attaches
 let tickets = readJson(TICKETS_FILE, []); // [{ id, userId, email, subject, category, status, messages: [...], ... }]
 const saveUsers = () => writeJson(USERS_FILE, users);
 const saveResets = () => writeJson(RESETS_FILE, resetRequests);
@@ -769,6 +770,9 @@ app.delete('/admin/users/:id', requireAdmin, (req, res) => {
     if (userSettings[user.id]) { delete userSettings[user.id]; saveUserSettings(); }
     if (streamConfigs[user.id]) { delete streamConfigs[user.id]; saveStreamConfigs(); }
     liveSessions.delete(user.id);
+    // Where they have been goes with the account, not least because the
+    // consent that allowed it to be stored belonged to that account.
+    if (fieldTracking) { try { fieldTracking.forgetUser(user.id); } catch (e) { /* already gone */ } }
     { const a = agents.get(user.id); if (a) { try { a.res.end(); } catch {} agents.delete(user.id); } }
     saveUsers();
     saveResets();
@@ -2388,6 +2392,17 @@ try {
     require('./critical_alerts').attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson });
 } catch (e) {
     console.error('[CRITICAL] failed to attach (feature disabled):', e.message);
+}
+
+// ─── Field tracking (chasers who opt in; visible only to the owner) ──────────
+// Consent-based GPS reporting from the field. Deliberately NOT built on the
+// /api/stream/live positions, which every signed-in user can read.
+try {
+    fieldTracking = require('./field_tracking').attachFieldTracking({
+        app, requireAuth, DATA_DIR, readJson, writeJson, SUPER_ADMIN_EMAIL,
+    });
+} catch (e) {
+    console.error('[TRACKING] failed to attach (feature disabled):', e.message);
 }
 
 // ─── Tornado Potential (experimental radar-derived rotation analysis) ─────────
