@@ -290,14 +290,38 @@ async function exists(src, at) {
 async function newestCommon(st) {
     let at = scanTime(Date.now());
     for (let i = 0; i < PROBE_BACK; i++) {
-        if (await exists(st.sources[0], at)) {
+        /*
+         * FETCH the frame rather than probing for it.
+         *
+         * The probe asked for a 32px version, and GIBS serves from a tile
+         * pyramid: that lands on a different zoom level from the real
+         * request, and the levels fill at different times. It answered a
+         * different question from the one being asked, and the channel ran
+         * over an hour behind. An empty scan compresses to about 8 KB, so
+         * asking properly costs nothing — and a frame that IS there is kept.
+         */
+        /*
+         * Full size, then half, then a quarter, before stepping back a scan.
+         * GIBS fills its pyramid from the top down, so the fine tiles arrive
+         * after the coarse ones and insisting on full size means airing an
+         * older picture than the service actually has.
+         */
+        const full0 = st.sources[0].width || st.width;
+        let first = null, usedScale = 1;
+        for (const scale of [1, 0.5, 0.25]) {
+            first = await frameUrl(st.sources[0], Math.round(full0 * scale), at);
+            if (first) { usedScale = scale; break; }
+        }
+        if (first) {
             const keep = [st.sources[0]];
+            const urls = [first];
             for (const src of st.sources.slice(1)) {
-                if (await exists(src, at)) keep.push(src);
+                const u = await frameUrl(src, Math.round((src.width || st.width) * usedScale), at);
+                if (u) { keep.push(src); urls.push(u); }
                 else console.warn('[GOES] ' + src.wms + ' has nothing for this view; leaving it out');
             }
             st.sources = keep;
-            return at;
+            return { at, urls, scale: usedScale };
         }
         at -= SCAN_MS;
     }
@@ -380,8 +404,12 @@ function dropFrame(st, at) {
  */
 async function sync(st) {
     const token = ++st.token;
-    const newest = await newestCommon(st);
-    if (!newest || token !== st.token || !st.active) return;
+    const found = await newestCommon(st);
+    if (!found || token !== st.token || !st.active) {
+        if (found) for (const u of found.urls) { try { URL.revokeObjectURL(u); } catch (e) { /* gone */ } }
+        return;
+    }
+    const newest = found.at;
 
     const want = [];
     for (let i = st.count - 1; i >= 0; i--) want.push(newest - i * SCAN_MS);
@@ -390,12 +418,33 @@ async function sync(st) {
         if (want.indexOf(at) === -1) dropFrame(st, at);
     }
 
+    // The newest is already in hand from the search above; keeping it is the
+    // whole reason that search fetches real frames.
+    const held = st.frames.get(newest);
+    if (!held) {
+        st.frames.set(newest, { urls: found.urls, scale: found.scale });
+        if (st.shown === null) { showFrame(st, newest); play(st); }
+    } else if ((held.scale || 1) < found.scale) {
+        // The fine tiles have landed since: trade up.
+        dropFrame(st, newest);
+        st.frames.set(newest, { urls: found.urls, scale: found.scale });
+        if (st.shown === newest) showFrame(st, newest);
+    } else {
+        for (const u of found.urls) { try { URL.revokeObjectURL(u); } catch (e) { /* gone */ } }
+    }
+
     // Newest first, so something is on screen at once and the rest fills in
     // behind it. One at a time: several multi-megabyte decodes together would
     // take the page with them, and this one has to keep streaming.
     for (const at of want.slice().reverse()) {
         if (token !== st.token || !st.active) return;
-        if (st.frames.has(at)) continue;
+        /*
+         * A frame taken at a coarse width while its fine tiles were still
+         * landing counts as missing, so it is fetched again at full size and
+         * replaced below, rather than carrying its softness round the loop.
+         */
+        const have = st.frames.get(at);
+        if (have && (have.scale || 1) >= 1) continue;
 
         const urls = [];
         let complete = true;
@@ -421,8 +470,10 @@ async function sync(st) {
             for (const v of urls) if (v) URL.revokeObjectURL(v);
             continue;
         }
-        st.frames.set(at, { urls });
+        if (st.frames.has(at)) dropFrame(st, at);     // the soft version
+        st.frames.set(at, { urls, scale: 1 });
         if (st.shown === null) { showFrame(st, at); play(st); }
+        else if (st.shown === at) showFrame(st, at);  // swap the sharp one in
     }
     if (st.shown === null || !st.frames.has(st.shown)) {
         const times = [...st.frames.keys()].sort((a, b) => a - b);

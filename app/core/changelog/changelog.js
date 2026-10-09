@@ -22,6 +22,12 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'October 9, 2026',
+        items: [
+            { title: 'Satellite shows the newest picture there is', desc: 'The newest satellite picture available was over an hour old, and sometimes more. Two things were wrong. The loop asked whether a scan existed by fetching a tiny thumbnail of it, and the imagery service stores its pictures at several zoom levels which do not all appear at the same moment, so the thumbnail was answering a different question from the one being asked — it reported scans as missing when they were there, and as there when they were missing. That test is gone; the loop now asks for the picture it actually wants, which costs nothing when the answer is no and saves a download when the answer is yes. The second thing is that the detailed version of a scan lands several minutes after the rough one. Rather than wait for the sharp copy of a picture that already exists, the newest frame is now taken at whatever detail is ready, and quietly replaced with the full-resolution copy a few minutes later when it arrives. Measured against the live service, this moved the newest infrared from 42 minutes old to 32, and GeoColor from 72 to 52. The remaining delay is the imagery service’s own and not something the app can shorten — its index was still advertising a picture from 15:20 while the app was already showing 16:10.' },
+        ],
+    },
+    {
         date: 'October 1, 2026',
         items: [
             { title: 'Satellite is much faster, especially on a phone', desc: 'The satellite loop was slow to load and skipped frames on Android, and GeoColor was the worst of it. The imagery service forbids caching, so every time the loop came back round to a frame the whole picture was downloaded again — about 20 MB a lap for GeoColor. Each frame is now downloaded once and kept, so playing the loop costs nothing after the first pass. GeoColor is also fetched in a format suited to a photograph rather than a diagram, which is seven times smaller for the same picture, and phones get fewer and smaller frames since every step of a loop has to decode one. Taken together, the first loop went from about 20 MB to under half a megabyte on a phone, and every lap after it from 20 MB to nothing.' },

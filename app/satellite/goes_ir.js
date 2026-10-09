@@ -288,8 +288,8 @@ function alphaLut() {
  * Safe because GeoColor covers the whole domain — verified 100% opaque —
  * and JPEG, having no alpha, would otherwise paint black wherever it did not.
  */
-function rgbFrame(sat, at, cb) {
-    const url = wmsUrl(sat, Math.round((sat.width || IMG_WIDTH) * SIZE_SCALE), at, 'image/jpeg');
+function rgbFrame(sat, at, cb, width) {
+    const url = wmsUrl(sat, width || Math.round((sat.width || IMG_WIDTH) * SIZE_SCALE), at, 'image/jpeg');
     fetch(url)
         .then((r) => (r.ok ? r.blob() : null))
         .then((blob) => {
@@ -333,8 +333,8 @@ function rgbFrame(sat, at, cb) {
         .catch(() => cb(null));
 }
 
-function buildImage(sat, at, cb) {
-    if (!product().enhanced) { rgbFrame(sat, at, cb); return; }
+function buildImage(sat, at, cb, width) {
+    if (!product().enhanced) { rgbFrame(sat, at, cb, width); return; }
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
@@ -421,7 +421,7 @@ function buildImage(sat, at, cb) {
         } catch (e) { console.warn('[GOES] recolor failed:', e); cb(null); }
     };
     img.onerror = () => { console.warn('[GOES] image load failed'); cb(null); };
-    img.src = wmsUrl(sat, Math.round((sat.width || IMG_WIDTH) * SIZE_SCALE), at);
+    img.src = wmsUrl(sat, width || Math.round((sat.width || IMG_WIDTH) * SIZE_SCALE), at);
 }
 
 function _beforeId() {
@@ -586,35 +586,6 @@ function drawLegend() {
 }
 
 /*
- * Is there a scan at this time? Asked at 32x21, which is a couple of
- * kilobytes.
- *
- * It has to be asked, because how far behind the newest scan runs varies with
- * the pipeline, and a time with nothing behind it answers 200 with a fully
- * transparent image rather than an error. Guessing would put a hole in the
- * loop; this costs one small request to be sure.
- */
-function probe(sat, at) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-            try {
-                const c = document.createElement('canvas');
-                c.width = img.width; c.height = img.height;
-                const x = c.getContext('2d');
-                x.drawImage(img, 0, 0);
-                const d = x.getImageData(0, 0, c.width, c.height).data;
-                for (let i = 3; i < d.length; i += 4) if (d[i]) { resolve(true); return; }
-                resolve(false);
-            } catch (e) { resolve(false); }
-        };
-        img.onerror = () => resolve(false);
-        img.src = wmsUrl(sat, 32, at);
-    });
-}
-
-/*
  * The newest scan the first satellite has, and which of the others can see
  * their own patch at that moment.
  *
@@ -622,13 +593,52 @@ function probe(sat, at) {
  * it is asked about, and a disaster when one cannot: it would reject every
  * scan there has ever been and leave the map bare.
  */
-async function newestScan() {
+/*
+ * The newest scan there actually is, found by FETCHING it.
+ *
+ * There used to be a cheap probe here — a 32px version of the frame, asked
+ * only whether that time had data. It was wrong in both directions, because
+ * GIBS serves from a tile pyramid and a 32px request for a 96-degree domain
+ * lands on a different zoom level from the real one. The two fill at
+ * different times, so the probe answered a different question from the one
+ * being asked, and the picture ran over an hour behind:
+ *
+ *   infrared 16:20Z  probe said empty, the real frame was 2.9 MB of data
+ *   GeoColor 15:50Z  probe said data, the real frame was empty
+ *
+ * Matching the resolution helps and does not fix it: one sample point is
+ * still unreliable at the boundary that matters, because the pyramid fills
+ * unevenly as a scan lands.
+ *
+ * Fetching the real frame costs nothing when the answer is no — an empty
+ * scan is transparent and compresses to about 8 KB — and when the answer is
+ * yes it is a frame we wanted, so it is kept rather than refetched.
+ */
+async function newestFrame() {
     let at = scanTime(Date.now());
     for (let i = 0; i < PROBE_BACK; i++) {
-        if (await probe(SATS[0], at)) {
+        /*
+         * Full size, then half, then a quarter, before giving up on this
+         * minute. GIBS fills its pyramid from the top down, so the fine
+         * tiles of a scan land ten to twenty minutes after the coarse ones —
+         * measured: GeoColor at 16:00Z had imagery at 500px and nothing at
+         * 1000 or 2000. Insisting on full size means waiting for the
+         * sharpest version of a picture that already exists.
+         */
+        const full = Math.round((SATS[0].width || IMG_WIDTH) * SIZE_SCALE);
+        let first = null, usedScale = 1;
+        for (const scale of [1, 0.5, 0.25]) {
+            first = await new Promise((res) => buildImage(SATS[0], at, res, Math.round(full * scale)));
+            if (first) { usedScale = scale; break; }
+        }
+        if (first) {
+            if (usedScale < 1) console.log('[GOES] newest scan taken at ' + (usedScale * 100) + '% size; the sharp tiles are still landing');
             const keep = [SATS[0]];
+            const urls = [first];
             for (const sat of SATS.slice(1)) {
-                if (await probe(sat, at)) keep.push(sat);
+                const w = Math.round((sat.width || IMG_WIDTH) * SIZE_SCALE * usedScale);
+                const u = await new Promise((res) => buildImage(sat, at, res, w));
+                if (u) { keep.push(sat); urls.push(u); }
                 else console.warn('[GOES] ' + sat.id + ' has nothing for its area right now');
             }
             /*
@@ -643,7 +653,7 @@ async function newestScan() {
                 for (const t of [..._frames.keys()]) dropFrame(t);
                 _shown = null;
             }
-            return at;
+            return { at, urls, scale: usedScale };
         }
         at -= SCAN_MS;
     }
@@ -791,8 +801,13 @@ function stopPlaying() {
  */
 async function sync() {
     const token = ++_token;
-    const newest = await newestScan();
-    if (!newest || token !== _token || !_enabled) return;
+    const found = await newestFrame();
+    if (!found || token !== _token || !_enabled) {
+        // Whatever was fetched belongs to a run that has been superseded.
+        if (found) for (const u of found.urls) { try { URL.revokeObjectURL(u); } catch (e) { /* gone */ } }
+        return;
+    }
+    const newest = found.at;
 
     const want = [];
     for (let i = FRAME_BUDGET - 1; i >= 0; i--) want.push(newest - i * SCAN_MS);
@@ -807,9 +822,31 @@ async function sync() {
      * the rest fills in behind it. One at a time: six of these at once is six
      * simultaneous multi-megabyte decodes, and the page has to stay usable.
      */
+    // The newest is already in hand from the search above; keeping it is the
+    // whole reason the search fetches real frames.
+    const held = _frames.get(newest);
+    if (!held) {
+        _frames.set(newest, { urls: found.urls, scale: found.scale });
+        if (_shown === null) { showFrame(newest); startPlaying(); }
+    } else if ((held.scale || 1) < found.scale) {
+        // The fine tiles have landed since: trade up.
+        dropFrame(newest);
+        _frames.set(newest, { urls: found.urls, scale: found.scale });
+        if (_shown === newest) showFrame(newest);
+    } else {
+        for (const u of found.urls) { try { URL.revokeObjectURL(u); } catch (e) { /* gone */ } }
+    }
+
     for (const at of want.slice().reverse()) {
         if (token !== _token || !_enabled) return;
-        if (_frames.has(at)) continue;
+        /*
+         * A frame taken at a coarse width while its fine tiles were still
+         * landing counts as missing, so it is fetched again at full size and
+         * replaced below. Otherwise its softness would ride round the loop
+         * for the next two hours.
+         */
+        const have = _frames.get(at);
+        if (have && (have.scale || 1) >= 1) continue;
 
         const urls = [];
         let complete = true;
@@ -834,8 +871,10 @@ async function sync() {
             for (const u of urls) if (u) URL.revokeObjectURL(u);
             continue;
         }
-        _frames.set(at, { urls });
+        if (_frames.has(at)) dropFrame(at);          // the soft version
+        _frames.set(at, { urls, scale: 1 });
         if (_shown === null) { showFrame(at); startPlaying(); }
+        else if (_shown === at) showFrame(at);       // swap the sharp one in
     }
     if (_shown === null || !_frames.has(_shown)) {
         const times = [..._frames.keys()].sort((a, b) => a - b);
