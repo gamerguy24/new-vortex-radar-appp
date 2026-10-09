@@ -169,7 +169,8 @@
   /* 16:9, held by the padding trick so the iframe cannot change the layout
      when it loads or fails. */
   #lc_frame { position: relative; width: 100%; padding-top: 56.25%; background: #000; }
-  #lc_frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  #lc_frame iframe, #lc_frame video { position: absolute; inset: 0; width: 100%; height: 100%;
+    border: 0; object-fit: cover; background: #000; }
   #lc_bar { display: flex; align-items: center; gap: 9px; padding: 8px 12px 9px; }
   #lc_live { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; background: #ff3b30;
     color: #fff; font-size: 11px; font-weight: 800; letter-spacing: .14em; border-radius: 4px;
@@ -1852,10 +1853,60 @@ map.on('load', async () => {
    * channel told ?cam=0 never contacts YouTube at all.
    */
   (function liveCam() {
-    const id = (Q.get('cam') || 'qScgCSMyvtI').trim();
+    const hls = (Q.get('camhls') || '').trim();
+    const id = (Q.get('cam') || '').trim();
     const box = document.getElementById('livecam');
-    if (!box || !id || id === "0") return;
-    const name = (Q.get('camname') || 'Panama City Beach, Florida').trim();
+    if (!box || (!hls && (!id || id === "0"))) return;
+    const name = (Q.get('camname') || 'Live camera').trim();
+
+    const label = document.getElementById('lc_name');
+    if (label) label.textContent = name;
+    const host = document.getElementById('lc_frame');
+
+    /*
+     * A direct stream, if one was given. This is the path that works without
+     * an account: an official camera feed is just a manifest, and playing it
+     * asks nobody for permission because it was published to be played.
+     */
+    if (hls && host) {
+      const v = document.createElement('video');
+      v.muted = true; v.autoplay = true; v.playsInline = true; v.controls = false;
+      host.appendChild(v);
+      box.classList.remove('hide');
+      // Safari-style native HLS, if this build happens to have it.
+      if (v.canPlayType('application/vnd.apple.mpegurl')) {
+        v.src = hls;
+        v.play().catch(() => { /* muted autoplay should not be refused */ });
+        return;
+      }
+      const sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js';
+      sc.onload = () => {
+        /* eslint-disable no-undef */
+        if (typeof Hls === 'undefined' || !Hls.isSupported()) {
+          console.warn('[broadcast] hls.js unavailable; camera not shown');
+          return;
+        }
+        const h = new Hls({ liveDurationInfinity: true, lowLatencyMode: false });
+        h.loadSource(hls);
+        h.attachMedia(v);
+        h.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(() => {}));
+        /*
+         * A camera that drops out should come back on its own: this page runs
+         * for days unattended and a dead inset would stay dead until somebody
+         * noticed it on air.
+         */
+        h.on(Hls.Events.ERROR, (_e, data) => {
+          if (!data || !data.fatal) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) h.startLoad();
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) h.recoverMediaError();
+          else { h.destroy(); setTimeout(() => location.reload(), 30000); }
+        });
+      };
+      sc.onerror = () => console.warn('[broadcast] could not load hls.js');
+      document.head.appendChild(sc);
+      return;
+    }
     /*
      * mute=1 is what makes it start: autoplay with sound is refused, and
      * there is nobody at this screen to allow it. The rest strips YouTube
@@ -1867,10 +1918,7 @@ map.on('load', async () => {
     fr.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
     fr.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
     fr.src = src;
-    const host = document.getElementById('lc_frame');
     if (host) host.appendChild(fr);
-    const label = document.getElementById('lc_name');
-    if (label) label.textContent = name;
     box.classList.remove('hide');
   })();
 
