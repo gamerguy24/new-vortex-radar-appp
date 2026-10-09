@@ -1854,10 +1854,10 @@ map.on('load', async () => {
    */
   (function liveCam() {
     const hls = (Q.get('camhls') || '').trim();
-    const id = (Q.get('cam') || '').trim();
+    const id = (Q.get('cam') || 'qScgCSMyvtI').trim();
     const box = document.getElementById('livecam');
     if (!box || (!hls && (!id || id === "0"))) return;
-    const name = (Q.get('camname') || 'Live camera').trim();
+    const name = (Q.get('camname') || 'Panama City Beach, Florida').trim();
 
     const label = document.getElementById('lc_name');
     if (label) label.textContent = name;

@@ -460,6 +460,78 @@ if [ "$MODE" = "--check" ]; then
   exit 0
 fi
 
+# ── --signin: sign the channel browser in, once ─────────────────────────────
+# For a YouTube camera inset. The embed is refused until this profile has an
+# account on it; after this it keeps working across restarts.
+if [ "$MODE" = "--signin" ]; then
+  SIGNIN_URL="${2:-https://www.youtube.com/}"
+  SIGNIN_DISP="${STREAM_SIGNIN_DISPLAY:-:98}"
+  SIGNIN_PORT="${STREAM_SIGNIN_PORT:-5900}"
+  PROFILE="$WORKDIR/profile"
+
+  if pgrep -f "user-data-dir=$PROFILE" >/dev/null 2>&1; then
+    echo "The channel browser is running and is using this profile."
+    echo "Stop the stream first, then run this again:"
+    echo "    sudo systemctl stop echo-broadcast    # or kill the script"
+    exit 1
+  fi
+
+  CHROME="$(command -v chromium || command -v chromium-browser \
+    || command -v google-chrome || command -v google-chrome-stable || true)"
+  [ -n "$CHROME" ] || { echo "No chromium/google-chrome found."; exit 1; }
+  command -v Xvfb >/dev/null 2>&1 || { echo "Xvfb is not installed."; exit 1; }
+  if ! command -v x11vnc >/dev/null 2>&1; then
+    echo "x11vnc is not installed — it is what lets you see the browser."
+    echo "    sudo apt install -y x11vnc        # or: sudo snap install x11vnc"
+    exit 1
+  fi
+
+  mkdir -p "$PROFILE"
+  echo "Opening the channel browser on $SIGNIN_DISP ..."
+  Xvfb "$SIGNIN_DISP" -screen 0 1280x900x24 -nolisten tcp &
+  SI_XVFB=$!
+  sleep 2
+
+  DISPLAY="$SIGNIN_DISP" "$CHROME" \
+    --window-size=1280,900 --window-position=0,0 \
+    --user-data-dir="$PROFILE" \
+    --no-first-run --no-default-browser-check \
+    --disable-dev-shm-usage --no-sandbox \
+    --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader \
+    "$SIGNIN_URL" >"$WORKDIR/signin.log" 2>&1 &
+  SI_CHROME=$!
+  sleep 3
+
+  # localhost only. A sign-in means typing a password, and a VNC port facing
+  # the internet would be publishing it.
+  x11vnc -display "$SIGNIN_DISP" -localhost -rfbport "$SIGNIN_PORT" \
+    -nopw -forever -shared -quiet >"$WORKDIR/signin-vnc.log" 2>&1 &
+  SI_VNC=$!
+
+  cleanup_signin() {
+    kill "$SI_VNC" "$SI_CHROME" "$SI_XVFB" 2>/dev/null
+    wait "$SI_CHROME" 2>/dev/null
+    echo ""
+    echo "Closed. The sign-in is saved in $PROFILE — start the stream as usual."
+  }
+  trap cleanup_signin EXIT INT TERM
+
+  echo ""
+  echo "  From YOUR OWN computer, open a tunnel:"
+  echo ""
+  echo "      ssh -L ${SIGNIN_PORT}:localhost:${SIGNIN_PORT} <user>@<this-box>"
+  echo ""
+  echo "  then point a VNC viewer at:   localhost:${SIGNIN_PORT}"
+  echo ""
+  echo "  Sign in to the Google account you want the channel to use, then"
+  echo "  come back here and press Ctrl-C."
+  echo ""
+  echo "  (The port is bound to localhost, so the tunnel is the only way in.)"
+  echo ""
+  while kill -0 "$SI_CHROME" 2>/dev/null; do sleep 2; done
+  exit 0
+fi
+
 # ── one encoder per key ─────────────────────────────────────────────────────
 # Two streams on one ingest is not a settings problem and does not look like
 # one: YouTube says "More than one ingestion is using the primary URL", the
@@ -469,7 +541,7 @@ fi
 # at a stream because a stream is running would fail exactly when the answer
 # is most wanted. --check is guarded with the real run: it does push.
 case "${1:-run}" in
-  --diagnose|--probe|--where) OTHER_FF="" ;;
+  --diagnose|--probe|--where|--signin) OTHER_FF="" ;;
   *) OTHER_FF="$(pgrep -af "ffmpeg.*rtmp" 2>/dev/null | grep -v "^$$ " | head -3)" ;;
 esac
 if [ -n "$OTHER_FF" ] && [ "${STREAM_FORCE:-0}" != "1" ]; then
