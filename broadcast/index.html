@@ -1912,7 +1912,7 @@ map.on('load', async () => {
      * there is nobody at this screen to allow it. The rest strips YouTube
      * chrome so the inset is picture only.
      */
-    const src = 'https://www.youtube.com/embed/' + encodeURIComponent(id)
+    const src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id)
       + '?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&iv_load_policy=3';
     const fr = document.createElement('iframe');
     fr.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
