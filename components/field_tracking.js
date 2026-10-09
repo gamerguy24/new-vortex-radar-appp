@@ -553,21 +553,23 @@ function openDialog() {
         <div class="vr-track-body">
           <div id="vr-track-owner"></div>
 
-          <div class="vr-track-sub">Sharing my own location</div>
-          <p class="vr-track-blurb">
-            If you are out in the field, you can let your position be followed on the map while you chase.
-            It is off until you turn it on, and you can stop at any time.
-          </p>
-          <div class="vr-track-who" id="vr-track-who"></div>
-          <div class="vr-track-state" id="vr-track-self">Loading…</div>
-          <div class="vr-track-name">
-            <input id="vr-track-label" type="text" maxlength="60" placeholder="Name shown on the map (optional)">
+          <div id="vr-track-selfwrap">
+            <div class="vr-track-sub">Sharing my own location</div>
+            <p class="vr-track-blurb">
+              If you are out in the field, you can let your position be followed on the map while you chase.
+              It is off until you turn it on, and you can stop at any time.
+            </p>
+            <div class="vr-track-who" id="vr-track-who"></div>
+            <div class="vr-track-state" id="vr-track-self">Loading…</div>
+            <div class="vr-track-name">
+              <input id="vr-track-label" type="text" maxlength="60" placeholder="Name shown on the map (optional)">
+            </div>
+            <div class="vr-track-actions">
+              <button id="vr-track-toggle" class="vr-track-primary">Share my location</button>
+              <button id="vr-track-wipe" class="vr-track-danger" style="display:none">Delete my track</button>
+            </div>
+            <div class="vr-track-msg" id="vr-track-msg"></div>
           </div>
-          <div class="vr-track-actions">
-            <button id="vr-track-toggle" class="vr-track-primary">Share my location</button>
-            <button id="vr-track-wipe" class="vr-track-danger" style="display:none">Delete my track</button>
-          </div>
-          <div class="vr-track-msg" id="vr-track-msg"></div>
         </div>
       </div>`;
     document.body.appendChild(wrap);
@@ -637,6 +639,17 @@ async function refreshSelf() {
     if (label && me.label && !label.value) label.value = me.label;
 
     paintSelf();
+
+    /*
+     * The owner does not see the consent half.
+     *
+     * It would be addressed to them about themselves — "your location is
+     * shared with <their own address>" — which reads as a mistake and buries
+     * the list they actually opened this for. The owner is the one person who
+     * gains nothing from it, so this screen is just the chaser list for them.
+     */
+    const selfWrap = $('vr-track-selfwrap');
+    if (selfWrap) selfWrap.style.display = me.isOwner ? 'none' : '';
 
     /* The owner's half only exists for the owner. */
     if (me.isOwner) {
