@@ -1865,8 +1865,7 @@ map.on('load', async () => {
      * Their camera, offered for embedding, with
      * no account between it and the screen — which is the whole requirement.
      */
-    const DEFAULT_EMBED = 'https://www.earthcam.com/cams/includes/twittercards/container.php'
-      + '?name=20691.flv&timezone=America/Chicago&metar=KPNS';
+    const DEFAULT_EMBED = 'https://www.earthcam.com/usa/florida/pensacola/beach/?cam=pensacolabeach';
 
     const hls = (Q.get('camhls') || '').trim();
     const id = (Q.get('cam') || '').trim();
@@ -1944,9 +1943,27 @@ map.on('load', async () => {
         console.warn('[broadcast] camurl must be http(s); ignoring');
         return;
       }
+      /*
+       * Render the page at desktop width and scale it down, so the camera
+       * fills the inset and the site navigation around it is cropped away by
+       * the overflow. A full page in a 428px box is otherwise mostly header.
+       *
+       * Tunable from the URL because the right numbers depend on the page and
+       * cannot be read from here: the frame is another origin, so its layout
+       * is not measurable from this side. ?camscale, ?camtop, ?camleft.
+       */
+      const W0 = Number(Q.get('camwidth')) || 1280;
+      const scale = Number(Q.get('camscale')) || (428 / W0);
+      const topPx = Number(Q.get('camtop')) || 0;
+      const leftPx = Number(Q.get('camleft')) || 0;
       const f2 = document.createElement('iframe');
       f2.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
       f2.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      f2.setAttribute('scrolling', 'no');
+      f2.style.width = W0 + 'px';
+      f2.style.height = Math.round(W0 * 9 / 16) + 'px';
+      f2.style.transformOrigin = 'top left';
+      f2.style.transform = 'translate(' + leftPx + 'px,' + topPx + 'px) scale(' + scale + ')';
       f2.src = url;
       host.appendChild(f2);
       box.classList.remove('hide');
