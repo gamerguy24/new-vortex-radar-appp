@@ -509,10 +509,39 @@ if [ "$MODE" = "--signin" ]; then
   SI_VNC=$!
 
   cleanup_signin() {
-    kill "$SI_VNC" "$SI_CHROME" "$SI_XVFB" 2>/dev/null
-    wait "$SI_CHROME" 2>/dev/null
+    trap - EXIT INT TERM        # a second Ctrl-C must not re-enter this
     echo ""
-    echo "Closed. The sign-in is saved in $PROFILE — start the stream as usual."
+    echo "Closing the browser and waiting for it to save..."
+    # Chromium first, and ALONE. Killing the X server at the same moment
+    # takes the browser down mid-write and the sign-in is lost — which is
+    # exactly what happened before this was ordered.
+    kill -TERM "$SI_CHROME" 2>/dev/null
+    for _i in $(seq 1 15); do
+      kill -0 "$SI_CHROME" 2>/dev/null || break
+      sleep 1
+    done
+    if kill -0 "$SI_CHROME" 2>/dev/null; then
+      echo "   the browser did not stop on its own; forcing it"
+      kill -KILL "$SI_CHROME" 2>/dev/null
+    fi
+    sleep 1                      # the last of the write
+    kill "$SI_VNC" "$SI_XVFB" 2>/dev/null
+
+    # Say whether it worked, here, rather than letting the stream say it.
+    COOKIES="$PROFILE/Default/Cookies"
+    N=0
+    if [ -f "$COOKIES" ] && command -v strings >/dev/null 2>&1; then
+      N="$(strings "$COOKIES" 2>/dev/null | grep -ciE "youtube|google" || true)"
+    fi
+    echo ""
+    if [ "${N:-0}" -gt 0 ] 2>/dev/null; then
+      echo "Signed in — the profile now holds a Google session ($N entries)."
+      echo "Start the stream as usual; the camera should play."
+    else
+      echo "WARNING: no Google cookies landed in the profile."
+      echo "  The sign-in did not take. Either it was not completed in the"
+      echo "  VNC window, or Google declined the session from this address."
+    fi
   }
   trap cleanup_signin EXIT INT TERM
 
