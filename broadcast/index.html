@@ -1854,7 +1854,7 @@ map.on('load', async () => {
    */
   (function liveCam() {
     const hls = (Q.get('camhls') || '').trim();
-    const id = (Q.get('cam') || 'qScgCSMyvtI').trim();
+    const id = (Q.get('cam') || '').trim();   // off unless asked for: a walled cam is worse than none
     const box = document.getElementById('livecam');
     if (!box || (!hls && (!id || id === "0"))) return;
     const name = (Q.get('camname') || 'Panama City Beach, Florida').trim();
