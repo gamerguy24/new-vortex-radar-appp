@@ -1867,18 +1867,21 @@ map.on('load', async () => {
      */
     const DEFAULT_EMBED = 'https://www.earthcam.com/usa/florida/pensacola/beach/?cam=pensacolabeach';
 
+    // The Florida Traffic hurricane cam feed, asked for by name.
+    const DEFAULT_YT = 'I06cL5R6lRQ';
+
     const hls = (Q.get('camhls') || '').trim();
-    const id = (Q.get('cam') || '').trim();
+    let id = (Q.get('cam') || '').trim();
     let url = (Q.get('camurl') || '').trim();
     const box = document.getElementById('livecam');
     if (!box) return;
 
     // Nothing asked for at all: the beach camera, because a tropical
     // channel with a live coast on it is the point. ?cam=0 still means none.
-    if (!hls && !url && !id) url = DEFAULT_EMBED;
+    if (!hls && !url && !id) id = DEFAULT_YT;
     if (!hls && !url && (!id || id === "0")) return;
 
-    const name = (Q.get('camname') || 'Pensacola Beach, Florida').trim();
+    const name = (Q.get('camname') || 'Pensacola, Florida').trim();
 
     const label = document.getElementById('lc_name');
     if (label) label.textContent = name;
