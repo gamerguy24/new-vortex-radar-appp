@@ -2060,18 +2060,30 @@ map.on('load', async () => {
       'the tropics');
     try {
       _sat.addSatelliteIR(window.vortexMap, {
+        /*
+         * GOES-East ALONE for tropical coverage.
+         *
+         * East spans 126W to 28W, which is the whole Gulf, Caribbean and
+         * tropical Atlantic — everything a hurricane broadcast looks at. West
+         * adds only a strip of the eastern Pacific, and when it had nothing to
+         * send it drew a grey rectangle across the top-left of the basin shot
+         * instead of staying away. A second satellite that contributes no
+         * weather and can blank the picture is a liability, not a wider view.
+         *
+         * ?satwest=1 puts it back for a shot that genuinely needs the Pacific.
+         */
         sources: [
           {
             wms: SAT_GEOCOLOR ? _sat.GEO_EAST : _sat.GOES_EAST,
             domain: GOES_EAST_DOMAIN,
             mode: SAT_GEOCOLOR ? 'rgb' : 'ir',
           },
-          {
+          ...(Q.get('satwest') === '1' ? [{
             wms: SAT_GEOCOLOR ? _sat.GEO_WEST : _sat.GOES_WEST,
             domain: GOES_WEST_DOMAIN,
             width: Math.round(SAT_PX * 0.55),
             mode: SAT_GEOCOLOR ? 'rgb' : 'ir',
-          },
+          }] : []),
         ],
         width: SAT_PX,
         count: SAT_FRAMES,
