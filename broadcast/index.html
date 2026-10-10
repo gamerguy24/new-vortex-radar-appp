@@ -1880,7 +1880,10 @@ map.on('load', async () => {
     // channel with a live coast on it is the point. ?cam=0 still means none.
     // YouTube is refused on this box whatever the stream: the sign-in wall
     // follows the server's address, not the video. Proven on two of them.
-    if (!hls && !url && !id) url = DEFAULT_EMBED;
+    // No camera unless one is asked for. Every source tried so far either
+    // refuses this box (YouTube), needs cropping and a token (EarthCam), or
+    // turned out to be a still image (FL511 cam 1270). An empty corner beats
+    // a broken one, and ?camurl= / ?camhls= bring it back without a deploy.
     if (!hls && !url && (!id || id === "0")) return;
 
     const name = (Q.get('camname') || 'Pensacola Beach, Florida').trim();
