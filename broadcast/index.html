@@ -1878,10 +1878,12 @@ map.on('load', async () => {
 
     // Nothing asked for at all: the beach camera, because a tropical
     // channel with a live coast on it is the point. ?cam=0 still means none.
-    if (!hls && !url && !id) id = DEFAULT_YT;
+    // YouTube is refused on this box whatever the stream: the sign-in wall
+    // follows the server's address, not the video. Proven on two of them.
+    if (!hls && !url && !id) url = DEFAULT_EMBED;
     if (!hls && !url && (!id || id === "0")) return;
 
-    const name = (Q.get('camname') || 'Pensacola, Florida').trim();
+    const name = (Q.get('camname') || 'Pensacola Beach, Florida').trim();
 
     const label = document.getElementById('lc_name');
     if (label) label.textContent = name;
@@ -1957,7 +1959,9 @@ map.on('load', async () => {
        */
       const W0 = Number(Q.get('camwidth')) || 1280;
       const scale = Number(Q.get('camscale')) || (428 / W0);
-      const topPx = Number(Q.get('camtop')) || 0;
+      // Enough to clear EarthCam's header, which is what this frames by
+      // default. Any other page will want its own number.
+      const topPx = Number(Q.get('camtop') || -90);
       const leftPx = Number(Q.get('camleft')) || 0;
       const f2 = document.createElement('iframe');
       f2.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
