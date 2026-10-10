@@ -1865,7 +1865,7 @@ map.on('load', async () => {
      * Their camera, offered for embedding, with
      * no account between it and the screen — which is the whole requirement.
      */
-    const DEFAULT_EMBED = 'https://www.earthcam.com/usa/florida/pensacola/beach/?cam=pensacolabeach';
+    const DEFAULT_EMBED = 'https://fl511.com/map/Cctv/1270';
 
     // The Florida Traffic hurricane cam feed, asked for by name.
     const DEFAULT_YT = 'I06cL5R6lRQ';
@@ -1959,9 +1959,9 @@ map.on('load', async () => {
        */
       const W0 = Number(Q.get('camwidth')) || 1280;
       const scale = Number(Q.get('camscale')) || (428 / W0);
-      // Enough to clear EarthCam's header, which is what this frames by
-      // default. Any other page will want its own number.
-      const topPx = Number(Q.get('camtop') || -90);
+      // FL511's camera popup is close to bare, so it needs little or no
+      // cropping. A page with a header of its own will want ?camtop.
+      const topPx = Number(Q.get('camtop') || 0);
       const leftPx = Number(Q.get('camleft')) || 0;
       const f2 = document.createElement('iframe');
       f2.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
