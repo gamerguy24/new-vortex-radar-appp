@@ -204,7 +204,10 @@
                 <option value="25">25 fr</option>
                 <option value="50">50 fr</option>
                 <option value="75" selected>75 fr</option>
+                <option value="100">100 fr</option>
             </select>
+            <!-- Opens Settings › Playback (playback_panel.js). -->
+            <button id="vortexPlaybackBtn" type="button" title="Playback settings" aria-label="Playback settings"><i class="fa-solid fa-sliders"></i></button>
             <span id="vortexLoopProgress" aria-live="polite"></span>
         </div>
 
@@ -410,10 +413,16 @@
                     </div>
                     <div class="vortexRadarMenuRow armrMiddle" id="armrGoesIRBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-satellite"></i>
-                        GOES-19 Clean IR
+                        GOES Satellite
                         <div class="form-check form-switch">
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrGoesIRBtnSwitchElem">
                         </div>
+                    </div>
+                    <!-- Which satellite picture: GeoColor, enhanced Band 13, or
+                         infrared bands 7–16. Filled by app/satellite/menu_item.js. -->
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrSatProductRow">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-sliders"></i>
+                        <select id="armrSatProduct" class="armrInlineSelect" title="Satellite view"></select>
                     </div>
                     <div class="vortexRadarMenuRow armrMiddle" id="armrMRMSBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-layer-group"></i>
@@ -732,6 +741,63 @@
                         <div class="form-check form-switch">
                             <input class="map_style_button form-check-input toggleSwitchContainter tscWide" onfocus="this.blur();" type="checkbox" role="switch" id="armrSatelliteMapBtnSwitchElem">
                         </div>
+                    </div>
+
+                    <br>
+
+                    <!-- How loops play, radar and satellite alike. Wired by
+                         app/core/playback/playback_panel.js; the values live in
+                         playback_settings.js. Each ? opens the line under it. -->
+                    <div class="armrHeader armrHeaderWide" id="armrPlaybackHeader">PLAYBACK</div>
+                    <div class="vxpb" id="vxPlaybackPanel">
+                        <div class="vxpb-row">
+                            <label class="vxpb-label" for="vxpbFrames">Max Frames</label>
+                            <select id="vxpbFrames" class="armrInlineSelect vxpb-select"></select>
+                            <button type="button" class="vxpb-help" data-hint="frames" aria-label="About Max Frames" aria-expanded="false">?</button>
+                        </div>
+                        <div class="vxpb-hint" data-hint="frames" hidden>How many scans a loop holds. More reaches further back in time but takes longer to load. Satellite loops stop at 24 frames (12 on a phone) so they stay smooth.</div>
+
+                        <div class="vxpb-row">
+                            <span class="vxpb-label">Speed</span>
+                            <button type="button" class="vxpb-help" data-hint="speed" aria-label="About Speed" aria-expanded="false">?</button>
+                        </div>
+                        <div class="vxpb-slide">
+                            <span>Slow</span>
+                            <input type="range" id="vxpbSpeed" min="0" max="7" step="1" aria-label="Playback speed">
+                            <span>Fast</span>
+                        </div>
+                        <div class="vxpb-hint" data-hint="speed" hidden>How quickly the loop steps through its frames, from a quarter of normal speed to four times it. <span id="vxpbSpeedVal"></span></div>
+
+                        <div class="vxpb-row">
+                            <label class="vxpb-label" for="vxpbDirection">Direction</label>
+                            <select id="vxpbDirection" class="armrInlineSelect vxpb-select">
+                                <option value="forward">Forwards</option>
+                                <option value="backward">Backwards</option>
+                                <option value="rock">Rock</option>
+                            </select>
+                            <button type="button" class="vxpb-help" data-hint="direction" aria-label="About Direction" aria-expanded="false">?</button>
+                        </div>
+                        <div class="vxpb-hint" data-hint="direction" hidden>Forwards plays oldest to newest. Backwards plays newest to oldest. Rock plays forwards and then back again, so there is no jump from the newest frame to the oldest.</div>
+
+                        <div class="vxpb-row">
+                            <span class="vxpb-label">Loop Pause: <span id="vxpbPauseVal"></span></span>
+                            <button type="button" class="vxpb-help" data-hint="pause" aria-label="About Loop Pause" aria-expanded="false">?</button>
+                        </div>
+                        <div class="vxpb-slide">
+                            <span>None</span>
+                            <input type="range" id="vxpbPause" min="0" max="3000" step="100" aria-label="Loop pause">
+                            <span>Long</span>
+                        </div>
+                        <div class="vxpb-hint" data-hint="pause" hidden>How long the loop rests on its last frame before going round again, so you have time to read the newest scan.</div>
+
+                        <div class="vxpb-row">
+                            <label class="vxpb-label" for="vxpbTrack">Track During Playback</label>
+                            <div class="form-check form-switch vxpb-switch">
+                                <input class="form-check-input" onfocus="this.blur();" type="checkbox" role="switch" id="vxpbTrack">
+                            </div>
+                            <button type="button" class="vxpb-help" data-hint="track" aria-label="About Track During Playback" aria-expanded="false">?</button>
+                        </div>
+                        <div class="vxpb-hint" data-hint="track" hidden>While a loop is playing, keep the map centred on your GPS position and keep your location dot moving with you. Useful while driving on a chase. Your location stays on your device.</div>
                     </div>
 
                     <br>
@@ -1647,7 +1713,7 @@
     <!-- Echo Graphics launcher (Studio / Dashboard / Overlay) -->
     <script type="module" src="./components/graphics_launch.js?v=plat1"></script>
     <!-- Go-to-my-location button -->
-    <script type="module" src="./components/geolocate.js"></script>
+    <script type="module" src="./components/geolocate.js?v=track1"></script>
     <!-- METAR stations layer (second, ArcGIS-sourced) -->
     <script type="module" src="./components/metar_stations.js"></script>
     <!-- NEXRAD storm centers (TVS + hail signatures) -->

@@ -10,11 +10,13 @@
  */
 
 const loaders = require('../libnexrad/loaders_nexrad');
+const playback = require('../../core/playback/playback_settings');
 
 /*
  * How many recent scans to hold.
  *
- * 10, 25, 50 or 75, on every device, starting at 75. Measured against live
+ * 10, 25, 50, 75 or 100, on every device, starting at 75 — chosen in
+ * Settings › Playback or on the bar, and kept by playback_settings. Measured against live
  * N0B, a parsed frame is about 1 MB, so 75 frames is roughly 80 MB held.
  *
  * Phones used to be held to five. That cap assumed memory was what crashed
@@ -29,9 +31,6 @@ const loaders = require('../libnexrad/loaders_nexrad');
  * history — which is why the listing below has to be able to reach back into
  * the previous UTC day.
  */
-const FRAME_CHOICES = [10, 25, 50, 75];
-const DEFAULT_FRAMES = 75;
-const FRAMES_KEY = 'vortexLoopFrames';
 
 /*
  * Downloads run this many at a time. The files come straight from the Unidata
@@ -40,23 +39,14 @@ const FRAMES_KEY = 'vortexLoopFrames';
  */
 const CONCURRENCY = 6;
 
-function storedFrames() {
-    try {
-        const n = parseInt(localStorage.getItem(FRAMES_KEY), 10);
-        if (FRAME_CHOICES.includes(n)) return n;
-    } catch (e) { /* storage blocked: use the default */ }
-    return DEFAULT_FRAMES;
-}
-
-let chosenFrames = storedFrames();
-function frameBudget() { return chosenFrames; }
+function frameBudget() { return playback.get().frames; }
 
 let frames = [];        // array of L3Factory instances, ordered oldest -> newest
 let idx = 0;            // index of the currently shown frame
 let playing = false;
 let loading = false;
 let timer = null;
-let speed = 1;
+let rock = { sign: 1 }; // which way a rocking loop is heading
 let loadedKey = null;   // station+product+length the current frames belong to
 
 /*
@@ -117,7 +107,10 @@ function setDriver(d) {
 
 function $play() { return $('#vortexPlayBtn'); }
 function $live() { return $('#vortexLiveBtn'); }
-function frameDelayMs() { return Math.round(750 / speed); }
+// Each frame is held for 750 ms at 1×; Settings › Playback scales that and
+// adds the loop pause on the frame that ends a pass.
+const BASE_FRAME_MS = 750;
+function frameDelayMs(end) { return playback.holdMs(BASE_FRAME_MS, !!end); }
 
 function setIcon(isPlaying) {
     const icon = $play().find('i');
@@ -188,6 +181,7 @@ function targetKey() {
 function stop() {
     if (timer) { clearTimeout(timer); timer = null; }
     playing = false;
+    playback.setPlaying('radar', false);
     generation++;              // abandon any preload still running
     setIcon(false);
 }
@@ -229,12 +223,13 @@ function reset() {
  */
 function tick() {
     if (!playing) return;
-    idx++;
-    if (idx >= frames.length) { idx = 0; }
+    // Forwards, backwards or rocking, as Settings › Playback says.
+    const nxt = playback.advance(idx, frames.length, rock);
+    idx = nxt.index;
     showFrame(idx);
     updateSlider();
     if (playing) {
-        timer = setTimeout(tick, frameDelayMs());
+        timer = setTimeout(tick, frameDelayMs(nxt.end));
     }
 }
 
@@ -245,6 +240,8 @@ function play() {
     if (a && a.current_RadarUpdater) { try { a.current_RadarUpdater.disable(); } catch (e) {} }
     setLive(false);
     playing = true;
+    playback.setPlaying('radar', true);
+    rock = { sign: 1 };
     setIcon(true);
     if (timer) { clearTimeout(timer); timer = null; }
     timer = setTimeout(tick, frameDelayMs());
@@ -444,8 +441,16 @@ function onSliderInput() {
     showFrame(idx);
 }
 
+// The bar's dropdowns only record the choice; playback_settings tells every
+// loop, and the subscription in init() acts on it here.
 function onSpeedChange() {
-    speed = parseFloat($('#vortexSpeed').val()) || 1;
+    playback.set('speed', parseFloat($('#vortexSpeed').val()) || 1);
+}
+function onFramesChange() {
+    playback.set('frames', parseInt($('#vortexFrames').val(), 10));
+}
+
+function applySpeed() {
     if (playing) {
         // Reschedule on the new delay. Changing speed mid-play used to leave an
         // interval running as well as start another, so the loop ran at both
@@ -456,15 +461,29 @@ function onSpeedChange() {
 }
 
 /*
+ * The bar shows the same speed the slider chose. Its dropdown lists four
+ * speeds; a slider stop between them gets an option of its own rather than
+ * the dropdown claiming a speed that is not the one playing.
+ */
+function showSpeedOnBar(v) {
+    const $s = $('#vortexSpeed');
+    if (!$s.length) return;
+    if (!$s.find('option[value="' + v + '"]').length) {
+        $s.find('option.vortexSpeedCustom').remove();
+        const $o = $('<option class="vortexSpeedCustom"></option>').val(String(v)).html(v + '&times;');
+        // Kept in order, so the list still reads slow to fast.
+        const after = $s.find('option').filter(function () { return parseFloat(this.value) < v; }).last();
+        if (after.length) after.after($o); else $s.prepend($o);
+    }
+    $s.val(String(v));
+}
+
+/*
  * Change the loop length. Whatever is held is for the old length, so it is
  * dropped; if the loop was playing (or loading), it reloads at the new length
  * and carries on, rather than making the user press play again.
  */
-function onFramesChange() {
-    const n = parseInt($('#vortexFrames').val(), 10);
-    if (!FRAME_CHOICES.includes(n)) return;
-    chosenFrames = n;
-    try { localStorage.setItem(FRAMES_KEY, String(n)); } catch (e) { /* not remembered, still applied */ }
+function applyFrames() {
     const resume = playing || loading;
     // The frames held are about to be dropped. If one of them is on screen, go
     // back to the newest scan first, rather than leave a past scan showing,
@@ -481,8 +500,15 @@ function init() {
     $('#vortexSpeed').off('change.vortexLoop').on('change.vortexLoop', onSpeedChange);
 
     const $frames = $('#vortexFrames');
-    $frames.val(String(chosenFrames));
+    $frames.val(String(frameBudget()));
     $frames.off('change.vortexLoop').on('change.vortexLoop', onFramesChange);
+    showSpeedOnBar(playback.get().speed);
+
+    playback.on(function (key, value) {
+        if (key === 'speed') { showSpeedOnBar(value); applySpeed(); }
+        else if (key === 'frames') { $frames.val(String(value)); applyFrames(); }
+        else if (key === 'direction') rock = { sign: 1 };
+    });
 }
 
 init();

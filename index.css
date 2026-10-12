@@ -1728,32 +1728,33 @@ td.day.active, span.month.active, span.year.active {
 }
 /* The bar should fill what the arrow leaves, not the title text alone. */
 #vortexSatLegend .vml-body { flex: 1 1 auto; min-width: 0; }
-/* Which satellite picture: a segmented pair, the chosen one lit. */
-#vortexSatLegend .vml-picks { display: flex; gap: 6px; margin-top: 9px; }
-#vortexSatLegend .vml-pick {
+/* Which satellite picture: GeoColor, enhanced Band 13, or bands 7–16 — too
+   many for a row of buttons, so a dropdown. */
+#vortexSatLegend .vml-select {
     pointer-events: auto;
-    flex: 1 1 0;
-    cursor: pointer;
+    display: block;
+    width: 100%;
+    margin-top: 9px;
     padding: 5px 8px;
+    cursor: pointer;
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: .08em;
-    text-transform: uppercase;
+    font-size: 11.5px;
+    font-weight: 700;
     color: #cfe0f2;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: var(--vx-r-2, 6px);
+    outline: none;
 }
-#vortexSatLegend .vml-pick:hover { background: rgba(255, 255, 255, 0.13); }
-/* Amber is interface state, and which product is selected is interface state. */
-#vortexSatLegend .vml-pick.on {
-    color: #0b0f14;
-    background: var(--vx-accent, #e8862b);
-    border-color: var(--vx-accent, #e8862b);
-}
-/* GeoColor has no scale to read along, so it gets a sentence instead. */
+#vortexSatLegend .vml-select:hover { background: rgba(255, 255, 255, 0.13); }
+#vortexSatLegend .vml-select:focus { border-color: var(--vx-accent, #e8862b); }
+/* The open list is painted by the OS; without this it is white-on-white. */
+#vortexSatLegend .vml-select option,
+#vortexSatLegend .vml-select optgroup { background: #12151c; color: var(--vx-text, #dfe3e8); }
+/* GeoColor and the raw bands have no scale to read along, so they get a sentence instead. */
 #vortexSatLegend .vml-note { font-size: 11.5px; line-height: 1.45; color: #8fa6bd; max-width: 230px; }
+/* RealEarth's terms ask for this line wherever its imagery is shown. */
+#vortexSatLegend .vml-credit { margin-top: 4px; font-size: 10px; color: #8fa6bd; opacity: .8; }
 #vortexSatLegend .vml-play:hover,
 #vortexSatLegend .vml-toggle:hover { background: rgba(255, 255, 255, 0.14); }
 /* Folded: the body goes, the panel shrinks to the arrow, and because the
@@ -1787,7 +1788,52 @@ td.day.active, span.month.active, span.year.active {
 .armrInlineSelect:hover { border-color: rgba(255, 255, 255, 0.26); }
 .armrInlineSelect:focus { outline: none; border-color: var(--vx-accent, #e8862b); }
 /* The row is a flex line; without this the select pushes the icon around. */
-#armrMRMSProductRow { display: flex; align-items: center; gap: 8px; }
+#armrMRMSProductRow,
+#armrSatProductRow { display: flex; align-items: center; gap: 8px; }
+
+/*
+ * Settings › Playback. Not menu rows: a slider needs the full width under its
+ * label, so this is a small form laid out in the menu's own gutter, with each
+ * row's ? opening a line of explanation beneath it.
+ */
+.vxpb { display: flex; flex-direction: column; gap: 4px; padding: 8px 4px 4px; color: var(--vx-text); }
+.vxpb-row { display: flex; align-items: center; gap: 10px; min-height: 34px; }
+.vxpb-label { flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 700; }
+.vxpb-select { flex: 0 0 auto; width: 9.5em; }
+.vxpb-select option { background: #12151c; color: var(--vx-text); }
+.vxpb-help {
+    flex: 0 0 auto;
+    width: 24px; height: 24px;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--vx-text-2);
+    background: transparent;
+    color: var(--vx-text-2);
+    font-family: inherit; font-size: 12px; font-weight: 800;
+    cursor: pointer;
+}
+.vxpb-help:hover,
+.vxpb-help[aria-expanded="true"] { border-color: var(--vx-accent); color: var(--vx-accent); }
+.vxpb-slide { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--vx-text-3); }
+.vxpb-slide input[type="range"] { flex: 1 1 auto; min-width: 0; accent-color: var(--vx-accent); cursor: pointer; }
+.vxpb-hint { font-size: 12px; line-height: 1.45; color: var(--vx-text-2); padding: 0 34px 6px 0; }
+/* The switch sits in the row's flow here, not pinned to the row's edge. */
+.vxpb-switch { margin: 0; padding: 0; min-height: 0; display: flex; align-items: center; }
+.vxpb-switch .form-check-input { position: static; margin: 0; }
+
+/* Bottom bar: the way into Settings › Playback, styled with the dropdowns beside it. */
+#vortexPlaybackBtn {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--vortex-text);
+    border: 1px solid var(--vortex-border);
+    border-radius: var(--vortex-r-md);
+    padding: 6px 8px;
+    font-size: 12px;
+    cursor: pointer;
+}
+#vortexPlaybackBtn:hover { border-color: var(--vortex-accent); }
 
 /*
  * Dropdowns: keep the OPEN list dark too.
@@ -2488,6 +2534,7 @@ html.vx-pro #vortexMenuOrb { display: none !important; }
     #vortexSpeed { font-size: 10px !important; padding: 3px 4px !important; }
     /* Loop length, sized to sit beside the speed control on a phone. */
     #vortexFrames { font-size: 10px !important; padding: 3px 4px !important; }
+    #vortexPlaybackBtn { font-size: 10px !important; padding: 4px 5px !important; }
     #vortexLiveBtn { font-size: 10px !important; padding: 3px 5px !important; gap: 4px !important; }
 
     /* ---- row 2: the tool rail, full width and scrollable ----

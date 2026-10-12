@@ -82,12 +82,66 @@ function locate() {
     );
 }
 
+/*
+ * Track During Playback (Settings › Playback).
+ *
+ * While it is on and a loop — radar or satellite — is playing, the location
+ * dot follows the GPS and the map stays centred on it, so a chaser can watch
+ * the loop roll past where they are driving. The GPS watch runs only while
+ * both are true; nothing is followed while the map is standing still.
+ *
+ * Panning is held to one every few seconds: a fix can arrive every second,
+ * and a map that never stops moving cannot be read.
+ */
+const PAN_EVERY_MS = 4000;
+let _trackWatch = null;
+let _lastPan = 0;
+
+function onTrackFix(pos) {
+    const m = mapObj();
+    const g = GL();
+    if (!m || !g) return;
+    const lngLat = [pos.coords.longitude, pos.coords.latitude];
+    if (!_marker) {
+        const el = document.createElement('div');
+        el.className = 'vr-locate-dot';
+        _marker = new g.Marker({ element: el }).setLngLat(lngLat).addTo(m);
+    } else {
+        _marker.setLngLat(lngLat);
+    }
+    setActive(true);
+    const now = Date.now();
+    if (now - _lastPan >= PAN_EVERY_MS) {
+        _lastPan = now;
+        m.easeTo({ center: lngLat, duration: 800 });
+    }
+}
+
+function trackTick() {
+    const pb = window.vortexPlayback;
+    const want = !!(pb && pb.get().track && pb.isPlaying());
+    if (want && _trackWatch === null && navigator.geolocation) {
+        _lastPan = 0;            // centre on the first fix straight away
+        _trackWatch = navigator.geolocation.watchPosition(
+            onTrackFix,
+            (err) => {
+                if (err.code === 1) toast('Track During Playback needs location permission.', 'warn');
+            },
+            { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
+        );
+    } else if (!want && _trackWatch !== null) {
+        navigator.geolocation.clearWatch(_trackWatch);
+        _trackWatch = null;
+    }
+}
+
 function init() {
     const btn = document.getElementById('vortexLocateBtn');
     if (btn) btn.addEventListener('click', () => {
         // toggle: on -> off (remove marker), off -> locate
         if (_active) { turnOff(); } else { locate(); }
     });
+    setInterval(trackTick, 1000);
 }
 
 if (document.readyState === 'loading') {

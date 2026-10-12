@@ -53,6 +53,9 @@ function load() {
     // load the radar loop / playback controller
     require('../../radar/animation/radar_loop');
 
+    // Settings › Playback (speed, direction, loop pause...) for every loop
+    require('../playback/playback_panel');
+
     // load the settings menu
     require('../menu/settings');
 
@@ -77,7 +80,7 @@ function load() {
     // load the hurricane hunters (live recon aircraft + HDOB track) layer toggle
     require('../../hurricanes/recon/hunters_menu_item');
 
-    // load the GOES-19 Clean IR satellite layer toggle
+    // load the GOES satellite layer toggle and view picker
     require('../../satellite/menu_item');
 
     // load the wind-particles (radar velocity flow) layer toggle

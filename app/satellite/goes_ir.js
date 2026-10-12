@@ -27,8 +27,19 @@
  * themselves are passed through untouched.
  */
 
+/*
+ * BANDS 7–16 come from somewhere else. GIBS publishes Band 13 and GeoColor
+ * but none of the other infrared channels, so those are SSEC RealEarth's
+ * GOES-East CONUS imagery (UW-Madison): every ABI band, every five minutes,
+ * as ordinary web-mercator tiles addressed by scan time. They are drawn as
+ * they come — the standard greyscale, cold and high is bright — so none of
+ * the recolouring below applies to them. RealEarth's terms ask for the
+ * credit line the legend carries.
+ */
+
 const map = require('../core/map/map');
 const { IR_TABLE } = require('./ir_colormap');
+const playback = require('../core/playback/playback_settings');
 
 /*
  * The satellites, and the piece of the world each is asked for.
@@ -79,19 +90,50 @@ const PRODUCT_KEY = 'vortexSatProduct';
  * and nothing to recolour.
  */
 const PRODUCTS = {
-    ir: {
-        wms: 'GOES-East_ABI_Band13_Clean_Infrared',
-        label: 'Infrared',
-        name: 'GOES-East Band 13 · Clean Infrared',
-        enhanced: true,
-    },
     geocolor: {
+        kind: 'gibs',
         wms: 'GOES-East_ABI_GeoColor',
         label: 'GeoColor',
-        name: 'GOES-East · GeoColor',
+        name: 'GOES · GeoColor',
         enhanced: false,
     },
+    ir: {
+        kind: 'gibs',
+        wms: 'GOES-East_ABI_Band13_Clean_Infrared',
+        label: 'Band 13 · Enhanced IR',
+        name: 'GOES Band 13 · Clean Infrared',
+        enhanced: true,
+    },
 };
+
+/*
+ * The infrared bands, as RealEarth names them. `what` is the one line a
+ * viewer needs to know what they are looking at.
+ */
+const BANDS = [
+    [7, '3.9 µm', 'Shortwave IR', 'Fire hot spots, and fog and low cloud at night.'],
+    [8, '6.2 µm', 'Upper-Level Water Vapor', 'Moisture high in the atmosphere; jet streams and upper lows.'],
+    [9, '6.9 µm', 'Mid-Level Water Vapor', 'Moisture in the middle levels; troughs and dry slots.'],
+    [10, '7.3 µm', 'Lower-Level Water Vapor', 'Moisture lower down; elevated mixed layers and plumes.'],
+    [11, '8.4 µm', 'Cloud-Top Phase', 'Separates ice-topped from water cloud.'],
+    [12, '9.6 µm', 'Ozone', 'Stratospheric intrusions and upper-level dynamics.'],
+    [13, '10.3 µm', 'Clean Longwave IR', 'Cloud-top temperature, day and night.'],
+    [14, '11.2 µm', 'Longwave IR', 'Cloud-top temperature, with a little more moisture signal.'],
+    [15, '12.3 µm', 'Dirty Longwave IR', 'Low-level moisture and dust; cloud tops.'],
+    [16, '13.3 µm', 'CO₂ Longwave IR', 'Cloud-top height; air-mass boundaries.'],
+];
+for (const [n, um, title, what] of BANDS) {
+    const id = 'b' + String(n).padStart(2, '0');
+    PRODUCTS[id] = {
+        kind: 'tiles',
+        realearth: 'G19-ABI-CONUS-BAND' + String(n).padStart(2, '0'),
+        label: `Band ${n} · ${title}`,
+        name: `GOES-East Band ${n} · ${title}`,
+        title: `BAND ${n} · ${title.toUpperCase()}`,
+        note: `${um}. ${what} Brighter is colder and higher.`,
+        enhanced: false,
+    };
+}
 
 function storedProduct() {
     try {
@@ -154,13 +196,29 @@ const COLD_C = -25;
  * a storm is building without holding a morning of imagery in memory.
  */
 const SCAN_MS = 10 * 60 * 1000;
-const FRAMES = 6;
-// Fewer on a phone: every step decodes a whole frame, and four of them is a
-// forty-minute loop, which still reads as motion.
-const FRAME_BUDGET = onPhone() ? 4 : FRAMES;
-const STEP_MS = 420;            // how long each frame is held
-const HOLD_LAST_MS = 1400;      // and the pause on the newest, as loops do
+/*
+ * How many frames: Settings › Playback's Max Frames, held under a ceiling.
+ *
+ * A GIBS frame is a whole multi-megabyte picture, decoded at every step, so
+ * those stay short — fewer still on a phone, where four is a forty-minute
+ * loop and still reads as motion. A band frame is a set of small tiles the
+ * map draws itself, so it can run longer: 24 at five minutes is two hours.
+ */
+const GIBS_CAP = onPhone() ? 4 : 12;
+const TILES_CAP = onPhone() ? 12 : 24;
+function frameBudget() {
+    return Math.min(playback.get().frames, product().kind === 'tiles' ? TILES_CAP : GIBS_CAP);
+}
+// How long each frame is held at 1×. The speed scales it and the loop pause
+// is added on the frame that ends a pass, both from Settings › Playback.
+const STEP_MS = 420;
 const PROBE_BACK = 18;          // three hours; past that the feed is down
+
+const RE_BASE = 'https://realearth.ssec.wisc.edu';
+// GOES-East's CONUS sector; tiles outside it are never asked for.
+const RE_BOUNDS = [-152, 14, -52, 57];
+const RE_MAXZOOM = 7;
+const TILE_OPACITY = 0.9;
 
 let _enabled = false;
 let _timer = null;             // the refresh clock
@@ -172,6 +230,7 @@ let _greyLut = null;
 const _frames = new Map();
 let _shown = null;             // which frame is on the map
 let _playing = true;
+let _rock = { sign: 1 };       // which way a rocking loop is heading
 let _token = 0;                // bumped to orphan work from a previous run
 let _followTimer = null;       // watches the app player
 let _following = false;
@@ -504,8 +563,29 @@ function dropFrame(at) {
     const fr = _frames.get(at);
     if (!fr) return;
     _frames.delete(at);
+    if (fr.tiles) { removeTileFrame(fr.tiles); return; }
     for (const u of fr.urls) {
         if (u) { try { URL.revokeObjectURL(u); } catch (e) { /* already gone */ } }
+    }
+}
+
+/* The GIBS pictures, east and west. A band frame does not replace them — it
+   is a layer of its own — so moving to a band has to take them down. */
+function removeGibsLayers() {
+    // Every satellite, not just the ones in the shot right now: one dropped
+    // for having nothing to show may still have a layer from an earlier run.
+    for (const sat of SATS) {
+        try {
+            if (map.getLayer(layerIdOf(sat))) map.removeLayer(layerIdOf(sat));
+            if (map.getSource(srcIdOf(sat))) map.removeSource(srcIdOf(sat));
+        } catch (e) { /* the style went first */ }
+    }
+}
+
+/* Both pickers — the legend's and the menu's — show the same product. */
+function showProductInPickers() {
+    for (const el of document.querySelectorAll('#armrSatProduct, #vortexSatLegend .vml-select')) {
+        if (el.value !== _product) el.value = _product;
     }
 }
 
@@ -516,12 +596,24 @@ function setProduct(next) {
     _token++;                 // orphan anything still downloading
     stopPlaying();
     for (const at of [..._frames.keys()]) dropFrame(at);
+    removeGibsLayers();
     _shown = null;
     // Both satellites are back in play: one may have been dropped for having
     // nothing in the OTHER product, which says nothing about this one.
     _sats = SATS.slice();
-    drawLegend();             // the scale belongs to the product
-    if (_enabled) sync();
+    showProductInPickers();
+    if (_enabled) {
+        drawLegend();         // the scale belongs to the product
+        sync();
+    }
+}
+
+/* <option>s for every product, the finished pictures first, then the bands. */
+function productOptions() {
+    const opt = (id) => `<option value="${id}"${_product === id ? ' selected' : ''}>${PRODUCTS[id].label}</option>`;
+    const bands = Object.keys(PRODUCTS).filter((id) => PRODUCTS[id].kind === 'tiles');
+    return `<optgroup label="Imagery">${opt('geocolor')}${opt('ir')}</optgroup>`
+        + `<optgroup label="Infrared bands">${bands.map(opt).join('')}</optgroup>`;
 }
 
 /*
@@ -554,20 +646,30 @@ function drawLegend() {
      * colour by day, infrared and city lights by night — and a temperature
      * scale beside it would be inventing a meaning its colours do not carry.
      */
-    const scale = product().enhanced
-        ? `<div class="vml-title">SATELLITE · CLOUD TOP TEMPERATURE <span style="opacity:.6">(°C)</span></div>
+    /*
+     * A raw band has no scale either: its greys are a stretch of brightness
+     * temperature chosen per band, not a table this file can read back. It
+     * gets what it is and what it shows, and the credit RealEarth asks for.
+     */
+    const p = product();
+    let scale;
+    if (p.enhanced) {
+        scale = `<div class="vml-title">SATELLITE · CLOUD TOP TEMPERATURE <span style="opacity:.6">(°C)</span></div>
         <div class="vml-bar" style="background:linear-gradient(90deg, ${stops.join(', ')})"></div>
-        <div class="vml-scale"><span>-90</span><span>-60</span><span>-30</span><span>0</span><span>+30</span></div>`
-        : '<div class="vml-title">SATELLITE · GEOCOLOR</div>'
+        <div class="vml-scale"><span>-90</span><span>-60</span><span>-30</span><span>0</span><span>+30</span></div>`;
+    } else if (p.kind === 'tiles') {
+        scale = `<div class="vml-title">SATELLITE · ${p.title}</div>
+        <div class="vml-note">${p.note}</div>
+        <div class="vml-credit">Source: SSEC RealEarth, UW-Madison</div>`;
+    } else {
+        scale = '<div class="vml-title">SATELLITE · GEOCOLOR</div>'
           + '<div class="vml-note">True colour by day, infrared and city lights by night.</div>';
-
-    const pick = (id) => `<button class="vml-pick${_product === id ? ' on' : ''}"
-        type="button" data-product="${id}">${PRODUCTS[id].label}</button>`;
+    }
 
     el.innerHTML = `<div class="vml-body">
         ${scale}
-        <div class="vml-picks">${pick('geocolor')}${pick('ir')}</div>
-        <div class="vml-age">${product().name} · <span class="vml-when">loading…</span></div>
+        <select class="vml-select" aria-label="Satellite view">${productOptions()}</select>
+        <div class="vml-age">${p.name} · <span class="vml-when">loading…</span></div>
       </div>
       <div class="vml-btns">
         <button class="vml-play" type="button"></button>
@@ -577,9 +679,8 @@ function drawLegend() {
         .addEventListener('click', () => foldLegend(el, !el.classList.contains('vml-folded')));
     el.querySelector('.vml-play')
         .addEventListener('click', () => setPlaying(el, !_playing));
-    for (const b of el.querySelectorAll('.vml-pick')) {
-        b.addEventListener('click', () => setProduct(b.dataset.product));
-    }
+    const sel = el.querySelector('.vml-select');
+    sel.addEventListener('change', () => setProduct(sel.value));
     document.body.appendChild(el);
     foldLegend(el, legendFolded());
     setPlaying(el, _playing);
@@ -672,25 +773,94 @@ function putOnMap(sat, url) {
     }, _beforeId());
 }
 
+/*
+ * A band frame: one tiled layer per scan, all of them on the map at once and
+ * all but one at zero opacity.
+ *
+ * Kept on the map rather than swapped in, because a hidden raster layer still
+ * loads its tiles — so every frame is fetched before the loop reaches it, and
+ * a step is an opacity change rather than a download. RealEarth sends these
+ * with a week's cache lifetime, so a lap after the first costs nothing.
+ */
+function tileIds(at) { return { src: `goes-band-${at}-src`, layer: `goes-band-${at}-layer` }; }
+
+function addTileFrame(t) {
+    try {
+        if (!map.getSource(t.src)) {
+            map.addSource(t.src, {
+                type: 'raster', tileSize: 256, maxzoom: RE_MAXZOOM, bounds: RE_BOUNDS,
+                tiles: [`${RE_BASE}/tiles/${t.product}/${t.stamp.replace('.', '/')}/{z}/{x}/{y}.png`],
+            });
+        }
+        if (!map.getLayer(t.layer)) {
+            map.addLayer({
+                id: t.layer, type: 'raster', source: t.src,
+                paint: { 'raster-opacity': 0, 'raster-opacity-transition': { duration: 0 }, 'raster-fade-duration': 0 },
+            }, _beforeId());
+        }
+    } catch (e) { console.warn('[GOES] could not add a band frame:', e && e.message); }
+}
+
+function removeTileFrame(t) {
+    try {
+        if (map.getLayer(t.layer)) map.removeLayer(t.layer);
+        if (map.getSource(t.src)) map.removeSource(t.src);
+    } catch (e) { /* the style went first */ }
+}
+
+/* Whether a frame can be shown without a blank: a band frame whose tiles are
+   still arriving is passed over by the loop until they have. */
+function frameReady(at) {
+    const fr = _frames.get(at);
+    if (!fr) return false;
+    if (!fr.tiles) return true;
+    try { return !!map.getSource(fr.tiles.src) && map.isSourceLoaded(fr.tiles.src); }
+    catch (e) { return false; }
+}
+
 function showFrame(at) {
     const fr = _frames.get(at);
     if (!fr) return;
-    for (let i = 0; i < _sats.length; i++) {
-        if (fr.urls[i]) putOnMap(_sats[i], fr.urls[i]);
+    if (fr.tiles) {
+        // A change of map style takes every added layer with it; put this one
+        // back rather than show nothing.
+        addTileFrame(fr.tiles);
+        const was = (_shown !== null && _shown !== at) ? _frames.get(_shown) : null;
+        try {
+            map.setPaintProperty(fr.tiles.layer, 'raster-opacity', TILE_OPACITY);
+            if (was && was.tiles && map.getLayer(was.tiles.layer)) {
+                map.setPaintProperty(was.tiles.layer, 'raster-opacity', 0);
+            }
+        } catch (e) { /* the style is mid-change */ }
+    } else {
+        for (let i = 0; i < _sats.length; i++) {
+            if (fr.urls[i]) putOnMap(_sats[i], fr.urls[i]);
+        }
     }
     _shown = at;
     setLegendTime(at);
 }
 
-/** Play through what we have, oldest first, pausing on the newest. */
+/*
+ * Play through what we have — forwards, backwards or rocking, at the speed
+ * and with the pause at the end of a pass that Settings › Playback says.
+ */
 function step() {
-    const times = [..._frames.keys()].sort((a, b) => a - b);
+    _playTimer = null;
+    const times = sortedTimes();
     if (!times.length) return;
-    const i = times.indexOf(_shown);
-    const next = times[(i + 1) % times.length];
-    showFrame(next);
-    const last = next === times[times.length - 1];
-    _playTimer = setTimeout(step, last ? HOLD_LAST_MS : STEP_MS);
+    let i = times.indexOf(_shown);
+    if (i < 0) i = times.length - 1;
+    // Skip frames whose tiles have not landed, but never go round more than
+    // once looking: if none are ready, hold where we are and try again.
+    let nxt = null;
+    for (let tries = 0; tries < times.length; tries++) {
+        const cand = playback.advance(i, times.length, _rock);
+        if (frameReady(times[cand.index])) { nxt = cand; break; }
+        i = cand.index;
+    }
+    if (nxt) showFrame(times[nxt.index]);
+    _playTimer = setTimeout(step, playback.holdMs(STEP_MS, nxt ? nxt.end : false));
 }
 
 function startPlaying() {
@@ -698,7 +868,8 @@ function startPlaying() {
     // Not while the app player is driving: two clocks on one map is how the
     // satellite ended up animating against the radar instead of with it.
     if (_following || !_playing || _frames.size < 2) return;
-    _playTimer = setTimeout(step, STEP_MS);
+    _playTimer = setTimeout(step, playback.holdMs(STEP_MS, false));
+    playback.setPlaying('satellite', true);
 }
 
 /** The scan nearest a moment in time, which is how the two loops line up. */
@@ -789,6 +960,55 @@ function markFollowing() {
 
 function stopPlaying() {
     if (_playTimer) { clearTimeout(_playTimer); _playTimer = null; }
+    playback.setPlaying('satellite', false);
+}
+
+/*
+ * The band products' frames: the newest scans RealEarth lists, one tiled
+ * layer each. Topped up like the GIBS loop — scans that have aged out of the
+ * window are dropped, new ones added, and the rest left alone.
+ */
+async function syncTiles(token) {
+    const p = product();
+    let stamps = [];
+    try {
+        const r = await fetch(`${RE_BASE}/api/times?products=${encodeURIComponent(p.realearth)}`);
+        const j = r.ok ? await r.json() : null;
+        stamps = (j && Array.isArray(j[p.realearth])) ? j[p.realearth] : [];
+    } catch (e) {
+        console.warn('[GOES] could not list band scans:', e && e.message);
+    }
+    if (token !== _token || !_enabled || product() !== p) return;
+    if (!stamps.length) { setLegendError('no recent scans'); return; }
+
+    // "YYYYMMDD.HHMMSS", UTC.
+    const msOf = (s) => Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8),
+        +s.slice(9, 11), +s.slice(11, 13), +s.slice(13, 15));
+    const want = stamps.slice().sort().slice(-frameBudget())
+        .map((stamp) => ({ stamp, at: msOf(stamp) }))
+        .filter((w) => Number.isFinite(w.at));
+    const keep = new Set(want.map((w) => w.at));
+
+    for (const at of [..._frames.keys()]) {
+        if (!keep.has(at)) dropFrame(at);
+    }
+    for (const w of want) {
+        const have = _frames.get(w.at);
+        if (have) { addTileFrame(have.tiles); continue; }   // back after a style change
+        const tiles = Object.assign({ product: p.realearth, stamp: w.stamp }, tileIds(w.at));
+        _frames.set(w.at, { tiles });
+        addTileFrame(tiles);
+    }
+    if (_shown === null || !_frames.has(_shown)) {
+        const times = sortedTimes();
+        if (times.length) showFrame(times[times.length - 1]);
+    }
+    startPlaying();
+}
+
+function setLegendError(msg) {
+    const slot = document.querySelector('#' + LEGEND_ID + ' .vml-when');
+    if (slot) slot.textContent = msg;
 }
 
 /*
@@ -801,6 +1021,7 @@ function stopPlaying() {
  */
 async function sync() {
     const token = ++_token;
+    if (product().kind === 'tiles') { await syncTiles(token); return; }
     const found = await newestFrame();
     if (!found || token !== _token || !_enabled) {
         // Whatever was fetched belongs to a run that has been superseded.
@@ -810,7 +1031,7 @@ async function sync() {
     const newest = found.at;
 
     const want = [];
-    for (let i = FRAME_BUDGET - 1; i >= 0; i--) want.push(newest - i * SCAN_MS);
+    for (let i = frameBudget() - 1; i >= 0; i--) want.push(newest - i * SCAN_MS);
 
     // Anything outside the window is gone for good; its blobs go with it.
     for (const at of [..._frames.keys()]) {
@@ -885,14 +1106,7 @@ async function sync() {
 
 function _remove() {
     stopPlaying();
-    // Every satellite, not just the ones in the shot right now: one dropped
-    // for having nothing to show may still have a layer from an earlier run.
-    for (const sat of SATS) {
-        try {
-            if (map.getLayer(layerIdOf(sat))) map.removeLayer(layerIdOf(sat));
-            if (map.getSource(srcIdOf(sat))) map.removeSource(srcIdOf(sat));
-        } catch (e) { /* the style went first */ }
-    }
+    removeGibsLayers();
     for (const at of [..._frames.keys()]) dropFrame(at);
     _shown = null;
     clearLegend();
@@ -931,4 +1145,15 @@ function disable() {
     _remove();
 }
 
-module.exports = { enable, disable };
+/*
+ * Settings › Playback changed. A new length is a new window of scans; speed,
+ * direction and the end pause only need the clock restarted on them.
+ */
+playback.on((key) => {
+    if (!_enabled) return;
+    if (key === 'frames') { sync(); return; }
+    if (key === 'direction') _rock = { sign: 1 };
+    if (_playTimer) startPlaying();
+});
+
+module.exports = { enable, disable, setProduct, productOptions };
