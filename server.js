@@ -1488,6 +1488,56 @@ app.get('/api/stream/live', requireAuth, (req, res) => {
     res.json({ live: list });
 });
 
+/*
+ * Featured Streams: everyone an admin has approved to stream, with the channel
+ * links they gave when they applied. Approving someone is what puts them here
+ * — there is no second list to keep in step — and revoking or denying takes
+ * them off again.
+ *
+ * Each link is one row in the panel, named by the handle in its URL
+ * (tiktok.com/@name, youtube.com/@name, twitch.tv/name…) so no email address
+ * is shown. `live` says whether they are broadcasting through the Chase
+ * Stream Hub right now, which is also what lets the player follow them.
+ */
+function streamLinkInfo(url) {
+    let u;
+    try { u = new URL(url); } catch (e) { return null; }
+    if (!/^https?:$/.test(u.protocol)) return null;
+    const host = u.hostname.replace(/^(www|m)\./, '').toLowerCase();
+    const seg = u.pathname.split('/').filter(Boolean);
+    const platform =
+        /(^|\.)tiktok\.com$/.test(host) ? 'tiktok'
+        : /(^|\.)(youtube\.com|youtu\.be)$/.test(host) ? 'youtube'
+        : /(^|\.)twitch\.tv$/.test(host) ? 'twitch'
+        : /(^|\.)kick\.com$/.test(host) ? 'kick'
+        : /(^|\.)(facebook\.com|fb\.watch)$/.test(host) ? 'facebook'
+        : 'web';
+    // The first path segment is the channel on every one of these; YouTube
+    // also has /channel/<id> and /c/<name>.
+    let handle = seg[0] || '';
+    if (platform === 'youtube' && /^(channel|c|user)$/.test(handle) && seg[1]) handle = seg[1];
+    if (platform === 'web' || /^(watch|live|video|videos)$/i.test(handle)) handle = '';
+    handle = handle.replace(/^@/, '');
+    return { platform, url: u.toString(), handle: handle ? '@' + handle : host };
+}
+
+app.get('/api/featured-streams', requireAuth, (req, res) => {
+    pruneLiveSessions();
+    const list = [];
+    for (const u of users) {
+        if (!u.streamApproved) continue;
+        const links = (u.streamRequest && Array.isArray(u.streamRequest.links)) ? u.streamRequest.links : [];
+        const live = liveSessions.get(u.id);
+        for (const link of links) {
+            const info = streamLinkInfo(link);
+            if (info) list.push({ id: u.id, name: info.handle, platform: info.platform, url: info.url, live: !!live, approvedAt: (u.streamRequest && u.streamRequest.decidedAt) || null });
+        }
+    }
+    // Live first, then whoever was approved most recently.
+    list.sort((a, b) => (b.live - a.live) || String(b.approvedAt || '').localeCompare(String(a.approvedAt || '')));
+    res.json({ streams: list.map(({ approvedAt, ...s }) => s) });
+});
+
 // ─── Chase-stream access: request + admin approval ───────────────────────────
 // Going live requires an admin-approved streamApproved flag. Non-approved users
 // can submit a request; admins approve/deny or grant/revoke directly.
