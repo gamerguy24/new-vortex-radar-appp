@@ -3,6 +3,7 @@ const click_listener = require('./click_listener');
 const set_layer_order = require('../core/map/setLayerOrder');
 const filter_alerts = require('./filter_alerts');
 const plot_alerts = require('./plot_alerts');
+const pds = require('./pds');
 
 const div_elem = '#alertMenuItemDiv';
 const icon_elem = '#alertMenuItemIcon';
@@ -32,6 +33,7 @@ $(icon_elem).on('click', function () {
                 _show_layer('discussions_layer');
                 _show_layer('discussions_layer_fill');
             }
+            pds.refresh();   // after alertsLayer is visible again
 
             set_layer_order();
         } else {
@@ -52,6 +54,8 @@ $(icon_elem).on('click', function () {
 
         _hide_layer('discussions_layer');
         _hide_layer('discussions_layer_fill');
+
+        pds.hide();
         // map.setLayoutProperty('alertsLayerOutline', 'visibility', 'none');
     }
 })

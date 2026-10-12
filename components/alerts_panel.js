@@ -25,6 +25,12 @@ function eventColor(event) {
     return 'rgb(120,130,145)';
 }
 
+/* PDS warning or emergency (app/alerts/pds.js), or null. */
+function threatOf(props) {
+    try { return window.vortexAlertThreat ? window.vortexAlertThreat(props) : null; }
+    catch { return null; }
+}
+
 function expiresInfo(props) {
     const iso = props.ends || props.expires;
     if (!iso) return { text: '', expired: false };
@@ -64,8 +70,14 @@ function getFeatures() {
     if (typeof window.vortexAlertFilter === 'function') {
         feats = feats.filter((f) => { try { return window.vortexAlertFilter(f); } catch { return true; } });
     }
-    // newest / most severe first
+    // Emergencies, then PDS warnings, then newest / most severe first.
+    const rank = (f) => {
+        const t = threatOf(f.properties);
+        return t ? (t.threat === 'emergency' ? 0 : 1) : 2;
+    };
     return [...feats].sort((a, b) => {
+        const ra = rank(a), rb = rank(b);
+        if (ra !== rb) return ra - rb;
         const sa = SEVERITY_ORDER[a.properties?.severity] ?? 5;
         const sb = SEVERITY_ORDER[b.properties?.severity] ?? 5;
         if (sa !== sb) return sa - sb;
@@ -111,12 +123,15 @@ export default function openAlerts() {
 
         listEl.innerHTML = shown.map((f, i) => {
             const p = f.properties || {};
-            const color = eventColor(p.event);
+            const t = threatOf(p);
+            const color = t ? t.color : eventColor(p.event);
             const exp = expiresInfo(p);
             const idx = all.indexOf(f);
+            const badge = t ? `<div class="vr-alert-pds vr-alert-pds-${t.threat}">${escapeHtml(t.label)}</div>` : '';
             return `
                 <div class="vr-alert-row" data-idx="${idx}" style="border-left-color:${color};">
                     <div class="vr-alert-main">
+                        ${badge}
                         <div class="vr-alert-event">${escapeHtml(p.event || 'Alert')}</div>
                         <div class="vr-alert-area">${escapeHtml(p.areaDesc || '')}</div>
                         <div class="vr-alert-meta">

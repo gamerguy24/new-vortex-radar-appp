@@ -48,6 +48,9 @@ function setLayerOrder() {
     }
     move_layer_to_top('alertsLayerOutline');
     move_layer_to_top('alertsLayer');
+    // PDS warnings and emergencies flash on top of every other alert line.
+    move_layer_to_top('alertsPdsFill');
+    move_layer_to_top('alertsPdsLayer');
 
     // storm tracks layers
     const storm_track_layers = window.vortexData.storm_track_layers;

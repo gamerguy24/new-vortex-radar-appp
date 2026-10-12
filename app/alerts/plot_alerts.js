@@ -5,6 +5,7 @@ const filter_alerts = require('./filter_alerts');
 const combine_dictionary_data = require('./combine_dictionary_data');
 const map = require('../core/map/map');
 const AlertUpdater = require('./updater/AlertUpdater');
+const pds = require('./pds');
 
 function _add_alert_layers(geojson) {
     if (map.getSource('alertsSource')) {
@@ -97,6 +98,10 @@ function plot_alerts(alerts_data) {
     }
     alerts_data = _sort_by_priority(alerts_data);
     alerts_data = filter_alerts(alerts_data);
+    // PDS warnings and emergencies: tagged, recoloured, and drawn last so
+    // they sit on top of any ordinary warning they overlap.
+    pds.tag(alerts_data.features);
+    alerts_data.features.sort((a, b) => (a.properties.threat ? 1 : 0) - (b.properties.threat ? 1 : 0));
 
     var duplicate_features = alerts_data.features.flatMap((element) => [element, element]);
     duplicate_features = JSON.parse(JSON.stringify(duplicate_features));
@@ -122,6 +127,7 @@ function plot_alerts(alerts_data) {
     } catch (e) { to_plot = alerts_data; }
 
     _add_alert_layers(to_plot);
+    pds.afterPlot();
 
     set_layer_order();
 

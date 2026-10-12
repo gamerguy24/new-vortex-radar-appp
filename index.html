@@ -832,6 +832,15 @@
                             <input class="alert_options_btn form-check-input toggleSwitchContainter tscWide" onfocus="this.blur();" type="checkbox" role="switch" id="armrDiscussionsBtnSwitchElem" checked>
                         </div>
                     </div>
+                    <!-- PDS warnings and Tornado / Flash Flood Emergencies drawn
+                         in their own colour and flashing (app/alerts/pds.js).
+                         alert_options_btn: flipping it re-plots the alerts. -->
+                    <div class="vortexRadarMenuRow armrMiddle armrWide" id="armrPdsBtn" title="Particularly Dangerous Situation warnings and emergencies flash in magenta and violet">
+                        PDS Warnings &mdash; flash
+                        <div class="form-check form-switch">
+                            <input class="alert_options_btn form-check-input toggleSwitchContainter tscWide" onfocus="this.blur();" type="checkbox" role="switch" id="armrPdsBtnSwitchElem" checked>
+                        </div>
+                    </div>
                     <div class="vortexRadarMenuRow armrMiddle armrWide" id="armrAlertFiltersBtn" style="cursor: pointer;">
                         Alert Filters &mdash; pick alert types
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
@@ -1694,7 +1703,7 @@
     <div id="vortex-ptt" data-start-collapsed></div>
     <script type="module" src="./components/ptt_panel.js?v=ptt13"></script>
     <!-- Active alerts overlay -->
-    <script type="module" src="./components/alerts_panel.js"></script>
+    <script type="module" src="./components/alerts_panel.js?v=pds1"></script>
     <!-- Per-user brand logo overlay -->
     <script type="module" src="./components/logo_overlay.js"></script>
     <script type="module" src="./components/alert_notifications.js"></script>

@@ -1648,6 +1648,34 @@ td.day.active, span.month.active, span.year.active {
 }
 
 /*
+ * PDS warnings and emergencies (app/alerts/pds.js): a banner saying so, above
+ * the event name in the map popup and in the Active Alerts list. The colours
+ * are the polygons' own — data colour, so not themed.
+ */
+.alert_popup_pds,
+.vr-alert-pds {
+    display: inline-block;
+    margin-bottom: 4px;
+    padding: 2px 7px;
+    border-radius: var(--vx-r-1, 4px);
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    color: #fff;
+    background: rgb(255, 0, 255);
+}
+.alert_popup_pds_emergency,
+.vr-alert-pds-emergency { background: rgb(170, 60, 255); }
+/* The banner pulses with the polygon, unless motion is unwelcome. */
+@media (prefers-reduced-motion: no-preference) {
+    .alert_popup_pds,
+    .vr-alert-pds { animation: vxPdsPulse 1.1s ease-in-out infinite; }
+    .alert_popup_pds_emergency,
+    .vr-alert-pds-emergency { animation-duration: .7s; }
+}
+@keyframes vxPdsPulse { 50% { opacity: .45; } }
+
+/*
  * MRMS on-map legend. Sits above the model-overlay legend's slot so the two
  * can be on screen together and told apart at a glance — which is the whole
  * point: a national mosaic and a model forecast cover the same ground and look
