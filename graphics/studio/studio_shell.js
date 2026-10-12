@@ -577,6 +577,43 @@ function wirePreviewMeta() {
 }
 
 /*
+ * Fit the whole graphic inside the preview panel, letterboxed.
+ *
+ * The canvas used to be held only by CSS: max-width 100%, and a max-height
+ * worked out from the WINDOW (100vh minus the old single-page chrome). In the
+ * panelled layout the preview is far shorter than the window, so a 16:9
+ * frame was sized to the panel's width and its bottom ran off under the
+ * transport bar — a third of most graphics simply could not be seen. A
+ * percentage height cannot fix that from CSS (the frame around the canvas is
+ * sized by the canvas), so the display size is set here: the largest box of
+ * the output's shape that fits both the panel's width and its height.
+ *
+ * Only the DISPLAY size changes. The canvas still renders at full output
+ * resolution, and studio.js maps the pointer through getBoundingClientRect,
+ * so painting lands where it is clicked at any size.
+ */
+function wireFit() {
+  const inner = document.querySelector('.vgs-stagewrap .stage-inner');
+  const canvas = $('stage-canvas');
+  if (!inner || !canvas) return;
+  const fit = () => {
+    const cs = getComputedStyle(inner);
+    const availW = inner.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const availH = inner.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    if (!canvas.width || !canvas.height || availW <= 0 || availH <= 0) return;
+    const s = Math.min(availW / canvas.width, availH / canvas.height);
+    canvas.style.width = Math.floor(canvas.width * s) + 'px';
+    canvas.style.height = Math.floor(canvas.height * s) + 'px';
+  };
+  // The panel resizing (window, splitters, panels opened or closed, the tool
+  // belt docking above it) and the output size changing (1080p, 720p, square…).
+  new ResizeObserver(fit).observe(inner);
+  new MutationObserver(fit).observe(canvas, { attributes: true, attributeFilter: ['width', 'height'] });
+  window.addEventListener('resize', fit);
+  fit();
+}
+
+/*
  * studio.js rebuilds the project list on every template change, which wipes
  * the decorations. Watching the list is how we put them back without asking
  * studio.js to know we exist.
@@ -605,6 +642,7 @@ function boot() {
   wireActions();
   wireHint();
   wirePreviewMeta();
+  wireFit();
   watchRail();
   buildPalette();
   updateSceneCount();

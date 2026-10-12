@@ -267,6 +267,14 @@
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
   opacity: 1;
 }
+/* studio_shell.js (wireFit) sizes the canvas to fit the panel both ways; the
+   window-based caps from studio.css would only fight it. A smaller margin
+   than the old single page, since the panel is the whole of the space.
+   Pinned to the stage's edges: as a grid item with height 100% it took its
+   height from the canvas inside it, so it grew to fit the graphic and the
+   fit measured the graphic instead of the panel. */
+.vgs .vgs-stagewrap .stage-inner { position: absolute; inset: 0; width: auto; height: auto; padding: 14px; }
+.vgs .vgs-stagewrap #stage-canvas { max-width: none; max-height: none; }
 .vgs .vgs-stagewrap .canvas-frame {
   border: 1px solid #000; border-radius: 0; box-shadow: 0 2px 14px rgba(0,0,0,0.5);
 }
