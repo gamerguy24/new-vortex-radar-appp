@@ -40,7 +40,7 @@ function createBilling({ store }) {
     const configuredTiers = ['tier1', 'tier2', 'tier3'].filter((t) => PRICE_BY_TIER[t]);
 
     /*
-     * Email & text weather alerts: a subscription of its own, NOT a tier.
+     * Email weather alerts: a subscription of its own, NOT a tier.
      *
      * It sits on a separate axis from the tier ladder — somebody can hold
      * Tier Three and alerts, either one, or neither — so it is kept in its own
@@ -67,7 +67,7 @@ function createBilling({ store }) {
         console.log(`[billing] Configured tiers: ${configuredTiers.join(', ')}`);
     }
     const isAlertsConfigured = !!(stripe && (ALERTS_PRODUCT || alertsPriceId));
-    if (isAlertsConfigured) console.log('[billing] Email & text alerts subscription configured');
+    if (isAlertsConfigured) console.log('[billing] Email alerts subscription configured');
 
     // The alerts price: the explicit one, else the product's default price.
     let alertsInfo = null;          // { priceId, amount, currency, interval }
@@ -118,7 +118,7 @@ function createBilling({ store }) {
     }
 
     /*
-     * Does this user have email & text alerts? Admins always do. With no
+     * Does this user have email alerts? Admins always do. With no
      * Stripe at all (development) nothing is gated, like every other gate
      * here; with Stripe set up but no alerts product, nobody does.
      */
@@ -279,7 +279,7 @@ function createBilling({ store }) {
                         stripeCustomerId: data.customer,
                         ...(sub ? alertsFields(sub) : { alertsSubscriptionId: subscriptionId, alertsStatus: 'active' }),
                     });
-                    console.log(`[billing] user ${userId} subscribed to email & text alerts`);
+                    console.log(`[billing] user ${userId} subscribed to email alerts`);
                     return;
                 }
                 const status = (sub && sub.status) || 'active';
@@ -346,7 +346,7 @@ function createBilling({ store }) {
         });
 
         /*
-         * Email & text alerts: the price to show, and a checkout for it. Kept
+         * Email alerts: the price to show, and a checkout for it. Kept
          * apart from /checkout so a tier purchase can never be mistaken for
          * this one or the other way round.
          */
@@ -364,8 +364,8 @@ function createBilling({ store }) {
         router.post('/alerts/checkout', async (req, res) => {
             if (!req.user) return res.status(401).json({ error: 'Sign in first' });
             const info = await getAlertsPrice();
-            if (!info) return res.status(503).json({ error: 'Email & text alerts are not on sale yet.' });
-            if (hasAlerts(req.user)) return res.status(400).json({ error: 'You already have email & text alerts.' });
+            if (!info) return res.status(503).json({ error: 'Email alerts are not on sale yet.' });
+            if (hasAlerts(req.user)) return res.status(400).json({ error: 'You already have email alerts.' });
             try {
                 const origin = `${req.protocol}://${req.get('host')}`;
                 const user = req.user;

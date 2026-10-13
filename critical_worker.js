@@ -154,13 +154,13 @@ function attachCriticalWorker(ctx) {
                 const prefs = getPrefs(userId) || {};
                 const locs = locationsByUser[userId] || [];
                 const quiet = !critical && inQuietHours(prefs, new Date());
-                // Places newly inside this alert, for ONE email/text naming them all.
+                // Places newly inside this alert, for ONE email naming them all.
                 const fresh = [];
 
                 for (const loc of locs) {
                     if (!loc || loc.enabled === false) continue;
                     if (loc.lat == null || loc.lon == null) continue;
-                    // Push is chosen per place; email and text per person.
+                    // Push is chosen per place; email per person.
                     const wantsPush = canPush && loc.methods && loc.methods.push === true;
                     if (!wantsPush && !canMsg) continue;
                     // A location may list its own subset of events.
@@ -196,9 +196,8 @@ function attachCriticalWorker(ctx) {
                 if (fresh.length) {
                     messaging.deliver(userId, { alert: feature, locations: fresh, priority: row.priority, routing })
                         .then((out) => {
-                            if (out.email || out.sms) {
-                                console.log(`[CRIT] ${p.event} -> ${fresh.map((l) => l.name).join(', ')}`
-                                    + ` (${[out.email && 'email', out.sms && 'text'].filter(Boolean).join(' + ')})`);
+                            if (out.email) {
+                                console.log(`[CRIT] ${p.event} -> ${fresh.map((l) => l.name).join(', ')} (email)`);
                             }
                         }).catch(() => {});
                     notified++;

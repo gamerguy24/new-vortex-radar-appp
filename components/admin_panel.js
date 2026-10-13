@@ -184,11 +184,10 @@ export function createAdminPanelHTML() {
                 </div>
             </div>
             <div class="admin-panel-pending">
-                <h4><i class="ti ti-bell"></i> Email &amp; text alert sign-ups</h4>
+                <h4><i class="ti ti-bell"></i> Email alert subscribers</h4>
                 <div class="admin-panel-pending-row" style="flex-wrap:wrap;">
-                    <div class="who"><div class="when" id="admin-panel-signups-count">People who asked to be emailed or texted about warnings for their saved places.</div></div>
+                    <div class="who"><div class="when" id="admin-panel-signups-count">Subscribers who get warnings for their saved places by email.</div></div>
                     <button id="admin-panel-signups-emails">Copy all emails</button>
-                    <button id="admin-panel-signups-phones">Copy all numbers</button>
                     <button id="admin-panel-signups-csv">Download CSV</button>
                 </div>
                 <div id="admin-panel-signups-list">
@@ -720,15 +719,10 @@ export function initAdminPanel(root) {
         }
     });
 
-    // --- Email & text alert sign-ups -----------------------------------------
-    // Subscribers with a confirmed email or number; warnings go to them
-    // automatically. A STOP reply removes the number on its own; Remove is for
-    // anyone who asks some other way, and drops their consent with the number.
+    // --- Email alert sign-ups ------------------------------------------------
+    // Subscribers with a confirmed address; warnings are emailed to them
+    // automatically. Remove is for anyone who asks to come off the list.
     let signups = [];
-    const prettyPhone = (e164) => {
-        const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164 || '');
-        return m ? `(${m[1]}) ${m[2]}-${m[3]}` : (e164 || '');
-    };
 
     async function loadSignups() {
         const list = $('#admin-panel-signups-list');
@@ -745,11 +739,9 @@ export function initAdminPanel(root) {
 
     function renderSignups() {
         const list = $('#admin-panel-signups-list');
-        const emails = signups.filter((r) => r.email).length;
-        const phones = signups.filter((r) => r.sms).length;
         $('#admin-panel-signups-count').textContent = signups.length
-            ? `${emails} email${emails === 1 ? '' : 's'} · ${phones} number${phones === 1 ? '' : 's'}`
-            : 'People who asked to be emailed or texted about warnings for their saved places.';
+            ? `${signups.length} address${signups.length === 1 ? '' : 'es'}`
+            : 'Subscribers who get warnings for their saved places by email.';
         if (!signups.length) {
             list.innerHTML = '<div class="admin-panel-pending-empty">No one has signed up yet.</div>';
             return;
@@ -764,12 +756,10 @@ export function initAdminPanel(root) {
             row.innerHTML = `
                 <div class="who">
                     <div class="email">${escapeHtml(r.account || r.userId)}${r.subscribed ? '' : ' <span style="color:var(--vx-warn);font-size:.82em;">● subscription lapsed — not being sent</span>'}</div>
-                    ${r.email ? `<div class="when">Email: <b style="color:var(--vx-text);">${escapeHtml(r.email.value)}</b> · since ${fmtDate(r.email.at)}</div>` : ''}
-                    ${r.sms ? `<div class="when">Text: <b style="color:var(--vx-text);">${escapeHtml(prettyPhone(r.sms.value))}</b> · consented ${fmtDate(r.sms.consentAt)}</div>` : ''}
+                    <div class="when">Email: <b style="color:var(--vx-text);">${escapeHtml(r.email.value)}</b> · since ${fmtDate(r.email.at)}</div>
                     <div class="when">Places: ${places}</div>
                 </div>
-                ${r.email ? `<button data-signup-remove="email" data-id="${escapeHtml(r.userId)}" data-label="${escapeHtml(r.email.value)}">Remove email</button>` : ''}
-                ${r.sms ? `<button data-signup-remove="sms" data-id="${escapeHtml(r.userId)}" data-label="${escapeHtml(prettyPhone(r.sms.value))}">Remove number</button>` : ''}
+                <button data-signup-remove data-id="${escapeHtml(r.userId)}" data-label="${escapeHtml(r.email.value)}">Remove</button>
             `;
             list.appendChild(row);
         });
@@ -778,39 +768,34 @@ export function initAdminPanel(root) {
     $('#admin-panel-signups-list').addEventListener('click', async (e) => {
         const btn = e.target.closest('button[data-signup-remove]');
         if (!btn) return;
-        const kind = btn.dataset.signupRemove;
-        if (!confirm(`Remove ${btn.dataset.label} from the alert list?`)) return;
+        if (!confirm(`Remove ${btn.dataset.label} from email alerts?`)) return;
         btn.disabled = true;
         try {
-            await api('DELETE', `/admin/critical/signups/${encodeURIComponent(btn.dataset.id)}/${kind}`);
+            await api('DELETE', `/admin/critical/signups/${encodeURIComponent(btn.dataset.id)}`);
             flash(`Removed ${btn.dataset.label}.`, 'success');
             loadSignups();
         } catch (err) { btn.disabled = false; flash(err.message, 'error'); }
     });
 
-    async function copyList(values, noun) {
-        if (!values.length) { flash(`No ${noun} to copy.`, 'error'); return; }
+    $('#admin-panel-signups-emails').addEventListener('click', async () => {
+        const values = signups.map((r) => r.email.value);
+        if (!values.length) { flash('No emails to copy.', 'error'); return; }
         try {
             await navigator.clipboard.writeText(values.join(', '));
-            flash(`Copied ${values.length} ${noun}.`, 'success');
-        } catch (err) { prompt(`Copy these ${noun}:`, values.join(', ')); }
-    }
-    $('#admin-panel-signups-emails').addEventListener('click', () =>
-        copyList(signups.filter((r) => r.email).map((r) => r.email.value), 'emails'));
-    $('#admin-panel-signups-phones').addEventListener('click', () =>
-        copyList(signups.filter((r) => r.sms).map((r) => r.sms.value), 'numbers'));
+            flash(`Copied ${values.length} emails.`, 'success');
+        } catch (err) { prompt('Copy these emails:', values.join(', ')); }
+    });
     $('#admin-panel-signups-csv').addEventListener('click', () => {
         if (!signups.length) { flash('No sign-ups to export.', 'error'); return; }
         const cell = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-        const lines = [['Account', 'Email', 'Email since', 'Phone', 'Text consent', 'Places'].map(cell).join(',')];
+        const lines = [['Account', 'Email', 'Since', 'Subscribed', 'Places'].map(cell).join(',')];
         signups.forEach((r) => lines.push([
-            r.account, r.email && r.email.value, r.email && r.email.at,
-            r.sms && r.sms.value, r.sms && r.sms.consentAt,
+            r.account, r.email.value, r.email.at, r.subscribed ? 'yes' : 'no',
             r.places.map((p) => p.name + (p.where ? ` (${p.where})` : '')).join('; '),
         ].map(cell).join(',')));
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv' }));
-        a.download = `alert-signups-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = `email-alerts-${new Date().toISOString().slice(0, 10)}.csv`;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     });

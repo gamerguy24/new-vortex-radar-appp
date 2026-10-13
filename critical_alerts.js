@@ -17,8 +17,8 @@
  *    channels (email, text gateway, Discord, Telegram, ntfy), history and the
  *    admin dashboard.
  *
- * ── EMAIL + TEXT (critical_messaging.js): paid (the Email & Text Alerts
- *    subscription in billing.js); texts via Twilio, email via SMTP.
+ * ── EMAIL (critical_messaging.js): paid (the Email Alerts subscription in
+ *    billing.js), sent through the server's own SMTP.
  *
  * Attached from server.js: attachCriticalAlerts({ app, requireAuth, requireAdmin,
  *   DATA_DIR, readJson, writeJson, getUser, hasAlerts, sendMail, mailReady }).
@@ -329,8 +329,8 @@ function attachCriticalAlerts({
     }
 
     /*
-     * Email and text (paid). Also separately non-fatal: with no Twilio or
-     * SMTP those channels report themselves unavailable, never that push stops.
+     * Email (paid). Also separately non-fatal: with no SMTP the channel
+     * reports itself unavailable, never that push stops.
      */
     let messaging = null;
     try {
@@ -341,7 +341,7 @@ function attachCriticalAlerts({
             getUser, hasAlerts, sendMail, mailReady,
         });
     } catch (e) {
-        console.error('[CRITICAL] email/text alerts unavailable: ' + e.message);
+        console.error('[CRITICAL] email alerts unavailable: ' + e.message);
     }
 
     let worker = null;

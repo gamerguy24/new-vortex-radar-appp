@@ -24,7 +24,7 @@ const CHANGELOG = [
     {
         date: 'October 13, 2026',
         items: [
-            { title: 'Warnings by email and text', desc: 'Alert Notifications can now reach you by email and by text message as well as by browser notification, with the new Email & Text Alerts subscription. Open Alert Notifications from the menu, press Subscribe, then enter your email address or US mobile number and type in the six-digit code we send to confirm it. For texts you also tick a box agreeing to receive them, and you can reply STOP at any time. Warnings are matched to the exact warning shape, not the whole county. If your Home and Work are both inside one warning, you get one message that names both. Emails include the National Weather Service’s full description and safety instructions. Texts are kept for the most dangerous warnings, such as tornado and flash flood warnings. Each channel has a test button, and you can turn either one off or manage your subscription from the same place.' },
+            { title: 'Warnings by email', desc: 'Alert Notifications can now email you as well as send browser notifications, with the new Email Alerts subscription. Open Alert Notifications from the menu, press Subscribe, then enter your email address and type in the six-digit code we send to confirm it. Warnings are matched to the exact warning shape, not the whole county. If your Home and Work are both inside one warning, you get one email that names both, with the National Weather Service’s full description and safety instructions. There is a test button, and you can turn email alerts off or manage your subscription from the same place.' },
         ],
     },
     {
