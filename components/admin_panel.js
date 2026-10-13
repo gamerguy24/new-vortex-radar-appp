@@ -721,9 +721,9 @@ export function initAdminPanel(root) {
     });
 
     // --- Email & text alert sign-ups -----------------------------------------
-    // Nothing is sent automatically: this is the list the admin texts and
-    // emails by hand. Remove is for anyone who replies STOP or asks to be
-    // taken off; it drops their consent with the number.
+    // Subscribers with a confirmed email or number; warnings go to them
+    // automatically. A STOP reply removes the number on its own; Remove is for
+    // anyone who asks some other way, and drops their consent with the number.
     let signups = [];
     const prettyPhone = (e164) => {
         const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164 || '');
@@ -763,7 +763,7 @@ export function initAdminPanel(root) {
                 : '<span style="color:var(--vx-warn);">No saved places yet</span>';
             row.innerHTML = `
                 <div class="who">
-                    <div class="email">${escapeHtml(r.account || r.userId)}</div>
+                    <div class="email">${escapeHtml(r.account || r.userId)}${r.subscribed ? '' : ' <span style="color:var(--vx-warn);font-size:.82em;">● subscription lapsed — not being sent</span>'}</div>
                     ${r.email ? `<div class="when">Email: <b style="color:var(--vx-text);">${escapeHtml(r.email.value)}</b> · since ${fmtDate(r.email.at)}</div>` : ''}
                     ${r.sms ? `<div class="when">Text: <b style="color:var(--vx-text);">${escapeHtml(prettyPhone(r.sms.value))}</b> · consented ${fmtDate(r.sms.consentAt)}</div>` : ''}
                     <div class="when">Places: ${places}</div>

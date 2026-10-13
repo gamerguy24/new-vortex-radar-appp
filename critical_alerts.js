@@ -17,8 +17,12 @@
  *    channels (email, text gateway, Discord, Telegram, ntfy), history and the
  *    admin dashboard.
  *
+ * ── EMAIL + TEXT (critical_messaging.js): paid (the Email & Text Alerts
+ *    subscription in billing.js); texts via Twilio, email via SMTP.
+ *
  * Attached from server.js: attachCriticalAlerts({ app, requireAuth, requireAdmin,
- *   DATA_DIR, readJson, writeJson }). Guarded so it never breaks boot.
+ *   DATA_DIR, readJson, writeJson, getUser, hasAlerts, sendMail, mailReady }).
+ *   Guarded so it never breaks boot.
  */
 
 const path = require('path');
@@ -71,7 +75,10 @@ const clampStr = (v, n) => String(v == null ? '' : v).slice(0, n).trim();
 const numOrNull = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 const uid = () => 'crit-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
 
-function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson }) {
+function attachCriticalAlerts({
+    app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson,
+    getUser, hasAlerts, sendMail, mailReady,
+}) {
     const LOC_FILE = path.join(DATA_DIR, 'crit_locations.json');    // userId -> [location]
     const PREFS_FILE = path.join(DATA_DIR, 'crit_prefs.json');      // userId -> prefs
     const CONFIG_FILE = path.join(DATA_DIR, 'crit_config.json');    // admin config
@@ -322,23 +329,26 @@ function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJs
     }
 
     /*
-     * Email and text sign-ups. The admin contacts these people by hand, so
-     * this only keeps the list; it sends nothing.
+     * Email and text (paid). Also separately non-fatal: with no Twilio or
+     * SMTP those channels report themselves unavailable, never that push stops.
      */
+    let messaging = null;
     try {
-        require('./critical_signups').attachCriticalSignups({
+        messaging = require('./critical_messaging').attachCriticalMessaging({
             app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson,
             getLocations: () => locations,
+            getPrefs: (id) => prefs[id],
+            getUser, hasAlerts, sendMail, mailReady,
         });
     } catch (e) {
-        console.error('[CRITICAL] email/text sign-ups unavailable: ' + e.message);
+        console.error('[CRITICAL] email/text alerts unavailable: ' + e.message);
     }
 
     let worker = null;
-    if (push) {
+    if (push || messaging) {
         try {
             worker = require('./critical_worker').attachCriticalWorker({
-                DATA_DIR, readJson, writeJson, push,
+                DATA_DIR, readJson, writeJson, push, messaging,
                 getLocations: () => locations,
                 getPrefs: (id) => prefs[id],
                 getConfig: () => config,

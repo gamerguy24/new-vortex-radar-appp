@@ -22,6 +22,12 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'October 13, 2026',
+        items: [
+            { title: 'Warnings by email and text', desc: 'Alert Notifications can now reach you by email and by text message as well as by browser notification, with the new Email & Text Alerts subscription. Open Alert Notifications from the menu, press Subscribe, then enter your email address or US mobile number and type in the six-digit code we send to confirm it. For texts you also tick a box agreeing to receive them, and you can reply STOP at any time. Warnings are matched to the exact warning shape, not the whole county. If your Home and Work are both inside one warning, you get one message that names both. Emails include the National Weather Service’s full description and safety instructions. Texts are kept for the most dangerous warnings, such as tornado and flash flood warnings. Each channel has a test button, and you can turn either one off or manage your subscription from the same place.' },
+        ],
+    },
+    {
         date: 'October 12, 2026',
         items: [
             { title: 'Satellite bands without the watermarks', desc: 'Infrared bands 7 through 16 kept coming up with "RealEarth by SSEC… Size limit exceeded" or "Pixel volume exceeded" printed across the map. That was the old imagery service rationing its free use: pictures wider than 1024 pixels, and more than a set amount of imagery a day, got stamped. The bands now come straight from NOAA’s own GOES-19 data, which has no such limits. Echo Radar draws each scan once on its own server and every viewer shares it, so there is nothing left to run out of. The whole sector loads at once, so panning and zooming no longer fetch anything, and the loop still runs two hours at five-minute steps.' },

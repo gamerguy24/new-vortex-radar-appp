@@ -28,13 +28,6 @@
 
 const API = '/api/critical';
 
-/*
- * Email and text sign-up is built (server, admin list and all) but not open
- * yet. While this is true the section says "Coming soon" instead of showing
- * the forms; set it to false to open sign-ups.
- */
-const CONTACT_COMING_SOON = true;
-
 const $ = (id) => document.getElementById(id);
 
 async function j(url, opts) {
@@ -351,38 +344,25 @@ async function openDialog() {
     }
 
     /*
-     * Email and text sign-up.
+     * Email and text alerts (paid).
      *
-     * Signing up adds you to a list the admin works from by hand when a
-     * warning covers one of your places — nothing is sent automatically, and
-     * the wording says so. A number also needs the consent box ticked, which
-     * the server checks too.
+     * Four states, decided by the server: not available on this server yet
+     * ("Coming soon"), available but not subscribed (price + Subscribe, which
+     * goes to Stripe checkout), subscribed (sign up each channel), and signed
+     * up. Signing up is a two-step — send a code, type it back — and nothing
+     * turns on until the code matches; texts also need the consent box. The
+     * server enforces all of it; this only walks through it.
      */
-    function channelHtml(kind, current, accountEmail) {
-        const isSms = kind === 'sms';
-        const title = isSms ? 'Text messages' : 'Email';
-        if (current) {
-            return `<div class="vr-al-ch"><b>${title}</b>
-                <div class="vr-al-on">✓ Signed up — ${escapeHtml(isSms ? prettyPhone(current.value) : current.value)}</div>
-                <div class="vr-al-actions">
-                  <button data-act="off" data-kind="${kind}">Stop</button>
-                </div></div>`;
-        }
-        return `<div class="vr-al-ch"><b>${title}</b>
-            <div class="vr-al-note">${isSms
-                ? 'Get a text when a dangerous warning covers one of your places.'
-                : 'Get an email when a warning covers one of your places.'}</div>
-            <div class="vr-al-add">
-              <input id="vr-al-${kind}-val" type="${isSms ? 'tel' : 'email'}" maxlength="${isSms ? 20 : 200}"
-                placeholder="${isSms ? 'Mobile number (US)' : 'you@example.com'}"
-                value="${isSms ? '' : escapeHtml(accountEmail || '')}" />
-              <button data-act="on" data-kind="${kind}">Sign up</button>
-            </div>
-            ${isSms ? `<label class="vr-al-consent"><input type="checkbox" id="vr-al-sms-consent" />
-              <span>I agree to receive weather warning text messages from Echo Radar at this number.
-              Message frequency varies with the weather. Msg &amp; data rates may apply.
-              Reply STOP to opt out.</span></label>` : ''}
-          </div>`;
+    const awaiting = { email: false, sms: false };    // a code has been sent
+    const typed = { email: null, sms: null };          // survives a re-render
+    let consented = false;
+
+    function money(price) {
+        if (!price || price.amount == null) return '';
+        const amt = (price.amount / 100).toLocaleString(undefined, {
+            style: 'currency', currency: (price.currency || 'usd').toUpperCase(),
+        });
+        return price.interval ? `${amt}/${price.interval}` : amt;
     }
 
     function prettyPhone(e164) {
@@ -390,18 +370,70 @@ async function openDialog() {
         return m ? `(${m[1]}) ${m[2]}-${m[3]}` : (e164 || '');
     }
 
+    function channelHtml(kind, current, available, accountEmail) {
+        const isSms = kind === 'sms';
+        const title = isSms ? 'Text messages' : 'Email';
+        if (!available) {
+            return `<div class="vr-al-ch"><b>${title}<span class="vr-al-soon">Coming soon</span></b></div>`;
+        }
+        if (current) {
+            return `<div class="vr-al-ch"><b>${title}</b>
+                <div class="vr-al-on">✓ On — ${escapeHtml(isSms ? prettyPhone(current.value) : current.value)}</div>
+                <div class="vr-al-actions">
+                  <button data-act="test" data-kind="${kind}">Send a test</button>
+                  <button data-act="off" data-kind="${kind}">Turn off</button>
+                </div></div>`;
+        }
+        const value = typed[kind] != null ? typed[kind] : (isSms ? '' : (accountEmail || ''));
+        return `<div class="vr-al-ch"><b>${title}</b>
+            <div class="vr-al-note">${isSms
+                ? 'A text when one of the most dangerous warnings covers one of your places.'
+                : 'An email when a warning covers one of your places, with the full National Weather Service text.'}</div>
+            <div class="vr-al-add">
+              <input id="vr-al-${kind}-val" type="${isSms ? 'tel' : 'email'}" maxlength="${isSms ? 20 : 200}"
+                placeholder="${isSms ? 'Mobile number (US)' : 'you@example.com'}" value="${escapeHtml(value)}" />
+              <button data-act="start" data-kind="${kind}">${awaiting[kind] ? 'Resend code' : 'Send code'}</button>
+            </div>
+            ${isSms ? `<label class="vr-al-consent"><input type="checkbox" id="vr-al-sms-consent"${consented ? ' checked' : ''} />
+              <span>I agree to receive weather warning text messages from Echo Radar at this number.
+              Message frequency varies with the weather. Msg &amp; data rates may apply.
+              Reply STOP to opt out.</span></label>` : ''}
+            ${awaiting[kind] ? `<div class="vr-al-add">
+              <input id="vr-al-${kind}-code" inputmode="numeric" maxlength="6" placeholder="6-digit code" />
+              <button class="vr-al-primary" data-act="verify" data-kind="${kind}">Confirm</button>
+            </div>` : ''}
+          </div>`;
+    }
+
     async function refreshContact() {
         const host = $('vr-al-contact');
-        if (CONTACT_COMING_SOON) {
-            host.innerHTML = `<div class="vr-al-ch"><b>Email &amp; text alerts<span class="vr-al-soon">Coming soon</span></b>
-                <div class="vr-al-note">Soon you’ll be able to get an email or a text when a warning
-                covers one of your places.</div></div>`;
-            return;
-        }
         try {
-            const [mine, summary] = await Promise.all([j(`${API}/signup`), j(API).catch(() => ({}))]);
-            const accountEmail = summary && summary.preferences ? summary.preferences.email : '';
-            host.innerHTML = channelHtml('email', mine.email, accountEmail) + channelHtml('sms', mine.sms);
+            const [mine, plan, summary] = await Promise.all([
+                j(`${API}/signup`),
+                j('/api/billing/alerts').catch(() => ({})),
+                j(API).catch(() => ({})),
+            ]);
+            const avail = mine.available || {};
+            if (!avail.email && !avail.sms) {
+                host.innerHTML = `<div class="vr-al-ch"><b>Email &amp; text alerts<span class="vr-al-soon">Coming soon</span></b>
+                    <div class="vr-al-note">Soon you’ll be able to get an email or a text when a warning
+                    covers one of your places.</div></div>`;
+                return;
+            }
+            if (!mine.subscribed) {
+                const price = money(plan.price);
+                host.innerHTML = plan.configured
+                    ? `<div class="vr-al-ch"><b>Email &amp; text alerts${price ? ` — ${escapeHtml(price)}` : ''}</b>
+                        <div class="vr-al-note">Get an email or a text the moment a warning covers one of your
+                        places, matched to the exact warning shape. Cancel any time.</div>
+                        <div class="vr-al-actions"><button class="vr-al-primary" data-act="subscribe">Subscribe</button></div></div>`
+                    : `<div class="vr-al-ch"><b>Email &amp; text alerts<span class="vr-al-soon">Coming soon</span></b></div>`;
+            } else {
+                const accountEmail = summary && summary.preferences ? summary.preferences.email : '';
+                host.innerHTML = channelHtml('email', mine.email, avail.email, accountEmail)
+                    + channelHtml('sms', mine.sms, avail.sms)
+                    + (plan.canManage ? `<div class="vr-al-actions"><button data-act="manage">Manage subscription</button></div>` : '');
+            }
             host.querySelectorAll('button[data-act]').forEach((b) => {
                 b.onclick = () => contactAction(b.dataset.act, b.dataset.kind, b);
             });
@@ -411,20 +443,42 @@ async function openDialog() {
     }
 
     async function contactAction(act, kind, btn) {
+        const post = (url, body) => j(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body || {}),
+        });
         btn.disabled = true;
         try {
-            if (act === 'on') {
+            if (act === 'subscribe' || act === 'manage') {
+                msg('Opening checkout…');
+                const out = await post(act === 'subscribe' ? '/api/billing/alerts/checkout' : '/api/billing/portal');
+                if (out && out.url) { window.location.href = out.url; return; }
+                throw new Error('Could not open Stripe.');
+            } else if (act === 'start') {
                 const value = ($(`vr-al-${kind}-val`) || {}).value || '';
                 const consent = kind === 'sms' ? !!($('vr-al-sms-consent') || {}).checked : undefined;
-                await j(`${API}/signup`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ kind, value, consent }),
-                });
-                msg(kind === 'sms' ? 'You’re signed up for text alerts.' : 'You’re signed up for email alerts.', 'ok');
-            } else {
+                typed[kind] = value;
+                if (kind === 'sms') consented = consent;
+                msg('Sending a code…');
+                const out = await post(`${API}/signup`, { kind, value, consent });
+                awaiting[kind] = true;
+                msg(`Code sent to ${out.sentTo}. It expires in 10 minutes.`, 'ok');
+            } else if (act === 'verify') {
+                const code = ($(`vr-al-${kind}-code`) || {}).value || '';
+                await post(`${API}/signup/verify`, { kind, code });
+                awaiting[kind] = false;
+                typed[kind] = null;
+                msg(kind === 'sms' ? 'Text alerts are on.' : 'Email alerts are on.', 'ok');
+            } else if (act === 'test') {
+                msg('Sending…');
+                await post(`${API}/signup/test`, { kind });
+                msg(kind === 'sms' ? 'Test text sent.' : 'Test email sent — check spam if it is not there.', 'ok');
+                btn.disabled = false;
+                return;
+            } else if (act === 'off') {
                 await j(`${API}/signup/${kind}`, { method: 'DELETE' });
-                msg(kind === 'sms' ? 'Text alerts stopped.' : 'Email alerts stopped.', 'ok');
+                msg(kind === 'sms' ? 'Text alerts are off.' : 'Email alerts are off.', 'ok');
             }
         } catch (e) {
             msg(e.message, 'warn');
