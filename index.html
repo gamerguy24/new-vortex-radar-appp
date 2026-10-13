@@ -1648,8 +1648,13 @@
         function currentAlertIds() {
             const d = window.vortexData && window.vortexData.alerts_data;
             const feats = d && d.features ? d.features : [];
+            // alerts_data is the raw NWS feed (the 15s updater overwrites it), so
+            // apply the same filter the map and Active Alerts list use — the pill
+            // must only count alerts the user has chosen to see.
+            const passes = typeof window.vortexAlertFilter === 'function' ? window.vortexAlertFilter : null;
             const ids = new Set();
             for (const f of feats) {
+                if (passes) { try { if (!passes(f)) continue; } catch (e) { /* count it */ } }
                 // NWS alerts carry a stable id on the feature (and properties.id);
                 // using a Set also collapses the border/outline duplicate features.
                 const id = (f && (f.id || (f.properties && (f.properties.id || f.properties.identifier))));
@@ -1675,8 +1680,7 @@
                     if (hasNew) flashAlertPill();
                     _seenAlertIds = ids;
                 }
-                const n = ids.size || (d.features ? d.features.length : (d.length || null));
-                $('#vortexAlertCount').text(n != null ? ' ' + n : '');
+                $('#vortexAlertCount').text(' ' + ids.size);
             }
         }
         observe('#alertMenuItemIcon', syncAlerts);
