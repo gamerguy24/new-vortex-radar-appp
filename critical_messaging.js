@@ -81,7 +81,7 @@ function emailMessage(alert, locations) {
 
 function attachCriticalMessaging({
     app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson,
-    getLocations, getPrefs, getUser, hasAlerts, sendMail, mailReady,
+    getLocations, getPrefs, getUser, hasAlerts, sendMail, mailReady, mailError,
 }) {
     const FILE = path.join(DATA_DIR, 'crit_signups.json');
     // userId -> { account, email: { value, at } | null }. Only confirmed addresses.
@@ -111,8 +111,9 @@ function attachCriticalMessaging({
     async function sendEmail(to, subject, text) {
         if (!available()) return { ok: false, error: 'Email is not set up on this server.' };
         if (await sendMail({ to, subject, text })) { count(); return { ok: true }; }
-        lastError = { at: Date.now(), error: 'SMTP send failed (see server log)' };
-        return { ok: false, error: 'The email could not be sent.' };
+        const detail = (mailError && mailError()) || 'SMTP send failed (see server log)';
+        lastError = { at: Date.now(), error: detail };
+        return { ok: false, error: 'The email could not be sent.', detail };
     }
 
     // ── delivery, called by the poller ───────────────────────────────────────
@@ -139,6 +140,16 @@ function attachCriticalMessaging({
         const m = emailMessage(alert, locations);
         out.email = (await sendEmail(to.value, m.subject, m.text)).ok;
         return out;
+    }
+
+    /*
+     * The message for a failed send. 500, not 502: Cloudflare replaces a 502
+     * from the origin with its own page, so the browser only ever saw
+     * "HTTP 502". An admin also gets the mail server's own reason, which is
+     * what actually says how to fix it.
+     */
+    function failure(req, out) {
+        return req.user && req.user.isAdmin && out.detail ? `${out.error} (${out.detail})` : out.error;
     }
 
     // ── sign-up, with a confirmation code ────────────────────────────────────
@@ -177,7 +188,7 @@ function attachCriticalMessaging({
             + 'It expires in 10 minutes.\n\nIf you did not ask for this, ignore this email.\n');
         if (!sent.ok) {
             pending.delete(req.user.id);
-            return res.status(502).json({ error: sent.error });
+            return res.status(500).json({ error: failure(req, sent) });
         }
         res.json({ ok: true, sentTo: value });
     });
@@ -207,7 +218,7 @@ function attachCriticalMessaging({
         if (!to) return res.status(400).json({ error: 'Email alerts are not turned on yet.' });
         const out = await sendEmail(to.value, `${APP_NAME} — test alert`,
             'Email weather warnings are on. Real warnings will arrive at this address.\n');
-        if (!out.ok) return res.status(502).json({ error: out.error });
+        if (!out.ok) return res.status(500).json({ error: failure(req, out) });
         res.json({ ok: true });
     });
 

@@ -216,6 +216,10 @@ function getMailTransport() {
  * surface this to an unauthenticated user, since it reveals whether an address
  * is registered.
  */
+// Why the last send failed, as the mail server put it. Shown to admins only.
+let lastMailError = null;
+const mailError = () => lastMailError;
+
 async function sendMail({ to, subject, text }) {
     const transport = getMailTransport();
     if (!transport) return false;
@@ -223,7 +227,8 @@ async function sendMail({ to, subject, text }) {
         await transport.sendMail({ from: MAIL_FROM, to, subject, text });
         return true;
     } catch (err) {
-        console.error(`[mail] failed to send to ${to}:`, err && err.message ? err.message : err);
+        lastMailError = err && err.message ? err.message : String(err);
+        console.error(`[mail] failed to send to ${to}:`, lastMailError);
         return false;
     }
 }
@@ -2443,7 +2448,7 @@ try {
 try {
     require('./critical_alerts').attachCriticalAlerts({
         app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson,
-        getUser: findById, hasAlerts: billing.hasAlerts, sendMail, mailReady,
+        getUser: findById, hasAlerts: billing.hasAlerts, sendMail, mailReady, mailError,
     });
 } catch (e) {
     console.error('[CRITICAL] failed to attach (feature disabled):', e.message);

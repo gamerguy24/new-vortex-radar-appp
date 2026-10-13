@@ -77,7 +77,7 @@ const uid = () => 'crit-' + Date.now().toString(36) + '-' + Math.random().toStri
 
 function attachCriticalAlerts({
     app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson,
-    getUser, hasAlerts, sendMail, mailReady,
+    getUser, hasAlerts, sendMail, mailReady, mailError,
 }) {
     const LOC_FILE = path.join(DATA_DIR, 'crit_locations.json');    // userId -> [location]
     const PREFS_FILE = path.join(DATA_DIR, 'crit_prefs.json');      // userId -> prefs
@@ -338,7 +338,7 @@ function attachCriticalAlerts({
             app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson,
             getLocations: () => locations,
             getPrefs: (id) => prefs[id],
-            getUser, hasAlerts, sendMail, mailReady,
+            getUser, hasAlerts, sendMail, mailReady, mailError,
         });
     } catch (e) {
         console.error('[CRITICAL] email alerts unavailable: ' + e.message);
