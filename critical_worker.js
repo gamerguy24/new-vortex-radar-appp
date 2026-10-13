@@ -83,7 +83,7 @@ function inQuietHours(prefs, now) {
 
 function attachCriticalWorker(ctx) {
     const {
-        DATA_DIR, readJson, writeJson, push,
+        DATA_DIR, readJson, writeJson, push, messaging,
         getLocations, getPrefs, getConfig, userAgent,
     } = ctx;
 
@@ -144,15 +144,25 @@ function attachCriticalWorker(ctx) {
             const expires = Date.parse(p.expires || p.ends || '') || (started + 60 * 60 * 1000);
             if (expires < started) continue;                    // already over
 
+            const critical = isLifeThreatening(row.priority, p.event);
+            const routing = ((getConfig() || {}).routing || {})[row.priority] || {};
+
             for (const userId of userIds) {
-                if (!push.hasSubscribers(userId)) continue;     // nothing to send to
+                const canPush = !!(push && push.hasSubscribers(userId));
+                const canMsg = !!(messaging && messaging.reachable(userId));
+                if (!canPush && !canMsg) continue;              // nothing to send to
                 const prefs = getPrefs(userId) || {};
                 const locs = locationsByUser[userId] || [];
+                const quiet = !critical && inQuietHours(prefs, new Date());
+                // Places newly inside this alert, for ONE email/text naming them all.
+                const fresh = [];
 
                 for (const loc of locs) {
                     if (!loc || loc.enabled === false) continue;
                     if (loc.lat == null || loc.lon == null) continue;
-                    if (!loc.methods || loc.methods.push !== true) continue;
+                    // Push is chosen per place; email and text per person.
+                    const wantsPush = canPush && loc.methods && loc.methods.push === true;
+                    if (!wantsPush && !canMsg) continue;
                     // A location may list its own subset of events.
                     if (Array.isArray(loc.alertTypes) && loc.alertTypes.length
                         && loc.alertTypes.indexOf(p.event) === -1) continue;
@@ -169,16 +179,28 @@ function attachCriticalWorker(ctx) {
                     sent[key] = expires;
 
                     if (!primed) continue;                      // first pass only records
+                    if (quiet) continue;
 
-                    const critical = isLifeThreatening(row.priority, p.event);
-                    if (!critical && inQuietHours(prefs, new Date())) continue;
+                    if (wantsPush) {
+                        const note = push.alertNotification(feature, loc);
+                        push.sendToUser(userId, note).then((out) => {
+                            if (out.sent) {
+                                console.log(`[CRIT] ${p.event} -> ${loc.name} (${out.sent} device(s))`);
+                            }
+                        }).catch(() => {});
+                        notified++;
+                    }
+                    if (canMsg) fresh.push(loc);
+                }
 
-                    const note = push.alertNotification(feature, loc);
-                    push.sendToUser(userId, note).then((out) => {
-                        if (out.sent) {
-                            console.log(`[CRIT] ${p.event} -> ${loc.name} (${out.sent} device(s))`);
-                        }
-                    }).catch(() => {});
+                if (fresh.length) {
+                    messaging.deliver(userId, { alert: feature, locations: fresh, priority: row.priority, routing })
+                        .then((out) => {
+                            if (out.email || out.sms) {
+                                console.log(`[CRIT] ${p.event} -> ${fresh.map((l) => l.name).join(', ')}`
+                                    + ` (${[out.email && 'email', out.sms && 'text'].filter(Boolean).join(' + ')})`);
+                            }
+                        }).catch(() => {});
                     notified++;
                 }
             }

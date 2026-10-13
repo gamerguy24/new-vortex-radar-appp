@@ -204,6 +204,17 @@ function injectStyles() {
         ".vr-al-msg{margin-top:10px;font-size:12.5px;min-height:17px;color:#a8bace}",
         ".vr-al-msg.ok{color:#7ce8a8}",
         ".vr-al-msg.warn{color:var(--vx-accent,#e8862b)}",
+        ".vr-al-contact{display:flex;flex-direction:column;gap:12px}",
+        ".vr-al-ch{padding:10px 11px;background:rgba(255,255,255,.04);",
+        "  border:1px solid rgba(255,255,255,.08);border-radius:var(--vx-r-2,6px)}",
+        ".vr-al-ch>b{display:block;font-size:13.5px;margin-bottom:2px}",
+        ".vr-al-ch .vr-al-add{margin-top:8px}",
+        ".vr-al-ch .vr-al-actions{margin:8px 0 0}",
+        ".vr-al-note{font-size:12px;line-height:1.5;color:#a8bace}",
+        ".vr-al-on{font-size:12.5px;color:#7ce8a8}",
+        ".vr-al-consent{display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:12px;",
+        "  line-height:1.45;color:#a8bace;cursor:pointer}",
+        ".vr-al-consent input{margin-top:2px;flex:0 0 auto}",
     ].join('');
     document.head.appendChild(el);
 }
@@ -266,6 +277,9 @@ async function openDialog() {
             <input id="vr-al-addr" placeholder="Address, city or ZIP" maxlength="160" />
             <button id="vr-al-save">Add</button>
           </div>
+
+          <div class="vr-al-sub">Email &amp; text</div>
+          <div id="vr-al-contact" class="vr-al-contact">Loading…</div>
           <div class="vr-al-msg" id="vr-al-msg"></div>
         </div>
       </div>`;
@@ -326,6 +340,117 @@ async function openDialog() {
         }
     }
 
+    /*
+     * Email and text sign-up.
+     *
+     * Each is a two-step: send a code to the address, type the code back.
+     * Nothing turns on until the code matches, so nobody can sign a stranger
+     * up — the server enforces that, this just walks through it. Texts also
+     * need the consent box ticked, which the server checks too.
+     */
+    const awaiting = { email: false, sms: false };    // a code has been sent
+    const typed = { email: null, sms: null };          // survives a re-render
+    let consented = false;
+
+    function channelHtml(kind, prefs, available, textEvents) {
+        const isSms = kind === 'sms';
+        const title = isSms ? 'Text messages' : 'Email';
+        if (!available) {
+            return `<div class="vr-al-ch"><b>${title}</b>
+                <div class="vr-al-note">Not set up on this server yet.</div></div>`;
+        }
+        const on = isSms
+            ? prefs.phoneVerified && prefs.phoneConsentAt && prefs.methods && prefs.methods.text
+            : prefs.emailVerified && prefs.methods && prefs.methods.email;
+        const which = isSms
+            ? (textEvents && textEvents.length
+                ? `Texts are sent for: ${textEvents.join(', ')}.`
+                : 'Texts are sent for the most dangerous warnings only.')
+            : 'One email per warning, with the full National Weather Service text.';
+        if (on) {
+            const to = isSms ? prefs.phone : prefs.email;
+            return `<div class="vr-al-ch"><b>${title}</b>
+                <div class="vr-al-on">✓ On — ${escapeHtml(to)}</div>
+                <div class="vr-al-note">${escapeHtml(which)}</div>
+                <div class="vr-al-actions">
+                  <button data-act="test" data-kind="${kind}">Send a test</button>
+                  <button data-act="off" data-kind="${kind}">Turn off</button>
+                </div></div>`;
+        }
+        const value = typed[kind] != null ? typed[kind] : (isSms ? (prefs.phone || '') : (prefs.email || ''));
+        return `<div class="vr-al-ch"><b>${title}</b>
+            <div class="vr-al-note">${escapeHtml(which)}</div>
+            <div class="vr-al-add">
+              <input id="vr-al-${kind}-val" type="${isSms ? 'tel' : 'email'}" maxlength="${isSms ? 20 : 200}"
+                placeholder="${isSms ? 'Mobile number (US)' : 'you@example.com'}" value="${escapeHtml(value)}" />
+              <button data-act="start" data-kind="${kind}">${awaiting[kind] ? 'Resend code' : 'Send code'}</button>
+            </div>
+            ${isSms ? `<label class="vr-al-consent"><input type="checkbox" id="vr-al-sms-consent"${consented ? ' checked' : ''} />
+              <span>I agree to receive weather warning text messages from Echo Radar at this number.
+              Message frequency varies with the weather. Msg &amp; data rates may apply.
+              Reply STOP to opt out.</span></label>` : ''}
+            ${awaiting[kind] ? `<div class="vr-al-add">
+              <input id="vr-al-${kind}-code" inputmode="numeric" maxlength="6" placeholder="6-digit code" />
+              <button class="vr-al-primary" data-act="verify" data-kind="${kind}">Confirm</button>
+            </div>` : ''}
+          </div>`;
+    }
+
+    async function refreshContact() {
+        const host = $('vr-al-contact');
+        try {
+            const s = await j(API);
+            const prefs = s.preferences || {};
+            const avail = s.messaging || {};
+            host.innerHTML = channelHtml('email', prefs, avail.email, s.textEvents)
+                + channelHtml('sms', prefs, avail.sms, s.textEvents);
+            host.querySelectorAll('button[data-act]').forEach((b) => {
+                b.onclick = () => contactAction(b.dataset.act, b.dataset.kind, b);
+            });
+        } catch (e) {
+            host.innerHTML = `<div class="vr-al-empty">Could not load: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    async function contactAction(act, kind, btn) {
+        const post = (path, body) => j(`${API}/contact/${path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind, ...body }),
+        });
+        btn.disabled = true;
+        try {
+            if (act === 'start') {
+                const value = ($(`vr-al-${kind}-val`) || {}).value || '';
+                const consent = kind === 'sms' ? !!($('vr-al-sms-consent') || {}).checked : undefined;
+                typed[kind] = value;
+                if (kind === 'sms') consented = consent;
+                msg('Sending a code…');
+                const out = await post('start', { value, consent });
+                awaiting[kind] = true;
+                msg(`Code sent to ${out.sentTo}. It expires in 10 minutes.`, 'ok');
+            } else if (act === 'verify') {
+                const code = ($(`vr-al-${kind}-code`) || {}).value || '';
+                await post('verify', { code });
+                awaiting[kind] = false;
+                msg(kind === 'sms' ? 'Text alerts are on.' : 'Email alerts are on.', 'ok');
+            } else if (act === 'test') {
+                msg('Sending…');
+                await post('test', {});
+                msg(kind === 'sms' ? 'Test text sent.' : 'Test email sent — check spam if it is not there.', 'ok');
+            } else if (act === 'off') {
+                await post('off', {});
+                msg(kind === 'sms' ? 'Text alerts are off.' : 'Email alerts are off.', 'ok');
+            }
+        } catch (e) {
+            msg(e.message, 'warn');
+            btn.disabled = false;
+            return;
+        }
+        if (act === 'verify' || act === 'off') { typed[kind] = null; consented = false; }
+        if (act !== 'test') refreshContact(); else btn.disabled = false;
+    }
+
     $('vr-al-enable').onclick = async () => {
         msg('Asking your browser…');
         try {
@@ -378,6 +503,7 @@ async function openDialog() {
 
     refreshState();
     refreshLocs();
+    refreshContact();
 }
 
 function init() {

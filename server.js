@@ -2441,7 +2441,7 @@ try {
 // Free-first, self-hosted. Phase 2: data model + saved locations + preferences +
 // admin config. Later phases add the NWS worker, polygon matcher, and channels.
 try {
-    require('./critical_alerts').attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson });
+    require('./critical_alerts').attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson, sendMail, mailReady });
 } catch (e) {
     console.error('[CRITICAL] failed to attach (feature disabled):', e.message);
 }
