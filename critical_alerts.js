@@ -13,14 +13,12 @@
  *
  * ── PHASE 2: data model + Saved Locations + preferences + admin config.
  * ── PHASE 3 (critical_push.js + critical_worker.js): browser push, the NWS
- *    poller and the point-in-polygon matcher.
- * ── EMAIL + TEXT (critical_messaging.js): sign-up with a confirmation code,
- *    delivered through AlertRanger (email falls back to SMTP). Still to come:
- *    Discord, Telegram, ntfy, history and the admin dashboard.
+ *    poller and the point-in-polygon matcher. Still to come: the other
+ *    channels (email, text gateway, Discord, Telegram, ntfy), history and the
+ *    admin dashboard.
  *
  * Attached from server.js: attachCriticalAlerts({ app, requireAuth, requireAdmin,
- *   DATA_DIR, readJson, writeJson, sendMail, mailReady }). Guarded so it never
- *   breaks boot.
+ *   DATA_DIR, readJson, writeJson }). Guarded so it never breaks boot.
  */
 
 const path = require('path');
@@ -73,7 +71,7 @@ const clampStr = (v, n) => String(v == null ? '' : v).slice(0, n).trim();
 const numOrNull = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 const uid = () => 'crit-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
 
-function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson, sendMail, mailReady }) {
+function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson }) {
     const LOC_FILE = path.join(DATA_DIR, 'crit_locations.json');    // userId -> [location]
     const PREFS_FILE = path.join(DATA_DIR, 'crit_prefs.json');      // userId -> prefs
     const CONFIG_FILE = path.join(DATA_DIR, 'crit_config.json');    // admin config
@@ -94,7 +92,6 @@ function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJs
             enabled: p.enabled !== false,
             methods: normMethods(p.methods, { push: true, email: true, text: false, discord: false, telegram: false, ntfy: false }),
             email: p.email || user.email || '',
-            emailVerified: !!p.emailVerified,
             phone: p.phone || '',
             phoneCarrier: p.phoneCarrier || '',
             phoneVerified: !!p.phoneVerified,
@@ -177,11 +174,6 @@ function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJs
             preferences: publicPrefs(req.user),
             alertTypes: config.alertTypes.filter((t) => t.enabled),
             smsGateways: config.smsGateways.filter((g) => g.enabled).map((g) => ({ id: g.id, carrier: g.carrier, country: g.country })),
-            messaging: messaging ? messaging.available() : { email: false, sms: false },
-            // which warnings a text is sent for, so the sign-up can say so
-            textEvents: config.alertTypes
-                .filter((t) => t.enabled && config.routing[t.priority] && config.routing[t.priority].text)
-                .map((t) => t.name),
         });
     });
 
@@ -234,12 +226,7 @@ function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJs
         const next = { ...cur };
         if (b.enabled != null) next.enabled = !!b.enabled;
         if (b.methods) next.methods = normMethods(b.methods, userPrefs(req.user).methods);
-        if (b.email != null) {
-            const email = clampStr(b.email, 200);
-            // a new address has to be confirmed before anything is sent to it
-            if (email !== cur.email) next.emailVerified = false;
-            next.email = email;
-        }
+        if (b.email != null) next.email = clampStr(b.email, 200);
         if (b.telegramChatId != null) next.telegramChatId = clampStr(b.telegramChatId, 60);
         if (b.ntfyTopic != null) next.ntfyTopic = clampStr(b.ntfyTopic, 120);
         if (b.notifyFor && ['critical', 'critical-high', 'all'].includes(b.notifyFor)) next.notifyFor = b.notifyFor;
@@ -325,7 +312,6 @@ function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJs
      * about, and nothing here may stop the radar serving.
      */
     let push = null;
-    let messaging = null;
     try {
         push = require('./critical_push').attachCriticalPush({
             app, requireAuth, DATA_DIR, readJson, writeJson,
@@ -336,25 +322,23 @@ function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJs
     }
 
     /*
-     * Email and text. Also separately non-fatal: a missing provider key means
-     * those channels report themselves unavailable, never that push stops.
+     * Email and text sign-ups. The admin contacts these people by hand, so
+     * this only keeps the list; it sends nothing.
      */
     try {
-        messaging = require('./critical_messaging').attachCriticalMessaging({
+        require('./critical_signups').attachCriticalSignups({
             app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson,
-            sendMail, mailReady,
-            getPrefs: (id) => prefs[id],
-            updatePrefs: (id, patch) => { prefs[id] = { ...(prefs[id] || {}), ...patch }; savePrefs(); },
+            getLocations: () => locations,
         });
     } catch (e) {
-        console.error('[CRITICAL] email/text alerts unavailable: ' + e.message);
+        console.error('[CRITICAL] email/text sign-ups unavailable: ' + e.message);
     }
 
     let worker = null;
-    if (push || messaging) {
+    if (push) {
         try {
             worker = require('./critical_worker').attachCriticalWorker({
-                DATA_DIR, readJson, writeJson, push, messaging,
+                DATA_DIR, readJson, writeJson, push,
                 getLocations: () => locations,
                 getPrefs: (id) => prefs[id],
                 getConfig: () => config,
@@ -376,7 +360,6 @@ function attachCriticalAlerts({ app, requireAuth, requireAdmin, DATA_DIR, readJs
         res.json({
             push: !!push,
             devices: push ? push.hasSubscribers(req.user.id) : false,
-            messaging: messaging ? messaging.available() : { email: false, sms: false },
             poller: worker ? worker.status() : null,
         });
     });

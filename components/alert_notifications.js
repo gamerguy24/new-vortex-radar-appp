@@ -343,67 +343,49 @@ async function openDialog() {
     /*
      * Email and text sign-up.
      *
-     * Each is a two-step: send a code to the address, type the code back.
-     * Nothing turns on until the code matches, so nobody can sign a stranger
-     * up — the server enforces that, this just walks through it. Texts also
-     * need the consent box ticked, which the server checks too.
+     * Signing up adds you to a list the admin works from by hand when a
+     * warning covers one of your places — nothing is sent automatically, and
+     * the wording says so. A number also needs the consent box ticked, which
+     * the server checks too.
      */
-    const awaiting = { email: false, sms: false };    // a code has been sent
-    const typed = { email: null, sms: null };          // survives a re-render
-    let consented = false;
-
-    function channelHtml(kind, prefs, available, textEvents) {
+    function channelHtml(kind, current, accountEmail) {
         const isSms = kind === 'sms';
         const title = isSms ? 'Text messages' : 'Email';
-        if (!available) {
+        if (current) {
             return `<div class="vr-al-ch"><b>${title}</b>
-                <div class="vr-al-note">Not set up on this server yet.</div></div>`;
-        }
-        const on = isSms
-            ? prefs.phoneVerified && prefs.phoneConsentAt && prefs.methods && prefs.methods.text
-            : prefs.emailVerified && prefs.methods && prefs.methods.email;
-        const which = isSms
-            ? (textEvents && textEvents.length
-                ? `Texts are sent for: ${textEvents.join(', ')}.`
-                : 'Texts are sent for the most dangerous warnings only.')
-            : 'One email per warning, with the full National Weather Service text.';
-        if (on) {
-            const to = isSms ? prefs.phone : prefs.email;
-            return `<div class="vr-al-ch"><b>${title}</b>
-                <div class="vr-al-on">✓ On — ${escapeHtml(to)}</div>
-                <div class="vr-al-note">${escapeHtml(which)}</div>
+                <div class="vr-al-on">✓ Signed up — ${escapeHtml(isSms ? prettyPhone(current.value) : current.value)}</div>
                 <div class="vr-al-actions">
-                  <button data-act="test" data-kind="${kind}">Send a test</button>
-                  <button data-act="off" data-kind="${kind}">Turn off</button>
+                  <button data-act="off" data-kind="${kind}">Stop</button>
                 </div></div>`;
         }
-        const value = typed[kind] != null ? typed[kind] : (isSms ? (prefs.phone || '') : (prefs.email || ''));
         return `<div class="vr-al-ch"><b>${title}</b>
-            <div class="vr-al-note">${escapeHtml(which)}</div>
+            <div class="vr-al-note">${isSms
+                ? 'Get a text when a dangerous warning covers one of your places.'
+                : 'Get an email when a warning covers one of your places.'}</div>
             <div class="vr-al-add">
               <input id="vr-al-${kind}-val" type="${isSms ? 'tel' : 'email'}" maxlength="${isSms ? 20 : 200}"
-                placeholder="${isSms ? 'Mobile number (US)' : 'you@example.com'}" value="${escapeHtml(value)}" />
-              <button data-act="start" data-kind="${kind}">${awaiting[kind] ? 'Resend code' : 'Send code'}</button>
+                placeholder="${isSms ? 'Mobile number (US)' : 'you@example.com'}"
+                value="${isSms ? '' : escapeHtml(accountEmail || '')}" />
+              <button data-act="on" data-kind="${kind}">Sign up</button>
             </div>
-            ${isSms ? `<label class="vr-al-consent"><input type="checkbox" id="vr-al-sms-consent"${consented ? ' checked' : ''} />
+            ${isSms ? `<label class="vr-al-consent"><input type="checkbox" id="vr-al-sms-consent" />
               <span>I agree to receive weather warning text messages from Echo Radar at this number.
               Message frequency varies with the weather. Msg &amp; data rates may apply.
               Reply STOP to opt out.</span></label>` : ''}
-            ${awaiting[kind] ? `<div class="vr-al-add">
-              <input id="vr-al-${kind}-code" inputmode="numeric" maxlength="6" placeholder="6-digit code" />
-              <button class="vr-al-primary" data-act="verify" data-kind="${kind}">Confirm</button>
-            </div>` : ''}
           </div>`;
+    }
+
+    function prettyPhone(e164) {
+        const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164 || '');
+        return m ? `(${m[1]}) ${m[2]}-${m[3]}` : (e164 || '');
     }
 
     async function refreshContact() {
         const host = $('vr-al-contact');
         try {
-            const s = await j(API);
-            const prefs = s.preferences || {};
-            const avail = s.messaging || {};
-            host.innerHTML = channelHtml('email', prefs, avail.email, s.textEvents)
-                + channelHtml('sms', prefs, avail.sms, s.textEvents);
+            const [mine, summary] = await Promise.all([j(`${API}/signup`), j(API).catch(() => ({}))]);
+            const accountEmail = summary && summary.preferences ? summary.preferences.email : '';
+            host.innerHTML = channelHtml('email', mine.email, accountEmail) + channelHtml('sms', mine.sms);
             host.querySelectorAll('button[data-act]').forEach((b) => {
                 b.onclick = () => contactAction(b.dataset.act, b.dataset.kind, b);
             });
@@ -413,42 +395,27 @@ async function openDialog() {
     }
 
     async function contactAction(act, kind, btn) {
-        const post = (path, body) => j(`${API}/contact/${path}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kind, ...body }),
-        });
         btn.disabled = true;
         try {
-            if (act === 'start') {
+            if (act === 'on') {
                 const value = ($(`vr-al-${kind}-val`) || {}).value || '';
                 const consent = kind === 'sms' ? !!($('vr-al-sms-consent') || {}).checked : undefined;
-                typed[kind] = value;
-                if (kind === 'sms') consented = consent;
-                msg('Sending a code…');
-                const out = await post('start', { value, consent });
-                awaiting[kind] = true;
-                msg(`Code sent to ${out.sentTo}. It expires in 10 minutes.`, 'ok');
-            } else if (act === 'verify') {
-                const code = ($(`vr-al-${kind}-code`) || {}).value || '';
-                await post('verify', { code });
-                awaiting[kind] = false;
-                msg(kind === 'sms' ? 'Text alerts are on.' : 'Email alerts are on.', 'ok');
-            } else if (act === 'test') {
-                msg('Sending…');
-                await post('test', {});
-                msg(kind === 'sms' ? 'Test text sent.' : 'Test email sent — check spam if it is not there.', 'ok');
-            } else if (act === 'off') {
-                await post('off', {});
-                msg(kind === 'sms' ? 'Text alerts are off.' : 'Email alerts are off.', 'ok');
+                await j(`${API}/signup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ kind, value, consent }),
+                });
+                msg(kind === 'sms' ? 'You’re signed up for text alerts.' : 'You’re signed up for email alerts.', 'ok');
+            } else {
+                await j(`${API}/signup/${kind}`, { method: 'DELETE' });
+                msg(kind === 'sms' ? 'Text alerts stopped.' : 'Email alerts stopped.', 'ok');
             }
         } catch (e) {
             msg(e.message, 'warn');
             btn.disabled = false;
             return;
         }
-        if (act === 'verify' || act === 'off') { typed[kind] = null; consented = false; }
-        if (act !== 'test') refreshContact(); else btn.disabled = false;
+        refreshContact();
     }
 
     $('vr-al-enable').onclick = async () => {

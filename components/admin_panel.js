@@ -183,6 +183,18 @@ export function createAdminPanelHTML() {
                     <div class="admin-panel-pending-empty">Loading…</div>
                 </div>
             </div>
+            <div class="admin-panel-pending">
+                <h4><i class="ti ti-bell"></i> Email &amp; text alert sign-ups</h4>
+                <div class="admin-panel-pending-row" style="flex-wrap:wrap;">
+                    <div class="who"><div class="when" id="admin-panel-signups-count">People who asked to be emailed or texted about warnings for their saved places.</div></div>
+                    <button id="admin-panel-signups-emails">Copy all emails</button>
+                    <button id="admin-panel-signups-phones">Copy all numbers</button>
+                    <button id="admin-panel-signups-csv">Download CSV</button>
+                </div>
+                <div id="admin-panel-signups-list">
+                    <div class="admin-panel-pending-empty">Loading…</div>
+                </div>
+            </div>
             <div class="admin-panel-toolbar">
                 <input type="search" id="admin-panel-search" placeholder="Search by email…" autocomplete="off" />
                 <button id="admin-panel-refresh" title="Refresh"><i class="ti ti-refresh"></i></button>
@@ -708,6 +720,101 @@ export function initAdminPanel(root) {
         }
     });
 
+    // --- Email & text alert sign-ups -----------------------------------------
+    // Nothing is sent automatically: this is the list the admin texts and
+    // emails by hand. Remove is for anyone who replies STOP or asks to be
+    // taken off; it drops their consent with the number.
+    let signups = [];
+    const prettyPhone = (e164) => {
+        const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164 || '');
+        return m ? `(${m[1]}) ${m[2]}-${m[3]}` : (e164 || '');
+    };
+
+    async function loadSignups() {
+        const list = $('#admin-panel-signups-list');
+        if (!list) return;
+        list.innerHTML = '<div class="admin-panel-pending-empty">Loading…</div>';
+        try {
+            const data = await api('GET', '/admin/critical/signups');
+            signups = data.signups || [];
+            renderSignups();
+        } catch (err) {
+            list.innerHTML = `<div class="admin-panel-pending-empty">Error: ${escapeHtml(err.message)}</div>`;
+        }
+    }
+
+    function renderSignups() {
+        const list = $('#admin-panel-signups-list');
+        const emails = signups.filter((r) => r.email).length;
+        const phones = signups.filter((r) => r.sms).length;
+        $('#admin-panel-signups-count').textContent = signups.length
+            ? `${emails} email${emails === 1 ? '' : 's'} · ${phones} number${phones === 1 ? '' : 's'}`
+            : 'People who asked to be emailed or texted about warnings for their saved places.';
+        if (!signups.length) {
+            list.innerHTML = '<div class="admin-panel-pending-empty">No one has signed up yet.</div>';
+            return;
+        }
+        list.innerHTML = '';
+        signups.forEach((r) => {
+            const row = document.createElement('div');
+            row.className = 'admin-panel-pending-row';
+            const places = r.places.length
+                ? r.places.map((p) => escapeHtml(p.name + (p.where ? ` (${p.where})` : ''))).join(', ')
+                : '<span style="color:var(--vx-warn);">No saved places yet</span>';
+            row.innerHTML = `
+                <div class="who">
+                    <div class="email">${escapeHtml(r.account || r.userId)}</div>
+                    ${r.email ? `<div class="when">Email: <b style="color:var(--vx-text);">${escapeHtml(r.email.value)}</b> · since ${fmtDate(r.email.at)}</div>` : ''}
+                    ${r.sms ? `<div class="when">Text: <b style="color:var(--vx-text);">${escapeHtml(prettyPhone(r.sms.value))}</b> · consented ${fmtDate(r.sms.consentAt)}</div>` : ''}
+                    <div class="when">Places: ${places}</div>
+                </div>
+                ${r.email ? `<button data-signup-remove="email" data-id="${escapeHtml(r.userId)}" data-label="${escapeHtml(r.email.value)}">Remove email</button>` : ''}
+                ${r.sms ? `<button data-signup-remove="sms" data-id="${escapeHtml(r.userId)}" data-label="${escapeHtml(prettyPhone(r.sms.value))}">Remove number</button>` : ''}
+            `;
+            list.appendChild(row);
+        });
+    }
+
+    $('#admin-panel-signups-list').addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-signup-remove]');
+        if (!btn) return;
+        const kind = btn.dataset.signupRemove;
+        if (!confirm(`Remove ${btn.dataset.label} from the alert list?`)) return;
+        btn.disabled = true;
+        try {
+            await api('DELETE', `/admin/critical/signups/${encodeURIComponent(btn.dataset.id)}/${kind}`);
+            flash(`Removed ${btn.dataset.label}.`, 'success');
+            loadSignups();
+        } catch (err) { btn.disabled = false; flash(err.message, 'error'); }
+    });
+
+    async function copyList(values, noun) {
+        if (!values.length) { flash(`No ${noun} to copy.`, 'error'); return; }
+        try {
+            await navigator.clipboard.writeText(values.join(', '));
+            flash(`Copied ${values.length} ${noun}.`, 'success');
+        } catch (err) { prompt(`Copy these ${noun}:`, values.join(', ')); }
+    }
+    $('#admin-panel-signups-emails').addEventListener('click', () =>
+        copyList(signups.filter((r) => r.email).map((r) => r.email.value), 'emails'));
+    $('#admin-panel-signups-phones').addEventListener('click', () =>
+        copyList(signups.filter((r) => r.sms).map((r) => r.sms.value), 'numbers'));
+    $('#admin-panel-signups-csv').addEventListener('click', () => {
+        if (!signups.length) { flash('No sign-ups to export.', 'error'); return; }
+        const cell = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+        const lines = [['Account', 'Email', 'Email since', 'Phone', 'Text consent', 'Places'].map(cell).join(',')];
+        signups.forEach((r) => lines.push([
+            r.account, r.email && r.email.value, r.email && r.email.at,
+            r.sms && r.sms.value, r.sms && r.sms.consentAt,
+            r.places.map((p) => p.name + (p.where ? ` (${p.where})` : '')).join('; '),
+        ].map(cell).join(',')));
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv' }));
+        a.download = `alert-signups-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+
     // --- Toolbar -----------------------------------------------------------
     let searchTimer = null;
     $('#admin-panel-search').addEventListener('input', () => {
@@ -718,6 +825,7 @@ export function initAdminPanel(root) {
         loadUsers();
         loadPending();
         loadStreamRequests();
+        loadSignups();
     });
 
     $('#admin-panel-new').addEventListener('click', () => {
@@ -775,6 +883,7 @@ export function initAdminPanel(root) {
 
     loadPending();
     loadStreamRequests();
+    loadSignups();
     loadUsers();
 
     // Automatic Warning Posts (NWS → Bluesky) section.
