@@ -2424,6 +2424,8 @@ app.get('/api/outages/live', requireAuth, billing.requireTier(1), async (req, re
 app.use('/api/models', requireAuth, billing.requirePro);
 require('./model_data').attachModels(app, requireAuth);
 require('./ndfd').attachNdfd(app, requireAuth);
+// GOES-East infrared bands 7–16, drawn from NOAA's GOES-19 data (no third-party limits).
+require('./goes_bands').attachGoesBands(app, requireAuth);
 
 // ─── Automatic NWS warning → Bluesky posting ─────────────────────────────────
 // Server-side poller + graphic generator + Bluesky client + admin routes.
@@ -2675,7 +2677,7 @@ app.use((req, res, next) => {
     const p = req.path.toLowerCase();
     if (p.startsWith('/server_data') || p.startsWith('/node_modules') ||
         p === '/server.js' || p === '/billing.js' || p === '/model_data.js' ||
-        p === '/nws_bluesky.js' || p === '/nws_graphic.js' || p === '/nws_radar_l2.js' || p === '/ndfd.js' ||
+        p === '/nws_bluesky.js' || p === '/nws_graphic.js' || p === '/nws_radar_l2.js' || p === '/ndfd.js' || p === '/goes_bands.js' ||
         p.startsWith('/.env') || p.startsWith('/package') || p.startsWith('/.git')) {
         return res.status(404).end();
     }

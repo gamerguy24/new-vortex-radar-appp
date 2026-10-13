@@ -29,12 +29,11 @@
 
 /*
  * BANDS 7–16 come from somewhere else. GIBS publishes Band 13 and GeoColor
- * but none of the other infrared channels, so those are SSEC RealEarth's
- * GOES-East CONUS imagery (UW-Madison): every ABI band, every five minutes,
- * fetched as one picture of the view per scan (not tiles — see BAND_MAX_PX).
- * They are drawn as they come — the standard greyscale, cold and high is
- * bright — so none of the recolouring below applies to them. RealEarth's
- * terms ask for the credit line the legend carries.
+ * but none of the other infrared channels, so those are drawn by our own
+ * server from NOAA's GOES-19 CONUS data (goes_bands.js): every ABI band,
+ * every five minutes, one mercator picture of the sector per scan. They are
+ * drawn in the standard greyscale — cold and high is bright — so none of the
+ * recolouring below applies to them.
  */
 
 const map = require('../core/map/map');
@@ -107,7 +106,7 @@ const PRODUCTS = {
 };
 
 /*
- * The infrared bands, as RealEarth names them. `what` is the one line a
+ * The infrared bands. `what` is the one line a
  * viewer needs to know what they are looking at.
  */
 const BANDS = [
@@ -126,7 +125,7 @@ for (const [n, um, title, what] of BANDS) {
     const id = 'b' + String(n).padStart(2, '0');
     PRODUCTS[id] = {
         kind: 'band',
-        realearth: 'G19-ABI-CONUS-BAND' + String(n).padStart(2, '0'),
+        band: n,
         label: `Band ${n} · ${title}`,
         name: `GOES-East Band ${n} · ${title}`,
         title: `BAND ${n} · ${title.toUpperCase()}`,
@@ -201,8 +200,8 @@ const SCAN_MS = 10 * 60 * 1000;
  *
  * A GIBS frame is a whole multi-megabyte picture, decoded at every step, so
  * those stay short — fewer still on a phone, where four is a forty-minute
- * loop and still reads as motion. A band frame is one picture of the view at
- * no more than 1024px, so it can run longer: 24 at five minutes is two hours.
+ * loop and still reads as motion. A band frame is a greyscale PNG our server
+ * has already drawn, so it can run longer: 24 at five minutes is two hours.
  */
 const GIBS_CAP = onPhone() ? 4 : 12;
 const BAND_CAP = onPhone() ? 12 : 24;
@@ -214,34 +213,15 @@ function frameBudget() {
 const STEP_MS = 420;
 const PROBE_BACK = 18;          // three hours; past that the feed is down
 
-const RE_BASE = 'https://realearth.ssec.wisc.edu';
-// GOES-East's CONUS sector [W, S, E, N]; nothing outside it is asked for.
-const RE_BOUNDS = [-152, 14, -52, 57];
 /*
- * RealEarth's ceiling for anonymous use: 1024px in either dimension, and
- * "successive geographically adjacent image requests cumulatively count
- * toward the threshold". A screenful of map tiles is one image as far as that
- * rule is concerned — a 1900px-wide view came back with every tile past the
- * fourth column stamped "Size limit exceeded". So a band frame is ONE picture
- * of the view, at most this size, and the map stretches it.
+ * Bands 7–16 are drawn by our own server from NOAA's GOES-19 data
+ * (goes_bands.js): one picture of the whole CONUS sector per scan, already in
+ * web mercator. They used to come from SSEC RealEarth, whose free limits —
+ * 1024px a picture, 500 megapixels a day — stamped "Size limit exceeded" and
+ * then "Pixel volume exceeded" across the map. NOAA's data has no limits, and
+ * a scan is fetched from it once for every user, not once per viewer.
  */
-const BAND_MAX_PX = 1024;
-// How far past the screen edges a band picture reaches, as a share of the
-// view, so an ordinary pan stays inside it and costs nothing.
-const VIEW_PAD = 0.2;
-// Re-ask only once the map has stopped moving, and only if the picture held
-// no longer covers the view or has gone this much softer than a new one.
-const VIEW_SETTLE_MS = 800;
-const VIEW_SOFTER = 1.6;
-/*
- * Back-to-back pictures of neighbouring areas add up, too. Measured: a view
- * asked for straight after the one beside it came back stamped at 0s and 5s
- * apart, and clean from 10s. So the first picture of a new area waits until
- * this long after the last picture of the old one; the old ones stay on
- * screen meanwhile. (RealEarth also caps anonymous volume at 500 megapixels
- * a day; a two-hour loop at 1024px is about 14 of those per view.)
- */
-const AREA_GAP_MS = 12000;
+const BAND_API = '/api/goes-bands';
 const BAND_FETCHES = 3;          // band frames downloading at once
 const TILE_OPACITY = 0.9;
 
@@ -259,9 +239,6 @@ let _rock = { sign: 1 };       // which way a rocking loop is heading
 let _token = 0;                // bumped to orphan work from a previous run
 let _followTimer = null;       // watches the app player
 let _following = false;
-let _bandView = null;          // the area the band pictures in hand cover
-let _viewTimer = null;         // waits for the map to settle after a move
-let _lastAsked = { at: 0, view: null };   // the latest band picture requested
 
 function merc(lon, lat) {
     const x = lon * 20037508.34 / 180;
@@ -677,7 +654,7 @@ function drawLegend() {
     /*
      * A raw band has no scale either: its greys are a stretch of brightness
      * temperature chosen per band, not a table this file can read back. It
-     * gets what it is and what it shows, and the credit RealEarth asks for.
+     * gets what it is and what it shows, and where it comes from.
      */
     const p = product();
     let scale;
@@ -688,7 +665,7 @@ function drawLegend() {
     } else if (p.kind === 'band') {
         scale = `<div class="vml-title">SATELLITE · ${p.title}</div>
         <div class="vml-note">${p.note}</div>
-        <div class="vml-credit">Source: SSEC RealEarth, UW-Madison</div>`;
+        <div class="vml-credit">Source: NOAA GOES-19 (NESDIS)</div>`;
     } else {
         scale = '<div class="vml-title">SATELLITE · GEOCOLOR</div>'
           + '<div class="vml-note">True colour by day, infrared and city lights by night.</div>';
@@ -802,119 +779,27 @@ function putOnMap(sat, url) {
 }
 
 /*
- * A band frame: one picture of the view per scan, each its own image layer,
- * all of them on the map at once and all but one at zero opacity, so a step
- * of the loop is an opacity change rather than a decode.
- *
- * The picture is asked for at no more than BAND_MAX_PX on its long side —
- * see there for why tiles cannot be used — and covers the view plus a margin,
- * so panning about inside it costs nothing. When the map moves outside it, or
- * zooms in far enough that it has gone soft, every frame is asked for again
- * at the new view.
+ * A band frame: one picture of the sector per scan, each its own image
+ * layer, all of them on the map at once and all but one at zero opacity, so a
+ * step of the loop is an opacity change rather than a decode. The picture
+ * covers the whole sector, so panning and zooming never fetch anything.
  */
 function bandIds(at) { return { src: `goes-band-${at}-src`, layer: `goes-band-${at}-layer` }; }
 
-const mercY = (lat) => merc(0, lat)[1];
-const latOfMercY = (y) => (360 / Math.PI) * Math.atan(Math.exp(y * Math.PI / 20037508.34)) - 90;
-
-/*
- * The area a band picture should cover, and at what size: the view, padded,
- * cut to the sector, at the most pixels the picture may have. Null when the
- * view is nowhere near the sector.
- */
-function wantedBandView() {
-    let b;
-    try { b = map.getBounds(); } catch (e) { return null; }
-    const vw = b.getWest(), ve = b.getEast();
-    const vs = Math.max(-85, b.getSouth()), vn = Math.min(85, b.getNorth());
-    const padX = (ve - vw) * VIEW_PAD;
-    const padY = (mercY(vn) - mercY(vs)) * VIEW_PAD;
-    const W = Math.max(RE_BOUNDS[0], vw - padX);
-    const E = Math.min(RE_BOUNDS[2], ve + padX);
-    const S = Math.max(RE_BOUNDS[1], latOfMercY(mercY(vs) - padY));
-    const N = Math.min(RE_BOUNDS[3], latOfMercY(mercY(vn) + padY));
-    if (!(E > W) || !(N > S)) return null;
-
-    // Sized in mercator, because that is the shape it is drawn in. No more
-    // pixels than the screen would show at this size, either.
-    const spanX = merc(E, 0)[0] - merc(W, 0)[0];
-    const spanY = mercY(N) - mercY(S);
-    let screen = BAND_MAX_PX;
-    try {
-        const c = map.getCanvas();
-        const viewX = merc(ve, 0)[0] - merc(vw, 0)[0];
-        screen = c.width * spanX / Math.max(viewX, 1);
-    } catch (e) { /* no canvas yet: take the ceiling */ }
-    const longest = Math.min(BAND_MAX_PX, Math.max(256, screen));
-    const scale = longest / Math.max(spanX, spanY);
-    return {
-        W, E, S, N,
-        width: Math.max(1, Math.round(spanX * scale)),
-        height: Math.max(1, Math.round(spanY * scale)),
-        mPerPx: 1 / scale,
-        // What the screen covers, for deciding later whether it still fits.
-        view: { W: vw, E: ve, S: vs, N: vn },
-    };
-}
-
-/* Whether the pictures in hand still serve the view the map is showing. */
-function bandViewStillGood(held, wanted) {
-    if (!held || !wanted) return !wanted;
-    const v = wanted.view;
-    // The screen has gone past the picture's edge, where the sector allows.
-    if (Math.max(v.W, RE_BOUNDS[0]) < held.W - 1e-6 || Math.min(v.E, RE_BOUNDS[2]) > held.E + 1e-6) return false;
-    if (Math.max(v.S, RE_BOUNDS[1]) < held.S - 1e-6 || Math.min(v.N, RE_BOUNDS[3]) > held.N + 1e-6) return false;
-    // Zoomed in so far that the picture is drawn a lot coarser than a new one.
-    return held.mPerPx / wanted.mPerPx < VIEW_SOFTER;
-}
-
-function bandUrl(productId, stamp, v) {
-    // Stamps are listed as YYYYMMDD.HHMMSS and asked for as YYYYMMDD_HHMMSS.
-    return `${RE_BASE}/api/image?products=${encodeURIComponent(productId + '_' + stamp.replace('.', '_'))}`
-        + `&bounds=${v.S.toFixed(4)},${v.W.toFixed(4)},${v.N.toFixed(4)},${v.E.toFixed(4)}`
-        + `&width=${v.width}&height=${v.height}`;
-}
-
-/*
- * Fetch one band picture and put it in web mercator. cb(objectUrl|null).
- *
- * RealEarth draws it in plain latitude/longitude. The map stretches an image
- * linearly between its corners in mercator, so a picture handed over as it
- * comes would sit over half a degree south of where it belongs in the middle.
- * Longitude is linear in both, so only the rows need moving: each output row
- * takes the source row at its latitude.
- */
-function bandFrame(url, v, cb) {
-    fetch(url)
+/* Fetch one band picture as a blob, so the loop knows when it has landed. cb(objectUrl|null). */
+function bandFrame(url, cb) {
+    fetch(url, { credentials: 'same-origin' })
         .then((r) => (r.ok ? r.blob() : null))
-        .then((blob) => (blob && blob.size && /^image\//.test(blob.type) ? createImageBitmap(blob) : null))
-        .then((img) => {
-            if (!img) { cb(null); return; }
-            const c = document.createElement('canvas');
-            c.width = img.width; c.height = img.height;
-            const ctx = c.getContext('2d');
-            ctx.imageSmoothingEnabled = false;
-            const yN = mercY(v.N), yS = mercY(v.S);
-            for (let row = 0; row < c.height; row++) {
-                const lat = latOfMercY(yN + (yS - yN) * (row + 0.5) / c.height);
-                const src = Math.min(img.height - 1, Math.max(0, Math.floor((v.N - lat) / (v.N - v.S) * img.height)));
-                ctx.drawImage(img, 0, src, img.width, 1, 0, row, c.width, 1);
-            }
-            if (img.close) img.close();
-            c.toBlob((out) => cb(out ? URL.createObjectURL(out) : null), 'image/png');
-        })
+        .then((blob) => cb(blob && blob.size && /^image\//.test(blob.type) ? URL.createObjectURL(blob) : null))
         .catch((e) => { console.warn('[GOES] band frame failed:', e && e.message); cb(null); });
 }
 
 function addBandFrame(b) {
-    if (!b.url || !b.view) return;
-    const coordinates = cornersOf(b.view);
+    if (!b.url || !b.bounds) return;
+    const [W, S, E, N] = b.bounds;
     try {
-        const src = map.getSource(b.src);
-        if (src) { if (src._vxUrl !== b.url) { src.updateImage({ url: b.url, coordinates }); src._vxUrl = b.url; } }
-        else {
-            map.addSource(b.src, { type: 'image', url: b.url, coordinates });
-            map.getSource(b.src)._vxUrl = b.url;
+        if (!map.getSource(b.src)) {
+            map.addSource(b.src, { type: 'image', url: b.url, coordinates: cornersOf({ W, E, S, N }) });
         }
         if (!map.getLayer(b.layer)) {
             map.addLayer({
@@ -937,19 +822,11 @@ function removeBandFrame(b) {
 }
 
 /* Whether a frame can be shown without a blank: a band frame whose picture is
-   still arriving is passed over by the loop until it has. After a move, the
-   pictures of the old view stand in only until the first of the new lands —
-   a loop that alternated between two areas would jump about. */
+   still arriving is passed over by the loop until it has. */
 function frameReady(at) {
     const fr = _frames.get(at);
     if (!fr) return false;
-    if (!fr.band) return true;
-    if (!fr.band.url) return false;
-    if (fr.band.view === _bandView) return true;
-    for (const f of _frames.values()) {
-        if (f.band && f.band.url && f.band.view === _bandView) return false;
-    }
-    return true;
+    return fr.band ? !!fr.band.url : true;
 }
 
 function showFrame(at) {
@@ -1099,64 +976,44 @@ function stopPlaying() {
 }
 
 /*
- * The band products' frames: the newest scans RealEarth lists, one picture
- * each. Topped up like the GIBS loop — scans that have aged out of the
- * window are dropped, new ones added, and the rest left alone.
+ * The band products' frames: the newest scans NOAA has, one picture each.
+ * Topped up like the GIBS loop — scans that have aged out of the window are
+ * dropped, new ones added, and the rest left alone.
  */
 async function syncBands(token) {
     const p = product();
-    let stamps = [];
+    let list = null;
     try {
-        const r = await fetch(`${RE_BASE}/api/times?products=${encodeURIComponent(p.realearth)}`);
-        const j = r.ok ? await r.json() : null;
-        stamps = (j && Array.isArray(j[p.realearth])) ? j[p.realearth] : [];
+        const r = await fetch(`${BAND_API}/${p.band}/scans`, { credentials: 'same-origin' });
+        list = r.ok ? await r.json() : null;
     } catch (e) {
         console.warn('[GOES] could not list band scans:', e && e.message);
     }
     if (token !== _token || !_enabled || product() !== p) return;
-    if (!stamps.length) { setLegendError('no recent scans'); return; }
+    const scans = (list && Array.isArray(list.scans)) ? list.scans : [];
+    if (!scans.length || !Array.isArray(list.bounds)) { setLegendError('no recent scans'); return; }
 
-    // "YYYYMMDD.HHMMSS", UTC.
-    const msOf = (s) => Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8),
-        +s.slice(9, 11), +s.slice(11, 13), +s.slice(13, 15));
-    const want = stamps.slice().sort().slice(-frameBudget())
-        .map((stamp) => ({ stamp, at: msOf(stamp) }))
-        .filter((w) => Number.isFinite(w.at));
-    const keep = new Set(want.map((w) => w.at));
-
+    const want = scans.slice().sort((a, b) => a.at - b.at).slice(-frameBudget())
+        .filter((s) => Number.isFinite(s.at));
+    const keep = new Set(want.map((s) => s.at));
     for (const at of [..._frames.keys()]) {
         if (!keep.has(at)) dropFrame(at);
     }
-    const wanted = wantedBandView();
-    if (!wanted) { setLegendError('outside the GOES-East sector'); return; }
-    if (!bandViewStillGood(_bandView, wanted)) _bandView = wanted;
-    for (const w of want) {
-        const have = _frames.get(w.at);
+    for (const s of want) {
+        const have = _frames.get(s.at);
         if (have) { addBandFrame(have.band); continue; }   // back after a style change
-        const band = Object.assign({ at: w.at, product: p.realearth, stamp: w.stamp, url: null, view: null }, bandIds(w.at));
-        _frames.set(w.at, { band });
+        const band = Object.assign({ at: s.at, band: p.band, id: s.id, bounds: list.bounds, url: null }, bandIds(s.at));
+        _frames.set(s.at, { band });
     }
     startPlaying();
     await fillBands(token);
     if (_shown === null || !frameReady(_shown)) showNewestReady();
 }
 
-/*
- * Draw every band frame that is not yet a picture of the current view,
- * newest first so there is something on screen at once, a few at a time.
- * A move of the map mid-way leaves the rest to the fill the move starts.
- */
+/* Fetch every band frame not yet in hand, newest first so there is something
+   on screen at once, a few at a time. */
 async function fillBands(token) {
-    const view = _bandView;
-    if (!view) return;
-    const todo = sortedTimes().reverse().filter((at) => _frames.get(at).band.view !== view);
-    if (!todo.length) return;
-    // A different area from the last one asked for: let AREA_GAP_MS pass.
-    const wait = _lastAsked.at + AREA_GAP_MS - Date.now();
-    if (_lastAsked.view && _lastAsked.view !== view && wait > 0) {
-        await new Promise((res) => setTimeout(res, wait));
-        if (token !== _token || !_enabled || view !== _bandView) return;
-    }
+    const todo = sortedTimes().reverse().filter((at) => !_frames.get(at).band.url);
     let next = 0;
     const worker = async () => {
         while (next < todo.length) {
@@ -1164,19 +1021,15 @@ async function fillBands(token) {
             const fr = _frames.get(at);
             if (!fr) continue;
             const b = fr.band;
-            _lastAsked = { at: Date.now(), view };
-            const url = await new Promise((res) => bandFrame(bandUrl(b.product, b.stamp, view), view, res));
-            if (token !== _token || !_enabled || view !== _bandView || _frames.get(at) !== fr) {
+            const url = await new Promise((res) => bandFrame(`${BAND_API}/${b.band}/${b.id}.png`, res));
+            if (token !== _token || !_enabled || _frames.get(at) !== fr) {
                 if (url) URL.revokeObjectURL(url);
                 return;
             }
             if (!url) continue;
-            const old = b.url;
             b.url = url;
-            b.view = view;
             addBandFrame(b);
-            if (old) { try { URL.revokeObjectURL(old); } catch (e) { /* already gone */ } }
-            if (_shown === at || _shown === null || !frameReady(_shown)) showFrame(at);
+            if (_shown === null || !frameReady(_shown)) showFrame(at);
         }
     };
     await Promise.all(Array.from({ length: BAND_FETCHES }, worker));
@@ -1185,25 +1038,6 @@ async function fillBands(token) {
 function showNewestReady() {
     const ready = sortedTimes().filter(frameReady);
     if (ready.length) showFrame(ready[ready.length - 1]);
-}
-
-/*
- * The map moved. Once it settles, ask for the view again if the pictures in
- * hand no longer cover it or have gone soft; otherwise nothing is fetched.
- */
-function onMapMoved() {
-    if (_viewTimer) clearTimeout(_viewTimer);
-    _viewTimer = setTimeout(() => {
-        _viewTimer = null;
-        if (!_enabled || product().kind !== 'band' || !_frames.size) return;
-        const wanted = wantedBandView();
-        if (!wanted || bandViewStillGood(_bandView, wanted)) return;
-        _bandView = wanted;
-        const token = _token;
-        fillBands(token).then(() => {
-            if (token === _token && (_shown === null || !frameReady(_shown))) showNewestReady();
-        });
-    }, VIEW_SETTLE_MS);
 }
 
 function setLegendError(msg) {
@@ -1309,8 +1143,6 @@ function _remove() {
     removeGibsLayers();
     for (const at of [..._frames.keys()]) dropFrame(at);
     _shown = null;
-    _bandView = null;
-    if (_viewTimer) { clearTimeout(_viewTimer); _viewTimer = null; }
     clearLegend();
 }
 
@@ -1323,8 +1155,6 @@ function enable() {
     _timer = setInterval(() => { if (_enabled) sync(); }, 5 * 60 * 1000);
     if (_followTimer) clearInterval(_followTimer);
     _followTimer = setInterval(followTick, 250);
-    map.off('moveend', onMapMoved);
-    map.on('moveend', onMapMoved);
     /*
      * Required here rather than at the top of the file: the player is radar's
      * module, and loading it the moment this file is parsed would tie the two
@@ -1342,7 +1172,6 @@ function disable() {
     _token++;
     if (_timer) { clearInterval(_timer); _timer = null; }
     if (_followTimer) { clearInterval(_followTimer); _followTimer = null; }
-    map.off('moveend', onMapMoved);
     _following = false;
     try {
         require('../radar/animation/radar_loop').setDriver(null);
