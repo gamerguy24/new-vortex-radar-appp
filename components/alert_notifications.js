@@ -28,6 +28,13 @@
 
 const API = '/api/critical';
 
+/*
+ * Email and text sign-up is built (server, admin list and all) but not open
+ * yet. While this is true the section says "Coming soon" instead of showing
+ * the forms; set it to false to open sign-ups.
+ */
+const CONTACT_COMING_SOON = true;
+
 const $ = (id) => document.getElementById(id);
 
 async function j(url, opts) {
@@ -212,6 +219,9 @@ function injectStyles() {
         ".vr-al-ch .vr-al-actions{margin:8px 0 0}",
         ".vr-al-note{font-size:12px;line-height:1.5;color:#a8bace}",
         ".vr-al-on{font-size:12.5px;color:#7ce8a8}",
+        ".vr-al-soon{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:999px;",
+        "  font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;vertical-align:1px;",
+        "  color:var(--vx-accent,#e8862b);background:rgba(232,134,43,.14);border:1px solid rgba(232,134,43,.35)}",
         ".vr-al-consent{display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:12px;",
         "  line-height:1.45;color:#a8bace;cursor:pointer}",
         ".vr-al-consent input{margin-top:2px;flex:0 0 auto}",
@@ -382,6 +392,12 @@ async function openDialog() {
 
     async function refreshContact() {
         const host = $('vr-al-contact');
+        if (CONTACT_COMING_SOON) {
+            host.innerHTML = `<div class="vr-al-ch"><b>Email &amp; text alerts<span class="vr-al-soon">Coming soon</span></b>
+                <div class="vr-al-note">Soon you’ll be able to get an email or a text when a warning
+                covers one of your places.</div></div>`;
+            return;
+        }
         try {
             const [mine, summary] = await Promise.all([j(`${API}/signup`), j(API).catch(() => ({}))]);
             const accountEmail = summary && summary.preferences ? summary.preferences.email : '';

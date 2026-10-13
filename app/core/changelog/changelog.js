@@ -22,12 +22,6 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
-        date: 'October 13, 2026',
-        items: [
-            { title: 'Sign up for warnings by email or text', desc: 'You can now ask to be emailed or texted when a warning covers one of your places. Open Alert Notifications from the menu, add the places you care about, and enter your email address or US mobile number under Email & text. For texts, tick the box agreeing to receive them; you can reply STOP at any time. To come off the list, press Stop in the same place.' },
-        ],
-    },
-    {
         date: 'October 12, 2026',
         items: [
             { title: 'Satellite bands without the watermarks', desc: 'Infrared bands 7 through 16 kept coming up with "RealEarth by SSEC… Size limit exceeded" or "Pixel volume exceeded" printed across the map. That was the old imagery service rationing its free use: pictures wider than 1024 pixels, and more than a set amount of imagery a day, got stamped. The bands now come straight from NOAA’s own GOES-19 data, which has no such limits. Echo Radar draws each scan once on its own server and every viewer shares it, so there is nothing left to run out of. The whole sector loads at once, so panning and zooming no longer fetch anything, and the loop still runs two hours at five-minute steps.' },
