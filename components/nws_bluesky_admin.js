@@ -141,6 +141,7 @@ export function nwsxAdminHTML() {
         <button class="nwsx-btn" id="nwsx-preview-btn">Preview graphic</button>
         <button class="nwsx-btn" id="nwsx-radarcheck-btn">Check radar source</button>
         <button class="nwsx-btn danger" id="nwsx-testpost-btn">Send test post</button>
+        <button class="nwsx-btn danger" id="nwsx-testfb-btn"><i class="ti ti-brand-facebook"></i> Test post to Facebook</button>
       </div>
       <div class="nwsx-preview" id="nwsx-preview">
         <div class="txt" id="nwsx-preview-txt"></div>
@@ -273,17 +274,17 @@ export function initNwsxAdmin(root) {
     finally { btn.disabled = false; }
   });
 
-  async function runTest(post) {
+  async function runTest(post, destination) {
     const sample = $('nwsx-sample').value;
-    const btn = post ? $('nwsx-testpost-btn') : $('nwsx-preview-btn');
+    const btn = destination === 'facebook' ? $('nwsx-testfb-btn') : post ? $('nwsx-testpost-btn') : $('nwsx-preview-btn');
     btn.disabled = true;
     const names = { bluesky: 'Bluesky', facebook: 'your Facebook Page' };
-    const where = activeDests.map((x) => names[x]).join(' and ');
+    const where = destination ? names[destination] : activeDests.map((x) => names[x]).join(' and ');
     if (post && !where) { flash('No destination is configured and switched on (save settings first).', 'err'); btn.disabled = false; return; }
     if (post && !confirm(`Send a clearly-labeled [TEST] post to ${where}? It will be public.`)) { btn.disabled = false; return; }
     try {
       const radarProduct = $('nwsx-radar') ? $('nwsx-radar').value : 'reflectivity';
-      const d = await api('POST', '/admin/nwsx/test', { sample, post, radarProduct });
+      const d = await api('POST', '/admin/nwsx/test', { sample, post, radarProduct, destination });
       $('nwsx-preview').style.display = 'flex';
       $('nwsx-preview-txt').textContent = 'Bluesky:\n' + (d.previewText || '')
         + (d.facebookText ? '\n\nFacebook:\n' + d.facebookText : '');
@@ -298,6 +299,7 @@ export function initNwsxAdmin(root) {
   }
   $('nwsx-preview-btn').addEventListener('click', () => runTest(false));
   $('nwsx-testpost-btn').addEventListener('click', () => runTest(true));
+  $('nwsx-testfb-btn').addEventListener('click', () => runTest(true, 'facebook'));
 
   $('nwsx-fbcheck-btn').addEventListener('click', async () => {
     const btn = $('nwsx-fbcheck-btn'); btn.disabled = true;

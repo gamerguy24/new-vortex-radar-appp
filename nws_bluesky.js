@@ -219,9 +219,9 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
   }
 
   /** Post to every active destination; one failing never stops the other. */
-  async function postEverywhere(alert, png, { prefix = '', alt } = {}) {
+  async function postEverywhere(alert, png, { prefix = '', alt, only } = {}) {
     const results = {}; const errors = [];
-    for (const dest of activeDestinations()) {
+    for (const dest of only || activeDestinations()) {
       try {
         if (dest === 'bluesky') {
           results.bluesky = await withRetry(() => postToBluesky(buildPostText(alert, { prefix }), png, alt));
@@ -539,11 +539,26 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
     try {
       const png = await renderWarningGraphic(alert, { radarProduct });
       let posted = null; let errors = [];
+      /*
+       * `destination` tests ONE place, and only needs its credentials — not
+       * its admin switch — so a destination can be tried before it goes live.
+       */
+      const dest = req.body && req.body.destination;
+      let only;
+      if (dest === 'facebook' || dest === 'bluesky') {
+        const ready = dest === 'facebook' ? facebookConfigured() : blueskyConfigured();
+        if (doPost && !ready) {
+          return res.status(400).json({ error: dest === 'facebook'
+            ? 'FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN are not set on the server (restart after editing .env).'
+            : 'Bluesky credentials not configured on the server.' });
+        }
+        only = [dest];
+      }
       if (doPost) {
-        if (!activeDestinations().length) {
+        if (!only && !activeDestinations().length) {
           return res.status(400).json({ error: 'No destination is configured and switched on (Bluesky or Facebook).' });
         }
-        const out = await postEverywhere(alert, png, { prefix: '[TEST]', alt: 'Echo Radar test warning graphic.' });
+        const out = await postEverywhere(alert, png, { prefix: '[TEST]', alt: 'Echo Radar test warning graphic.', only });
         posted = out.results; errors = out.errors;
         log('TEST post sent by admin', req.user && req.user.email, '→', Object.keys(posted).join(' + ') || 'nothing',
           errors.length ? '| errors: ' + errors.join(' | ') : '');
