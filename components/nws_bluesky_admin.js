@@ -58,7 +58,8 @@ export function nwsxAdminHTML() {
   return `
   <div class="nwsx" id="nwsx-root">
     <h4><i class="ti ti-brand-bluesky"></i> Automatic Warning Posts
-      <span class="nwsx-pill" id="nwsx-bsky-pill">…</span></h4>
+      <span class="nwsx-pill" id="nwsx-bsky-pill">…</span>
+      <span class="nwsx-pill" id="nwsx-fb-pill">…</span></h4>
     <div class="nwsx-note" id="nwsx-poll-note"></div>
     <div class="nwsx-flash" id="nwsx-flash"></div>
 
@@ -66,6 +67,17 @@ export function nwsxAdminHTML() {
       <div class="nwsx-row">
         <div><div class="lbl">Enabled</div><div class="sub">Master switch — when off, nothing is posted.</div></div>
         <label class="nwsx-switch"><input type="checkbox" id="nwsx-enabled"><span></span></label>
+      </div>
+      <div class="nwsx-row">
+        <div><div class="lbl">Post to Bluesky</div><div class="sub">Needs BLUESKY_HANDLE + BLUESKY_APP_PASSWORD on the server.</div></div>
+        <label class="nwsx-switch"><input type="checkbox" id="nwsx-dest-bluesky"><span></span></label>
+      </div>
+      <div class="nwsx-row">
+        <div><div class="lbl">Post to Facebook Page</div><div class="sub">Needs FACEBOOK_PAGE_ID + FACEBOOK_PAGE_TOKEN on the server.</div></div>
+        <div class="nwsx-actions">
+          <button type="button" class="nwsx-btn nwsx-mini" id="nwsx-fbcheck-btn">Check connection</button>
+          <label class="nwsx-switch"><input type="checkbox" id="nwsx-dest-facebook"><span></span></label>
+        </div>
       </div>
       <div class="nwsx-row">
         <div><div class="lbl">Post significant updates</div><div class="sub">Re-post when a warning's polygon or threat materially changes.</div></div>
@@ -128,7 +140,7 @@ export function nwsxAdminHTML() {
         </select>
         <button class="nwsx-btn" id="nwsx-preview-btn">Preview graphic</button>
         <button class="nwsx-btn" id="nwsx-radarcheck-btn">Check radar source</button>
-        <button class="nwsx-btn danger" id="nwsx-testpost-btn">Send test post to Bluesky</button>
+        <button class="nwsx-btn danger" id="nwsx-testpost-btn">Send test post</button>
       </div>
       <div class="nwsx-preview" id="nwsx-preview">
         <div class="txt" id="nwsx-preview-txt"></div>
@@ -182,6 +194,7 @@ export function initNwsxAdmin(root) {
   }
 
   let catalog = [];
+  let activeDests = [];
 
   async function load() {
     let d;
@@ -193,8 +206,18 @@ export function initNwsxAdmin(root) {
     const pill = $('nwsx-bsky-pill');
     pill.textContent = d.blueskyConfigured ? `BLUESKY: ${d.blueskyHandle || 'configured'}` : 'BLUESKY: not configured';
     pill.className = 'nwsx-pill ' + (d.blueskyConfigured ? 'pill-on' : 'pill-off');
+    const fbPill = $('nwsx-fb-pill');
+    fbPill.textContent = d.facebookConfigured ? 'FACEBOOK: configured' : 'FACEBOOK: not configured';
+    fbPill.className = 'nwsx-pill ' + (d.facebookConfigured ? 'pill-on' : 'pill-off');
+    activeDests = d.activeDestinations || [];
+    const names = { bluesky: 'Bluesky', facebook: 'Facebook' };
     $('nwsx-poll-note').textContent =
-      `Polls NWS every ${d.pollSeconds}s. ${d.blueskyConfigured ? 'Posting is live.' : 'Detection & graphics run now; posting starts once Bluesky env vars are set.'} Tracking ${d.storeSize} recent alerts.`;
+      `Polls NWS every ${d.pollSeconds}s. ${activeDests.length
+        ? 'Posting to ' + activeDests.map((x) => names[x]).join(' and ') + (c.enabled ? '.' : ' once Enabled is on.')
+        : 'Detection & graphics run now; posting starts once a destination’s env vars are set.'} Tracking ${d.storeSize} recent alerts.`;
+    const dests = c.destinations || {};
+    $('nwsx-dest-bluesky').checked = dests.bluesky !== false;
+    $('nwsx-dest-facebook').checked = dests.facebook !== false;
 
     $('nwsx-enabled').checked = !!c.enabled;
     $('nwsx-updates').checked = !!c.postUpdates;
@@ -223,6 +246,7 @@ export function initNwsxAdmin(root) {
       postUpdates: $('nwsx-updates').checked,
       postCancellations: $('nwsx-cancels').checked,
       radarProduct: $('nwsx-radar') ? $('nwsx-radar').value : 'reflectivity',
+      destinations: { bluesky: $('nwsx-dest-bluesky').checked, facebook: $('nwsx-dest-facebook').checked },
       alertTypes,
       scope: {
         states: splitList($('nwsx-states').value).map((s) => s.toUpperCase()),
@@ -253,19 +277,41 @@ export function initNwsxAdmin(root) {
     const sample = $('nwsx-sample').value;
     const btn = post ? $('nwsx-testpost-btn') : $('nwsx-preview-btn');
     btn.disabled = true;
-    if (post && !confirm('Send a clearly-labeled [TEST] post to the connected Bluesky account?')) { btn.disabled = false; return; }
+    const names = { bluesky: 'Bluesky', facebook: 'your Facebook Page' };
+    const where = activeDests.map((x) => names[x]).join(' and ');
+    if (post && !where) { flash('No destination is configured and switched on (save settings first).', 'err'); btn.disabled = false; return; }
+    if (post && !confirm(`Send a clearly-labeled [TEST] post to ${where}? It will be public.`)) { btn.disabled = false; return; }
     try {
       const radarProduct = $('nwsx-radar') ? $('nwsx-radar').value : 'reflectivity';
       const d = await api('POST', '/admin/nwsx/test', { sample, post, radarProduct });
       $('nwsx-preview').style.display = 'flex';
-      $('nwsx-preview-txt').textContent = d.previewText || '';
+      $('nwsx-preview-txt').textContent = 'Bluesky:\n' + (d.previewText || '')
+        + (d.facebookText ? '\n\nFacebook:\n' + d.facebookText : '');
       $('nwsx-preview-img').src = d.image || '';
-      flash(post ? 'Test post sent to Bluesky.' : 'Preview generated.');
+      if (post) {
+        const sent = Object.keys(d.posted || {}).map((x) => names[x]);
+        flash(`Test post sent to ${sent.join(' and ')}.` + ((d.errors || []).length ? ' Failed: ' + d.errors.join(' | ') : ''),
+          (d.errors || []).length ? 'err' : 'info');
+      } else flash('Preview generated.');
     } catch (e) { flash((post ? 'Test post failed: ' : 'Preview failed: ') + e.message, 'err'); }
     finally { btn.disabled = false; }
   }
   $('nwsx-preview-btn').addEventListener('click', () => runTest(false));
   $('nwsx-testpost-btn').addEventListener('click', () => runTest(true));
+
+  $('nwsx-fbcheck-btn').addEventListener('click', async () => {
+    const btn = $('nwsx-fbcheck-btn'); btn.disabled = true;
+    try {
+      const d = await api('GET', '/admin/nwsx/facebook-check');
+      if (!d.ok) flash('Facebook: ' + d.error, 'err');
+      else if (!d.canPost) flash(`Facebook: connected to "${d.page}", but the token is missing pages_manage_posts.`, 'err');
+      else if (d.expires !== 'never') {
+        flash(`Facebook: connected to "${d.page}", but this token expires ${new Date(d.expires).toLocaleDateString()}. `
+          + 'Use the Page token from me/accounts (made with a long-lived token) so it never expires.', 'err');
+      } else flash(`Facebook: connected to "${d.page}" — token never expires and can post.`);
+    } catch (e) { flash('Facebook check failed: ' + e.message, 'err'); }
+    finally { btn.disabled = false; }
+  });
 
   $('nwsx-radarcheck-btn').addEventListener('click', async () => {
     const btn = $('nwsx-radarcheck-btn'); btn.disabled = true;
@@ -286,7 +332,8 @@ export function initNwsxAdmin(root) {
       tbody.innerHTML = d.rows.map((r) => {
         const t = r.ts ? new Date(r.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
         const cls = { posted: 'st-posted', skipped: 'st-skipped', error: 'st-error', baseline: 'st-baseline' }[r.status] || '';
-        const statusTxt = r.status + (r.reason ? ` (${r.reason})` : '') + (r.error ? `: ${r.error}` : '');
+        const statusTxt = r.status + (r.reason ? ` (${r.reason})` : '')
+          + (r.postedTo && r.postedTo.length ? ` → ${r.postedTo.join(' + ')}` : '') + (r.error ? `: ${r.error}` : '');
         const gfx = r.graphicPath ? `<a class="nwsx-btn" href="/admin/nwsx/graphic/${encodeURIComponent(r.id)}" target="_blank">View</a>` : '—';
         return `<tr>
           <td>${esc(t)}</td>

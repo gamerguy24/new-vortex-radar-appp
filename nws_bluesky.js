@@ -19,6 +19,12 @@
  * Secrets (BLUESKY_HANDLE / BLUESKY_APP_PASSWORD) live only in env and are never
  * logged or sent to the browser.
  *
+ * FACEBOOK: the same graphic also goes to a Facebook Page when FACEBOOK_PAGE_ID
+ * and FACEBOOK_PAGE_TOKEN are set — a Page access token taken from
+ * /me/accounts with a long-lived user token, which does not expire. Posted as
+ * a photo with a fuller caption (Facebook has no 300-character limit). Each
+ * destination can be switched off in admin; one failing never stops the other.
+ *
  * Mounted from server.js:
  *   require('./nws_bluesky').attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson });
  */
@@ -38,6 +44,8 @@ const USER_AGENT = process.env.NWS_USER_AGENT ||
 const POLL_MS = Math.max(30, parseInt(process.env.NWS_POLL_SECONDS, 10) || 60) * 1000;
 const MAX_POSTS_PER_CYCLE = parseInt(process.env.NWS_MAX_POSTS_PER_CYCLE, 10) || 8;
 const BSKY_LIMIT = 300; // Bluesky post grapheme limit
+const FB_GRAPH = 'https://graph.facebook.com/' + (process.env.FACEBOOK_GRAPH_VERSION || 'v26.0');
+const APP_URL = (process.env.APP_URL || '').replace(/\/+$/, '');
 
 const log = (...a) => console.log('[NWS-BSKY]', ...a);
 
@@ -64,6 +72,8 @@ function defaultConfig() {
     postCancellations: false,
     radarProduct: 'reflectivity', // 'reflectivity' (base reflectivity) | 'velocity' (base velocity)
     scope: { states: [...ALL_STATES], counties: [], offices: [] },
+    // Where posts go. A destination also needs its env credentials to post.
+    destinations: { bluesky: true, facebook: true },
   };
 }
 
@@ -78,6 +88,7 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
   // Merge alertTypes so newly-added event names get a default without wiping saved toggles.
   config.alertTypes = { ...defaultConfig().alertTypes, ...(config.alertTypes || {}) };
   config.scope = { states: [], counties: [], offices: [], ...(config.scope || {}) };
+  config.destinations = { bluesky: true, facebook: true, ...(config.destinations || {}) };
   let store = readJson(POSTS_FILE, {}) || {};
   let baselined = false;   // has this process baselined active alerts yet?
   let polling = false;     // guard against overlapping cycles
@@ -132,6 +143,96 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
       createdAt: new Date().toISOString(),
     });
     return { uri: res.uri, cid: res.cid };
+  }
+
+  // ── Facebook Page (Graph API photo post) ─────────────────────────────────────
+  const facebookConfigured = () =>
+    !!(process.env.FACEBOOK_PAGE_ID && process.env.FACEBOOK_PAGE_TOKEN);
+  const fbToken = () => String(process.env.FACEBOOK_PAGE_TOKEN || '').trim();
+  const fbPage = () => String(process.env.FACEBOOK_PAGE_ID || '').trim();
+
+  // A Graph error, with a fix for the ones that are not worth retrying.
+  function fbError(j, status) {
+    const err = (j && j.error) || {};
+    let msg = err.message || ('HTTP ' + status);
+    const e = new Error(msg);
+    if (err.code === 190) {
+      e.message = 'Facebook rejected the Page token (expired or revoked). Get a new Page token from '
+        + 'Graph API Explorer › me/accounts and update FACEBOOK_PAGE_TOKEN.';
+      e.noRetry = true;
+    } else if (err.code === 200 || err.code === 10 || err.code === 100) {
+      e.message = 'Facebook refused the post: ' + msg + ' — the token needs pages_manage_posts for this Page.';
+      e.noRetry = true;
+    }
+    return e;
+  }
+
+  async function postToFacebook(text, png) {
+    if (!facebookConfigured()) return { skipped: 'no-credentials' };
+    const fd = new FormData();
+    fd.append('source', new Blob([png], { type: 'image/png' }), 'warning.png');
+    fd.append('message', text);
+    fd.append('published', 'true');
+    fd.append('access_token', fbToken());
+    const r = await fetch(`${FB_GRAPH}/${encodeURIComponent(fbPage())}/photos`, { method: 'POST', body: fd });
+    let j = null; try { j = await r.json(); } catch { /* not json */ }
+    if (!r.ok || !j || j.error) throw fbError(j, r.status);
+    return { id: j.post_id || j.id };
+  }
+
+  /*
+   * Facebook's caption: the Bluesky line, plus the hazard details, the
+   * office's own first instruction paragraph and a link — all NWS fields,
+   * nothing invented.
+   */
+  function buildFacebookText(alert, { prefix = '' } = {}) {
+    const p = alert.properties || {};
+    const params = p.parameters || {};
+    const until = untilLabel(alert);
+    const office = officeName(p.senderName);
+    const lines = [];
+    let head = (prefix ? prefix + ' ' : '') + `⚠️ ${p.event || 'Weather Warning'}`;
+    const areas = areaLabel(alert, 12);
+    if (areas) head += ` for ${areas}`;
+    if (until) head += ` until ${until}`;
+    lines.push(head + '.');
+    const tornado = tornadoNote(p);
+    if (tornado) lines.push(tornado);
+    const hazards = [];
+    if (params.maxWindGust && params.maxWindGust[0]) hazards.push('Wind: ' + params.maxWindGust[0]);
+    if (params.maxHailSize && params.maxHailSize[0]) hazards.push('Hail: ' + params.maxHailSize[0] + ' in');
+    if (hazards.length) lines.push(hazards.join(' · '));
+    const instruction = String(p.instruction || '').split(/\n\s*\n/)[0].replace(/\s+/g, ' ').trim();
+    if (instruction) lines.push(instruction.length > 500 ? instruction.slice(0, 500).replace(/\s+\S*$/, '') + '…' : instruction);
+    if (office) lines.push(`Issued by NWS ${office}.`);
+    if (APP_URL) lines.push(`Live radar: ${APP_URL}`);
+    return lines.join('\n\n');
+  }
+
+  // Destinations switched on in admin AND with credentials on the server.
+  function activeDestinations() {
+    const d = config.destinations || {};
+    const out = [];
+    if (d.bluesky !== false && blueskyConfigured()) out.push('bluesky');
+    if (d.facebook !== false && facebookConfigured()) out.push('facebook');
+    return out;
+  }
+
+  /** Post to every active destination; one failing never stops the other. */
+  async function postEverywhere(alert, png, { prefix = '', alt } = {}) {
+    const results = {}; const errors = [];
+    for (const dest of activeDestinations()) {
+      try {
+        if (dest === 'bluesky') {
+          results.bluesky = await withRetry(() => postToBluesky(buildPostText(alert, { prefix }), png, alt));
+        } else {
+          results.facebook = await withRetry(() => postToFacebook(buildFacebookText(alert, { prefix }), png));
+        }
+      } catch (e) {
+        errors.push(`${dest}: ${e.message || String(e)}`);
+      }
+    }
+    return { results, errors };
   }
 
   // ── text ─────────────────────────────────────────────────────────────────────
@@ -232,6 +333,7 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
       try { return await fn(); }
       catch (e) {
         lastErr = e;
+        if (e && e.noRetry) throw e;     // a bad token will not get better in 30 seconds
         const status = e && (e.status || (e.headers && 429));
         const wait = Math.min(30000, 1500 * Math.pow(2, i)) + Math.floor(Math.random() * 500);
         log(`post attempt ${i + 1}/${tries} failed (${e.message || status}); retrying in ${wait}ms`);
@@ -257,25 +359,24 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
       return;
     }
 
-    if (!blueskyConfigured()) {
+    if (!activeDestinations().length) {
       rec.status = 'skipped'; rec.reason = 'no-credentials';
       store[id] = rec; saveStore();
-      log('generated graphic (no Bluesky creds) for', rec.event, '—', shortArea(alert));
+      log('generated graphic (no destination configured) for', rec.event, '—', shortArea(alert));
       return;
     }
 
-    const text = buildPostText(alert, { prefix: isUpdate ? 'UPDATE:' : '' });
     const alt = `${rec.event} for ${areaLabel(alert, 8)}. ${untilLabel(alert) ? 'Until ' + untilLabel(alert) + '.' : ''}`;
-    try {
-      const res = await withRetry(() => postToBluesky(text, png, alt));
-      rec.status = 'posted'; rec.postUri = res.uri || null; rec.postCid = res.cid || null;
-      store[id] = rec; saveStore();
-      log('posted', rec.event, '—', shortArea(alert), '→', res.uri || '(no uri)');
-    } catch (e) {
-      rec.status = 'error'; rec.error = 'post: ' + (e.message || String(e));
-      store[id] = rec; saveStore();
-      log('post failed for', id, '-', rec.error);
-    }
+    const { results, errors } = await postEverywhere(alert, png, { prefix: isUpdate ? 'UPDATE:' : '', alt });
+    const done = Object.keys(results);
+    rec.status = done.length ? 'posted' : 'error';
+    rec.postedTo = done;
+    if (results.bluesky) { rec.postUri = results.bluesky.uri || null; rec.postCid = results.bluesky.cid || null; }
+    if (results.facebook) rec.fbPostId = results.facebook.id || null;
+    rec.error = errors.length ? 'post: ' + errors.join(' | ') : null;
+    store[id] = rec; saveStore();
+    if (done.length) log('posted', rec.event, '—', shortArea(alert), '→', done.join(' + '));
+    if (errors.length) log('post failed for', id, '-', rec.error);
   }
 
   function shortArea(alert) { return areaLabel(alert, 3); }
@@ -363,6 +464,9 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
       config,
       blueskyConfigured: blueskyConfigured(),
       blueskyHandle: process.env.BLUESKY_HANDLE || null,
+      facebookConfigured: facebookConfigured(),
+      facebookPageId: facebookConfigured() ? fbPage() : null,
+      activeDestinations: activeDestinations(),
       pollSeconds: POLL_MS / 1000,
       alertTypeCatalog: ALERT_TYPES.filter((t) => t.category === 'warning').map((t) => t.name),
       storeSize: Object.keys(store).length,
@@ -375,6 +479,11 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
     if (typeof b.postUpdates === 'boolean') config.postUpdates = b.postUpdates;
     if (typeof b.postCancellations === 'boolean') config.postCancellations = b.postCancellations;
     if (b.radarProduct === 'reflectivity' || b.radarProduct === 'velocity') config.radarProduct = b.radarProduct;
+    if (b.destinations && typeof b.destinations === 'object') {
+      for (const k of ['bluesky', 'facebook']) {
+        if (typeof b.destinations[k] === 'boolean') config.destinations[k] = b.destinations[k];
+      }
+    }
     if (b.alertTypes && typeof b.alertTypes === 'object') {
       for (const [k, v] of Object.entries(b.alertTypes)) {
         if (k in config.alertTypes) config.alertTypes[k] = !!v;
@@ -429,23 +538,55 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
     const alert = sampleAlert(sample);
     try {
       const png = await renderWarningGraphic(alert, { radarProduct });
-      let posted = null;
+      let posted = null; let errors = [];
       if (doPost) {
-        if (!blueskyConfigured()) return res.status(400).json({ error: 'Bluesky credentials not configured on the server.' });
-        const text = buildPostText(alert, { prefix: '[TEST]' });
-        posted = await withRetry(() => postToBluesky(text, png, 'Vortex Radar test warning graphic.'));
-        log('TEST post sent by admin', req.user && req.user.email, '→', posted.uri);
+        if (!activeDestinations().length) {
+          return res.status(400).json({ error: 'No destination is configured and switched on (Bluesky or Facebook).' });
+        }
+        const out = await postEverywhere(alert, png, { prefix: '[TEST]', alt: 'Echo Radar test warning graphic.' });
+        posted = out.results; errors = out.errors;
+        log('TEST post sent by admin', req.user && req.user.email, '→', Object.keys(posted).join(' + ') || 'nothing',
+          errors.length ? '| errors: ' + errors.join(' | ') : '');
+        if (!Object.keys(posted).length) return res.status(500).json({ error: errors.join(' | ') });
       }
+      const prefix = doPost ? '[TEST]' : '';
       res.json({
         ok: true,
-        previewText: buildPostText(alert, { prefix: doPost ? '[TEST]' : '' }),
+        previewText: buildPostText(alert, { prefix }),
+        facebookText: buildFacebookText(alert, { prefix }),
         image: 'data:image/png;base64,' + png.toString('base64'),
         posted,
+        errors,
       });
     } catch (e) {
       log('test failed:', e.message);
       res.status(500).json({ error: e.message });
     }
+  });
+
+  /*
+   * Is the Facebook Page token good? Names the Page it posts to and says when
+   * the token expires — a Page token from /me/accounts should say never. The
+   * token itself is never sent to the browser.
+   */
+  app.get('/admin/nwsx/facebook-check', requireAdmin, async (req, res) => {
+    if (!facebookConfigured()) {
+      return res.json({ ok: false, error: 'FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN are not set on the server.' });
+    }
+    try {
+      const t = encodeURIComponent(fbToken());
+      const page = await (await fetch(`${FB_GRAPH}/${encodeURIComponent(fbPage())}?fields=id,name&access_token=${t}`)).json();
+      if (page.error) return res.json({ ok: false, error: fbError(page, 400).message });
+      const dbg = ((await (await fetch(`${FB_GRAPH}/debug_token?input_token=${t}&access_token=${t}`)).json()) || {}).data || {};
+      const scopes = dbg.scopes || [];
+      res.json({
+        ok: true,
+        page: page.name, pageId: page.id,
+        tokenType: dbg.type || null,
+        expires: dbg.expires_at ? new Date(dbg.expires_at * 1000).toISOString() : 'never',
+        canPost: scopes.includes('pages_manage_posts'),
+      });
+    } catch (e) { res.json({ ok: false, error: e.message }); }
   });
 
   // ── start the poller ──────────────────────────────────────────────────────────
@@ -454,7 +595,8 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
   setInterval(() => { poll().catch((e) => log('unhandled poll rejection:', e.message)); }, POLL_MS);
   setTimeout(() => { poll().catch((e) => log('unhandled poll rejection:', e.message)); }, 4000);
   log(`attached — polling every ${POLL_MS / 1000}s;`,
-    `enabled: ${config.enabled};`, `bluesky: ${blueskyConfigured() ? 'configured' : 'not configured'}`);
+    `enabled: ${config.enabled};`, `bluesky: ${blueskyConfigured() ? 'configured' : 'not configured'};`,
+    `facebook: ${facebookConfigured() ? 'configured' : 'not configured'}`);
 
   // Internal handle (used by tests to drive one poll deterministically).
   return { _pollOnce: poll, _store: () => store, _config: () => config };

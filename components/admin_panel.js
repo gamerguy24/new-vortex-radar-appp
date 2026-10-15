@@ -6,7 +6,7 @@
  * (c) 2026 Twistcaster Live Media LLC.
  */
 
-import { nwsxAdminHTML, initNwsxAdmin } from './nws_bluesky_admin.js';
+import { nwsxAdminHTML, initNwsxAdmin } from './nws_bluesky_admin.js?v=fb1';
 
 export const adminPanelStyles = `
 .admin-panel { display: flex; flex-direction: column; gap: 12px; }
