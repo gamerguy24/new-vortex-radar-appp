@@ -25,6 +25,7 @@ function injectStyles() {
       cursor:pointer;background:#1f7ae0;color:#fff}
     .mst-btn:hover{background:#2a8bf5}
     .mst-btn:disabled{opacity:.5;cursor:default}
+    .mst-speed .mst-note{margin:-4px 0 9px;font-size:11.5px;color:#7fd7ff}
     .mst-speed .mst-x{position:absolute;top:6px;right:9px;cursor:pointer;opacity:.6;font-size:15px;line-height:1}
     .mst-speed .mst-x:hover{opacity:1}
 
@@ -53,7 +54,7 @@ function injectStyles() {
     .mst-hint{position:absolute;bottom:auto;top:108px;left:50%;transform:translateX(-50%);
       z-index:100060;background:var(--vx-surface);color:#cdd9f0;border:1px solid #22344f;
       border-radius:var(--vx-r-3);padding:6px 14px;font-size:12px;font-family:var(--vx-font);
-      pointer-events:none;white-space:nowrap}`;
+      pointer-events:none;white-space:nowrap;max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis}`;
     document.head.appendChild(s);
 }
 
@@ -98,7 +99,8 @@ function removeHint() {
 
 // ---- speed popup -------------------------------------------------------------
 // pos: {x,y} pixel position. onCalculate(speed). onCancel().
-function showSpeedPopup(pos, onCalculate, onCancel) {
+// preset: optional { value, note } — a speed already known (from a warning).
+function showSpeedPopup(pos, onCalculate, onCancel, preset) {
     injectStyles();
     removeSpeedPopup();
     const el = document.createElement('div');
@@ -111,6 +113,7 @@ function showSpeedPopup(pos, onCalculate, onCancel) {
             `<input type="number" inputmode="numeric" min="1" max="120" placeholder="0" />` +
             `<span class="mst-unit">MPH</span>` +
         `</div>` +
+        (preset && preset.note ? `<div class="mst-note">${preset.note}</div>` : '') +
         `<button class="mst-btn" disabled>Calculate</button>`;
     document.body.appendChild(el);
 
@@ -130,6 +133,7 @@ function showSpeedPopup(pos, onCalculate, onCancel) {
         if (!(v > 0)) return;
         onCalculate(v);
     };
+    if (preset && preset.value > 0) { input.value = preset.value; validate(); }
     input.addEventListener('input', validate);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onCancel(); });
     btn.addEventListener('click', submit);

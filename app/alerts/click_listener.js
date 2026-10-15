@@ -7,6 +7,7 @@ const { DateTime } = require('luxon');
 const hash_string = require('./hash_string');
 const VortexPopup = require('../core/popup/VortexPopup');
 const pds = require('./pds');
+const alert_actions = require('./alert_actions');
 
 // https://www.geeksforgeeks.org/how-to-change-the-height-of-br-tag
 const break_small = `<span style="display: block; margin-bottom: -.4em;"></span>`;
@@ -132,14 +133,22 @@ function click_listener(e) {
                 main_headline = temp;
             }
 
+            // Radar + Track buttons (alert_actions.js) — the same pair in the popup and the full text.
+            var actionFeature = {
+                type: 'Feature', geometry: e.features[key].geometry, properties: {},
+                event: properties.event, parameters,
+            };
+            var actions_html = alert_actions.buttonsHtml(actionFeature, e.lngLat);
+
             var popup_html =
 `${threatBadge}<div style="font-weight: bold; font-size: 13px;">${properties.event}</div>
 <div><span class="alert_popup_lessertext">${thingToPrepend}</span> ${formattedDateDiff} ${thingToAppend}</div>
 ${parameters_html}
+${actions_html}
 <i id="${id}" class="alert_popup_info icon-blue fa fa-circle-info" style="color: rgb(255, 255, 255);"></i>`;
 
-            var extentedAlertDescription = 
-`<div style="white-space: pre-wrap;"><b><span style="display: block; margin-bottom: 1em;"></span>${checkPropertyExists(properties.event)}
+            var extentedAlertDescription =
+`${actions_html}<div style="white-space: pre-wrap;"><b><span style="display: block; margin-bottom: 1em;"></span>${checkPropertyExists(properties.event)}
 <hr>${checkPropertyExists(properties.senderName)}</b>
 <hr>${secondary_headline}
 <hr>${main_headline}

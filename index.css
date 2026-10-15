@@ -1647,6 +1647,32 @@ td.day.active, span.month.active, span.year.active {
     color: rgb(140, 140, 140);
 }
 
+/* Radar / Track buttons on a warning (app/alerts/alert_actions.js). */
+.alert_popup_actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 7px;
+}
+#atcDlgBody .alert_popup_actions { margin: 10px 0 2px; }
+.alert_action_btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    color: var(--vx-text, #eef4fb);
+    background: rgba(255, 255, 255, .08);
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: var(--vx-r-2, 6px);
+    cursor: pointer;
+}
+.alert_action_btn:hover { border-color: var(--vx-accent, #e8862b); }
+.alert_action_btn:focus-visible { outline: 2px solid var(--vx-accent, #e8862b); outline-offset: 1px; }
+
 /*
  * PDS warnings and emergencies (app/alerts/pds.js): a banner saying so, above
  * the event name in the map popup and in the Active Alerts list. The colours

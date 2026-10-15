@@ -32,19 +32,46 @@ const NWS_UA = (process.env.NWS_USER_AGENT || 'EchoRadar (critical-alerts, admin
 // ── default admin config (editable in the admin dashboard; NOT hard-coded through
 //    the app — everything reads from crit_config.json). Priorities + per-priority
 //    channel routing per the spec. ─────────────────────────────────────────────
+/*
+ * Which NWS events are eligible, and their priority. Admin can edit; an
+ * enabled type is one users can pick for email. Priority sets the DEFAULT a
+ * user gets before they pick anything (CRITICAL + HIGH), so adding a NORMAL
+ * type here never starts mailing anybody who did not ask for it.
+ */
+const DEFAULT_ALERT_TYPES = [
+    { name: 'Tornado Warning', priority: 'CRITICAL', enabled: true },
+    { name: 'Flash Flood Warning', priority: 'CRITICAL', enabled: true },
+    { name: 'Extreme Wind Warning', priority: 'CRITICAL', enabled: true },
+    { name: 'Hurricane Warning', priority: 'CRITICAL', enabled: true },
+    { name: 'Storm Surge Warning', priority: 'CRITICAL', enabled: true },
+    { name: 'Tropical Storm Warning', priority: 'CRITICAL', enabled: true },
+    { name: 'Severe Thunderstorm Warning', priority: 'HIGH', enabled: true },
+    { name: 'Flood Warning', priority: 'HIGH', enabled: true },
+    { name: 'Special Marine Warning', priority: 'HIGH', enabled: false },
+    { name: 'Snow Squall Warning', priority: 'NORMAL', enabled: true },
+    { name: 'Blizzard Warning', priority: 'NORMAL', enabled: true },
+    { name: 'Ice Storm Warning', priority: 'NORMAL', enabled: true },
+    { name: 'Winter Storm Warning', priority: 'NORMAL', enabled: true },
+    { name: 'High Wind Warning', priority: 'NORMAL', enabled: true },
+    { name: 'Dust Storm Warning', priority: 'NORMAL', enabled: true },
+    { name: 'Extreme Heat Warning', priority: 'NORMAL', enabled: true },
+    { name: 'Red Flag Warning', priority: 'NORMAL', enabled: true },
+    { name: 'Tornado Watch', priority: 'NORMAL', enabled: true },
+    { name: 'Severe Thunderstorm Watch', priority: 'NORMAL', enabled: true },
+    { name: 'Flash Flood Watch', priority: 'NORMAL', enabled: true },
+    { name: 'Flood Watch', priority: 'NORMAL', enabled: true },
+    { name: 'Hurricane Watch', priority: 'NORMAL', enabled: true },
+    { name: 'Tropical Storm Watch', priority: 'NORMAL', enabled: true },
+    { name: 'Storm Surge Watch', priority: 'NORMAL', enabled: true },
+    { name: 'Winter Storm Watch', priority: 'NORMAL', enabled: true },
+    { name: 'High Wind Watch', priority: 'NORMAL', enabled: true },
+    { name: 'Extreme Heat Watch', priority: 'NORMAL', enabled: true },
+];
+const CATALOG_VERSION = 2;
+
 const DEFAULT_CONFIG = {
-    // Which NWS events are eligible, and their priority. Admin can edit.
-    alertTypes: [
-        { name: 'Tornado Warning', priority: 'CRITICAL', enabled: true },
-        { name: 'Flash Flood Warning', priority: 'CRITICAL', enabled: true },
-        { name: 'Extreme Wind Warning', priority: 'CRITICAL', enabled: true },
-        { name: 'Hurricane Warning', priority: 'CRITICAL', enabled: true },
-        { name: 'Tropical Storm Warning', priority: 'CRITICAL', enabled: true },
-        { name: 'Severe Thunderstorm Warning', priority: 'HIGH', enabled: true },
-        { name: 'Special Marine Warning', priority: 'HIGH', enabled: false },
-        { name: 'Tornado Watch', priority: 'NORMAL', enabled: false },
-        { name: 'Severe Thunderstorm Watch', priority: 'NORMAL', enabled: false },
-    ],
+    catalogVersion: CATALOG_VERSION,
+    alertTypes: DEFAULT_ALERT_TYPES,
     // Which channels fire at each priority level (a per-priority default; a user's
     // own method toggles further gate this).
     routing: {
@@ -88,6 +115,21 @@ function attachCriticalAlerts({
     let config = readJson(CONFIG_FILE, null);
     if (!config) { config = DEFAULT_CONFIG; try { writeJson(CONFIG_FILE, config); } catch (e) {} }
 
+    /*
+     * Catalog v2: watches and the rest of the warnings, so users can pick them
+     * for email. Types the admin already has keep their settings — except the
+     * two watches, which were off only because nobody could choose them yet.
+     */
+    if (!(config.catalogVersion >= CATALOG_VERSION)) {
+        const have = new Set((config.alertTypes || []).map((t) => t.name));
+        config.alertTypes = (config.alertTypes || []).map((t) => (
+            /^(Tornado|Severe Thunderstorm) Watch$/.test(t.name) ? { ...t, enabled: true } : t));
+        for (const t of DEFAULT_ALERT_TYPES) if (!have.has(t.name)) config.alertTypes.push({ ...t });
+        config.catalogVersion = CATALOG_VERSION;
+        try { writeJson(CONFIG_FILE, config); } catch (e) {}
+        console.log('[CRITICAL] alert catalog updated to v' + CATALOG_VERSION);
+    }
+
     const saveLocations = () => { try { writeJson(LOC_FILE, locations); } catch (e) {} };
     const savePrefs = () => { try { writeJson(PREFS_FILE, prefs); } catch (e) {} };
     const saveConfig = () => { try { writeJson(CONFIG_FILE, config); } catch (e) {} };
@@ -113,8 +155,28 @@ function attachCriticalAlerts({
                 overrideCritical: !(p.quietHours && p.quietHours.overrideCritical === false), // default true
             },
             notifyFor: p.notifyFor || 'critical-high', // 'critical' | 'critical-high' | 'all'
+            emailTypes: emailTypesFor(user.id),
+            emailTypesCustom: Array.isArray(p.emailTypes),
         };
     }
+
+    /*
+     * The alert types this user gets by email: the ones they ticked, or —
+     * until they tick anything — every enabled type at the priorities their
+     * notifyFor covers. Always limited to what the admin has enabled.
+     */
+    function emailTypesFor(userId) {
+        const p = prefs[userId] || {};
+        const enabled = config.alertTypes.filter((t) => t.enabled);
+        if (Array.isArray(p.emailTypes)) {
+            const picked = new Set(p.emailTypes);
+            return enabled.filter((t) => picked.has(t.name)).map((t) => t.name);
+        }
+        const f = p.notifyFor || 'critical-high';
+        return enabled.filter((t) => f === 'all' || t.priority === 'CRITICAL'
+            || (f === 'critical-high' && t.priority === 'HIGH')).map((t) => t.name);
+    }
+    const wantsEmail = (userId, event) => emailTypesFor(userId).indexOf(event) !== -1;
     // What we expose (never leak the discord webhook value; report configured only).
     function publicPrefs(user) {
         const p = userPrefs(user);
@@ -135,6 +197,48 @@ function attachCriticalAlerts({
             const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
             if (m && m.coordinates) return { lat: m.coordinates.y, lon: m.coordinates.x, matched: m.matchedAddress };
         } catch (e) {}
+        /*
+         * The Census geocoder only knows street addresses, but the dialog asks
+         * for "address, city or ZIP" — so a bare city or ZIP falls back to
+         * OpenStreetMap's Nominatim (free, no key, US only here).
+         */
+        try {
+            const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q='
+                + encodeURIComponent(oneline), { headers: { 'User-Agent': NWS_UA } });
+            if (!r.ok) return null;
+            const m = (await r.json())[0];
+            if (m && m.lat && m.lon) return { lat: Number(m.lat), lon: Number(m.lon), matched: m.display_name };
+        } catch (e) {}
+        return null;
+    }
+
+    /*
+     * A location's NWS zones (forecast zone, county, fire zone), for alerts
+     * issued by zone rather than polygon — watches, hurricane and winter
+     * products. Looked up once from api.weather.gov/points and kept on the
+     * location; a moved pin looks them up again. Returns null while the
+     * lookup is in flight, so the poller simply catches it on the next pass.
+     */
+    const zoneJobs = new Map();         // location id -> in-flight lookup
+    const zoneFails = new Map();        // location id -> time of last failure
+    function zonesFor(loc) {
+        const at = `${loc.lat},${loc.lon}`;
+        if (Array.isArray(loc.zones) && loc.zonesAt === at) return loc.zones;
+        if (zoneJobs.has(loc.id) || Date.now() - (zoneFails.get(loc.id) || 0) < 10 * 60 * 1000) return null;
+        const url = `https://api.weather.gov/points/${Number(loc.lat).toFixed(4)},${Number(loc.lon).toFixed(4)}`;
+        zoneJobs.set(loc.id, fetch(url, { headers: { Accept: 'application/geo+json', 'User-Agent': NWS_UA } })
+            .then((r) => { if (!r.ok) throw new Error('NWS ' + r.status); return r.json(); })
+            .then((body) => {
+                const p = (body && body.properties) || {};
+                const zones = [p.forecastZone, p.county, p.fireWeatherZone]
+                    .filter(Boolean).map((u) => String(u).split('/').pop());
+                if (!zones.length) throw new Error('no zones');
+                loc.zones = zones;
+                loc.zonesAt = at;
+                saveLocations();
+            })
+            .catch(() => zoneFails.set(loc.id, Date.now()))
+            .finally(() => zoneJobs.delete(loc.id)));
         return null;
     }
     function oneLine(b) {
@@ -199,6 +303,7 @@ function attachCriticalAlerts({
         list.push(loc);
         locations[req.user.id] = list;
         saveLocations();
+        zonesFor(loc);
         res.json({ location: loc });
     });
 
@@ -213,6 +318,7 @@ function attachCriticalAlerts({
         loc.updatedAt = new Date().toISOString();
         list[i] = loc;
         saveLocations();
+        zonesFor(loc);
         res.json({ location: loc });
     });
 
@@ -237,6 +343,10 @@ function attachCriticalAlerts({
         if (b.telegramChatId != null) next.telegramChatId = clampStr(b.telegramChatId, 60);
         if (b.ntfyTopic != null) next.ntfyTopic = clampStr(b.ntfyTopic, 120);
         if (b.notifyFor && ['critical', 'critical-high', 'all'].includes(b.notifyFor)) next.notifyFor = b.notifyFor;
+        if (Array.isArray(b.emailTypes)) {
+            const known = new Set(config.alertTypes.map((t) => t.name));
+            next.emailTypes = b.emailTypes.map((s) => clampStr(s, 60)).filter((s) => known.has(s));
+        } else if (b.emailTypes === null) delete next.emailTypes;      // back to the defaults
         if (b.phone != null) {
             const phone = clampStr(b.phone, 20);
             // changing the number resets verification + requires fresh consent
@@ -338,7 +448,7 @@ function attachCriticalAlerts({
             app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson,
             getLocations: () => locations,
             getPrefs: (id) => prefs[id],
-            getUser, hasAlerts, sendMail, mailReady, mailError,
+            getUser, hasAlerts, sendMail, mailReady, mailError, wantsEmail,
         });
     } catch (e) {
         console.error('[CRITICAL] email alerts unavailable: ' + e.message);
@@ -353,8 +463,10 @@ function attachCriticalAlerts({
                 getPrefs: (id) => prefs[id],
                 getConfig: () => config,
                 userAgent: NWS_UA,
+                zonesFor, wantsEmail,
             });
             worker.start();
+            attachCriticalAlerts._api.poll = () => worker.poll();
         } catch (e) {
             console.error('[CRITICAL] warning poller unavailable: ' + e.message);
         }
@@ -372,6 +484,54 @@ function attachCriticalAlerts({
             devices: push ? push.hasSubscribers(req.user.id) : false,
             poller: worker ? worker.status() : null,
         });
+    });
+
+    /*
+     * "Right now": every alert in effect at each of this user's places, and
+     * for each, whether it was emailed — and if not, why not. The answer to
+     * "there's a warning and I didn't get anything", without a server log.
+     */
+    app.get('/api/critical/check', requireAuth, (req, res) => {
+        const { covers, isEnding } = require('./critical_worker');
+        const userId = req.user.id;
+        const email = messaging ? messaging.statusFor(userId) : { on: false, available: false };
+        if (req.user.isAdmin && messaging && messaging.lastError()) email.lastError = messaging.lastError();
+        if (!worker) return res.json({ poller: null, email, places: [] });
+        const picks = new Set(emailTypesFor(userId));
+        const all = worker.snapshot();
+        // A warning and its later updates are one warning: keep only the newest.
+        const superseded = new Set();
+        for (const f of all) {
+            for (const r of ((f && f.properties && f.properties.references) || [])) superseded.add(r && r.identifier);
+        }
+        const feats = all.filter((f) => {
+            const p = (f && f.properties) || {};
+            return p.id && !superseded.has(p.id) && (!p.status || p.status === 'Actual') && !isEnding(p);
+        });
+        const places = getLocs(userId).map((loc) => {
+            const out = {
+                name: loc.name || 'Location',
+                where: [loc.city, loc.state].filter(Boolean).join(', ') || loc.address || '',
+                enabled: loc.enabled !== false,
+                positioned: loc.lat != null && loc.lon != null,
+                alerts: [],
+            };
+            if (!out.positioned) return out;
+            for (const f of feats) {
+                if (!covers(f, loc, zonesFor)) continue;
+                const p = f.properties;
+                out.alerts.push({
+                    event: p.event,
+                    until: p.ends || p.expires || null,
+                    sender: p.senderName || '',
+                    offered: !!worker.eligible(p.event),
+                    picked: picks.has(p.event),
+                    emailed: worker.wasSent(`e|${userId}|${loc.id}|${p.id}`),
+                });
+            }
+            return out;
+        });
+        res.json({ poller: worker.status(), email, places });
     });
 
     console.log(`[CRITICAL] Critical Weather Alerts ready (push: ${push ? 'on' : 'off'}, `

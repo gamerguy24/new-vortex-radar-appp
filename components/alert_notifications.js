@@ -212,6 +212,20 @@ function injectStyles() {
         ".vr-al-ch .vr-al-actions{margin:8px 0 0}",
         ".vr-al-note{font-size:12px;line-height:1.5;color:#a8bace}",
         ".vr-al-on{font-size:12.5px;color:#7ce8a8}",
+        ".vr-al-types{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)}",
+        ".vr-al-types h4{margin:8px 0 6px;font-size:11px;font-weight:800;letter-spacing:.1em;",
+        "  text-transform:uppercase;color:#8fa6bd}",
+        ".vr-al-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:4px 12px}",
+        ".vr-al-grid label{display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer;",
+        "  padding:3px 0;min-width:0}",
+        ".vr-al-grid input{flex:0 0 auto;accent-color:var(--vx-accent,#e8862b)}",
+        ".vr-al-now-place{margin-bottom:8px}",
+        ".vr-al-now-place>b{font-size:13px}",
+        ".vr-al-now-row{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;",
+        "  padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)}",
+        ".vr-al-now-row span:last-child{flex:0 0 auto;text-align:right;color:#a8bace}",
+        ".vr-al-now-row .ok{color:#7ce8a8}",
+        ".vr-al-now-row .warn{color:var(--vx-accent,#e8862b)}",
         ".vr-al-soon{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:999px;",
         "  font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;vertical-align:1px;",
         "  color:var(--vx-accent,#e8862b);background:rgba(232,134,43,.14);border:1px solid rgba(232,134,43,.35)}",
@@ -261,7 +275,8 @@ async function openDialog() {
         <div class="vr-al-body">
           <p class="vr-al-blurb">Be told when a warning is issued for somewhere you care about —
             matched to the exact warning polygon, not the county, so it only fires when it
-            should. Works with the app closed.</p>
+            should (watches, which have no polygon, match by your NWS zone). Works with the
+            app closed.</p>
 
           <div class="vr-al-state" id="vr-al-state">Checking…</div>
           <div class="vr-al-actions">
@@ -281,6 +296,9 @@ async function openDialog() {
           <div class="vr-al-sub">Email alerts</div>
           <div id="vr-al-contact" class="vr-al-contact">Loading…</div>
           <div class="vr-al-msg" id="vr-al-msg"></div>
+
+          <div class="vr-al-sub">Right now at your places</div>
+          <div id="vr-al-now" class="vr-al-state">Checking…</div>
         </div>
       </div>`;
     document.body.appendChild(wrap);
@@ -332,6 +350,7 @@ async function openDialog() {
                     try {
                         await j(`${API}/locations/${encodeURIComponent(b.dataset.id)}`, { method: 'DELETE' });
                         refreshLocs();
+                        refreshNow();
                     } catch (e) { msg(e.message, 'warn'); }
                 };
             });
@@ -361,7 +380,30 @@ async function openDialog() {
         return price.interval ? `${amt}/${price.interval}` : amt;
     }
 
-    function emailHtml(current, accountEmail, canManage) {
+    /*
+     * Which warnings and watches to email. Saved the moment a box changes;
+     * the server only accepts types the admin has enabled, and until the user
+     * ticks anything they get the default set (the life-threatening ones).
+     */
+    function typesHtml(summary) {
+        const types = (summary && summary.alertTypes) || [];
+        const picked = new Set((summary && summary.preferences && summary.preferences.emailTypes) || []);
+        const box = (t) => `<label><input type="checkbox" data-type="${escapeHtml(t.name)}"
+            ${picked.has(t.name) ? 'checked' : ''} /> ${escapeHtml(t.name)}</label>`;
+        const groups = [
+            ['Warnings', types.filter((t) => /Warning$/.test(t.name))],
+            ['Watches', types.filter((t) => /Watch$/.test(t.name))],
+            ['Other', types.filter((t) => !/(Warning|Watch)$/.test(t.name))],
+        ].filter(([, list]) => list.length);
+        if (!groups.length) return '';
+        return `<div class="vr-al-types"><div class="vr-al-note">Email me for:</div>
+            ${groups.map(([title, list]) => `<h4>${title}</h4>
+              <div class="vr-al-grid">${list.map(box).join('')}</div>`).join('')}
+            <div class="vr-al-actions"><button data-act="defaults">Reset to defaults</button></div>
+          </div>`;
+    }
+
+    function emailHtml(current, accountEmail, canManage, summary) {
         const manage = canManage ? '<button data-act="manage">Manage subscription</button>' : '';
         if (current) {
             return `<div class="vr-al-ch"><b>Email alerts</b>
@@ -370,7 +412,8 @@ async function openDialog() {
                   <button data-act="test">Send a test</button>
                   <button data-act="off">Turn off</button>
                   ${manage}
-                </div></div>`;
+                </div>
+                ${typesHtml(summary)}</div>`;
         }
         const value = typed != null ? typed : (accountEmail || '');
         return `<div class="vr-al-ch"><b>Email alerts</b>
@@ -412,14 +455,35 @@ async function openDialog() {
                     : soon;
             } else {
                 const accountEmail = summary && summary.preferences ? summary.preferences.email : '';
-                host.innerHTML = emailHtml(mine.email, accountEmail, plan.canManage);
+                host.innerHTML = emailHtml(mine.email, accountEmail, plan.canManage, summary);
             }
             host.querySelectorAll('button[data-act]').forEach((b) => {
                 b.onclick = () => contactAction(b.dataset.act, b);
             });
+            host.querySelectorAll('input[data-type]').forEach((box) => {
+                box.onchange = () => saveTypes(host);
+            });
         } catch (e) {
             host.innerHTML = `<div class="vr-al-empty">Could not load: ${escapeHtml(e.message)}</div>`;
         }
+    }
+
+    async function putTypes(emailTypes) {
+        await j(`${API}/preferences`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ emailTypes }),
+        });
+    }
+
+    async function saveTypes(host) {
+        const picked = [...host.querySelectorAll('input[data-type]:checked')].map((b) => b.dataset.type);
+        try {
+            await putTypes(picked);
+            msg(picked.length ? `Saved — ${picked.length} alert type${picked.length === 1 ? '' : 's'} by email.`
+                : 'Saved — no alert types ticked, so no alert emails will be sent.', picked.length ? 'ok' : 'warn');
+            refreshNow();
+        } catch (e) { msg(e.message, 'warn'); }
     }
 
     async function contactAction(act, btn) {
@@ -455,6 +519,9 @@ async function openDialog() {
             } else if (act === 'off') {
                 await j(`${API}/signup`, { method: 'DELETE' });
                 msg('Email alerts are off.', 'ok');
+            } else if (act === 'defaults') {
+                await putTypes(null);
+                msg('Back to the default alert types.', 'ok');
             }
         } catch (e) {
             msg(e.message, 'warn');
@@ -462,6 +529,48 @@ async function openDialog() {
             return;
         }
         refreshContact();
+        refreshNow();
+    }
+
+    /*
+     * What is in effect at each saved place this minute, and whether it was
+     * emailed — or the one-line reason it was not.
+     */
+    async function refreshNow() {
+        const host = $('vr-al-now');
+        if (!host) return;
+        try {
+            const out = await j(`${API}/check`);
+            const email = out.email || {};
+            const why = (a) => {
+                if (a.emailed) return '<span class="ok">✓ Emailed</span>';
+                if (!a.offered) return '<span>Not an alert type we send</span>';
+                if (!email.on) return '<span>Email alerts are off</span>';
+                if (!a.picked) return '<span>Not ticked in “Email me for”</span>';
+                return '<span class="warn">Sending on the next check (within a minute)</span>';
+            };
+            const places = out.places || [];
+            const lines = [];
+            if (!out.poller) lines.push('<div>⚠ The warning poller is not running on the server.</div>');
+            else if (out.poller.error) lines.push(`<div>⚠ The warning poller last failed: ${escapeHtml(out.poller.error)}</div>`);
+            if (email.lastError) {
+                lines.push(`<div>⚠ Last email failure: ${escapeHtml(email.lastError.error)}</div>`);
+            }
+            if (!places.length) lines.push('<div>No places saved yet.</div>');
+            for (const pl of places) {
+                const rows = !pl.positioned
+                    ? '<div class="vr-al-now-row"><span>No position — this place can never be matched.</span></div>'
+                    : pl.alerts.length
+                        ? pl.alerts.map((a) => `<div class="vr-al-now-row">
+                            <span>${escapeHtml(a.event)}</span>${why(a)}</div>`).join('')
+                        : '<div class="vr-al-now-row"><span>Nothing in effect here.</span></div>';
+                lines.push(`<div class="vr-al-now-place"><b>${escapeHtml(pl.name)}</b>
+                    ${pl.enabled ? '' : ' <i>(paused)</i>'}${rows}</div>`);
+            }
+            host.innerHTML = lines.join('');
+        } catch (e) {
+            host.innerHTML = `<div>Could not check: ${escapeHtml(e.message)}</div>`;
+        }
     }
 
     $('vr-al-enable').onclick = async () => {
@@ -511,12 +620,14 @@ async function openDialog() {
             $('vr-al-addr').value = '';
             msg('Added.', 'ok');
             refreshLocs();
+            refreshNow();
         } catch (e) { msg(e.message, 'warn'); }
     };
 
     refreshState();
     refreshLocs();
     refreshContact();
+    refreshNow();
 }
 
 function init() {

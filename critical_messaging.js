@@ -81,7 +81,7 @@ function emailMessage(alert, locations) {
 
 function attachCriticalMessaging({
     app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson,
-    getLocations, getPrefs, getUser, hasAlerts, sendMail, mailReady, mailError,
+    getLocations, getPrefs, getUser, hasAlerts, sendMail, mailReady, mailError, wantsEmail,
 }) {
     const FILE = path.join(DATA_DIR, 'crit_signups.json');
     // userId -> { account, email: { value, at } | null }. Only confirmed addresses.
@@ -123,23 +123,31 @@ function attachCriticalMessaging({
         return p.enabled !== false;
     }
 
-    function wantsPriority(p, priority) {
-        const f = (p && p.notifyFor) || 'critical-high';
-        if (f === 'all') return true;
-        if (f === 'critical') return priority === 'CRITICAL';
-        return priority === 'CRITICAL' || priority === 'HIGH';
-    }
-
-    /** Email one user about one warning, if the admin's routing allows email at this priority. */
-    async function deliver(userId, { alert, locations, priority, routing }) {
-        const out = { email: false };
+    /*
+     * Email one user about one warning, if it is one of the alert types they
+     * picked and the admin's routing allows email at this priority. `failed`
+     * is set only when the mail server refused it, so the poller can try again
+     * — a warning lost to one SMTP hiccup was lost for good before.
+     */
+    async function deliver(userId, { alert, locations, routing }) {
+        const out = { email: false, failed: false };
         const to = emailOf(userId);
         if (!to || !locations.length || !paid(userId)) return out;
-        if (!wantsPriority(getPrefs(userId), priority)) return out;
+        const event = alert && alert.properties && alert.properties.event;
+        if (wantsEmail && !wantsEmail(userId, event)) return out;
         if (routing && routing.email === false) return out;
         const m = emailMessage(alert, locations);
-        out.email = (await sendEmail(to.value, m.subject, m.text)).ok;
+        const sent = await sendEmail(to.value, m.subject, m.text);
+        out.email = sent.ok;
+        out.failed = !sent.ok;
+        if (!sent.ok) console.error(`[CRIT-MSG] ${event} email to ${to.value} failed: ${sent.detail || sent.error}`);
         return out;
+    }
+
+    /** What the "Right now" check shows about this person's email. */
+    function statusFor(userId) {
+        const to = emailOf(userId);
+        return { on: !!to, address: to ? to.value : null, subscribed: paid(userId), available: available() };
     }
 
     /*
@@ -252,7 +260,7 @@ function attachCriticalMessaging({
 
     console.log(`[CRIT-MSG] email alerts: ${available() ? 'SMTP' : 'off (set SMTP_*)'}`);
 
-    return { available, reachable, deliver };
+    return { available, reachable, deliver, statusFor, lastError: () => lastError };
 }
 
 module.exports = { attachCriticalMessaging, normEmail, emailMessage, untilText };

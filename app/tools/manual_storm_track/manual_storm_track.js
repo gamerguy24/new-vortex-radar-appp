@@ -35,6 +35,7 @@ const state = {
     current: null,    // [lng,lat]
     speed: null,      // last entered speed (mph)
     track: null,      // last built track
+    preset: null,     // { speedMph, source } from a warning — pre-fills the speed box
 };
 
 // ---- map layers --------------------------------------------------------------
@@ -167,6 +168,7 @@ function onUp(e) {
         { x: px.x, y: px.y },
         (speed) => calculate(speed),
         () => { ui.removeSpeedPopup(); clearLayers(); if (state.active) ui.showHint(hintText()); },
+        state.preset ? { value: Math.round(state.preset.speedMph), note: 'From the warning' } : null,
     );
 }
 
@@ -181,10 +183,36 @@ function calculate(speedMph) {
     const motionText = `${compass(bearing)} at ${Math.round(speedMph)} mph`;
     const impacts = computeImpacts(track, getCities(), { origin: state.start, speedMph, now: Date.now() });
     ui.showImpactPanel(impacts, { motionText, mode: state.mode }, () => reset());
+    if (state.preset) ui.showHint(hintText());
+}
+
+/*
+ * Track a storm from a warning's own motion (app/alerts/alert_actions.js):
+ * draw it straight away in the office's direction, and keep the speed so a
+ * fresh drag — in whatever direction the user prefers — comes pre-filled.
+ */
+function trackFrom({ origin, bearing, speedMph, mode, source }) {
+    if (!state.active) enable();
+    ui.removeSpeedPopup();
+    ui.removeImpactPanel();
+    clearLayers();
+    if (mode) {
+        state.mode = mode;
+        ui.showModeBar(() => state.mode, onModeChange);
+    }
+    state.preset = { speedMph, source };
+    state.dragging = false;
+    state.start = origin;
+    state.current = turf.destination(turf.point(origin), 10, bearing, { units: 'miles' }).geometry.coordinates;
+    calculate(speedMph);
 }
 
 // ---- lifecycle ---------------------------------------------------------------
 function hintText() {
+    if (state.preset) {
+        return `Drag to track it another way — speed stays ${Math.round(state.preset.speedMph)} mph `
+            + `(from ${state.preset.source})`;
+    }
     return state.mode === 'linear'
         ? 'Linear mode — drag across the line of storms, then enter its speed.'
         : 'Cellular mode — press, hold and drag in the direction of storm motion.';
@@ -224,22 +252,25 @@ function enable() {
     map.dragPan.disable();
     map.getCanvas().style.cursor = 'crosshair';
     bindMap();
-    ui.showModeBar(() => state.mode, (m) => {
-        state.mode = m;
-        // Re-render an existing track in the new mode; otherwise just re-hint.
-        if (state.start && state.current && state.speed) {
-            calculate(state.speed);
-        } else {
-            ui.showHint(hintText());
-        }
-    });
+    ui.showModeBar(() => state.mode, onModeChange);
     ui.showHint(hintText());
+}
+
+function onModeChange(m) {
+    state.mode = m;
+    // Re-render an existing track in the new mode; otherwise just re-hint.
+    if (state.start && state.current && state.speed) {
+        calculate(state.speed);
+    } else {
+        ui.showHint(hintText());
+    }
 }
 
 function disable() {
     if (!state.active) return;
     state.active = false;
     state.dragging = false;
+    state.preset = null;
     map.dragPan.enable();
     map.getCanvas().style.cursor = '';
     unbindMap();
@@ -250,4 +281,4 @@ function disable() {
 function toggle() { state.active ? disable() : enable(); }
 function isActive() { return state.active; }
 
-module.exports = { enable, disable, toggle, isActive };
+module.exports = { enable, disable, toggle, isActive, trackFrom };
