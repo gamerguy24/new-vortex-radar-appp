@@ -91,7 +91,27 @@ const DEFAULT_CONFIG = {
     ],
 };
 
-const ALL_METHODS = ['push', 'email', 'text', 'discord', 'telegram', 'ntfy'];
+/*
+ * States (and territories) a user can watch whole, instead of an address. An
+ * NWS alert lists the zones and counties it was issued for as UGC codes, and
+ * every UGC starts with the two-letter state ("OKC017", "TXZ119"), so a state
+ * matches exactly what the office issued — no geometry involved.
+ */
+const STATES = {
+    AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado',
+    CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia', FL: 'Florida', GA: 'Georgia',
+    HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky',
+    LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota',
+    MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire',
+    NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota',
+    OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
+    SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia',
+    WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming',
+    PR: 'Puerto Rico', VI: 'U.S. Virgin Islands', GU: 'Guam', AS: 'American Samoa', MP: 'Northern Mariana Islands',
+};
+const MAX_STATES = 10;
+
+const ALL_METHODS =['push', 'email', 'text', 'discord', 'telegram', 'ntfy'];
 function normMethods(m, dflt) {
     const out = {};
     for (const k of ALL_METHODS) out[k] = (m && typeof m[k] === 'boolean') ? m[k] : !!(dflt && dflt[k]);
@@ -157,7 +177,30 @@ function attachCriticalAlerts({
             notifyFor: p.notifyFor || 'critical-high', // 'critical' | 'critical-high' | 'all'
             emailTypes: emailTypesFor(user.id),
             emailTypesCustom: Array.isArray(p.emailTypes),
+            states: Array.isArray(p.states) ? p.states : [],
         };
+    }
+
+    /*
+     * Watched states as places the poller can treat like any other: one
+     * pseudo-location per state, matched by UGC prefix (critical_worker.js
+     * covers()). Push is on for them, like a place added in the dialog.
+     */
+    function statePlaces(userId) {
+        const list = (prefs[userId] && Array.isArray(prefs[userId].states)) ? prefs[userId].states : [];
+        return list.filter((s) => STATES[s]).map((s) => ({
+            id: 'state-' + s, name: STATES[s], stateCode: s, enabled: true, methods: { push: true },
+        }));
+    }
+    /** userId -> saved places followed by watched states. What the poller iterates. */
+    function placesByUser() {
+        const out = {};
+        for (const [id, list] of Object.entries(locations)) if (Array.isArray(list) && list.length) out[id] = list.slice();
+        for (const id of Object.keys(prefs)) {
+            const st = statePlaces(id);
+            if (st.length) out[id] = (out[id] || []).concat(st);
+        }
+        return out;
     }
 
     /*
@@ -284,6 +327,8 @@ function attachCriticalAlerts({
             locations: getLocs(req.user.id),
             preferences: publicPrefs(req.user),
             alertTypes: config.alertTypes.filter((t) => t.enabled),
+            states: STATES,
+            maxStates: MAX_STATES,
             smsGateways: config.smsGateways.filter((g) => g.enabled).map((g) => ({ id: g.id, carrier: g.carrier, country: g.country })),
         });
     });
@@ -347,6 +392,13 @@ function attachCriticalAlerts({
             const known = new Set(config.alertTypes.map((t) => t.name));
             next.emailTypes = b.emailTypes.map((s) => clampStr(s, 60)).filter((s) => known.has(s));
         } else if (b.emailTypes === null) delete next.emailTypes;      // back to the defaults
+        if (Array.isArray(b.states)) {
+            const picked = [...new Set(b.states.map((s) => String(s).toUpperCase().slice(0, 2)).filter((s) => STATES[s]))];
+            if (picked.length > MAX_STATES) {
+                return res.status(400).json({ error: `You can watch up to ${MAX_STATES} states.` });
+            }
+            next.states = picked;
+        }
         if (b.phone != null) {
             const phone = clampStr(b.phone, 20);
             // changing the number resets verification + requires fresh consent
@@ -459,7 +511,7 @@ function attachCriticalAlerts({
         try {
             worker = require('./critical_worker').attachCriticalWorker({
                 DATA_DIR, readJson, writeJson, push, messaging,
-                getLocations: () => locations,
+                getLocations: placesByUser,
                 getPrefs: (id) => prefs[id],
                 getConfig: () => config,
                 userAgent: NWS_UA,
@@ -508,12 +560,12 @@ function attachCriticalAlerts({
             const p = (f && f.properties) || {};
             return p.id && !superseded.has(p.id) && (!p.status || p.status === 'Actual') && !isEnding(p);
         });
-        const places = getLocs(userId).map((loc) => {
+        const places = getLocs(userId).concat(statePlaces(userId)).map((loc) => {
             const out = {
-                name: loc.name || 'Location',
+                name: loc.stateCode ? `${loc.name} (whole state)` : (loc.name || 'Location'),
                 where: [loc.city, loc.state].filter(Boolean).join(', ') || loc.address || '',
                 enabled: loc.enabled !== false,
-                positioned: loc.lat != null && loc.lon != null,
+                positioned: !!loc.stateCode || (loc.lat != null && loc.lon != null),
                 alerts: [],
             };
             if (!out.positioned) return out;

@@ -57,14 +57,36 @@ function placeNames(locations) {
     return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
 }
 
+/*
+ * The counties in a watched state that the alert names, e.g. "Caddo, Grady".
+ * areaDesc reads "Caddo, OK; Grady, OK; Wichita, TX"; marine and multi-state
+ * products mix states, so only this state's are kept.
+ */
+function areasIn(p, code) {
+    return String(p.areaDesc || '').split(';').map((s) => s.trim())
+        .filter((s) => new RegExp(`,\\s*${code}$`).test(s))
+        .map((s) => s.replace(/,\s*[A-Z]{2}$/, ''));
+}
+
 function emailMessage(alert, locations) {
     const p = (alert && alert.properties) || {};
     const until = untilText(p);
-    const subject = `${p.event || 'Weather warning'} — ${placeNames(locations)}`;
+    const places = locations.filter((l) => !l.stateCode);
+    const states = locations.filter((l) => l.stateCode);
+    const short = (list) => (list.length > 3 ? `${list.slice(0, 3).join(', ')} +${list.length - 3} more` : list.join(', '));
+    // Subject: the saved places, or for a state the counties, which say more than the state name.
+    const subjectWhere = places.length
+        ? placeNames(places)
+        : states.map((s) => { const a = areasIn(p, s.stateCode); return a.length ? `${short(a)}, ${s.stateCode}` : s.name; }).join('; ');
+    const subject = `${p.event || 'Weather warning'} — ${subjectWhere}`;
     const text = [
         p.headline || p.event || 'Weather warning',
         '',
-        `Your saved ${locations.length > 1 ? 'places' : 'place'} inside this warning: ${placeNames(locations)}`,
+        places.length ? `Your saved ${places.length > 1 ? 'places' : 'place'} inside this warning: ${placeNames(places)}` : '',
+        ...states.map((s) => {
+            const a = areasIn(p, s.stateCode);
+            return `In ${s.name}, which you watch${a.length ? `: ${a.join(', ')}` : ''}`;
+        }),
         until ? `In effect until ${until} local time.` : '',
         '',
         p.description || '',

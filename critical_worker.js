@@ -68,9 +68,11 @@ function hits(geometry, lat, lon) {
  * location's zones have been looked up; the next poll tries again.
  */
 function covers(feature, loc, zonesFor) {
-    if (feature.geometry) return hits(feature.geometry, loc.lat, loc.lon);
     const p = feature.properties || {};
     const ugc = p.geocode && Array.isArray(p.geocode.UGC) ? p.geocode.UGC : [];
+    // A watched state: issued for any zone or county in it.
+    if (loc.stateCode) return ugc.some((z) => z.slice(0, 2) === loc.stateCode);
+    if (feature.geometry) return hits(feature.geometry, loc.lat, loc.lon);
     if (!ugc.length || !zonesFor) return false;
     const zones = zonesFor(loc);
     return !!(zones && zones.some((z) => ugc.indexOf(z) !== -1));
@@ -207,10 +209,12 @@ function attachCriticalWorker(ctx) {
                 const quiet = !critical && inQuietHours(prefs, new Date());
                 // Places newly inside this alert, for ONE email naming them all.
                 const fresh = [];
+                // One push per warning: a watched state does not push again for a warning a saved place already did.
+                let pushed = false;
 
                 for (const loc of locs) {
                     if (!loc || loc.enabled === false) continue;
-                    if (loc.lat == null || loc.lon == null) continue;
+                    if (!loc.stateCode && (loc.lat == null || loc.lon == null)) continue;
                     // A location may list its own subset of events.
                     if (Array.isArray(loc.alertTypes) && loc.alertTypes.length
                         && loc.alertTypes.indexOf(p.event) === -1) continue;
@@ -220,6 +224,8 @@ function attachCriticalWorker(ctx) {
                     const emailPrefix = 'e|' + pushPrefix;
                     const needPush = pushWants && loc.methods && loc.methods.push === true && !sent[pushPrefix + alertId];
                     const needEmail = emailWants && !sent[emailPrefix + alertId];
+                    // Saved places come before states, so this sees an earlier poll's push too.
+                    if (!loc.stateCode && sent[pushPrefix + alertId]) pushed = true;
                     if (!needPush && !needEmail) continue;      // told them already
 
                     if (!covers(feature, loc, zonesFor)) continue;
@@ -231,7 +237,8 @@ function attachCriticalWorker(ctx) {
                     if (needPush) {
                         const update = !config.notifyOnUpdate && continues(pushPrefix);
                         sent[pushPrefix + alertId] = expires;
-                        if (primed && !quiet && !update) {
+                        if (primed && !quiet && !update && !(loc.stateCode && pushed)) {
+                            pushed = true;
                             const note = push.alertNotification(feature, loc);
                             push.sendToUser(userId, note).then((out) => {
                                 if (out.sent) {

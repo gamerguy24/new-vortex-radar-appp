@@ -46,7 +46,13 @@ const MAX_SUBS_PER_USER = 8;     // a phone, a laptop, a tablet, and some slack
 function alertNotification(alert, location) {
     const p = (alert && alert.properties) || {};
     const event = p.event || 'Weather Alert';
-    const where = location && location.name ? location.name : (p.areaDesc || '').split(';')[0].trim();
+    // A watched state names the counties, not just "Oklahoma".
+    const stateAreas = location && location.stateCode
+        ? (p.areaDesc || '').split(';').map((s) => s.trim()).filter((s) => s.endsWith(', ' + location.stateCode))
+        : [];
+    const where = stateAreas.length
+        ? stateAreas.slice(0, 2).join('; ') + (stateAreas.length > 2 ? ` +${stateAreas.length - 2}` : '')
+        : location && location.name ? location.name : (p.areaDesc || '').split(';')[0].trim();
     return {
         title: where ? `${event} — ${where}` : event,
         body: (p.headline || p.areaDesc || '').slice(0, 240),

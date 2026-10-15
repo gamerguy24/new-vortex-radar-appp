@@ -212,6 +212,14 @@ function injectStyles() {
         ".vr-al-ch .vr-al-actions{margin:8px 0 0}",
         ".vr-al-note{font-size:12px;line-height:1.5;color:#a8bace}",
         ".vr-al-on{font-size:12.5px;color:#7ce8a8}",
+        ".vr-al-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}",
+        ".vr-al-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;font-size:12.5px;",
+        "  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:999px}",
+        ".vr-al-chip button{background:none;border:none;color:#ff9183;cursor:pointer;font-size:15px;",
+        "  line-height:1;padding:0 3px;font-family:inherit}",
+        ".vr-al-add select{flex:1 1 140px;min-width:0;padding:9px 11px;font-family:inherit;font-size:13px;",
+        "  color:var(--vx-text,#eef4fb);background:#0b1017;border:1px solid rgba(255,255,255,.14);",
+        "  border-radius:var(--vx-r-2,6px)}",
         ".vr-al-types{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)}",
         ".vr-al-types h4{margin:8px 0 6px;font-size:11px;font-weight:800;letter-spacing:.1em;",
         "  text-transform:uppercase;color:#8fa6bd}",
@@ -231,6 +239,41 @@ function injectStyles() {
         "  color:var(--vx-accent,#e8862b);background:rgba(232,134,43,.14);border:1px solid rgba(232,134,43,.35)}",
     ].join('');
     document.head.appendChild(el);
+}
+
+/*
+ * How to un-block notifications in THIS browser. A denied permission can only
+ * be undone by the user, in the browser's own settings — and where that
+ * setting lives differs enough between browsers that "allow them in your
+ * settings" alone leaves people stuck.
+ */
+function unblockSteps() {
+    const ua = navigator.userAgent || '';
+    const host = location.hostname;
+    const iOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const android = /Android/.test(ua);
+    if (iOS) {
+        return ['On iPhone and iPad, web notifications only work from the Home Screen app:',
+            'In Safari tap Share › Add to Home Screen, open Echo Radar from the new icon, then press Turn on notifications.',
+            'If it was already added: iPhone Settings › Notifications › Echo Radar › Allow Notifications.'];
+    }
+    if (/Firefox\//.test(ua)) {
+        return [`Click the icon to the left of ${host} in the address bar.`,
+            'Next to "Send Notifications", click the × to clear "Blocked".',
+            'Reload the page and press Turn on notifications.'];
+    }
+    if (/Safari\//.test(ua) && !/Chrome|Chromium|Edg\//.test(ua)) {
+        return ['Safari menu › Settings › Websites › Notifications.',
+            `Set ${host} to Allow.`, 'Reload the page.'];
+    }
+    if (android) {
+        return [`Tap the icon to the left of ${host} in the address bar › Permissions (or Site settings).`,
+            'Set Notifications to Allow.',
+            'Also check Android Settings › Apps › your browser › Notifications is on.'];
+    }
+    return [`Click the icon to the left of ${host} in the address bar (a lock or sliders).`,
+        'Set Notifications to Allow (under Site settings if it is not listed there).',
+        'Come back here — this updates by itself, or reload the page.'];
 }
 
 // ── the dialog ──────────────────────────────────────────────────────────────
@@ -293,6 +336,14 @@ async function openDialog() {
             <button id="vr-al-save">Add</button>
           </div>
 
+          <div class="vr-al-sub">Whole states</div>
+          <div class="vr-al-note">Or skip the address: get every alert issued anywhere in a state.</div>
+          <div id="vr-al-states" class="vr-al-chips"></div>
+          <div class="vr-al-add">
+            <select id="vr-al-state-pick"><option value="">Choose a state…</option></select>
+            <button id="vr-al-state-add">Add state</button>
+          </div>
+
           <div class="vr-al-sub">Email alerts</div>
           <div id="vr-al-contact" class="vr-al-contact">Loading…</div>
           <div class="vr-al-msg" id="vr-al-msg"></div>
@@ -332,7 +383,13 @@ async function openDialog() {
                 ? `⚠ The warning poller last failed: ${p.error}`
                 : `Watching ${p.alerts} active alerts nationally.`);
         }
-        $('vr-al-state').innerHTML = lines.map((l) => `<div>${escapeHtml(l)}</div>`).join('');
+        let help = '';
+        if (cap.secure && cap.hasSW && cap.hasPush && cap.permission === 'denied') {
+            help = '<div class="vr-al-note" style="margin-top:8px"><b>To unblock:</b><ol style="margin:4px 0 0;padding-left:18px">'
+                + unblockSteps().map((s) => `<li>${escapeHtml(s)}</li>`).join('')
+                + '</ol>Email alerts below do not need this.</div>';
+        }
+        $('vr-al-state').innerHTML = lines.map((l) => `<div>${escapeHtml(l)}</div>`).join('') + help;
         $('vr-al-test').disabled = !sub;
         $('vr-al-off').disabled = !sub;
         $('vr-al-enable').disabled = !!sub || !cap.secure || cap.permission === 'denied';
@@ -358,6 +415,65 @@ async function openDialog() {
             $('vr-al-locs').innerHTML = `<div class="vr-al-empty">Could not load: ${escapeHtml(e.message)}</div>`;
         }
     }
+
+    /*
+     * Whole states. Kept in preferences (not as locations): a state has no
+     * address or pin, and the server matches it by the zones an alert lists.
+     */
+    let watchedStates = [];
+    let stateNames = {};
+    let maxStates = 10;
+
+    function drawStates() {
+        $('vr-al-states').innerHTML = watchedStates.length
+            ? watchedStates.map((s) => `<span class="vr-al-chip">${escapeHtml(stateNames[s] || s)}
+                <button data-state="${escapeHtml(s)}" title="Stop watching ${escapeHtml(stateNames[s] || s)}"
+                  aria-label="Remove ${escapeHtml(stateNames[s] || s)}">×</button></span>`).join('')
+            : '<div class="vr-al-empty">No states yet.</div>';
+        $('vr-al-states').querySelectorAll('button[data-state]').forEach((b) => {
+            b.onclick = () => saveStates(watchedStates.filter((s) => s !== b.dataset.state));
+        });
+        const pick = $('vr-al-state-pick');
+        pick.innerHTML = '<option value="">Choose a state…</option>' + Object.entries(stateNames)
+            .filter(([code]) => watchedStates.indexOf(code) === -1)
+            .sort((a, b) => a[1].localeCompare(b[1]))
+            .map(([code, name]) => `<option value="${code}">${escapeHtml(name)}</option>`).join('');
+    }
+
+    async function refreshStates() {
+        try {
+            const summary = await j(API);
+            stateNames = summary.states || {};
+            maxStates = summary.maxStates || maxStates;
+            watchedStates = (summary.preferences && summary.preferences.states) || [];
+            drawStates();
+        } catch (e) {
+            $('vr-al-states').innerHTML = `<div class="vr-al-empty">Could not load: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    async function saveStates(next) {
+        try {
+            const out = await j(`${API}/preferences`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ states: next }),
+            });
+            watchedStates = (out.preferences && out.preferences.states) || next;
+            drawStates();
+            msg(watchedStates.length
+                ? `Watching ${watchedStates.length} state${watchedStates.length === 1 ? '' : 's'}. Busy states can mean a lot of alerts — pick which types under Email alerts.`
+                : 'Not watching any states.', 'ok');
+            refreshNow();
+        } catch (e) { msg(e.message, 'warn'); }
+    }
+
+    $('vr-al-state-add').onclick = () => {
+        const code = $('vr-al-state-pick').value;
+        if (!code) { msg('Choose a state first.', 'warn'); return; }
+        if (watchedStates.length >= maxStates) { msg(`You can watch up to ${maxStates} states.`, 'warn'); return; }
+        saveStates(watchedStates.concat(code));
+    };
 
     /*
      * Email alerts (paid).
@@ -561,8 +677,9 @@ async function openDialog() {
                 const rows = !pl.positioned
                     ? '<div class="vr-al-now-row"><span>No position — this place can never be matched.</span></div>'
                     : pl.alerts.length
-                        ? pl.alerts.map((a) => `<div class="vr-al-now-row">
+                        ? pl.alerts.slice(0, 15).map((a) => `<div class="vr-al-now-row">
                             <span>${escapeHtml(a.event)}</span>${why(a)}</div>`).join('')
+                          + (pl.alerts.length > 15 ? `<div class="vr-al-now-row"><span>+${pl.alerts.length - 15} more</span></div>` : '')
                         : '<div class="vr-al-now-row"><span>Nothing in effect here.</span></div>';
                 lines.push(`<div class="vr-al-now-place"><b>${escapeHtml(pl.name)}</b>
                     ${pl.enabled ? '' : ' <i>(paused)</i>'}${rows}</div>`);
@@ -627,7 +744,16 @@ async function openDialog() {
     refreshState();
     refreshLocs();
     refreshContact();
+    refreshStates();
     refreshNow();
+
+    // Un-blocking happens in browser settings, outside this page — notice it.
+    try {
+        navigator.permissions.query({ name: 'notifications' }).then((status) => {
+            status.onchange = () => { if ($('vr-alerts-dialog')) refreshState(); };
+        }).catch(() => {});
+    } catch (e) { /* no Permissions API: a reload picks it up */ }
+    window.addEventListener('focus', () => { if ($('vr-alerts-dialog')) refreshState(); });
 }
 
 function init() {
