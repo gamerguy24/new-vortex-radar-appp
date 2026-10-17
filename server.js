@@ -2508,6 +2508,15 @@ try {
     console.error('[FIRE] failed to attach (feature disabled):', e.message);
 }
 
+// ─── 511 traffic cameras: Georgia + North Carolina (free layers) ─────────────
+// Keyed APIs (GA511_API_KEY, NC511_API_KEY), so camera lists are fetched and
+// cached here and the keys never reach the browser. See backend/ga511/index.js.
+try {
+    require('./backend/ga511').attachGa511({ app, requireAuth });
+} catch (e) {
+    console.error('[GA511] failed to attach (feature disabled):', e.message);
+}
+
 // ─── ECHO PTT (self-hosted push-to-talk radio) ─────────────────────────────
 // Control plane only: channels, presence, floor control and WebRTC signalling.
 // Voice goes browser-to-browser and never through this process. Separate from
