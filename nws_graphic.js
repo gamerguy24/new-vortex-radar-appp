@@ -792,6 +792,7 @@ async function renderWarningGraphic(alert, opts = {}) {
 // ── formatting ────────────────────────────────────────────────────────────────
 function tzFromLon(lon) {
   if (!isFinite(lon)) return null;
+  if (lon > 100) return 'Pacific/Guam';       // Guam / Northern Marianas
   if (lon > -87.5) return 'America/New_York';
   if (lon > -101) return 'America/Chicago';
   if (lon > -115) return 'America/Denver';

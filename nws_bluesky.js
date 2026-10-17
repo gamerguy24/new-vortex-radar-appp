@@ -437,7 +437,7 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
   }
 
   // Render + (optionally) post one alert; persist the outcome.
-  async function handleAlert(id, alert, isUpdate, key) {
+  async function handleAlert(id, alert, isUpdate, key, only) {
     const rec = { ...baseRec(alert, 'pending'), key: key || id };
     let png = null;
     try {
@@ -452,7 +452,8 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
       return rec;
     }
 
-    if (!activeDestinations().length) {
+    const dests = only || activeDestinations();
+    if (!dests.length) {
       rec.status = 'skipped'; rec.reason = 'no-credentials';
       store[id] = rec; saveStore();
       log('generated graphic (no destination configured) for', rec.event, '—', shortArea(alert));
@@ -460,7 +461,7 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
     }
 
     const alt = `${rec.event} for ${areaLabel(alert, 8)}. ${untilLabel(alert) ? 'Until ' + untilLabel(alert) + '.' : ''}`;
-    const { results, errors } = await postEverywhere(alert, png, { prefix: isUpdate ? 'UPDATE:' : '', alt });
+    const { results, errors } = await postEverywhere(alert, png, { prefix: isUpdate ? 'UPDATE:' : '', alt, only: dests });
     const done = Object.keys(results);
     rec.status = done.length ? 'posted' : 'error';
     rec.postedTo = done;
@@ -476,24 +477,21 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
   function shortArea(alert) { return areaLabel(alert, 3); }
   function sanitizeId(id) { return String(id).replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120); }
 
+  async function fetchActive() {
+    const res = await fetch(ALERTS_URL, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/geo+json' },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) throw new Error('NWS alerts HTTP ' + res.status);
+    return (await res.json()).features || [];
+  }
+
   // ── the poll cycle ────────────────────────────────────────────────────────────
   async function poll() {
     if (!config.enabled || polling) return;
     polling = true;
     try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 20000);
-      let data;
-      try {
-        const res = await fetch(ALERTS_URL, {
-          headers: { 'User-Agent': USER_AGENT, Accept: 'application/geo+json' },
-          signal: ctrl.signal,
-        });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        data = await res.json();
-      } finally { clearTimeout(t); }
-
-      const feats = data.features || [];
+      const feats = await fetchActive();
       let posted = 0; let changed = false;
       const handledKeys = new Set(Object.values(store).map((r) => r.key).filter(Boolean));
       const groups = new Map(); // eventKey → [{ id, alert, isUpdate }]
@@ -633,6 +631,106 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
       .sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
       .slice(0, limit);
     res.json({ rows, total: Object.keys(store).length });
+  });
+
+  /*
+   * Post recent alerts by hand — for alerts that slipped by while auto-posting
+   * was off (or were baselined when it was switched on). Lists every active
+   * warning/watch issued in the last N minutes, one row per event, and posts
+   * the ones the admin ticks. Posting runs in the background (each graphic
+   * takes several seconds); the panel polls GET /recent for progress.
+   */
+  let job = { running: false, total: 0, done: 0, current: null, errors: [] };
+
+  function recentGroups(feats, minutes) {
+    const since = Date.now() - minutes * 60000;
+    const groups = new Map();
+    for (const alert of feats) {
+      const p = alert.properties || {};
+      if (!alert.id || !p.event) continue;
+      if (!isWarning(p.event) && !isWatch(p.event) && !config.alertTypes[p.event]) continue;
+      if (!(Date.parse(p.sent || p.effective || '') >= since)) continue;
+      const key = eventKey(alert.id, p);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(alert);
+    }
+    return groups;
+  }
+
+  // What happened to this event so far: posted / posting / not posted (why).
+  function eventStatus(key, alerts) {
+    const ids = new Set(alerts.map((a) => a.id));
+    const recs = Object.entries(store).filter(([id, r]) => r.key === key || ids.has(id)).map(([, r]) => r);
+    const posted = recs.find((r) => r.status === 'posted');
+    if (posted) return { status: 'posted', postedTo: posted.postedTo || [] };
+    if (recs.some((r) => r.status === 'pending')) return { status: 'posting' };
+    const last = recs.find((r) => r.status === 'error') || recs[0];
+    if (!last) return { status: 'new', reason: config.enabled ? 'waiting for next poll' : 'auto-posting was off' };
+    const why = { baseline: 'already active when auto-posting started' }[last.status] || last.reason || last.status;
+    return { status: last.status === 'error' ? 'error' : 'not posted', reason: why, error: last.error || null };
+  }
+
+  app.get('/admin/nwsx/recent', requireAdmin, async (req, res) => {
+    const minutes = Math.min(24 * 60, Math.max(5, parseInt(req.query.minutes, 10) || 30));
+    try {
+      const groups = recentGroups(await fetchActive(), minutes);
+      const items = [...groups.entries()].map(([key, alerts]) => {
+        const merged = mergeAlerts(alerts);
+        const p = merged.properties;
+        return {
+          key, event: p.event, area: areaLabel(merged, 6), office: officeName(p.senderName),
+          sent: p.sent, expires: p.expires, pieces: alerts.length,
+          matchesFilters: typeEnabled(p.event) && alerts.some((a) => matchesScope(a.properties || {})),
+          ...eventStatus(key, alerts),
+        };
+      }).sort((a, b) => String(b.sent).localeCompare(String(a.sent)));
+      res.json({
+        minutes, items, job,
+        destinations: { bluesky: blueskyConfigured(), facebook: facebookConfigured() },
+        defaultDestinations: activeDestinations(),
+      });
+    } catch (e) { res.status(502).json({ error: e.message }); }
+  });
+
+  app.post('/admin/nwsx/post-recent', requireAdmin, express_json_guard, async (req, res) => {
+    if (job.running) return res.status(409).json({ error: 'Already posting — wait for it to finish.' });
+    const b = req.body || {};
+    const keys = Array.isArray(b.keys) ? [...new Set(b.keys.map(String))].slice(0, 50) : [];
+    const ready = { bluesky: blueskyConfigured(), facebook: facebookConfigured() };
+    const only = (Array.isArray(b.destinations) ? b.destinations : []).filter((d) => ready[d]);
+    if (!keys.length) return res.status(400).json({ error: 'Tick at least one alert.' });
+    if (!only.length) return res.status(400).json({ error: 'Choose Facebook or Bluesky (its env vars must be set on the server).' });
+    let groups;
+    try { groups = recentGroups(await fetchActive(), 24 * 60); }
+    catch (e) { return res.status(502).json({ error: e.message }); }
+    const todo = keys.filter((k) => groups.has(k) && eventStatus(k, groups.get(k)).status !== 'posted');
+    if (!todo.length) return res.status(400).json({ error: 'Those alerts have expired or were already posted.' });
+
+    // Claim every piece now so the poller cannot post the same event meanwhile.
+    for (const k of todo) for (const a of groups.get(k)) store[a.id] = { ...baseRec(a, 'pending'), key: k };
+    saveStore();
+    job = { running: true, total: todo.length, done: 0, current: null, errors: [] };
+    log('manual post of', todo.length, 'recent alert(s) by', req.user && req.user.email, '→', only.join(' + '));
+    res.json({ ok: true, queued: todo.length, skipped: keys.length - todo.length });
+
+    (async () => {
+      for (const k of todo) {
+        const alerts = groups.get(k);
+        const [lead, ...rest] = alerts;
+        job.current = `${lead.properties.event} — ${shortArea(lead)}`;
+        try {
+          const rec = await handleAlert(lead.id, mergeAlerts(alerts), false, k, only);
+          for (const a of rest) store[a.id] = { ...baseRec(a, rec.status, 'merged'), key: k, mergedInto: lead.id };
+          if (rec.error) job.errors.push(`${lead.properties.event}: ${rec.error}`);
+        } catch (e) {
+          for (const a of alerts) store[a.id] = { ...baseRec(a, 'error'), key: k, error: e.message };
+          job.errors.push(`${lead.properties.event}: ${e.message}`);
+        }
+        saveStore();
+        job.done++;
+      }
+      job.running = false; job.current = null;
+    })();
   });
 
   // Diagnostic: does the Level 2 radar pipeline work from THIS host? Reports the

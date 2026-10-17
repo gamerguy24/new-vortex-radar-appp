@@ -49,6 +49,10 @@ export const nwsxAdminStyles = `
 .nwsx-status { font-weight:700; font-size:0.9em; }
 .st-posted { color:var(--vx-ok); } .st-skipped { color:var(--vx-warn); } .st-error { color:var(--vx-bad); } .st-baseline { color:var(--vx-text-2); }
 .nwsx-note { font-size:0.8em; color:rgba(255,255,255,0.55); }
+.st-new, .st-not-posted { color:var(--vx-warn); } .st-posting { color:var(--vx-accent); }
+.nwsx-recent-wrap { max-height:340px; overflow:auto; }
+.nwsx-recent td:first-child { width:28px; }
+.nwsx-tag { font-size:0.75em; color:rgba(255,255,255,0.5); }
 .nwsx-flash { font-size:0.85em; padding:8px 10px; border-radius:var(--vx-r-2); display:none; }
 .nwsx-flash.info { background:var(--vx-accent-soft); color:#7fd4ff; display:block; }
 .nwsx-flash.err { background:rgba(248,113,113,0.14); color:var(--vx-bad); display:block; }
@@ -134,6 +138,32 @@ export function nwsxAdminHTML() {
 
     <div class="nwsx-actions">
       <button class="nwsx-btn primary" id="nwsx-save">Save settings</button>
+    </div>
+
+    <div class="nwsx-card nwsx-test">
+      <div class="lbl">Post recent alerts <span class="sub">(for alerts that went out while auto-posting was off)</span></div>
+      <div class="nwsx-actions">
+        <select id="nwsx-recent-min">
+          <option value="30">Last 30 minutes</option>
+          <option value="60" selected>Last hour</option>
+          <option value="120">Last 2 hours</option>
+          <option value="360">Last 6 hours</option>
+          <option value="1440">Last 24 hours</option>
+        </select>
+        <button type="button" class="nwsx-btn" id="nwsx-recent-refresh">Find alerts</button>
+        <label class="nwsx-note"><input type="checkbox" id="nwsx-recent-fb"> Facebook</label>
+        <label class="nwsx-note"><input type="checkbox" id="nwsx-recent-bsky"> Bluesky</label>
+      </div>
+      <div class="nwsx-recent-wrap">
+        <table class="nwsx-log nwsx-recent">
+          <thead><tr><th><input type="checkbox" id="nwsx-recent-all" title="Tick all not yet posted"></th><th>Issued</th><th>Event</th><th>Area</th><th>Status</th></tr></thead>
+          <tbody id="nwsx-recent-rows"><tr><td colspan="5" class="nwsx-note">Press Find alerts.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="nwsx-actions">
+        <button type="button" class="nwsx-btn danger" id="nwsx-recent-post">Post selected</button>
+        <span class="nwsx-note" id="nwsx-recent-note"></span>
+      </div>
     </div>
 
     <div class="nwsx-card nwsx-test">
@@ -282,6 +312,69 @@ export function initNwsxAdmin(root) {
   }
   $('nwsx-all-warnings').addEventListener('change', syncTypeBoxes);
   $('nwsx-all-watches').addEventListener('change', syncTypeBoxes);
+
+  // ── Post recent alerts ──────────────────────────────────────────────────────
+  let recentTimer = null; let destsPrimed = false;
+  const fmtTime = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch { return ''; } };
+
+  async function loadRecent() {
+    const note = $('nwsx-recent-note');
+    let d;
+    try { d = await api('GET', '/admin/nwsx/recent?minutes=' + $('nwsx-recent-min').value); }
+    catch (e) { note.textContent = 'Could not load alerts: ' + e.message; return; }
+    if (!destsPrimed) {
+      for (const [id, dest] of [['nwsx-recent-fb', 'facebook'], ['nwsx-recent-bsky', 'bluesky']]) {
+        $(id).disabled = !d.destinations[dest];
+        $(id).checked = d.destinations[dest] && (d.defaultDestinations.includes(dest) || !d.defaultDestinations.length);
+      }
+      destsPrimed = true;
+    }
+    const keep = new Set([...root.querySelectorAll('#nwsx-recent-rows input[data-key]:checked')].map((cb) => cb.dataset.key));
+    const first = !$('nwsx-recent-rows').querySelector('input[data-key]');
+    $('nwsx-recent-rows').innerHTML = d.items.length ? d.items.map((it) => {
+      const canPost = it.status !== 'posted' && !d.job.running;
+      const tick = canPost && (keep.has(it.key) || (first && it.matchesFilters && it.status !== 'posting'));
+      const status = it.status === 'posted'
+        ? 'posted' + (it.postedTo.length ? ' to ' + it.postedTo.join(' + ') : '')
+        : it.status + (it.reason ? ` (${it.reason})` : '');
+      return `<tr>
+        <td><input type="checkbox" data-key="${esc(it.key)}" ${tick ? 'checked' : ''} ${canPost ? '' : 'disabled'}></td>
+        <td>${esc(fmtTime(it.sent))}</td>
+        <td>${esc(it.event)}${it.matchesFilters ? '' : ' <span class="nwsx-tag">outside your filters</span>'}</td>
+        <td>${esc(it.area)}</td>
+        <td class="nwsx-status st-${esc(it.status.replace(/\s+/g, '-'))}" title="${esc(it.error || '')}">${esc(status)}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="5" class="nwsx-note">No warnings or watches issued in that window are still active.</td></tr>';
+
+    const j = d.job;
+    note.textContent = j.running
+      ? `Posting ${j.done + 1} of ${j.total}: ${j.current || ''}…`
+      : (j.total ? `Last run: posted ${j.done - j.errors.length} of ${j.total}.` + (j.errors.length ? ' Errors: ' + j.errors.join(' | ') : '') : '');
+    $('nwsx-recent-post').disabled = j.running;
+    clearTimeout(recentTimer);
+    if (j.running) recentTimer = setTimeout(loadRecent, 3000);
+    else if (j.total) loadLog();
+  }
+
+  $('nwsx-recent-refresh').addEventListener('click', loadRecent);
+  $('nwsx-recent-min').addEventListener('change', loadRecent);
+  $('nwsx-recent-all').addEventListener('change', (e) => {
+    root.querySelectorAll('#nwsx-recent-rows input[data-key]:not(:disabled)').forEach((cb) => { cb.checked = e.target.checked; });
+  });
+  $('nwsx-recent-post').addEventListener('click', async () => {
+    const keys = [...root.querySelectorAll('#nwsx-recent-rows input[data-key]:checked')].map((cb) => cb.dataset.key);
+    const destinations = [['nwsx-recent-fb', 'facebook'], ['nwsx-recent-bsky', 'bluesky']]
+      .filter(([id]) => $(id).checked).map(([, dest]) => dest);
+    if (!keys.length) { flash('Tick at least one alert.', 'err'); return; }
+    if (!destinations.length) { flash('Choose Facebook or Bluesky.', 'err'); return; }
+    const names = destinations.map((x) => (x === 'facebook' ? 'Facebook' : 'Bluesky')).join(' and ');
+    if (!confirm(`Post ${keys.length} alert${keys.length > 1 ? 's' : ''} to ${names} now? These are real, public posts.`)) return;
+    try {
+      const r = await api('POST', '/admin/nwsx/post-recent', { keys, destinations });
+      flash(`Posting ${r.queued} alert${r.queued > 1 ? 's' : ''} — each takes a few seconds.`);
+    } catch (e) { flash('Post failed: ' + e.message, 'err'); }
+    loadRecent();
+  });
 
   // States quick-fill helpers.
   function updateStatesCount() {
