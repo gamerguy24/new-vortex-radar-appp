@@ -112,6 +112,9 @@ function loadTiltBtns(numOfTiltsArr) {
 }
 
 $('.psmRow').click(function(e) {
+    // Launcher rows (3D Storm View) open their own view — see
+    // components/storm3d_launch.js — rather than loading a product here.
+    if ($(this).hasClass('psmLaunchRow')) return;
     if ($(e.target).is($(this)) && !$(this).hasClass('l2prodSel')) {
         const currentStation = window.vortexData.currentStation; // 'KAKQ';
 

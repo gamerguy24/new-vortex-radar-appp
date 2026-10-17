@@ -22,6 +22,12 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'October 17, 2026',
+        items: [
+            { title: '3D Storm View in reflectivity colours', desc: 'Open the product menu and choose 3D Storm View (Reflectivity), under Super Resolution, to see the latest scan from the radar you are viewing as a 3D storm you can spin around. Reflectivity is drawn as nested shells, one every 10 dBZ, in the same colours as your radar colortable, so you can see the strong core inside the storm and how tall it reaches. It opens on the area you were looking at on the map. Use Area to see more or less, Lowest shell to change where the shells start, and Single to see one shell coloured by height instead. The cross-section tool now works too. 3D Storm View is part of Tier Three and works on desktop.' },
+        ],
+    },
+    {
         date: 'October 15, 2026',
         items: [
             { title: 'Get alerts for whole states', desc: 'You no longer need an address to get alerts. In Alert Notifications, under Whole States, choose a state from the list and press Add state, and you will be told about every alert issued anywhere in it. You can watch up to 10 states, and remove one with the × on its name. Email alerts follow the same "Email me for" choices, so you can watch a whole state for just tornado warnings, for example. Emails and notifications for a state name the counties the alert covers. If a saved place and a watched state are both in one warning, you get one notification, not two.' },

@@ -86,3 +86,18 @@
     background: var(--vx-accent-soft); color: var(--vx-accent);
     border-color: var(--vx-accent-soft);
 }
+
+.s3d-tilts { color: var(--vx-text-2); font-weight: 500; font-size: 0.8em; font-variant-numeric: tabular-nums; }
+
+/* ---- shell legend (data colours come from the radar colortable) ---- */
+.s3d-legend {
+    position: absolute; top: 14px; left: 14px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: calc(100% - 28px);
+    background: var(--vx-surface); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--vx-r-3);
+    padding: 6px 10px; font-size: 0.8em; color: var(--vx-text-2); pointer-events: none;
+    font-variant-numeric: tabular-nums;
+}
+.s3d-legend:empty { display: none; }
+.s3d-legend-title { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.85em; color: var(--vx-text-3, var(--vx-text-2)); }
+.s3d-legend-item { display: inline-flex; align-items: center; gap: 5px; color: var(--vx-text); }
+.s3d-legend-item i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }

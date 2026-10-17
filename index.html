@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="./components/tokens.css">
     <link rel="stylesheet" href="./components/layers.css?v=scroll1">
     <link rel="stylesheet" href="./components/ptt_panel.css?v=9">
-    <link rel="stylesheet" href="./components/storm3d.css">
+    <link rel="stylesheet" href="./components/storm3d.css?v=s3d2">
     <!-- import map so the 3D storm view's ES modules can resolve Three.js -->
     <script type="importmap">
     {
@@ -1208,6 +1208,7 @@
             <div class="psmRow noselect" value="ref">Super-Res Base Reflectivity<div class="psmRowTiltSelect">Tilt 1</div></div>
             <div class="psmRow noselect" value="vel">Super-Res Base Velocity<div class="psmRowTiltSelect">Tilt 1</div></div>
             <div class="psmRow noselect" value="srvel">Super-Res Storm Relative Velocity<div class="psmRowTiltSelect">Tilt 1</div></div>
+            <div class="psmRow psmLaunchRow noselect" id="psmStorm3DRow" value="3d">3D Storm View (Reflectivity)<div class="psmRowTiltSelect blankText">3D</div></div>
 
             <div class="psmSectionBreak"></div>
 
@@ -1722,7 +1723,7 @@
     <script type="module" src="./components/tornado_potential.js?v=tp1"></script>
     <script type="module" src="./components/featured_streams.js?v=feat3"></script>
     <!-- 3D storm view launcher -->
-    <script type="module" src="./components/storm3d_launch.js?v=plat1"></script>
+    <script type="module" src="./components/storm3d_launch.js?v=s3d2"></script>
     <!-- Echo Graphics launcher (Studio / Dashboard / Overlay) -->
     <script type="module" src="./components/graphics_launch.js?v=plat1"></script>
     <!-- Go-to-my-location button -->
@@ -1741,9 +1742,9 @@
     <script type="module" src="./components/stream_hub.js?v=streamhub5"></script>
     <!-- Global PTT live audio player -->
     <!-- Upgrade to Pro / billing UI -->
-    <script type="module" src="./components/billing_ui.js?v=tier1"></script>
+    <script type="module" src="./components/billing_ui.js?v=tier2"></script>
     <!-- Pro feature gates (lock badges + upgrade prompts) -->
-    <script type="module" src="./components/pro_gates.js?v=tier1"></script>
+    <script type="module" src="./components/pro_gates.js?v=tier2"></script>
 
     <!-- The professional interface. Applies only to accounts holding an Echo Pro
          organisation licence; everyone else is left on the consumer UI. -->

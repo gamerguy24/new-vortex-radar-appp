@@ -2,9 +2,13 @@
  * 3d/storm3d.js
  * GR2Analyst-style 3D storm view. Opens a full-screen overlay, fetches the
  * latest Level-II volume for the active station, hands it to storm3d_worker for
- * voxelization + marching-cubes isosurface extraction, and renders the result
- * with Three.js: a translucent height-coloured reflectivity isosurface, a
- * ground plan view, a height/compass axis box, and orbit controls.
+ * gridding + marching-cubes isosurface extraction, and renders the result with
+ * Three.js: nested reflectivity shells in the radar page's own colours, a
+ * plan-view floor of the lowest tilt, a height/compass axis box, and orbit
+ * controls.
+ *
+ * The box is centred where the map is looking (when that is within range of
+ * the radar), sized from the map's zoom, and changeable from the Area menu.
  *
  * (c) David Wallis, Twistcaster Live Media LLC 2026
  */
@@ -16,9 +20,11 @@ import { loadLatestL2RadarFile } from '../../parse/fetch.js';
 const SCENE_SCALE = 1 / 1000;   // metres -> scene units (km)
 const VERT_EXAG = 3.0;          // vertical exaggeration (storms read taller)
 const KFT_TO_M = 304.8;
+const AREAS_KM = [40, 80, 120, 180, 230];   // box half-width choices
+const SHELL_STEP = { REF: 10 };             // layered shells every N units above the threshold
 
 const PRODUCT_UI = {
-  REF: { label: 'Reflectivity',     min: 10,  max: 70,  step: 1,    def: 35,  unit: 'dBZ',  decimals: 0 },
+  REF: { label: 'Reflectivity',     min: 10,  max: 70,  step: 1,    def: 25,  unit: 'dBZ',  decimals: 0 },
   VEL: { label: 'Velocity',         min: 10,  max: 100, step: 1,    def: 40,  unit: 'kt',   decimals: 0 },
   CC:  { label: 'Correlation Coeff', min: 0.2, max: 1.0, step: 0.02, def: 0.9, unit: '',     decimals: 2 },
   ZDR: { label: 'Diff Reflectivity', min: -2,  max: 8,   step: 0.5,  def: 1,   unit: 'dB',   decimals: 1 },
@@ -33,9 +39,12 @@ export default class Storm3D {
     this.worker = null;
     this.product = DEFAULT_PRODUCT;
     this.threshold = PRODUCT_UI[DEFAULT_PRODUCT].def;
+    this.layered = true;
+    this.lut = buildRefLut();
+    this.view = initialView();
     this._raf = null;
     this._remarchTimer = null;
-    this.isoMesh = null;
+    this.shellMeshes = [];
     this.meta = null;
     this._activeTool = null;   // 'box' | 'xsect' | null (point-placement mode)
     this._toolPoints = [];
@@ -50,10 +59,12 @@ export default class Storm3D {
   _build() {
     const root = document.createElement('div');
     root.id = 'storm3d-overlay';
+    const areaKm = Math.round(this.view.halfExtentM / 1000);
     root.innerHTML = `
       <div class="s3d-topbar">
         <div class="s3d-title"><i class="ti ti-box"></i> 3D Storm View
-          <span class="s3d-station">${this.station || ''}</span></div>
+          <span class="s3d-station">${this.station || ''}</span>
+          <span class="s3d-tilts" id="s3d-tilts"></span></div>
         <div class="s3d-controls">
           <label class="s3d-product">
             <span>Product</span>
@@ -62,8 +73,21 @@ export default class Storm3D {
                 `<option value="${k}"${k === this.product ? ' selected' : ''}>${v.label}</option>`).join('')}
             </select>
           </label>
+          <label class="s3d-product" id="s3d-style-wrap">
+            <span>Shells</span>
+            <select id="s3d-style">
+              <option value="layered">Layered (dBZ colours)</option>
+              <option value="single">Single (height colours)</option>
+            </select>
+          </label>
+          <label class="s3d-product">
+            <span>Area</span>
+            <select id="s3d-area">
+              ${AREAS_KM.map((km) => `<option value="${km}"${km === areaKm ? ' selected' : ''}>${km * 2} km</option>`).join('')}
+            </select>
+          </label>
           <label class="s3d-thresh">
-            <span>Isosurface</span>
+            <span id="s3d-thresh-label">Lowest shell</span>
             <input type="range" id="s3d-threshold">
             <b id="s3d-thresh-val"></b>
           </label>
@@ -71,10 +95,10 @@ export default class Storm3D {
           <button id="s3d-close" class="s3d-btn s3d-close" title="Close"><i class="ti ti-x"></i></button>
         </div>
       </div>
-      <div class="s3d-canvas-wrap"><canvas id="s3d-canvas"></canvas></div>
+      <div class="s3d-canvas-wrap"><canvas id="s3d-canvas"></canvas><div class="s3d-legend" id="s3d-legend"></div></div>
       <div class="s3d-loading" id="s3d-loading">
         <div class="s3d-spinner"></div>
-        <div class="s3d-loading-text">Building 3D volume...</div>
+        <div class="s3d-loading-text">Downloading the latest ${this.station || ''} volume...</div>
       </div>
       <div class="s3d-toolbar">
         <button class="s3d-tool" id="s3d-box-tool" title="Box Selector"><i class="ti ti-marquee-2"></i></button>
@@ -94,6 +118,8 @@ export default class Storm3D {
     this.slider.addEventListener('input', (e) => this._onThreshold(Number(e.target.value)));
     this.productSelect = root.querySelector('#s3d-product');
     this.productSelect.addEventListener('change', (e) => this._onProduct(e.target.value));
+    root.querySelector('#s3d-style').addEventListener('change', (e) => this._onStyle(e.target.value === 'layered'));
+    root.querySelector('#s3d-area').addEventListener('change', (e) => this._onArea(Number(e.target.value)));
     this._applyProductUI(this.product);
     root.querySelector('#s3d-box-tool').addEventListener('click', () => this._toggleTool('box'));
     root.querySelector('#s3d-xsect-tool').addEventListener('click', () => this._toggleTool('xsect'));
@@ -119,7 +145,7 @@ export default class Storm3D {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a0d12);
-    this.scene.fog = new THREE.Fog(0x0a0d12, 400, 1400);
+    this.scene.fog = new THREE.Fog(0x0a0d12, 600, 2000);
 
     this.camera = new THREE.PerspectiveCamera(50, w / h, 0.5, 5000);
     this.camera.position.set(-180, 120, 220);
@@ -129,10 +155,13 @@ export default class Storm3D {
     this.controls.dampingFactor = 0.08;
     this.controls.target.set(0, 20, 0);
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-    const key = new THREE.DirectionalLight(0xffffff, 0.6);
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const key = new THREE.DirectionalLight(0xffffff, 0.9);
     key.position.set(-1, 2, 1);
     this.scene.add(key);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+    rim.position.set(1, 0.6, -1);
+    this.scene.add(rim);
 
     // Invisible ground plane for tool raycasting (click-to-place)
     this._pickPlane = new THREE.Mesh(
@@ -172,11 +201,22 @@ export default class Storm3D {
       const u8 = data instanceof Uint8Array ? data : new Uint8Array(data);
       const ab = u8.slice().buffer;
 
-      this.worker = new Worker(new URL('./storm3d_worker.js', import.meta.url), { type: 'module' });
+      this._showSpinner('Building 3D volume...');
+      this.worker = new Worker(new URL('./storm3d_worker.js?v=s3d2', import.meta.url), { type: 'module' });
       this.worker.onmessage = (e) => this._onWorker(e.data);
       this.worker.onerror = (e) => this._fail(e.message || 'Worker error');
-      this.worker.postMessage({ type: 'build', arrayBuffer: ab, product: this.product, threshold: this.threshold }, [ab]);
+      this.worker.postMessage({
+        type: 'build', arrayBuffer: ab, product: this.product, levels: this._levels(),
+        view: this.view, lut: this.lut,
+      }, [ab]);
     } catch (err) {
+      // The server gates the volume download by tier; show the same upgrade
+      // prompt as every other paid feature instead of an error box.
+      if (err && err.status === 402) {
+        this.close();
+        window.vortexProGate?.denied('3D Storm View', err.requiredTier || 3);
+        return;
+      }
       this._fail(err?.message || String(err));
     }
   }
@@ -185,13 +225,17 @@ export default class Storm3D {
     if (msg.type === 'error') { this._fail(msg.message); return; }
     if (msg.type === 'built') {
       this.meta = msg.meta;
+      this._clearXsect();
       this._buildAxes(msg.meta);
       this._buildGround(msg.ground);
-      this._buildIsosurface(msg.isoPositions);
-      if (!this._hasFramed) { this._frameToData(msg.isoPositions); this._hasFramed = true; }
+      this._buildRadarMarker(msg.meta);
+      this._buildShells(msg.shells);
+      const t = msg.meta.tilts;
+      this.root.querySelector('#s3d-tilts').textContent = t.length ? `${t.length} tilts · ${t[0]}°–${t[t.length - 1]}°` : '';
+      if (!this._hasFramed) { this._frameToData(msg.shells); this._hasFramed = true; }
       this.loadingEl.style.display = 'none';
-    } else if (msg.type === 'isosurface') {
-      this._buildIsosurface(msg.positions);
+    } else if (msg.type === 'shells') {
+      this._buildShells(msg.shells);
       this.loadingEl.style.display = 'none';
     } else if (msg.type === 'crossSection') {
       this._renderXsect(msg);
@@ -201,6 +245,7 @@ export default class Storm3D {
 
   _fail(message) {
     if (!this.loadingEl) return;
+    this.loadingEl.style.display = '';
     this.loadingEl.innerHTML =
       `<div class="s3d-error"><i class="ti ti-alert-triangle"></i><div>${message}</div>
        <button class="s3d-btn" id="s3d-err-close">Close</button></div>`;
@@ -210,56 +255,124 @@ export default class Storm3D {
   _toScene(v) { return v * SCENE_SCALE; }
   _toSceneZ(v) { return v * SCENE_SCALE * VERT_EXAG; }
 
-  _buildIsosurface(worldPositions) {
-    if (this.isoMesh) { this.scene.remove(this.isoMesh); this.isoMesh.geometry.dispose(); this.isoMesh.material.dispose(); this.isoMesh = null; }
-    if (!worldPositions || worldPositions.length === 0) return;
+  // Contour levels for the current product/threshold/style.
+  _levels() {
+    const step = SHELL_STEP[this.product];
+    if (!this.layered || !step) return [this.threshold];
+    const ui = PRODUCT_UI[this.product];
+    const out = [];
+    for (let v = this.threshold; v <= ui.max + 5 && out.length < 6; v += step) out.push(v);
+    return out;
+  }
+  _isLayered() { return this.layered && !!SHELL_STEP[this.product]; }
 
-    const n = worldPositions.length;
-    const pos = new Float32Array(n);
-    const col = new Float32Array(n);
-    const zTop = this.meta ? this.meta.zTopM : 22000;
-    for (let i = 0; i < n; i += 3) {
-      const east = worldPositions[i];
-      const north = worldPositions[i + 1];
-      const height = worldPositions[i + 2];
-      pos[i]     = this._toScene(east);
-      pos[i + 1] = this._toSceneZ(height);
-      pos[i + 2] = -this._toScene(north);
-      const [r, g, b] = heightColor(height / zTop);
-      col[i] = r; col[i + 1] = g; col[i + 2] = b;
-    }
+  _disposeShells() {
+    for (const m of this.shellMeshes) { this.scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    this.shellMeshes = [];
+  }
 
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    geo.computeVertexNormals();
+  /*
+   * Layered: one shell per level in that level's colour from the radar page's
+   * table, more opaque toward the core so the strongest echo reads through
+   * the weaker ones. Single: one shell coloured by height.
+   */
+  _buildShells(shells) {
+    this._disposeShells();
+    const layered = this._isLayered();
+    const n = shells.length;
+    shells.forEach((shell, k) => {
+      const src = shell.positions;
+      if (!src || !src.length) return;
+      const pos = new Float32Array(src.length);
+      const col = layered ? null : new Float32Array(src.length);
+      const zTop = this.meta ? this.meta.zTopM : 20000;
+      for (let i = 0; i < src.length; i += 3) {
+        pos[i]     = this._toScene(src[i]);
+        pos[i + 1] = this._toSceneZ(src[i + 2]);
+        pos[i + 2] = -this._toScene(src[i + 1]);
+        if (col) { const [r, g, b] = heightColor(src[i + 2] / zTop); col[i] = r; col[i + 1] = g; col[i + 2] = b; }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      if (col) geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      geo.computeVertexNormals();
 
-    const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true, transparent: true, opacity: 0.42,
-      side: THREE.DoubleSide, depthWrite: false,
-      roughness: 0.9, metalness: 0.0,
+      const rank = n > 1 ? k / (n - 1) : 0;           // 0 = outermost, 1 = core
+      const rgb = layered ? (lutRgb(this.lut, shell.level) || [0.8, 0.8, 0.8]) : null;
+      const mat = new THREE.MeshStandardMaterial({
+        vertexColors: !layered,
+        color: layered ? new THREE.Color(rgb[0], rgb[1], rgb[2]) : 0xffffff,
+        transparent: true,
+        opacity: layered ? 0.22 + 0.68 * rank * rank : 0.42,
+        side: THREE.DoubleSide, depthWrite: layered && k === n - 1 && n > 1,
+        roughness: 0.75, metalness: 0.0,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.renderOrder = n - k;                        // core first, outer shells blend over it
+      if (this._boxPlanes) mat.clippingPlanes = this._boxPlanes;
+      this.scene.add(mesh);
+      this.shellMeshes.push(mesh);
     });
-    this.isoMesh = new THREE.Mesh(geo, mat);
-    this.scene.add(this.isoMesh);
+    this._renderLegend(shells.filter((s) => s.positions && s.positions.length).map((s) => s.level));
+  }
+
+  _renderLegend(levels) {
+    const el = this.root.querySelector('#s3d-legend');
+    const ui = PRODUCT_UI[this.product];
+    if (!this._isLayered()) {
+      el.innerHTML = `<span class="s3d-legend-title">${ui.label}</span>
+        <span class="s3d-legend-item">Shell at ${Number(this.threshold).toFixed(ui.decimals)} ${ui.unit}, coloured by height</span>`;
+      return;
+    }
+    if (!levels.length) {
+      el.innerHTML = `<span class="s3d-legend-item">No echo at or above ${this.threshold} ${ui.unit} in this area</span>`;
+      return;
+    }
+    el.innerHTML = `<span class="s3d-legend-title">${ui.unit}</span>` + levels.map((v) => {
+      const c = lutRgb(this.lut, v) || [0.8, 0.8, 0.8];
+      const css = `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`;
+      return `<span class="s3d-legend-item"><i style="background:${css}"></i>${v}</span>`;
+    }).join('');
   }
 
   _buildGround(ground) {
-    if (this.groundMesh) { this.scene.remove(this.groundMesh); this.groundMesh.geometry.dispose(); }
-    if (!ground || !ground.positions || ground.positions.length === 0) return;
-    const src = ground.positions;
-    const pos = new Float32Array(src.length);
-    for (let i = 0; i < src.length; i += 3) {
-      pos[i]     = this._toScene(src[i]);
-      pos[i + 1] = 0;
-      pos[i + 2] = -this._toScene(src[i + 1]);
+    if (this.groundMesh) {
+      this.scene.remove(this.groundMesh);
+      this.groundMesh.geometry.dispose(); this.groundMesh.material.map?.dispose(); this.groundMesh.material.dispose();
+      this.groundMesh = null;
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(ground.colors, 3));
-    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide,
-      transparent: true, opacity: 0.95 });
+    if (!ground || !ground.rgba || !this.meta) return;
+    const tex = new THREE.DataTexture(new Uint8Array(ground.rgba), ground.size, ground.size, THREE.RGBAFormat);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    const side = 2 * this._toScene(this.meta.halfExtentM);
+    const geo = new THREE.PlaneGeometry(side, side);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthWrite: false });
     this.groundMesh = new THREE.Mesh(geo, mat);
+    // PlaneGeometry is in XY with +Y up the texture; lay it flat so the
+    // texture's top edge (north) points to scene -Z.
+    this.groundMesh.rotation.x = -Math.PI / 2;
+    this.groundMesh.position.y = 0.05;
+    this.groundMesh.renderOrder = -1;
+    if (this._boxPlanes) mat.clippingPlanes = this._boxPlanes;
     this.scene.add(this.groundMesh);
+  }
+
+  _buildRadarMarker(meta) {
+    if (this.radarMarker) { this.scene.remove(this.radarMarker); this.radarMarker = null; }
+    const half = meta.halfExtentM;
+    const { east, north } = meta.radar;
+    if (Math.abs(east) > half || Math.abs(north) > half) return;   // radar outside the box
+    const group = new THREE.Group();
+    const x = this._toScene(east), z = -this._toScene(north);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([x, 0, z, x, 8, z]), 3));
+    group.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xffffff })));
+    group.add(this._label(this.station || 'RADAR', x, 11, z, 0.8));
+    this.radarMarker = group;
+    this.scene.add(group);
   }
 
   _buildAxes(meta) {
@@ -284,22 +397,24 @@ export default class Storm3D {
     vline.setAttribute('position', new THREE.BufferAttribute(new Float32Array([cx, 0, cz, cx, top, cz]), 3));
     group.add(new THREE.LineSegments(vline, amat));
 
+    const labelScale = Math.max(0.6, half / 140);
     for (let kft = 10; kft <= 70; kft += 10) {
       const y = this._toSceneZ(kft * KFT_TO_M);
       if (y > top) break;
       const tick = new THREE.BufferGeometry();
-      tick.setAttribute('position', new THREE.BufferAttribute(new Float32Array([cx, y, cz, cx - 6, y, cz]), 3));
+      tick.setAttribute('position', new THREE.BufferAttribute(new Float32Array([cx, y, cz, cx - 6 * labelScale, y, cz]), 3));
       group.add(new THREE.LineSegments(tick, amat));
       const guide = new THREE.BufferGeometry();
       guide.setAttribute('position', new THREE.BufferAttribute(new Float32Array([cx, y, cz, cx, y, -cz, half, y, -cz]), 3));
       group.add(new THREE.Line(guide, new THREE.LineBasicMaterial({ color: 0x222a35 })));
-      group.add(this._label(`${kft} kft`, cx - 16, y, cz, 0.7));
+      group.add(this._label(`${kft} kft`, cx - 16 * labelScale, y, cz, 0.7 * labelScale));
     }
 
-    group.add(this._label('WEST',  -half - 10, 0, 0, 1.2));
-    group.add(this._label('EAST',   half + 10, 0, 0, 1.2));
-    group.add(this._label('SOUTH',  0, 0, half + 10, 1.2));
-    group.add(this._label('NORTH',  0, 0, -half - 10, 1.2));
+    const off = 10 * labelScale;
+    group.add(this._label('WEST',  -half - off, 0, 0, 1.2 * labelScale));
+    group.add(this._label('EAST',   half + off, 0, 0, 1.2 * labelScale));
+    group.add(this._label('SOUTH',  0, 0, half + off, 1.2 * labelScale));
+    group.add(this._label('NORTH',  0, 0, -half - off, 1.2 * labelScale));
 
     this.axesGroup = group;
     this.scene.add(group);
@@ -325,23 +440,36 @@ export default class Storm3D {
     return spr;
   }
 
-  _frameToData(worldPositions) {
-    if (!worldPositions || worldPositions.length === 0) return;
-    let cx = 0, cz = 0, count = 0, maxR = 0;
-    for (let i = 0; i < worldPositions.length; i += 3) {
-      cx += this._toScene(worldPositions[i]);
-      cz += -this._toScene(worldPositions[i + 1]);
-      count++;
+  // Aim at the strongest echo (innermost non-empty shell), framed to the outer one.
+  _frameToData(shells) {
+    const outer = shells.find((s) => s.positions && s.positions.length);
+    if (!outer) {
+      const d = this._toScene(this.meta ? this.meta.halfExtentM : 120000) * 2.2;
+      this._home = { target: new THREE.Vector3(0, 10, 0), pos: new THREE.Vector3(-d * 0.7, d * 0.5, d * 0.8) };
+      this._resetView();
+      return;
     }
+    const core = [...shells].reverse().find((s) => s.positions && s.positions.length) || outer;
+    const p = core.positions;
+    let cx = 0, cz = 0, count = 0;
+    for (let i = 0; i < p.length; i += 3) { cx += this._toScene(p[i]); cz += -this._toScene(p[i + 1]); count++; }
     cx /= count; cz /= count;
-    for (let i = 0; i < worldPositions.length; i += 3) {
-      const dx = this._toScene(worldPositions[i]) - cx;
-      const dz = -this._toScene(worldPositions[i + 1]) - cz;
-      maxR = Math.max(maxR, Math.hypot(dx, dz));
-    }
-    const dist = Math.max(60, maxR * 2.6);
+    // Size the shot from the second shell's typical spread around the core —
+    // the outermost shell's farthest point is usually a stray speck across
+    // the box, which would leave the storm tiny in the middle of the frame.
+    const frame = shells.filter((s) => s.positions && s.positions.length)[1] || outer;
+    const q = frame.positions;
+    const radii = [];
+    for (let i = 0; i < q.length; i += 9) radii.push(Math.hypot(this._toScene(q[i]) - cx, -this._toScene(q[i + 1]) - cz));
+    radii.sort((a, b) => a - b);
+    const spread = radii[Math.floor(radii.length * 0.6)] || 30;
+    const dist = Math.max(110, Math.min(spread * 3.4, this._toScene(this.meta.halfExtentM) * 2.4));
+    // Aim at the outer shell's mid-height so a tall tower fits the frame.
+    let top = 0;
+    for (let i = 2; i < outer.positions.length; i += 9) top = Math.max(top, outer.positions[i]);
+    const aimY = Math.min(45, Math.max(10, this._toSceneZ(top) * 0.45));
     this._home = {
-      target: new THREE.Vector3(cx, 20, cz),
+      target: new THREE.Vector3(cx, aimY, cz),
       pos: new THREE.Vector3(cx - dist * 0.7, dist * 0.5, cz + dist * 0.8),
     };
     this._resetView();
@@ -360,6 +488,8 @@ export default class Storm3D {
     this.slider.max = ui.max;
     this.slider.step = ui.step;
     this.slider.value = this.threshold;
+    this.root.querySelector('#s3d-style-wrap').style.display = SHELL_STEP[product] ? '' : 'none';
+    this.root.querySelector('#s3d-thresh-label').textContent = this._isLayered() ? 'Lowest shell' : 'Isosurface';
     this._renderThreshReadout(ui);
   }
 
@@ -382,18 +512,35 @@ export default class Storm3D {
     this._applyProductUI(product);
     if (!this.worker) return;
     this._showSpinner(`Building ${PRODUCT_UI[product].label}...`);
-    this.worker.postMessage({ type: 'product', product, threshold: this.threshold });
+    this.worker.postMessage({ type: 'product', product, levels: this._levels() });
+  }
+
+  _onStyle(layered) {
+    this.layered = layered;
+    this._applyProductUI(this.product);
+    this._remarch();
+  }
+
+  _onArea(km) {
+    this.view = { ...this.view, halfExtentM: km * 1000 };
+    if (!this.worker) return;
+    this._showSpinner('Rebuilding volume...');
+    this._hasFramed = false;
+    this._clearBox();
+    this.worker.postMessage({ type: 'view', view: this.view, levels: this._levels() });
   }
 
   _onThreshold(val) {
     this.threshold = val;
     this._renderThreshReadout();
     clearTimeout(this._remarchTimer);
-    this._remarchTimer = setTimeout(() => {
-      if (!this.worker) return;
-      this._showSpinner('Rebuilding isosurface...');
-      this.worker.postMessage({ type: 'remarch', threshold: val });
-    }, 220);
+    this._remarchTimer = setTimeout(() => this._remarch(), 220);
+  }
+
+  _remarch() {
+    if (!this.worker) return;
+    this._showSpinner('Rebuilding isosurface...');
+    this.worker.postMessage({ type: 'remarch', levels: this._levels() });
   }
 
   // ── Tool system: box selector + cross-section ───────────────────────────────
@@ -531,7 +678,8 @@ export default class Storm3D {
       new THREE.Plane(new THREE.Vector3( 0, 0, 1), -minZ),
       new THREE.Plane(new THREE.Vector3( 0, 0,-1),  maxZ),
     ];
-    if (this.isoMesh) this.isoMesh.material.clippingPlanes = planes;
+    this._boxPlanes = planes;
+    for (const m of this.shellMeshes) m.material.clippingPlanes = planes;
     if (this.groundMesh) this.groundMesh.material.clippingPlanes = planes;
 
     this._activeTool = null;
@@ -545,7 +693,8 @@ export default class Storm3D {
       this._boxHelper.geometry?.dispose(); this._boxHelper.material?.dispose();
       this._boxHelper = null;
     }
-    if (this.isoMesh) this.isoMesh.material.clippingPlanes = [];
+    this._boxPlanes = null;
+    for (const m of this.shellMeshes) m.material.clippingPlanes = [];
     if (this.groundMesh) this.groundMesh.material.clippingPlanes = [];
     this._removePointMarkers();
     this._updateToolUI();
@@ -566,7 +715,7 @@ export default class Storm3D {
   }
 
   _renderXsect(msg) {
-    this._removeXsect();
+    this._clearXsect();
     const { rgba, width, height, p1, p2 } = msg;
 
     const group = new THREE.Group();
@@ -640,6 +789,58 @@ export default class Storm3D {
     });
     this.root?.remove();
   }
+}
+
+/*
+ * The radar page's reflectivity table (window.vortexColormaps.REF, which the
+ * colortable menu and uploads replace) as plain stops for the worker. The
+ * table is colours at values; SolidColor rows arrive as duplicated stops, so
+ * interpolating between stops reproduces it exactly — and looking stops up
+ * directly (never via a resampled table) keeps 25.0 dBZ on the same side of
+ * a colour boundary as the radar page puts it.
+ */
+function buildRefLut() {
+  const cm = window.vortexColormaps && window.vortexColormaps.REF;
+  if (!cm || !cm.colors || !cm.values || cm.colors.length < 2) return null;
+  const stops = cm.values.map((v, i) => [v, parseRgb(cm.colors[i])]).filter((s) => s[1] && Number.isFinite(s[0]) && s[0] < 900);
+  if (stops.length < 2) return null;
+  const values = new Float32Array(stops.map((s) => s[0]));
+  const rgb = new Float32Array(stops.flatMap((s) => s[1].map((c) => c / 255)));
+  return { values, rgb };
+}
+function parseRgb(css) {
+  const s = String(css || '').trim();
+  const m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(s);
+  if (m) return [+m[1], +m[2], +m[3]];
+  const h = /^#([0-9a-f]{6})$/i.exec(s);
+  return h ? [0, 2, 4].map((o) => parseInt(h[1].slice(o, o + 2), 16)) : null;
+}
+// Colour of v in the table: last stop at or below v, blended toward the next.
+// Same function as lutColour() in storm3d_worker.js — keep the two in step.
+function lutRgb(lut, v) {
+  if (!lut) return null;
+  const vals = lut.values, n = vals.length, c = lut.rgb;
+  if (!(v >= vals[0])) return null;
+  let lo = 0, hi = n - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (vals[mid] <= v) lo = mid; else hi = mid - 1; }
+  if (lo === n - 1) return [c[lo * 3], c[lo * 3 + 1], c[lo * 3 + 2]];
+  const t = vals[lo + 1] > vals[lo] ? (v - vals[lo]) / (vals[lo + 1] - vals[lo]) : 0;
+  return [0, 1, 2].map((j) => c[lo * 3 + j] + t * (c[(lo + 1) * 3 + j] - c[lo * 3 + j]));
+}
+
+// Box centred on the map view, half-width from its zoom (snapped to the Area menu).
+function initialView() {
+  const view = { centre: null, halfExtentM: 120000 };
+  try {
+    const map = window.vortexMap && window.vortexMap.map;
+    if (!map) return view;
+    const c = map.getCenter();
+    view.centre = { lat: c.lat, lon: c.lng };
+    const b = map.getBounds();
+    const halfKm = (b.getEast() - b.getWest()) * Math.cos(c.lat * Math.PI / 180) * 111.32 / 2;
+    view.halfExtentM = AREAS_KM.reduce((best, km) => (Math.abs(km - halfKm) < Math.abs(best - halfKm) ? km : best)) * 1000;
+  } catch { /* fall back to the radar-centred default */ }
+  return view;
 }
 
 function heightColor(t) {

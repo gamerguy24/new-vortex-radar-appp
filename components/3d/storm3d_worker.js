@@ -1,11 +1,14 @@
 /*
  * 3d/storm3d_worker.js
- * Off-main-thread builder for the 3D storm view. Parses a raw Level-II volume,
- * converts each gate from polar (range, azimuth, elevation) into a Cartesian
- * voxel using the 4/3-earth beam model, and produces, per product
- * (REF / VEL / CC / ZDR / KDP / SW): an isosurface mesh (marching cubes), a
- * ground plan mesh, and grid metadata. The parsed volume is kept warm so
- * switching product or dragging the threshold never re-parses the file.
+ * Off-main-thread builder for the 3D storm view. Parses a raw Level-II volume
+ * once, then on request grids one product into a box (storm3d_grid.js),
+ * contours it at one or more levels (marching cubes) and paints the lowest
+ * tilt onto a floor image. The parsed volume and each product's sweeps stay
+ * warm, so changing product, area or threshold never re-parses the file.
+ *
+ * Reflectivity is coloured with the table the radar page is using (sent from
+ * the main thread as a lookup table), so a 50 dBZ core is the same colour in
+ * 3D as on the map — including uploaded colortables.
  *
  * (c) David Wallis, Twistcaster Live Media LLC 2026
  */
@@ -15,45 +18,48 @@
 import { Buffer } from 'https://esm.sh/node/buffer.mjs';
 import { Level2Radar } from '../../parse/level2/src/index.js';
 import { marchingCubes } from './marching_cubes.js';
+import { collectSweeps, gridVolume, groundImage, offsetFromRadar } from './storm3d_grid.js?v=s3d2';
 
-const HALF_EXTENT_M = 140000;   // +/-140 km horizontal half-width
-const Z_TOP_M = 22000;          // 22 km (~72 kft) vertical ceiling
-const NX = 200, NY = 200, NZ = 44;
-const DX = (2 * HALF_EXTENT_M) / NX;
-const DY = (2 * HALF_EXTENT_M) / NY;
-const DZ = Z_TOP_M / NZ;
-const NODATA = -9999;
-
-const AE = 6371000 * (4 / 3);
-const DEG2RAD = Math.PI / 180;
+const Z_TOP_M = 20000;              // ~66 kft ceiling
+const NX = 240, NY = 240, NZ = 56;  // ~0.4–1.9 km horizontal (by area), 364 m vertical
+const GROUND_PX = 1024;
+const RECENTRE_LIMIT_M = 300000;    // map centre farther than this → centre on the radar
 const MS_TO_KT = 1.94384;
 
 const PRODUCTS = {
-  REF: { prop: 'reflect',  xform: (v) => v,            floor: 5,   iso: 'value', color: dbzColor },
-  VEL: { prop: 'velocity', xform: (v) => v * MS_TO_KT, floor: 1,   iso: 'abs',   color: velColor },
-  CC:  { prop: 'rho',      xform: (v) => v,            floor: 0.2, iso: 'value', color: ccColor },
-  ZDR: { prop: 'zdr',      xform: (v) => v,            floor: -7,  iso: 'value', color: zdrColor },
-  KDP: { prop: 'phi',      xform: (v) => v,            floor: -2,  iso: 'value', color: kdpColor },
-  SW:  { prop: 'spectrum', xform: (v) => v * MS_TO_KT, floor: 0,   iso: 'value', color: swColor },
+  REF: { prop: 'reflect',  xform: (v) => v,                       floor: 5,   clear: -10, color: dbzColor },
+  VEL: { prop: 'velocity', xform: (v) => Math.abs(v * MS_TO_KT),  floor: 1,   clear: 0,   color: velColor, signed: (v) => v * MS_TO_KT },
+  CC:  { prop: 'rho',      xform: (v) => v,                       floor: 0.2, clear: 0,   color: ccColor },
+  ZDR: { prop: 'zdr',      xform: (v) => v,                       floor: -7,  clear: -8,  color: zdrColor },
+  KDP: { prop: 'phi',      xform: (v) => v,                       floor: -2,  clear: -3,  color: kdpColor },
+  SW:  { prop: 'spectrum', xform: (v) => v * MS_TO_KT,            floor: 0,   clear: -1,  color: swColor },
 };
 
 let _radar = null;
+let _site = null;                   // { lat, lon }
+let _sweeps = {};                   // product → sweeps (cached)
 let _grid = null;
 let _meta = null;
-let _currentProduct = 'REF';
+let _product = 'REF';
+let _view = { centre: null, halfExtentM: 120000 };
+let _refLut = null;                 // { values, rgb } — the radar page's REF table stops
 
 self.onmessage = (e) => {
   const msg = e.data;
   try {
+    if (msg.lut !== undefined) _refLut = msg.lut;
     if (msg.type === 'build') {
       _radar = new Level2Radar(Buffer.from(msg.arrayBuffer));
-      self.postMessage(...buildForProduct(msg.product || 'REF', msg.threshold ?? 30));
-    } else if (msg.type === 'product' && _radar) {
-      self.postMessage(...buildForProduct(msg.product, msg.threshold));
+      _site = siteOf(_radar);
+      _sweeps = {};
+      if (msg.view) _view = msg.view;
+      postBuilt(msg.product || 'REF', msg.levels);
+    } else if ((msg.type === 'product' || msg.type === 'view') && _radar) {
+      if (msg.view) _view = msg.view;
+      postBuilt(msg.product || _product, msg.levels);
     } else if (msg.type === 'remarch' && _grid) {
-      const { positions } = marchingCubes(_grid, NX, NY, NZ, msg.threshold);
-      const scaled = gridToWorld(positions);
-      self.postMessage({ type: 'isosurface', positions: scaled, threshold: msg.threshold }, [scaled.buffer]);
+      const shells = contour(msg.levels);
+      self.postMessage({ type: 'shells', shells }, shells.map((s) => s.positions.buffer));
     } else if (msg.type === 'crossSection' && _grid) {
       const result = buildCrossSection(msg.p1, msg.p2);
       self.postMessage(result, [result.rgba.buffer]);
@@ -63,148 +69,96 @@ self.onmessage = (e) => {
   }
 };
 
-function buildForProduct(productKey, threshold) {
-  _currentProduct = productKey;
-  const cfg = PRODUCTS[productKey] || PRODUCTS.REF;
-  const elevations = _radar.listElevations();
-  if (!elevations || elevations.length === 0) throw new Error('Volume has no elevation cuts.');
-
-  _grid = new Float32Array(NX * NY * NZ).fill(NODATA);
-
-  let groundTiltElev = null;
-  let groundTiltAngle = Infinity;
-
-  for (const elev of elevations) {
-    _radar.setElevation(elev);
-    let headers;
+function siteOf(radar) {
+  for (const elev of radar.listElevations()) {
     try {
-      headers = _radar.getHeader();
-    } catch { continue; }
-    if (!Array.isArray(headers)) continue;
-
-    for (let i = 0; i < headers.length; i++) {
-      const header = headers[i];
-      const rec = header?.[cfg.prop];
-      if (!rec || !rec.moment_data || typeof rec.gate_count !== 'number') continue;
-      const elAngle = header.elevation_angle;
-      const az = header.azimuth;
-      if (!Number.isFinite(elAngle) || !Number.isFinite(az)) continue;
-
-      if (elAngle < groundTiltAngle) { groundTiltAngle = elAngle; groundTiltElev = elev; }
-
-      const elRad = elAngle * DEG2RAD;
-      const azRad = az * DEG2RAD;
-      const sinAz = Math.sin(azRad), cosAz = Math.cos(azRad);
-      const sinEl = Math.sin(elRad), cosEl = Math.cos(elRad);
-      const firstGate = rec.first_gate, gateSize = rec.gate_size;
-
-      for (let g = 0; g < rec.gate_count; g++) {
-        const raw = rec.moment_data[g];
-        if (raw === null || raw === 'rf' || !Number.isFinite(raw)) continue;
-        const val = cfg.xform(raw);
-        const isoVal = cfg.iso === 'abs' ? Math.abs(val) : val;
-        if (isoVal < cfg.floor) continue;
-
-        const r = (firstGate + g * gateSize) * 1000;
-        const h = Math.sqrt(r * r + AE * AE + 2 * r * AE * sinEl) - AE;
-        if (h < 0 || h >= Z_TOP_M) continue;
-        const s = AE * Math.asin((r * cosEl) / (AE + h));
-        const ix = ((s * sinAz + HALF_EXTENT_M) / DX) | 0;
-        const iy = ((s * cosAz + HALF_EXTENT_M) / DY) | 0;
-        const iz = (h / DZ) | 0;
-        if (ix < 0 || ix >= NX || iy < 0 || iy >= NY || iz < 0 || iz >= NZ) continue;
-
-        const idx = ix + NX * (iy + NY * iz);
-        if (isoVal > _grid[idx]) _grid[idx] = isoVal;
-      }
-    }
+      radar.setElevation(elev);
+      const v = radar.getHeader()[0].volume;
+      if (v && Number.isFinite(v.latitude)) return { lat: v.latitude, lon: v.longitude };
+    } catch { /* try the next cut */ }
   }
-
-  dilateMax(_grid);
-
-  _meta = { nx: NX, ny: NY, nz: NZ, dx: DX, dy: DY, dz: DZ, halfExtentM: HALF_EXTENT_M, zTopM: Z_TOP_M };
-
-  const { positions } = marchingCubes(_grid, NX, NY, NZ, threshold);
-  const isoWorld = gridToWorld(positions);
-  const ground = buildGroundPlane(groundTiltElev, cfg);
-
-  return [
-    { type: 'built', product: productKey, meta: _meta, threshold, isoPositions: isoWorld, ground },
-    [isoWorld.buffer, ground.positions.buffer, ground.colors.buffer],
-  ];
+  return null;
 }
 
-function gridToWorld(gridPositions) {
-  const out = new Float32Array(gridPositions.length);
-  for (let i = 0; i < gridPositions.length; i += 3) {
-    out[i]     = gridPositions[i] * DX - HALF_EXTENT_M;
-    out[i + 1] = gridPositions[i + 1] * DY - HALF_EXTENT_M;
-    out[i + 2] = gridPositions[i + 2] * DZ;
+function sweepsFor(key) {
+  if (!_sweeps[key]) {
+    const cfg = PRODUCTS[key];
+    _sweeps[key] = collectSweeps(_radar, cfg);
+    if (!_sweeps[key].length) throw new Error(`This volume has no ${key} data.`);
+  }
+  return _sweeps[key];
+}
+
+// Box centre in metres from the radar: the map centre when it is within
+// range, else the radar itself.
+function boxCentre() {
+  const c = _view.centre;
+  if (!c || !_site) return { east: 0, north: 0 };
+  const off = offsetFromRadar(_site.lat, _site.lon, c.lat, c.lon);
+  return Math.hypot(off.east, off.north) > RECENTRE_LIMIT_M ? { east: 0, north: 0 } : off;
+}
+
+function postBuilt(productKey, levels) {
+  _product = PRODUCTS[productKey] ? productKey : 'REF';
+  const cfg = PRODUCTS[_product];
+  const sweeps = sweepsFor(_product);
+  const centre = boxCentre();
+  const halfExtentM = _view.halfExtentM;
+  const g = gridVolume(sweeps, cfg, { centre, halfExtentM, zTopM: Z_TOP_M, nx: NX, ny: NY, nz: NZ });
+  _grid = g.grid;
+  _meta = {
+    nx: NX, ny: NY, nz: NZ, dx: g.dx, dy: g.dy, dz: g.dz, halfExtentM, zTopM: Z_TOP_M,
+    // Where the radar is, in box coordinates (metres from the box centre).
+    radar: { east: -centre.east, north: -centre.north },
+    tilts: sweeps.map((s) => +s.angle.toFixed(1)),
+  };
+
+  // The floor shows the signed field for velocity (inbound vs outbound).
+  const groundCfg = cfg.signed
+    ? { ...cfg, xform: cfg.signed, floor: -Infinity, clear: NaN }
+    : cfg;
+  const groundSweeps = cfg.signed ? collectSweeps(_radar, groundCfg).slice(0, 1) : sweeps;
+  const rgba = groundImage(groundSweeps, groundCfg, { centre, halfExtentM, size: GROUND_PX }, colourFn(_product));
+
+  const shells = contour(levels);
+  self.postMessage(
+    { type: 'built', product: _product, meta: _meta, shells, ground: { rgba, size: GROUND_PX } },
+    [...shells.map((s) => s.positions.buffer), rgba.buffer],
+  );
+}
+
+function contour(levels) {
+  return (levels || []).map((level) => {
+    const { positions } = marchingCubes(_grid, NX, NY, NZ, level);
+    return { level, positions: gridToWorld(positions) };
+  });
+}
+
+// Grid index space → metres from the box centre (east, north, height).
+function gridToWorld(p) {
+  const out = new Float32Array(p.length);
+  const h = _meta.halfExtentM;
+  for (let i = 0; i < p.length; i += 3) {
+    out[i]     = p[i] * _meta.dx - h;
+    out[i + 1] = p[i + 1] * _meta.dy - h;
+    out[i + 2] = p[i + 2] * _meta.dz;
   }
   return out;
 }
 
-function dilateMax(grid) {
-  const src = grid.slice();
-  const at = (x, y, z) => src[x + NX * (y + NY * z)];
-  for (let z = 0; z < NZ; z++) {
-    for (let y = 0; y < NY; y++) {
-      for (let x = 0; x < NX; x++) {
-        const idx = x + NX * (y + NY * z);
-        if (src[idx] > NODATA) continue;
-        let m = NODATA;
-        if (x > 0)      m = Math.max(m, at(x - 1, y, z));
-        if (x < NX - 1) m = Math.max(m, at(x + 1, y, z));
-        if (y > 0)      m = Math.max(m, at(x, y - 1, z));
-        if (y < NY - 1) m = Math.max(m, at(x, y + 1, z));
-        if (z > 0)      m = Math.max(m, at(x, y, z - 1));
-        if (z < NZ - 1) m = Math.max(m, at(x, y, z + 1));
-        if (m > NODATA) grid[idx] = m - 1;
-      }
-    }
-  }
+// ── colour ────────────────────────────────────────────────────────────────
+// Same as lutRgb() in storm3d.js. Below the table's first value: not drawn, as on the map.
+function lutColour(v) {
+  const vals = _refLut.values, n = vals.length, c = _refLut.rgb;
+  if (!(v >= vals[0])) return null;
+  let lo = 0, hi = n - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (vals[mid] <= v) lo = mid; else hi = mid - 1; }
+  if (lo === n - 1) return [c[lo * 3], c[lo * 3 + 1], c[lo * 3 + 2]];
+  const t = vals[lo + 1] > vals[lo] ? (v - vals[lo]) / (vals[lo + 1] - vals[lo]) : 0;
+  return [c[lo * 3] + t * (c[lo * 3 + 3] - c[lo * 3]), c[lo * 3 + 1] + t * (c[lo * 3 + 4] - c[lo * 3 + 1]), c[lo * 3 + 2] + t * (c[lo * 3 + 5] - c[lo * 3 + 2])];
 }
-
-function buildGroundPlane(elev, cfg) {
-  const positions = [];
-  const colors = [];
-  if (elev == null) return { positions: new Float32Array(), colors: new Float32Array() };
-  _radar.setElevation(elev);
-  let headers;
-  try {
-    headers = _radar.getHeader();
-  } catch {
-    return { positions: new Float32Array(), colors: new Float32Array() };
-  }
-
-  const n = headers.length;
-  for (let i = 0; i < n; i++) {
-    const rec = headers[i]?.[cfg.prop];
-    if (!rec || !rec.moment_data) continue;
-    const az1 = headers[i]?.azimuth;
-    let az2 = headers[(i + 1) % n]?.azimuth;
-    if (!Number.isFinite(az1) || !Number.isFinite(az2)) continue;
-    if (Math.abs(az2 - az1) > 180) az2 += (az2 < az1 ? 360 : -360);
-    const s1 = Math.sin(az1 * DEG2RAD), c1 = Math.cos(az1 * DEG2RAD);
-    const s2 = Math.sin(az2 * DEG2RAD), c2 = Math.cos(az2 * DEG2RAD);
-    const firstGate = rec.first_gate, gateSize = rec.gate_size;
-
-    for (let g = 0; g < rec.gate_count - 1; g++) {
-      const raw = rec.moment_data[g];
-      if (raw === null || raw === 'rf' || !Number.isFinite(raw)) continue;
-      const val = cfg.xform(raw);
-      const isoVal = cfg.iso === 'abs' ? Math.abs(val) : val;
-      if (isoVal < cfg.floor) continue;
-      const r1 = (firstGate + g * gateSize) * 1000;
-      const r2 = (firstGate + (g + 1) * gateSize) * 1000;
-      const ax = r1 * s1, ay = r1 * c1, bx = r2 * s1, by = r2 * c1;
-      const cx = r2 * s2, cy = r2 * c2, dx_ = r1 * s2, dy_ = r1 * c2;
-      const [cr, cg, cb] = cfg.color(val);
-      positions.push(ax, ay, 0, bx, by, 0, cx, cy, 0, ax, ay, 0, cx, cy, 0, dx_, dy_, 0);
-      for (let k = 0; k < 6; k++) colors.push(cr, cg, cb);
-    }
-  }
-  return { positions: new Float32Array(positions), colors: new Float32Array(colors) };
+function colourFn(product) {
+  return product === 'REF' && _refLut ? lutColour : PRODUCTS[product].color;
 }
 
 function ramp(stops, v) {
@@ -222,6 +176,7 @@ function ramp(stops, v) {
   }
   return [1, 1, 1];
 }
+// Fallback when the radar page's table is unavailable.
 function dbzColor(d) {
   return ramp([
     [5, 0.40, 0.78, 0.92], [20, 0.12, 0.55, 0.20], [30, 0.10, 0.78, 0.16],
@@ -261,39 +216,33 @@ function swColor(kt) {
   ], kt);
 }
 
-// ── Cross-section slice through the voxel grid ─────────────────────────────
-// Samples the 3D grid along a horizontal line (p1→p2) at every height level,
-// colours each sample with the active product's ramp, and returns RGBA pixels
-// ready for use as a DataTexture.
+// ── Cross-section slice through the grid ─────────────────────────────────────
+// Samples along p1→p2 (metres from the box centre) at every height level and
+// colours each sample like the floor. Row 0 = ground.
 function buildCrossSection(p1, p2) {
-  const cfg = PRODUCTS[_currentProduct] || PRODUCTS.REF;
-  const nSamples = 200;
+  const cfg = PRODUCTS[_product];
+  const colour = colourFn(_product);
+  const nSamples = 300;
   const width = nSamples, height = NZ;
   const rgba = new Uint8Array(width * height * 4);
+  const h = _meta.halfExtentM;
 
   for (let s = 0; s < nSamples; s++) {
     const t = s / (nSamples - 1);
-    const east  = p1.east  + t * (p2.east  - p1.east);
-    const north = p1.north + t * (p2.north - p1.north);
-    const ix = ((east  + HALF_EXTENT_M) / DX) | 0;
-    const iy = ((north + HALF_EXTENT_M) / DY) | 0;
+    const ix = Math.round((p1.east + t * (p2.east - p1.east) + h) / _meta.dx);
+    const iy = Math.round((p1.north + t * (p2.north - p1.north) + h) / _meta.dy);
     if (ix < 0 || ix >= NX || iy < 0 || iy >= NY) continue;
-
     for (let iz = 0; iz < NZ; iz++) {
       const val = _grid[ix + NX * (iy + NY * iz)];
-      // DataTexture row 0 = bottom of image, which maps to ground in the UVs
+      if (!(val >= cfg.floor)) continue;
+      const c = colour(val);
+      if (!c) continue;
       const pi = (s + iz * width) * 4;
-      if (val <= NODATA + 1) {
-        rgba[pi + 3] = 0;
-      } else {
-        const [r, g, b] = cfg.color(val);
-        rgba[pi]     = Math.round(r * 255);
-        rgba[pi + 1] = Math.round(g * 255);
-        rgba[pi + 2] = Math.round(b * 255);
-        rgba[pi + 3] = 230;
-      }
+      rgba[pi] = Math.round(c[0] * 255);
+      rgba[pi + 1] = Math.round(c[1] * 255);
+      rgba[pi + 2] = Math.round(c[2] * 255);
+      rgba[pi + 3] = 230;
     }
   }
-
   return { type: 'crossSection', rgba, width, height, p1, p2 };
 }

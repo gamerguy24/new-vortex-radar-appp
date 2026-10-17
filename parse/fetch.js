@@ -11,8 +11,12 @@ export async function loadLatestL2RadarFile(station) {
     const res = await fetch('/api/level2/latest?station=' + encodeURIComponent(station), { cache: 'no-store' });
     if (!res.ok) {
         let msg = 'Failed to download Level-II data (' + res.status + ').';
-        try { msg = (await res.json()).error || msg; } catch {}
-        throw new Error(msg);
+        let body = null;
+        try { body = await res.json(); msg = body.error || msg; } catch {}
+        const err = new Error(msg);
+        err.status = res.status;                      // 402 = needs a higher tier
+        err.requiredTier = body && body.requiredTier;
+        throw err;
     }
     const data = new Uint8Array(await res.arrayBuffer());
     if (!data.length) throw new Error('Empty Level-II response.');

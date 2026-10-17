@@ -1922,7 +1922,10 @@ async function fetchLatestL2(station) {
     return fetchChunksVolume(station, resolved.folder, resolved.keys);
 }
 
-app.get('/api/level2/latest', requireAuth, async (req, res) => {
+// Only the 3D Storm View downloads whole volumes through here (the radar page
+// reads AWS directly), so this is where its tier is enforced — the click gate
+// in components/pro_gates.js is only the prompt.
+app.get('/api/level2/latest', requireAuth, billing.requireTier(3), async (req, res) => {
     const station = String(req.query.station || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     if (!station) return res.status(400).json({ error: 'A station is required.' });
     try {
