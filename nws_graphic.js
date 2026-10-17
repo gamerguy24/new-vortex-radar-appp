@@ -157,8 +157,16 @@ function affectedStates(props) {
   const desc = String(props.areaDesc || '');
   const re = /,\s*([A-Z]{2})(?:;|$)/g; let m;
   while ((m = re.exec(desc))) set.add(m[1]);
-  // SAME codes: first 2 digits are the state FIPS -> we only need USPS, which
-  // areaDesc already gives; keep it simple and reliable.
+  // Zone-based alerts (watches, winter, fire) list zones without ", ST", but
+  // every land UGC starts with the state: GAC121 / GAZ033. Marine prefixes
+  // (AMZ, GMZ, LSZ, PZZ…) are not states and drop out here.
+  const ugc = (props.geocode && props.geocode.UGC) || [];
+  for (const u of ugc) { const st = String(u).slice(0, 2); if (STATE_NAME[st]) set.add(st); }
+  // Marine-only: fall back to the issuing office's state ("NWS Duluth MN").
+  if (!set.size) {
+    const st = (/\b([A-Z]{2})\s*$/.exec(String(props.senderName || '')) || [])[1];
+    if (st && STATE_NAME[st]) set.add(st);
+  }
   return [...set];
 }
 

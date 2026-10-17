@@ -98,6 +98,14 @@ export function nwsxAdminHTML() {
 
     <div class="nwsx-card">
       <div class="lbl">Alert types to post</div>
+      <div class="nwsx-row">
+        <div><div class="lbl">Every warning</div><div class="sub">All NWS warnings, including ones not listed below (Gale, Storm, High Surf…).</div></div>
+        <label class="nwsx-switch"><input type="checkbox" id="nwsx-all-warnings"><span></span></label>
+      </div>
+      <div class="nwsx-row">
+        <div><div class="lbl">Every watch</div><div class="sub">All NWS watches. A watch posts once, about 3 minutes after issue, so every office's counties are on one graphic.</div></div>
+        <label class="nwsx-switch"><input type="checkbox" id="nwsx-all-watches"><span></span></label>
+      </div>
       <div class="nwsx-types" id="nwsx-types"></div>
     </div>
 
@@ -230,6 +238,10 @@ export function initNwsxAdmin(root) {
       `<label><input type="checkbox" data-type="${esc(name)}" ${c.alertTypes[name] ? 'checked' : ''}>${esc(name)}</label>`
     ).join('');
 
+    $('nwsx-all-warnings').checked = !!c.allWarnings;
+    $('nwsx-all-watches').checked = !!c.allWatches;
+    syncTypeBoxes();
+
     $('nwsx-states').value = (c.scope.states || []).join(', ');
     $('nwsx-offices').value = (c.scope.offices || []).join(', ');
     $('nwsx-counties').value = (c.scope.counties || []).join(', ');
@@ -246,6 +258,8 @@ export function initNwsxAdmin(root) {
       enabled: $('nwsx-enabled').checked,
       postUpdates: $('nwsx-updates').checked,
       postCancellations: $('nwsx-cancels').checked,
+      allWarnings: $('nwsx-all-warnings').checked,
+      allWatches: $('nwsx-all-watches').checked,
       radarProduct: $('nwsx-radar') ? $('nwsx-radar').value : 'reflectivity',
       destinations: { bluesky: $('nwsx-dest-bluesky').checked, facebook: $('nwsx-dest-facebook').checked },
       alertTypes,
@@ -256,6 +270,18 @@ export function initNwsxAdmin(root) {
       },
     };
   }
+
+  // An "Every …" switch covers its whole category, so its boxes are moot.
+  function syncTypeBoxes() {
+    const allW = $('nwsx-all-warnings').checked; const allA = $('nwsx-all-watches').checked;
+    root.querySelectorAll('#nwsx-types input[data-type]').forEach((cb) => {
+      const t = cb.dataset.type;
+      cb.disabled = (allW && / Warning$/.test(t)) || (allA && / Watch$/.test(t));
+      cb.parentElement.style.opacity = cb.disabled ? '0.5' : '';
+    });
+  }
+  $('nwsx-all-warnings').addEventListener('change', syncTypeBoxes);
+  $('nwsx-all-watches').addEventListener('change', syncTypeBoxes);
 
   // States quick-fill helpers.
   function updateStatesCount() {

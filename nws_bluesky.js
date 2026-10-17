@@ -32,6 +32,7 @@
 const fs = require('fs');
 const path = require('path');
 const { AtpAgent, RichText } = require('@atproto/api');
+const turf = require('@turf/turf');
 
 const {
   renderWarningGraphic, untilLabel, areaLabel, officeName, affectedStates, countyList,
@@ -59,14 +60,24 @@ const DEFAULT_ON = new Set([
 // All 50 US states (USPS). Blank scope also covers DC/PR/territories.
 const ALL_STATES = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'];
 
+// Watches wait this long after first sighting before posting, so the pieces a
+// watch arrives in (one per WFO for SPC watches) are merged into one post.
+const WATCH_SETTLE_S = parseInt(process.env.NWS_WATCH_SETTLE_SECONDS, 10);
+const WATCH_SETTLE_MS = (Number.isFinite(WATCH_SETTLE_S) ? Math.max(0, WATCH_SETTLE_S) : 180) * 1000;
+const isWarning = (event) => / Warning$/.test(event || '');
+const isWatch = (event) => / Watch$/.test(event || '');
+const CATALOG = ALERT_TYPES.filter((t) => t.category === 'warning' || t.category === 'watch').map((t) => t.name);
+
 function defaultConfig() {
   const alertTypes = {};
-  for (const t of ALERT_TYPES) {
-    if (t.category === 'warning') alertTypes[t.name] = DEFAULT_ON.has(t.name);
-  }
+  for (const name of CATALOG) alertTypes[name] = DEFAULT_ON.has(name);
   return {
     enabled: false,           // master switch — nothing posts until explicitly turned on
     platform: 'bluesky',
+    // Every NWS "… Warning" / "… Watch", including ones not in the catalog
+    // (Gale Warning, High Wind Watch…). When on, the per-type boxes are ignored.
+    allWarnings: true,
+    allWatches: true,
     alertTypes,
     postUpdates: true,
     postCancellations: false,
@@ -92,6 +103,7 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
   let store = readJson(POSTS_FILE, {}) || {};
   let baselined = false;   // has this process baselined active alerts yet?
   let polling = false;     // guard against overlapping cycles
+  const watchSeen = new Map(); // watch eventKey → first sighting (ms), for WATCH_SETTLE_MS
 
   const saveConfig = () => writeJson(CONFIG_FILE, config);
   const saveStore = () => writeJson(POSTS_FILE, store);
@@ -281,7 +293,88 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
   }
 
   // ── eligibility / scope ──────────────────────────────────────────────────────
-  function typeEnabled(event) { return !!config.alertTypes[event]; }
+  function typeEnabled(event) {
+    if (config.allWarnings && isWarning(event)) return true;
+    if (config.allWatches && isWatch(event)) return true;
+    return !!config.alertTypes[event];
+  }
+
+  // One VTEC event (office.phen.sig.ETN) can arrive as several alerts: one per
+  // segment, and one per WFO for SPC watches (all KWNS). They share this key.
+  function eventKey(id, props) {
+    const vtec = ((props.parameters && props.parameters.VTEC) || [])[0] || '';
+    const m = /^\/[OTEX]\.[A-Z]{3}\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./.exec(vtec);
+    return m ? `${m[1]}.${m[2]}.${m[3]}.${m[4]}` : id;
+  }
+
+  // Post order when the per-cycle cap bites: immediate threats first.
+  function priority(event) {
+    if (/^(Tornado|Extreme Wind) Warning$/.test(event)) return 0;
+    if (/^(Severe Thunderstorm|Flash Flood|Snow Squall|Dust Storm) Warning$/.test(event)) return 1;
+    if (isWarning(event)) return 2;
+    if (/^(Tornado|Severe Thunderstorm) Watch$/.test(event)) return 3;
+    return 4;
+  }
+
+  // Several alerts of one event → one alert covering all their areas.
+  function mergeAlerts(alerts) {
+    if (alerts.length === 1) return alerts[0];
+    const [first] = alerts;
+    const props = { ...first.properties };
+    const uniq = (xs) => [...new Set(xs)];
+    const all = (f) => alerts.flatMap((a) => f(a.properties || {}) || []);
+    props.areaDesc = uniq(all((p) => String(p.areaDesc || '').split(/;\s*/)).filter(Boolean)).join('; ');
+    props.affectedZones = uniq(all((p) => p.affectedZones));
+    props.geocode = { ...(props.geocode || {}), UGC: uniq(all((p) => p.geocode && p.geocode.UGC)), SAME: uniq(all((p) => p.geocode && p.geocode.SAME)) };
+    const expires = alerts.map((a) => a.properties.expires).filter(Boolean).sort();
+    if (expires.length) props.expires = expires[expires.length - 1];
+    const polys = [];
+    for (const a of alerts) eachPolygon(a.geometry, (p) => polys.push(p));
+    return { ...first, properties: props, geometry: polys.length ? { type: 'MultiPolygon', coordinates: polys } : null };
+  }
+
+  function eachPolygon(geom, fn) {
+    if (!geom) return;
+    if (geom.type === 'Polygon') fn(geom.coordinates);
+    else if (geom.type === 'MultiPolygon') geom.coordinates.forEach(fn);
+  }
+
+  /*
+   * Watches and zone-based warnings carry no polygon — only affectedZones
+   * URLs. Fetch those zone shapes (cached; zones never change) so the
+   * graphic outlines the real area instead of a whole state.
+   */
+  const zoneCache = new Map();
+  async function zoneGeometry(url) {
+    if (zoneCache.has(url)) return zoneCache.get(url);
+    let geom = null;
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/geo+json' }, signal: AbortSignal.timeout(10000) });
+      if (r.ok) {
+        const j = await r.json();
+        if (j.geometry) geom = turf.simplify(turf.feature(j.geometry), { tolerance: 0.005, highQuality: false }).geometry;
+      }
+    } catch { /* leave null — the graphic falls back to the state view */ }
+    if (geom || zoneCache.size < 5000) zoneCache.set(url, geom);
+    return geom;
+  }
+  async function withZoneGeometry(alert) {
+    const zones = ((alert.properties || {}).affectedZones || []).slice(0, 120);
+    if (alert.geometry || !zones.length) return alert;
+    const polys = [];
+    for (let i = 0; i < zones.length; i += 8) {
+      const geoms = await Promise.all(zones.slice(i, i + 8).map(zoneGeometry));
+      for (const g of geoms) eachPolygon(g, (p) => polys.push(p));
+    }
+    if (!polys.length) return alert;
+    let geometry = { type: 'MultiPolygon', coordinates: polys };
+    // Dissolve shared county borders into one outline, like an SPC watch map.
+    try {
+      const u = turf.union(turf.featureCollection(polys.map((p) => turf.polygon(p))));
+      if (u && u.geometry) geometry = u.geometry;
+    } catch { /* keep the per-zone pieces */ }
+    return { ...alert, geometry };
+  }
   function matchesScope(props) {
     const sc = config.scope || {};
     const hasStates = sc.states && sc.states.length;
@@ -344,11 +437,11 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
   }
 
   // Render + (optionally) post one alert; persist the outcome.
-  async function handleAlert(id, alert, isUpdate) {
-    const rec = baseRec(alert, 'pending');
+  async function handleAlert(id, alert, isUpdate, key) {
+    const rec = { ...baseRec(alert, 'pending'), key: key || id };
     let png = null;
     try {
-      png = await renderWarningGraphic(alert, { radarProduct: config.radarProduct });
+      png = await renderWarningGraphic(await withZoneGeometry(alert), { radarProduct: config.radarProduct });
       const file = path.join(GRAPHICS_DIR, `${sanitizeId(id)}.png`);
       fs.writeFileSync(file, png);
       rec.graphicPath = path.basename(file);
@@ -356,14 +449,14 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
       rec.status = 'error'; rec.error = 'graphic: ' + e.message;
       store[id] = rec; saveStore();
       log('graphic render failed for', id, '-', e.message);
-      return;
+      return rec;
     }
 
     if (!activeDestinations().length) {
       rec.status = 'skipped'; rec.reason = 'no-credentials';
       store[id] = rec; saveStore();
       log('generated graphic (no destination configured) for', rec.event, '—', shortArea(alert));
-      return;
+      return rec;
     }
 
     const alt = `${rec.event} for ${areaLabel(alert, 8)}. ${untilLabel(alert) ? 'Until ' + untilLabel(alert) + '.' : ''}`;
@@ -377,6 +470,7 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
     store[id] = rec; saveStore();
     if (done.length) log('posted', rec.event, '—', shortArea(alert), '→', done.join(' + '));
     if (errors.length) log('post failed for', id, '-', rec.error);
+    return rec;
   }
 
   function shortArea(alert) { return areaLabel(alert, 3); }
@@ -401,6 +495,8 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
 
       const feats = data.features || [];
       let posted = 0; let changed = false;
+      const handledKeys = new Set(Object.values(store).map((r) => r.key).filter(Boolean));
+      const groups = new Map(); // eventKey → [{ id, alert, isUpdate }]
 
       for (const alert of feats) {
         const id = alert.id;
@@ -412,12 +508,15 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
         if (!typeEnabled(props.event) || !matchesScope(props)) continue;
 
         const rec = store[id];
+        const key = eventKey(id, props);
         const msgType = props.messageType;
         const isUpdate = msgType === 'Update';
         const isCancel = msgType === 'Cancel';
 
         // Cold-start baseline: record active-but-unseen alerts WITHOUT posting.
-        if (!baselined && !rec) { store[id] = baseRec(alert, 'baseline'); changed = true; continue; }
+        if (!baselined && !rec) {
+          store[id] = { ...baseRec(alert, 'baseline'), key }; handledKeys.add(key); changed = true; continue;
+        }
 
         if (rec) {
           const materialUpdate = isUpdate && config.postUpdates &&
@@ -429,9 +528,32 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
           store[id] = baseRec(alert, 'skipped', 'cancellation-disabled'); changed = true; continue;
         }
 
+        // A late piece of an event that was already posted: never post it twice.
+        if (!rec && handledKeys.has(key)) {
+          store[id] = { ...baseRec(alert, 'skipped', 'same-event'), key }; changed = true; continue;
+        }
+
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push({ id, alert, isUpdate: isUpdate && !!rec });
+      }
+
+      const now = Date.now();
+      for (const k of watchSeen.keys()) if (!groups.has(k)) watchSeen.delete(k);
+      const ordered = [...groups.entries()].sort((a, b) =>
+        priority(a[1][0].alert.properties.event) - priority(b[1][0].alert.properties.event));
+      for (const [key, items] of ordered) {
+        if (isWatch(items[0].alert.properties.event)) {
+          if (!watchSeen.has(key)) watchSeen.set(key, now);
+          if (now - watchSeen.get(key) < WATCH_SETTLE_MS) continue; // let the other pieces arrive
+        }
         if (posted >= MAX_POSTS_PER_CYCLE) continue; // defer to next cycle (still unstored → re-evaluated)
         posted++;
-        await handleAlert(id, alert, isUpdate && !!rec);
+        const [lead, ...rest] = items;
+        const rec = await handleAlert(lead.id, mergeAlerts(items.map((x) => x.alert)), lead.isUpdate, key);
+        for (const x of rest) {
+          store[x.id] = { ...baseRec(x.alert, rec.status, 'merged'), key, mergedInto: lead.id }; changed = true;
+        }
+        watchSeen.delete(key);
       }
 
       if (!baselined) { baselined = true; log(`baselined ${feats.length} active alerts (none posted on cold start)`); }
@@ -468,7 +590,7 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
       facebookPageId: facebookConfigured() ? fbPage() : null,
       activeDestinations: activeDestinations(),
       pollSeconds: POLL_MS / 1000,
-      alertTypeCatalog: ALERT_TYPES.filter((t) => t.category === 'warning').map((t) => t.name),
+      alertTypeCatalog: CATALOG,
       storeSize: Object.keys(store).length,
     });
   });
@@ -478,6 +600,8 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
     if (typeof b.enabled === 'boolean') config.enabled = b.enabled;
     if (typeof b.postUpdates === 'boolean') config.postUpdates = b.postUpdates;
     if (typeof b.postCancellations === 'boolean') config.postCancellations = b.postCancellations;
+    if (typeof b.allWarnings === 'boolean') config.allWarnings = b.allWarnings;
+    if (typeof b.allWatches === 'boolean') config.allWatches = b.allWatches;
     if (b.radarProduct === 'reflectivity' || b.radarProduct === 'velocity') config.radarProduct = b.radarProduct;
     if (b.destinations && typeof b.destinations === 'object') {
       for (const k of ['bluesky', 'facebook']) {
