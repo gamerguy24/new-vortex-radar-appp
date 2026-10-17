@@ -220,10 +220,25 @@ export function initNwsxAdmin(root) {
   async function api(method, url, body) {
     const opts = { method, headers: { Accept: 'application/json' }, credentials: 'same-origin' };
     if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
-    const res = await fetch(url, opts);
-    let data = null; try { data = await res.json(); } catch {}
-    if (!res.ok) throw new Error((data && data.error) || res.statusText);
+    let res;
+    try { res = await fetch(url, opts); }
+    catch (e) { throw new Error('could not reach the server (' + e.message + ').'); }
+    const text = await res.text();
+    let data = null; try { data = JSON.parse(text); } catch {}
+    if (!res.ok) throw new Error((data && data.error) || failureReason(res, text));
     return data;
+  }
+
+  // A non-JSON failure never came from this feature's own routes, which all
+  // answer in JSON — so say who did answer instead of an empty message.
+  function failureReason(res, text) {
+    const code = 'HTTP ' + res.status + (res.statusText ? ' ' + res.statusText : '');
+    if (res.status === 401) return code + ': you are signed out. Reload the page and sign in again.';
+    if (/cloudflare/i.test(text)) return code + ' from Cloudflare: the request was blocked before it reached the server (check Cloudflare › Security › Events).';
+    if (res.status === 413) return code + ': the proxy in front of the server rejected the request size.';
+    if (res.status === 502 || res.status === 503 || res.status === 504) return code + ': the server is down or restarting. Try again in a minute.';
+    const title = (/<title>([^<]*)<\/title>/i.exec(text) || [])[1];
+    return code + (title ? ' (' + title.trim() + ')' : '') + ': the server sent no reason. Check its log for [NWS-BSKY].';
   }
 
   function flash(msg, kind) {

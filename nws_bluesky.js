@@ -619,7 +619,17 @@ function attachNwsBluesky({ app, requireAdmin, DATA_DIR, readJson, writeJson }) 
         offices: clean(b.scope.offices),
       };
     }
-    saveConfig();
+    // A failed write must come back as a reason, not Express's bare HTML 500
+    // (the panel can only show "Save failed:" for that). The new settings are
+    // already live in memory either way — they just won't survive a restart.
+    try { saveConfig(); }
+    catch (e) {
+      log('config save FAILED:', e.message);
+      return res.status(500).json({
+        error: `Settings are active now but could not be written to ${CONFIG_FILE} (${e.code || e.message}), `
+          + 'so they will be lost on restart. Check that the server user can write to that folder.',
+      });
+    }
     log('config updated by admin', req.user && req.user.email, '| enabled:', config.enabled);
     res.json({ ok: true, config });
   });
