@@ -8,8 +8,9 @@ import lowerThird from './lower-third.js?v=tpl1';
 import radarForecast from './radar-forecast.js?v=tpl1';
 import forecastModel from './forecast-model.js?v=tpl1';
 import liveRadar from './live-radar.js?v=tpl1';
+import alertSpotlight from './alert-spotlight.js?v=tpl1';
 
-export const TEMPLATES = [severeThreat, outlook, precipPanels, iceAccum, stateSpotlight, lowerThird, radarForecast, forecastModel, liveRadar];
+export const TEMPLATES = [severeThreat, outlook, precipPanels, iceAccum, stateSpotlight, alertSpotlight, lowerThird, radarForecast, forecastModel, liveRadar];
 export const TEMPLATE_BY_ID = Object.fromEntries(TEMPLATES.map((t) => [t.id, t]));
 
 // Live Radar's Play loop controls — re-exported so studio.js can wire the

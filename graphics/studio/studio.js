@@ -199,6 +199,7 @@ const TEMPLATE_META = {
   'precip-panels': { mono: 'P', color: '#22c55e', name: 'Day-to-Day Precip', sub: 'Multi-day panels' },
   'ice-accum': { mono: 'I', color: '#38bdf8', name: 'Ice Accumulation', sub: 'Totals by inches' },
   'state-spotlight': { mono: 'S', color: '#a855f7', name: 'State Spotlight', sub: 'One state, full frame' },
+  'alert-spotlight': { mono: 'A', color: '#6495ed', name: 'Alert Spotlight', sub: 'Advisory + callout panel' },
   'lower-third': { mono: 'L', color: '#94a3b8', name: 'Lower-Third', sub: 'Titles & banners' },
   'radar-forecast': { mono: 'R', color: '#1b53b3', name: 'Radar Forecast', sub: 'Broadcast radar + panels' },
   'live-radar': { mono: 'L', color: '#e8862b', name: 'Live Radar', sub: 'Moveable map + Level 2' },
@@ -458,6 +459,13 @@ function renderField(f) {
         // switching the SPC day refetches that outlook if it's being shown
         if (f.key === 'spcDay' && cfg.showSpc) importSpc().catch(() => {});
         // changing the data set swaps the available brushes + paint-data scale
+        // a new alert type recolours the single brush; painted counties stay
+        if (f.rebuildsBrushes) {
+          delete state.config._scale;
+          const sc = activeScale();
+          state.brush = sc ? sc[0].id : null;
+          buildProps();
+        }
         if (f.key === 'dataset') {
           delete state.config._scale; // re-derive labels/colors from new dataset
           const sc = activeScale();
@@ -518,11 +526,20 @@ function renderField(f) {
       const b = document.createElement('button'); b.className = 'action-btn';
       b.textContent = f.action === 'import-spc' ? 'Import live SPC outlook' : f.label;
       const status = document.createElement('div'); status.className = 'status';
+      status.dataset.actionStatus = f.action;
       b.onclick = async () => {
         if (f.action === 'import-spc') {
           status.textContent = 'Fetching SPC…';
           try { const n = await importSpc(); status.textContent = `Imported ${n} risk areas.`; }
           catch (e) { status.textContent = 'Import failed: ' + e.message; }
+        } else if (state.template.onAction) {
+          // Template-owned actions (e.g. Alert Spotlight's live NWS fill).
+          // Keep a handle on the status line: onAction may rebuild the panel.
+          status.textContent = 'Working…';
+          try { status.textContent = (await state.template.onAction(f.action, cfg, ctrl)) || 'Done.'; }
+          catch (e) { status.textContent = 'Failed: ' + e.message; }
+          const live = document.querySelector(`[data-action-status="${f.action}"]`);
+          if (live && live !== status) live.textContent = status.textContent;
         }
       };
       div.append(b, status); break;

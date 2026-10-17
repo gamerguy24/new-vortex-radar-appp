@@ -5,6 +5,7 @@
  *
  *   GA 511 Traffic Cams   Georgia DOT, 511ga.org      (~4,300 cameras)
  *   NC 511 Traffic Cams   NCDOT, drivenc.gov          (~1,000 cameras)
+ *   TN SmartWay Cams      TDOT open data (smartway)   — snapshot URL per camera (`u`)
  *
  * Thousands of cameras, so each is drawn as a clustered GeoJSON layer on the
  * GPU, not one DOM marker each (the BuoyCAMs approach would stall the map at
@@ -19,6 +20,7 @@
 const REGIONS = {
   ga: { label: 'GA 511 Traffic Cams', credit: 'Georgia 511 · GDOT', host: 'https://511ga.org', switchId: 'armrGa511CamsSwitchElem' },
   nc: { label: 'NC 511 Traffic Cams', credit: 'DriveNC · NCDOT', host: 'https://www.drivenc.gov', switchId: 'armrNc511CamsSwitchElem' },
+  tn: { label: 'TN SmartWay Traffic Cams', credit: 'SmartWay · TDOT', host: null, switchId: 'armrTn511CamsSwitchElem' },
 };
 
 const LIST_REFRESH_MS = 10 * 60 * 1000;   // matches the server cache
@@ -139,6 +141,8 @@ export const addGa511Cams = (w) => addRegion('ga', w);
 export const removeGa511Cams = (w) => removeRegion('ga', w);
 export const addNc511Cams = (w) => addRegion('nc', w);
 export const removeNc511Cams = (w) => removeRegion('nc', w);
+export const addTn511Cams = (w) => addRegion('tn', w);
+export const removeTn511Cams = (w) => removeRegion('tn', w);
 
 async function refresh(L) {
   try {
@@ -185,8 +189,10 @@ function camClick(L, e) {
   const coded = p.n && !/\s/.test(p.n);
   const roadDir = [p.r, p.d].filter(Boolean).join(' ');
   const title = coded && roadDir ? roadDir : (p.n || roadDir || 'Traffic camera');
-  const sub = [coded ? null : roadDir, p.c ? `${p.c} County` : null, coded ? p.n : null].filter(Boolean).join(' · ');
-  const snap = () => `${L.cfg.host}/map/Cctv/${encodeURIComponent(p.v)}?t=${Date.now()}`;
+  const sub = [coded ? null : roadDir, p.s, p.c ? `${p.c} County` : null, coded ? p.n : null].filter(Boolean).join(' · ');
+  // Shared-platform snapshots are built from the view id; TDOT sends a URL per camera.
+  const base = p.u ? String(p.u).split('?')[0] : `${L.cfg.host}/map/Cctv/${encodeURIComponent(p.v)}`;
+  const snap = () => `${base}?t=${Date.now()}`;
   const now = () => 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const html = `<div class="ga511-pop">
       <div class="ga511-pop-title">${esc(title)}</div>
@@ -215,6 +221,22 @@ function closePopup() {
   stopImgRefresh();
   if (popupState.popup) { try { popupState.popup.remove(); } catch (e) {} popupState.popup = null; }
 }
+
+// Hide the menu rows of regions this server has no key for.
+async function hideUnconfigured() {
+  try {
+    const r = await fetch('/api/511cams', { cache: 'no-store' });
+    if (!r.ok) return;
+    const ready = await r.json();
+    for (const [region, cfg] of Object.entries(REGIONS)) {
+      if (ready[region] !== false) continue;
+      const row = document.getElementById(cfg.switchId)?.closest('.vortexRadarMenuRow');
+      if (row) row.style.display = 'none';
+    }
+  } catch { /* leave the rows visible; a toggle then explains itself */ }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hideUnconfigured);
+else hideUnconfigured();
 
 function toast(msg) {
   const el = document.createElement('div');

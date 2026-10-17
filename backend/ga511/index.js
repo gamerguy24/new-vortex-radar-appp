@@ -5,8 +5,16 @@
  *
  *   GET /api/511cams/ga   Georgia 511 (511ga.org)        key GA511_API_KEY
  *   GET /api/511cams/nc   NCDOT DriveNC (drivenc.gov)    key NC511_API_KEY
+ *   GET /api/511cams/tn   TDOT SmartWay open data        key TN511_API_KEY
  *
  * → GeoJSON points, one per enabled camera view.
+ *
+ * Tennessee is not on the shared platform: TDOT's open-data API
+ * (www.tdot.tn.gov/opendata, the same feed smartway.tn.gov uses) takes the
+ * key in an `ApiKey` header and returns its own shape, with a snapshot URL per
+ * camera rather than one built from the id — so its features carry that URL
+ * (`u`). Keys are free from TDOT's open-data sign-up; never reuse the key the
+ * SmartWay site itself sends, which is TDOT's own.
  *
  * WHY THIS IS PROXIED
  * The developer APIs need a key. Calling them from the browser would hand the
@@ -26,8 +34,9 @@
  */
 
 const REGIONS = {
-  ga: { name: 'Georgia 511', api: 'https://511ga.org/api/v2/get/cameras', keyEnv: 'GA511_API_KEY' },
-  nc: { name: 'DriveNC', api: 'https://www.drivenc.gov/api/v2/get/cameras', keyEnv: 'NC511_API_KEY' },
+  ga: { name: 'Georgia 511', api: 'https://511ga.org/api/v2/get/cameras', keyEnv: 'GA511_API_KEY', parse: parse511 },
+  nc: { name: 'DriveNC', api: 'https://www.drivenc.gov/api/v2/get/cameras', keyEnv: 'NC511_API_KEY', parse: parse511 },
+  tn: { name: 'TDOT SmartWay', api: 'https://www.tdot.tn.gov/opendata/api/public/RoadwayCameras', keyEnv: 'TN511_API_KEY', keyHeader: 'ApiKey', parse: parseTdot },
 };
 const TTL_MS = 10 * 60 * 1000;
 const UA = 'EchoRadar (radar.twistcasterlivemedia.com)';
@@ -39,37 +48,71 @@ const keyFor = (r) => String(process.env[REGIONS[r].keyEnv] || '').trim();
 
 async function build(region) {
   const cfg = REGIONS[region];
-  const r = await fetch(`${cfg.api}?key=${encodeURIComponent(keyFor(region))}&format=json`, {
-    headers: { 'User-Agent': UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(30000),
-  });
+  const headers = { 'User-Agent': UA, Accept: 'application/json' };
+  let url = cfg.api;
+  if (cfg.keyHeader) headers[cfg.keyHeader] = keyFor(region);
+  else url += `?key=${encodeURIComponent(keyFor(region))}&format=json`;
+  const r = await fetch(url, { headers, signal: AbortSignal.timeout(30000) });
   if (r.status === 401 || r.status === 403) throw new Error(`${cfg.name} rejected the API key (${cfg.keyEnv}).`);
   if (r.status === 429) throw new Error(`${cfg.name} rate limit reached; try again in a minute.`);
   if (!r.ok) throw new Error(`${cfg.name} returned HTTP ${r.status}`);
   const list = await r.json();
   if (!Array.isArray(list)) throw new Error(`${cfg.name} returned an unexpected response.`);
+  const features = cfg.parse(list);
+  return JSON.stringify({ type: 'FeatureCollection', fetchedAt: new Date().toISOString(), features });
+}
 
+const point = (lon, lat, properties) => ({
+  type: 'Feature',
+  geometry: { type: 'Point', coordinates: [+lon.toFixed(5), +lat.toFixed(5)] },
+  properties,
+});
+const located = (lat, lon) => Number.isFinite(lat) && Number.isFinite(lon) && !(lat === 0 && lon === 0);
+
+// Shared 511 platform (GA, NC): cameras with Views, snapshot at /map/Cctv/<viewId>.
+function parse511(list) {
   const features = [];
   for (const cam of list) {
     const lat = +cam.Latitude, lon = +cam.Longitude;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) continue;
+    if (!located(lat, lon)) continue;
     for (const v of cam.Views || []) {
       if (!v || !v.Id || v.Status !== 'Enabled') continue;
-      features.push({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [+lon.toFixed(5), +lat.toFixed(5)] },
-        // Short keys: thousands of cameras and no response compression on this server.
-        properties: {
-          v: v.Id,
-          n: String(cam.Location || v.Description || cam.Name || '').trim(),
-          r: cam.Roadway || '',
-          d: cam.Direction && cam.Direction !== 'Unknown' ? cam.Direction : '',
-          ...(cam.County ? { c: cam.County } : {}),
-        },
-      });
+      // Short keys: thousands of cameras and no response compression on this server.
+      features.push(point(lon, lat, {
+        v: v.Id,
+        n: String(cam.Location || v.Description || cam.Name || '').trim(),
+        r: cam.Roadway || '',
+        d: cam.Direction && cam.Direction !== 'Unknown' ? cam.Direction : '',
+        ...(cam.County ? { c: cam.County } : {}),
+      }));
     }
   }
-  return JSON.stringify({ type: 'FeatureCollection', fetchedAt: new Date().toISOString(), features });
+  return features;
+}
+
+/*
+ * TDOT open data. Field names are taken from what smartway.tn.gov reads
+ * (the API publishes no schema): id, title, description, active ("true" as a
+ * string), thumbnailUrl, location.coordinates[0].{lat,lng}, route, mileMarker.
+ * Tolerates plain latitude/longitude too, in case the feed changes shape.
+ */
+function parseTdot(list) {
+  const features = [];
+  for (const cam of list) {
+    if (!cam || String(cam.active).toLowerCase() !== 'true' || !cam.thumbnailUrl) continue;
+    const c = (cam.location && Array.isArray(cam.location.coordinates) && cam.location.coordinates[0]) || {};
+    const lat = +(c.lat ?? cam.latitude), lon = +(c.lng ?? c.lon ?? cam.longitude);
+    if (!located(lat, lon)) continue;
+    features.push(point(lon, lat, {
+      v: cam.id,
+      n: String(cam.title || cam.description || '').trim(),
+      r: cam.route || '',
+      d: cam.mileMarker != null && cam.mileMarker !== '' ? `Mile ${cam.mileMarker}` : '',
+      u: cam.thumbnailUrl,
+      ...(cam.description && cam.description !== cam.title ? { s: String(cam.description).trim() } : {}),
+    }));
+  }
+  return features;
 }
 
 async function cameras(region) {
@@ -92,6 +135,12 @@ async function cameras(region) {
 }
 
 function attachGa511({ app, requireAuth }) {
+  // Which regions have a key on this server — the menu hides the rest rather
+  // than offering a switch that can only show "not set up".
+  app.get('/api/511cams', requireAuth, (req, res) => {
+    res.json(Object.fromEntries(Object.keys(REGIONS).map((r) => [r, !!keyFor(r)])));
+  });
+
   app.get('/api/511cams/:region', requireAuth, async (req, res) => {
     const region = String(req.params.region || '').toLowerCase();
     const cfg = REGIONS[region];

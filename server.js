@@ -2508,8 +2508,8 @@ try {
     console.error('[FIRE] failed to attach (feature disabled):', e.message);
 }
 
-// ─── 511 traffic cameras: Georgia + North Carolina (free layers) ─────────────
-// Keyed APIs (GA511_API_KEY, NC511_API_KEY), so camera lists are fetched and
+// ─── 511 traffic cameras: Georgia, North Carolina, Tennessee (free layers) ───
+// Keyed APIs (GA511_API_KEY, NC511_API_KEY, TN511_API_KEY), so camera lists are fetched and
 // cached here and the keys never reach the browser. See backend/ga511/index.js.
 try {
     require('./backend/ga511').attachGa511({ app, requireAuth });
