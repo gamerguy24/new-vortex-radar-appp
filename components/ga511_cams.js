@@ -14,6 +14,9 @@
  *   LA 511 Traffic Cams   LADOTD, 511la.org           — snapshot URL per view (`u` / `vs`)
  *   AR iDrive Traffic Cams ARDOT, idrivearkansas.com  — stills; live video only on their site (`w` link)
  *   TX DriveTexas Cams    TxDOT, drivetexas.org       — live HLS video, tokened URL fetched on open (`x`)
+ *   …and every other state with a public feed (REGIONS below; sources in backend/ga511).
+ *   A view may carry a still (`u`), a stream (`h`) or both; with both the popup
+ *   opens on the still and offers the stream on its Live video button.
  *
  * Thousands of cameras, so each is drawn as a clustered GeoJSON layer on the
  * GPU, not one DOM marker each (the BuoyCAMs approach would stall the map at
@@ -38,6 +41,41 @@ const REGIONS = {
   la: { label: 'LA 511 Traffic Cams', credit: '511LA · LADOTD', host: 'https://www.511la.org', switchId: 'armrLa511CamsSwitchElem' },
   ar: { label: 'AR iDrive Traffic Cams', credit: 'iDriveArkansas · ARDOT', host: null, switchId: 'armrAr511CamsSwitchElem' },
   tx: { label: 'TX DriveTexas Traffic Cams', credit: 'DriveTexas · TxDOT', host: null, switchId: 'armrTx511CamsSwitchElem' },
+  // Every other state with a public DOT camera feed (backend/ga511 says where each comes from).
+  ak: { label: 'AK 511 Traffic Cams', credit: 'Alaska 511 · DOT&PF', host: null, switchId: 'armrAk511CamsSwitchElem' },
+  az: { label: 'AZ 511 Traffic Cams', credit: 'AZ511 · ADOT', host: null, switchId: 'armrAz511CamsSwitchElem' },
+  ca: { label: 'CA Caltrans Traffic Cams', credit: 'Caltrans', host: null, switchId: 'armrCa511CamsSwitchElem' },
+  co: { label: 'CO COtrip Traffic Cams', credit: 'COtrip · CDOT', host: null, switchId: 'armrCo511CamsSwitchElem' },
+  ct: { label: 'CT Travel Smart Traffic Cams', credit: 'CTroads · CTDOT', host: null, switchId: 'armrCt511CamsSwitchElem' },
+  de: { label: 'DE DelDOT Traffic Cams', credit: 'DelDOT', host: null, switchId: 'armrDe511CamsSwitchElem' },
+  fl: { label: 'FL 511 Traffic Cams', credit: 'FL511 · FDOT', host: null, switchId: 'armrFl511CamsSwitchElem' },
+  ia: { label: 'IA 511 Traffic Cams', credit: '511IA · Iowa DOT', host: null, switchId: 'armrIa511CamsSwitchElem' },
+  id: { label: 'ID 511 Traffic Cams', credit: 'Idaho 511 · ITD', host: null, switchId: 'armrId511CamsSwitchElem' },
+  il: { label: 'IL Getting Around Illinois Cams', credit: 'Getting Around Illinois · IDOT', host: null, switchId: 'armrIl511CamsSwitchElem' },
+  in: { label: 'IN 511 Traffic Cams', credit: '511IN · INDOT', host: null, switchId: 'armrIn511CamsSwitchElem' },
+  ks: { label: 'KS KanDrive Traffic Cams', credit: 'KanDrive · KDOT', host: null, switchId: 'armrKs511CamsSwitchElem' },
+  ma: { label: 'MA Mass511 Traffic Cams', credit: 'Mass511 · MassDOT', host: null, switchId: 'armrMa511CamsSwitchElem' },
+  md: { label: 'MD CHART Traffic Cams', credit: 'CHART · MDOT SHA', host: null, switchId: 'armrMd511CamsSwitchElem' },
+  me: { label: 'ME 511 Traffic Cams', credit: 'New England 511 · MaineDOT', host: null, switchId: 'armrMe511CamsSwitchElem' },
+  mi: { label: 'MI MiDrive Traffic Cams', credit: 'MiDrive · MDOT', host: null, switchId: 'armrMi511CamsSwitchElem' },
+  mn: { label: 'MN 511 Traffic Cams', credit: '511MN · MnDOT', host: null, switchId: 'armrMn511CamsSwitchElem' },
+  mo: { label: 'MO MoDOT Traffic Cams', credit: 'MoDOT Traveler', host: null, switchId: 'armrMo511CamsSwitchElem' },
+  mt: { label: 'MT 511 Traffic Cams', credit: '511MT · MDT', host: null, switchId: 'armrMt511CamsSwitchElem' },
+  nd: { label: 'ND NDDOT Traffic Cams', credit: 'NDDOT', host: null, switchId: 'armrNd511CamsSwitchElem' },
+  ne: { label: 'NE 511 Traffic Cams', credit: 'Nebraska 511 · NDOT', host: null, switchId: 'armrNe511CamsSwitchElem' },
+  nh: { label: 'NH 511 Traffic Cams', credit: 'New England 511 · NHDOT', host: null, switchId: 'armrNh511CamsSwitchElem' },
+  nv: { label: 'NV Roads Traffic Cams', credit: 'NVroads · NDOT', host: null, switchId: 'armrNv511CamsSwitchElem' },
+  ny: { label: 'NY 511 Traffic Cams', credit: '511NY · NYSDOT', host: null, switchId: 'armrNy511CamsSwitchElem' },
+  oh: { label: 'OH OHGO Traffic Cams', credit: 'OHGO · ODOT', host: null, switchId: 'armrOh511CamsSwitchElem' },
+  or: { label: 'OR TripCheck Traffic Cams', credit: 'TripCheck · ODOT', host: null, switchId: 'armrOr511CamsSwitchElem' },
+  pa: { label: 'PA 511 Traffic Cams', credit: '511PA · PennDOT', host: null, switchId: 'armrPa511CamsSwitchElem' },
+  sd: { label: 'SD 511 Traffic Cams', credit: 'SD511 · SDDOT', host: null, switchId: 'armrSd511CamsSwitchElem' },
+  ut: { label: 'UT UDOT Traffic Cams', credit: 'UDOT Traffic', host: null, switchId: 'armrUt511CamsSwitchElem' },
+  va: { label: 'VA 511 Traffic Cams', credit: '511 Virginia · VDOT', host: null, switchId: 'armrVa511CamsSwitchElem' },
+  vt: { label: 'VT 511 Traffic Cams', credit: 'New England 511 · VTrans', host: null, switchId: 'armrVt511CamsSwitchElem' },
+  wa: { label: 'WA WSDOT Traffic Cams', credit: 'WSDOT', host: null, switchId: 'armrWa511CamsSwitchElem' },
+  wi: { label: 'WI 511 Traffic Cams', credit: '511WI · WisDOT', host: null, switchId: 'armrWi511CamsSwitchElem' },
+  wv: { label: 'WV 511 Traffic Cams', credit: 'WV511 · WVDOH', host: null, switchId: 'armrWv511CamsSwitchElem' },
 };
 
 const LIST_REFRESH_MS = 10 * 60 * 1000;   // matches the server cache
@@ -70,6 +108,9 @@ function injectStyles() {
   background: #000; color: var(--vx-text-2); font-size: 0.85em; border-radius: var(--vx-r-2); padding: 12px; box-sizing: border-box; }
 .ga511-pop-views { display: flex; flex-wrap: wrap; gap: 4px; }
 .ga511-pop-views:empty { display: none; }
+.ga511-pop-live { font: inherit; font-size: 1em; padding: 2px 8px; border-radius: var(--vx-r-2); cursor: pointer;
+  background: transparent; color: var(--vx-accent); border: 1px solid var(--vx-accent); }
+.ga511-pop-live[hidden] { display: none; }
 .ga511-pop-link { font-size: 0.8em; color: var(--vx-accent); text-decoration: none; }
 .ga511-pop-link:hover { text-decoration: underline; }
 .ga511-pop-views button { font: inherit; font-size: 0.8em; min-width: 32px; padding: 3px 8px; border-radius: var(--vx-r-2); cursor: pointer;
@@ -187,6 +228,11 @@ export const removeAr511Cams = (w) => removeRegion('ar', w);
 export const addTx511Cams = (w) => addRegion('tx', w);
 export const removeTx511Cams = (w) => removeRegion('tx', w);
 
+// Generic form, for the menu wiring in vortex_layers.js: one switch per region.
+export const STATE_CAM_REGIONS = Object.fromEntries(Object.entries(REGIONS).map(([r, c]) => [r, { label: c.label, switchId: c.switchId }]));
+export const addStateCams = (region, w) => addRegion(region, w);
+export const removeStateCams = (region, w) => removeRegion(region, w);
+
 async function refresh(L) {
   try {
     const r = await fetch(`/api/511cams/${L.region}`, { cache: 'no-store' });
@@ -239,7 +285,7 @@ function camClick(L, e) {
       <div class="ga511-pop-sub" id="ga511-view-title" hidden></div>
       <div id="ga511-media"><div class="ga511-pop-msg">Loading camera…</div></div>
       <div class="ga511-pop-views" id="ga511-views" role="group" aria-label="Camera views"></div>
-      <div class="ga511-pop-foot"><span id="ga511-time"></span><span>${esc(L.cfg.credit)}</span></div>
+      <div class="ga511-pop-foot"><span id="ga511-time"></span><button type="button" class="ga511-pop-live" id="ga511-live" hidden></button><span>${esc(L.cfg.credit)}</span></div>
       ${String(p.w || '').startsWith('https://') ?`<a class="ga511-pop-link" href="${esc(p.w)}" target="_blank" rel="noopener">Watch live video on ${esc(L.cfg.credit.split(' · ')[0])} ↗</a>` : ''}
     </div>`;
   popupState.region = L.region;
@@ -263,7 +309,7 @@ function camClick(L, e) {
   if (typeof views === 'string') { try { views = JSON.parse(views); } catch { views = null; } }
   if (!Array.isArray(views) || !views.length) {
     // Shared-platform snapshots are built from the view id; the others send a URL per camera.
-    views = [{ u: p.u || `${L.cfg.host}/map/Cctv/${encodeURIComponent(p.v)}` }];
+    views = [{ ...(p.u || !p.h ? { u: p.u || `${L.cfg.host}/map/Cctv/${encodeURIComponent(p.v)}` } : {}), ...(p.h ? { h: p.h } : {}) }];
   }
   showViews(L, title, views);
 }
@@ -289,20 +335,31 @@ function showViews(L, title, views) {
   showView(L, title, views, 0);
 }
 
-function showView(L, title, views, i) {
+// mode: 'live' plays the stream; otherwise a view with a still shows the still
+// first and offers its stream (if any) on the Live video button.
+function showView(L, title, views, i, mode) {
   stopMedia();
   const v = views[i];
   const box = document.getElementById('ga511-media');
   if (!box || !v) return;
+  const live = document.getElementById('ga511-live');
+  const both = !!(v.u && v.h);
+  if (live) {
+    live.hidden = !both;
+    live.textContent = mode === 'live' ? 'Show picture' : '▶ Live video';
+    live.onclick = () => showView(L, title, views, i, mode === 'live' ? 'still' : 'live');
+  }
   for (const b of document.querySelectorAll('#ga511-views button')) b.setAttribute('aria-pressed', String(+b.dataset.i === i));
   const vt = document.getElementById('ga511-view-title');
   if (vt) { vt.textContent = views.length > 1 ? v.t || '' : ''; vt.hidden = !vt.textContent; }
   const time = document.getElementById('ga511-time');
   const label = esc(v.t || title);
-  if (v.h) {
+  if (v.h && (mode === 'live' || !v.u)) {
     box.innerHTML = `<video class="ga511-pop-img" id="ga511-video" muted autoplay playsinline controls aria-label="Live traffic camera: ${label}"></video>`;
     if (time) time.textContent = 'Connecting to live video…';
-    playHls(document.getElementById('ga511-video'), v.h, popupState.token);
+    // With a still to fall back on, a stream that will not play goes back to it.
+    const fail = v.u ? (msg) => { showView(L, title, views, i, 'still'); const t = document.getElementById('ga511-time'); if (t) t.textContent = msg; } : showMessage;
+    playHls(document.getElementById('ga511-video'), v.h, popupState.token, fail);
     return;
   }
   const snap = () => { const u = new URL(v.u); u.searchParams.set('t', Date.now()); return u.href; };
@@ -335,7 +392,7 @@ function loadHls() {
   return hlsLoad;
 }
 
-function playHls(video, src, token) {
+function playHls(video, src, token, onFail = showMessage) {
   if (!video) return;
   video.addEventListener('playing', () => {
     const t = document.getElementById('ga511-time');
@@ -351,7 +408,7 @@ function playHls(video, src, token) {
     if (token !== popupState.token || !document.body.contains(video)) return;
     if (!Hls.isSupported()) {
       if (video.canPlayType('application/vnd.apple.mpegurl')) native();
-      else showMessage('This browser cannot play live camera video.');
+      else onFail('This browser cannot play live camera video.');
       return;
     }
     // Some DOT streams take several seconds to wake up: allow for it.
@@ -363,9 +420,9 @@ function playHls(video, src, token) {
     h.on(Hls.Events.ERROR, (_e, data) => {
       if (!data || !data.fatal) return;
       if (data.type === Hls.ErrorTypes.MEDIA_ERROR) h.recoverMediaError();
-      else if (token === popupState.token) showMessage('This camera’s video is not available right now.');
+      else if (token === popupState.token) onFail('This camera’s video is not available right now.');
     });
-  }).catch((err) => { if (token === popupState.token) showMessage(`Video unavailable: ${err.message}`); });
+  }).catch((err) => { if (token === popupState.token) onFail(`Video unavailable: ${err.message}`); });
 }
 
 function stopMedia() {

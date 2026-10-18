@@ -93,6 +93,51 @@ const REGIONS = {
   // and a fresh one is looked up when a camera is opened (txViews).
   tx: { name: 'DriveTexas', api: 'https://dtx-e-cdn.maplarge.com', keyless: true, load: loadTxList, parse: parseTx,
     views: { id: (s) => (/^[A-Za-z0-9_-]{1,64}$/.test(s) ? s : null), get: (name) => txViews(name), maxAge: 0 } },
+
+  // Shared 511 platform, read through its public list page (see la).
+  pa: list511('www.511pa.com', '511PA', { noVideo: true }),
+  az: list511('www.az511.gov', 'AZ511'),
+  wi: list511('511wi.gov', '511WI'),
+  ct: list511('ctroads.org', 'CTroads'),
+  id: list511('511.idaho.gov', 'Idaho 511'),
+  nv: list511('www.nvroads.com', 'NVroads'),
+  ut: list511('udottraffic.utah.gov', 'UDOT Traffic'),
+  ak: list511('511.alaska.gov', 'Alaska 511'),
+  fl: list511('fl511.com', 'FL511', { noVideo: true }),
+  vt: list511('newengland511.org', 'New England 511', { state: 'Vermont' }),
+  nh: list511('newengland511.org', 'New England 511', { state: 'New Hampshire' }),
+  me: list511('newengland511.org', 'New England 511', { state: 'Maine' }),
+
+  // Castle Rock CARS camera API.
+  ny: cars('nysdottg', '511NY'),
+  mn: cars('mntg', '511MN'),
+  ia: cars('iatg', '511IA'),
+  ks: cars('kstg', 'KanDrive'),
+  ne: cars('netg', 'Nebraska 511'),
+  ma: cars('matg', 'Mass511'),
+  in: cars('intg', '511IN'),
+  co: cars('cotg', 'COtrip'),
+
+  // SD511 (Iteris ATIS): camera sites with several views each.
+  sd: { name: 'SD511', api: 'https://sd.cdn.iteris-atis.com/geojson/icons/metadata/icons.cameras.geojson', keyless: true, parse: parseIterisSites },
+
+  // State DOTs with their own public feeds.
+  ca: { name: 'Caltrans', api: 'https://cwwp2.dot.ca.gov', keyless: true, load: loadCaltrans, parse: parseCaltrans, ttl: 30 * 60 * 1000 },
+  de: { name: 'DelDOT', api: 'https://tmc.deldot.gov/json/videocamera.json', keyless: true, parse: parseDeldot, list: (j) => j.videoCameras },
+  mo: { name: 'MoDOT Traveler', api: 'https://traveler.modot.org/timconfig/feed/desktop/StreamingCams2.json', keyless: true, parse: parseModot },
+  // TripCheck answers 406 to Accept: application/json (the file is served as JavaScript).
+  or: { name: 'TripCheck', api: 'https://tripcheck.com/Scripts/map/data/cctvinventory.js', keyless: true, accept: '*/*', parse: parseTripcheck },
+  md: { name: 'MDOT SHA CHART', api: 'https://chartexp1.sha.maryland.gov/CHARTExportClientService/getCameraMapDataJSON.do', keyless: true, parse: parseChart, list: (j) => j.data },
+  mi: { name: 'MDOT MiDrive', api: 'https://mdotjboss.state.mi.us/MiDrive/camera/list', keyless: true, parse: parseMidrive },
+  wa: { name: 'WSDOT', api: 'https://data.wsdot.wa.gov/mobile/Cameras.json', keyless: true, parse: parseWsdot, list: (j) => j.cameras && j.cameras.items },
+  wv: { name: 'WV511', api: 'https://www.wv511.org/wsvc/gmap.asmx/buildCamerasJSONjs', keyless: true, load: loadWv511, parse: parseWv511 },
+  // 511 Virginia (Iteris ClearRoute): same camera fields as 511SC, plus HLS.
+  va: { name: '511 Virginia', api: 'https://511.vdot.virginia.gov/services/511/map/layers/map/cams', keyless: true, parse: parseIteris },
+  il: { name: 'IDOT', api: 'https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services/TrafficCamerasTM_Public/FeatureServer/0', keyless: true, load: loadArcgisPages, parse: parseIdot },
+  nd: { name: 'NDDOT', api: 'https://travelfiles.dot.nd.gov/geojson_nc/cameras.json', keyless: true, parse: parseNddot },
+  mt: { name: '511MT', api: 'https://mt.cdn.iteris-atis.com', keyless: true, load: loadMt511, parse: parseIterisSites },
+  // Ohio: official OHGO Public API, free key (register at publicapi.ohgo.com).
+  oh: { name: 'OHGO', api: 'https://publicapi.ohgo.com/api/v1/cameras', keyEnv: 'OHGO_API_KEY', load: loadOhgo, parse: parseOhgo },
 };
 const TTL_MS = 10 * 60 * 1000;
 const UA = 'EchoRadar (radar.twistcasterlivemedia.com)';
@@ -121,12 +166,12 @@ async function build(region, retried) {
   const cfg = REGIONS[region];
   // Sources that need more than one request fetch their own list.
   if (cfg.load) {
-    const features = cfg.parse(await cfg.load(cfg));
+    const features = cfg.parse(await cfg.load(cfg), cfg);
     return JSON.stringify({ type: 'FeatureCollection', fetchedAt: new Date().toISOString(), features });
   }
   const own = keyFor(region);
   const key = cfg.keyless ? null : own || await cfg.fallbackKey(retried);
-  const headers = { 'User-Agent': UA, Accept: 'application/json' };
+  const headers = { 'User-Agent': UA, Accept: cfg.accept || 'application/json' };
   const opts = { headers, signal: AbortSignal.timeout(30000) };
   if (cfg.post) { opts.method = 'POST'; opts.body = '{}'; headers['Content-Type'] = 'application/json; charset=utf-8'; }
   let url = cfg.api;
@@ -145,10 +190,11 @@ async function build(region, retried) {
   const json = await r.json();
   // Most sources return an array; 511SC and KYTC a GeoJSON FeatureCollection;
   // MDOT's ASP.NET page method wraps its array in {"d": [...]}.
-  const list = Array.isArray(json) ? json : json && Array.isArray(json.features) ? json.features
+  // cfg.list picks the array out of sources that wrap it in their own object.
+  const list = cfg.list ? cfg.list(json) : Array.isArray(json) ? json : json && Array.isArray(json.features) ? json.features
     : json && Array.isArray(json.d) ? json.d : null;
-  if (!list) throw new Error(`${cfg.name} returned an unexpected response.`);
-  const features = cfg.parse(list);
+  if (!Array.isArray(list)) throw new Error(`${cfg.name} returned an unexpected response.`);
+  const features = cfg.parse(list, cfg);
   return JSON.stringify({ type: 'FeatureCollection', fetchedAt: new Date().toISOString(), features });
 }
 
@@ -187,9 +233,10 @@ function parseAlgo(list) {
 }
 
 /*
- * 511SC (Iteris ATIS) camera GeoJSON: Point features whose properties carry
- * description ("I-77 S @ MM 4.9"), route, direction, mrm (mile marker),
- * jurisdiction, active, problem_stream and image_url (keyless PNG snapshot).
+ * Iteris ATIS camera GeoJSON (511SC, 511 Virginia): Point features whose
+ * properties carry description ("I-77 S @ MM 4.9"), route, direction, mrm
+ * (mile marker), jurisdiction, active, problem_stream, image_url (keyless
+ * snapshot) and, in Virginia's, https_url (CORS-open HLS).
  */
 function parseIteris(list) {
   const features = [];
@@ -204,6 +251,7 @@ function parseIteris(list) {
       r: p.route || '',
       d: [p.direction, p.mrm != null ? `Mile ${p.mrm}` : ''].filter(Boolean).join(' · '),
       u: p.image_url,
+      ...(https(p.https_url) ? { h: p.https_url } : {}),
       ...(p.jurisdiction ? { s: p.jurisdiction } : {}),
     }));
   }
@@ -334,12 +382,11 @@ async function siteViews(site) {
 
 /*
  * The shared platform's public list-page data (/List/GetData/Cameras), as the
- * /cctv page asks for it. The server caps `length` at 100, so page through
- * until recordsTotal is reached (336 sites in 511LA, 2026-10-18).
+ * /cctv page asks for it. The server caps `length` at 100, so read the first
+ * page for recordsTotal, then the rest four at a time (FL511 is ~50 pages).
  */
 async function loadListPages(cfg) {
-  const rows = [];
-  for (let start = 0, total = Infinity; start < total && start < 5000; start += 100) {
+  const page = async (start) => {
     const query = JSON.stringify({ columns: [{ data: null, name: '' }, { name: 'sortOrder', s: true }, { name: 'roadway', s: true }],
       order: [{ column: 1, dir: 'asc' }], start, length: 100, search: { value: '' } });
     const r = await fetch(`${cfg.api}?query=${encodeURIComponent(query)}&lang=en`,
@@ -347,29 +394,39 @@ async function loadListPages(cfg) {
     if (!r.ok) throw new Error(`${cfg.name} returned HTTP ${r.status}`);
     const j = await r.json();
     if (!j || !Array.isArray(j.data)) throw new Error(`${cfg.name} returned an unexpected response.`);
-    rows.push(...j.data);
-    total = +j.recordsTotal || 0;
-    if (!j.data.length) break;
-  }
-  return rows;
+    return j;
+  };
+  const first = await page(0);
+  const total = Math.min(+first.recordsTotal || 0, 10000);
+  const starts = [];
+  for (let st = 100; st < total; st += 100) starts.push(st);
+  const pages = [];
+  while (starts.length) pages.push(...await Promise.all(starts.splice(0, 4).map(page)));
+  return [first, ...pages].flatMap((j) => j.data);
 }
 
 /*
  * List-page camera sites: location, roadway, latLng as WKT "POINT (lon lat)",
- * images[] (imageUrl "/map/Cctv/<id>", description "Traffic closest to this
- * camera is traveling eastbound on I-20."). Direction is always "Unknown" in
- * 511LA, so a view's button label comes from that description.
+ * state, images[] (imageUrl "/map/Cctv/<id>", description "Traffic closest to
+ * this camera is traveling eastbound on I-20.", videoUrl, isVideoAuthRequired).
+ * Direction is often "Unknown", so a view's button label comes from that
+ * description. Video only where the site plays it without a login (CTroads
+ * requires one; 511PA and FL511 refuse it even where not flagged: noVideo). cfg.state keeps one state of a multi-state
+ * site (New England 511 = Vermont, New Hampshire, Maine).
  */
-function parseList511(list) {
+function parseList511(list, cfg) {
   const features = [];
-  const host = REGIONS.la.host;
   for (const site of list) {
-    const m = /POINT\s*\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)/.exec((site && site.latLng && site.latLng.geography && site.latLng.geography.wellKnownText) || '');
+    if (!site || site.visible === false || (cfg.state && site.state !== cfg.state)) continue;
+    if (/\(test\)/i.test(site.location || '')) continue;
+    const m = /POINT\s*\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)/.exec((site.latLng && site.latLng.geography && site.latLng.geography.wellKnownText) || '');
     const lon = m ? +m[1] : NaN, lat = m ? +m[2] : NaN;
-    if (!located(lat, lon) || site.visible === false) continue;
+    if (!located(lat, lon)) continue;
     const vs = (site.images || []).filter((im) => im && im.imageUrl && !im.disabled && !im.blocked).map((im, i) => {
       const dir = /traveling (north|south|east|west)bound/i.exec(im.description || '');
-      return { t: String(im.description || '').trim(), l: dir ? dir[1][0].toUpperCase() + 'B' : String(i + 1), u: new URL(im.imageUrl, host).href };
+      const live = !cfg.noVideo && im.videoUrl && !im.videoDisabled && !im.isVideoAuthRequired && https(im.videoUrl);
+      return { t: String(im.description || '').trim(), l: dir ? dir[1][0].toUpperCase() + 'B' : String(i + 1),
+        u: new URL(im.imageUrl, cfg.host).href, ...(live ? { h: im.videoUrl } : {}) };
     });
     if (!vs.length) continue;
     numberRepeats(vs);
@@ -377,8 +434,8 @@ function parseList511(list) {
       v: site.id,
       n: String(site.location || '').trim(),
       r: site.roadway || '',
-      d: site.direction && site.direction !== 'Unknown' ? site.direction : '',
-      ...(vs.length > 1 ? { vs } : { u: vs[0].u, s: vs[0].t }),
+      d: site.direction && site.direction.trim() !== 'Unknown' ? site.direction.trim() : '',
+      ...(vs.length > 1 ? { vs } : { u: vs[0].u, s: vs[0].t, ...(vs[0].h ? { h: vs[0].h } : {}) }),
     }));
   }
   return features;
@@ -464,6 +521,367 @@ async function txViews(name) {
   return [{ t: String(row.description || name).trim(), l: '1', h: row.httpsurl }];
 }
 
+/*
+ * Castle Rock CARS camera API (<agency>tg.carsprogram.org/cameras_v1/api/cameras),
+ * the feed behind 511 sites in NY, MN, IA, KS, NE, MA, IN and CO. ("sdtg" is
+ * San Diego, not South Dakota: it lists Caltrans District 11 cameras.) Public,
+ * CORS-open. Each camera has views of type STILL_IMAGE (url = a JPEG), WMP
+ * (url = HLS, videoPreviewUrl = its still) or MJPEG (url = a stream an <img>
+ * can show). Only https media is kept: some feeds list http images from
+ * neighbouring states, which an https page cannot load.
+ */
+const https = (u) => typeof u === 'string' && u.startsWith('https://');
+const dirLabel = (text, i) => {
+  const m = /\b(north|south|east|west)(bound)?\b/i.exec(text || '');
+  return m ? m[1][0].toUpperCase() + (m[2] ? 'B' : '') : String(i + 1);
+};
+function parseCars(list) {
+  const features = [];
+  for (const cam of list) {
+    if (!cam || cam.public === false) continue;
+    const L = cam.location || {};
+    const lat = +L.latitude, lon = +L.longitude;
+    if (!located(lat, lon)) continue;
+    const vs = [];
+    for (const v of cam.views || []) {
+      if (!v) continue;
+      const u = v.type === 'STILL_IMAGE' ? v.url : v.videoPreviewUrl || (v.type === 'MJPEG' ? v.url : null);
+      const h = v.type === 'WMP' && /\.m3u8(\?|$)/.test(v.url || '') ? v.url : null;
+      if (!https(u) && !https(h)) continue;
+      vs.push({ t: String(v.name || cam.name || '').trim(), l: dirLabel(v.name, vs.length), ...(https(u) ? { u } : {}), ...(https(h) ? { h } : {}) });
+    }
+    if (!vs.length) continue;
+    numberRepeats(vs);
+    features.push(point(lon, lat, {
+      v: cam.id,
+      n: String(cam.name || '').trim(),
+      r: L.routeId || '',
+      d: '',
+      ...(L.cityReference ? { s: L.cityReference } : {}),
+      ...(vs.length > 1 ? { vs } : { ...(vs[0].u ? { u: vs[0].u } : {}), ...(vs[0].h ? { h: vs[0].h } : {}) }),
+    }));
+  }
+  return features;
+}
+// Function declarations, not arrows: REGIONS calls these before this point.
+function cars(agency, name) {
+  return { name, api: `https://${agency}.carsprogram.org/cameras_v1/api/cameras`, keyless: true, parse: parseCars };
+}
+function list511(host, name, extra) {
+  return { name, api: `https://${host}/List/GetData/Cameras`, host: `https://${host}`, keyless: true,
+    load: loadListPages, parse: parseList511, ttl: 30 * 60 * 1000, ...extra };
+}
+
+/*
+ * Caltrans CWWP2: one public JSON per district (d1..d12), CORS-open. Each
+ * record's cctv has inService, location (locationName, nearbyPlace, route,
+ * direction, lat/lon — its `county` is unreliable) and imageData with a
+ * still (static.currentImageURL) and, for many, an HLS streamingVideoURL.
+ */
+async function loadCaltrans(cfg) {
+  const lists = await Promise.all(Array.from({ length: 12 }, async (_, i) => {
+    const d = i + 1;
+    try {
+      const r = await fetch(`https://cwwp2.dot.ca.gov/data/d${d}/cctv/cctvStatusD${String(d).padStart(2, '0')}.json`,
+        { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(45000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return ((await r.json()).data || []).map((x) => x && x.cctv);
+    } catch (e) {
+      console.warn(`[511] ${cfg.name} district ${d} unavailable:`, e.message);
+      return [];
+    }
+  }));
+  const all = lists.flat().filter(Boolean);
+  if (!all.length) throw new Error(`${cfg.name} returned no cameras.`);
+  return all;
+}
+function parseCaltrans(list) {
+  const features = [];
+  for (const c of list) {
+    if (String(c.inService) !== 'true') continue;
+    const L = c.location || {}, img = c.imageData || {};
+    const lat = +L.latitude, lon = +L.longitude;
+    const u = img.static && img.static.currentImageURL, h = img.streamingVideoURL;
+    if (!located(lat, lon) || (!https(u) && !https(h))) continue;
+    features.push(point(lon, lat, {
+      v: `${L.district}-${c.index}`,
+      n: String(L.locationName || '').trim(),
+      r: L.route || '',
+      d: L.direction || '',
+      ...(L.nearbyPlace ? { s: L.nearbyPlace } : {}),
+      ...(https(u) ? { u } : {}), ...(https(h) ? { h } : {}),
+    }));
+  }
+  return features;
+}
+
+/*
+ * Iteris ATIS camera SITES (SD511): Point features whose properties carry
+ * name, route, mrm and cameras[] ({ name "Camera Looking South", description,
+ * image }). Unlike 511SC's file (parseIteris), one feature holds several views.
+ */
+function parseIterisSites(list) {
+  const features = [];
+  for (const f of list) {
+    const p = (f && f.properties) || {};
+    const c = (f && f.geometry && f.geometry.coordinates) || [];
+    if (!located(+c[1], +c[0])) continue;
+    const vs = (p.cameras || []).filter((k) => k && https(k.image))
+      .map((k, i) => ({ t: String(k.description || k.name || '').trim(), l: dirLabel(k.name, i) === String(i + 1) && /surface/i.test(k.name || '') ? 'Road' : dirLabel(k.name, i), u: k.image }));
+    if (!vs.length) continue;
+    numberRepeats(vs);
+    features.push(point(+c[0], +c[1], {
+      v: p.id != null ? p.id : `${c[0]},${c[1]}`,
+      n: String(p.name || p.description || '').trim(),
+      r: p.route || '',
+      d: p.mrm != null && p.mrm !== '' ? `Mile ${p.mrm}` : '',
+      ...(vs.length > 1 ? { vs } : { u: vs[0].u, s: vs[0].t }),
+    }));
+  }
+  return features;
+}
+
+/*
+ * ArcGIS FeatureServer layers capped at maxRecordCount rows per query: page
+ * with resultOffset until a short page (IDOT's layer is 3,700+ at 1,000 a page).
+ */
+async function loadArcgisPages(cfg) {
+  const rows = [];
+  for (let offset = 0; offset < 20000; offset += 1000) {
+    const r = await fetch(`${cfg.api}/query?where=1%3D1&outFields=*&outSR=4326&resultOffset=${offset}&resultRecordCount=1000&f=geojson`,
+      { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(45000) });
+    if (!r.ok) throw new Error(`${cfg.name} returned HTTP ${r.status}`);
+    const j = await r.json();
+    if (!j || !Array.isArray(j.features)) throw new Error(`${cfg.name} returned an unexpected response.`);
+    rows.push(...j.features);
+    if (j.features.length < 1000) break;
+  }
+  return rows;
+}
+
+// IDOT "Illinois Gateway Traffic Cameras": CameraLocation, CameraDirection, SnapShot, TooOld ("true" = stale image).
+function parseIdot(list) {
+  const features = [];
+  for (const f of list) {
+    const p = (f && f.properties) || {};
+    const c = (f && f.geometry && f.geometry.coordinates) || [];
+    if (!https(p.SnapShot) || p.TooOld === 'true' || !located(+c[1], +c[0])) continue;
+    features.push(point(+c[0], +c[1], {
+      v: p.OBJECTID, n: String(p.CameraLocation || '').trim(), r: '',
+      d: p.CameraDirection && p.CameraDirection !== 'NONE' ? p.CameraDirection : '', u: p.SnapShot,
+    }));
+  }
+  return features;
+}
+
+// NDDOT travelfiles cameras.json: sites with Region and Cameras[] ({ Description, FullPath, Direction }).
+function parseNddot(list) {
+  const features = [];
+  for (const f of list) {
+    const p = (f && f.properties) || {};
+    const c = (f && f.geometry && f.geometry.coordinates) || [];
+    if (!located(+c[1], +c[0])) continue;
+    const vs = (p.Cameras || []).filter((k) => k && https(k.FullPath)).map((k, i) => ({
+      t: String(k.Description || '').trim(), l: k.Direction ? (/pavement/i.test(k.Description || '') ? 'Road' : k.Direction.length <= 3 ? k.Direction.toUpperCase() : k.Direction[0].toUpperCase()) : String(i + 1), u: k.FullPath,
+    }));
+    if (!vs.length) continue;
+    numberRepeats(vs);
+    // "Ray - West (US 2 MP 51.3) - NDDOT" → site "Ray", road "US 2 MP 51.3".
+    const m = /^(.*?)\s*-\s*[^(]*\(([^)]*)\)/.exec(vs[0].t);
+    features.push(point(+c[0], +c[1], {
+      v: p.ObjectID != null ? p.ObjectID : f.id, n: m ? m[1] : vs[0].t, r: m ? m[2] : '', d: '',
+      ...(p.Region ? { s: p.Region } : {}),
+      ...(vs.length > 1 ? { vs } : { u: vs[0].u }),
+    }));
+  }
+  return features;
+}
+
+// 511MT (Iteris): MDT's own cameras are on its weather stations (rwis), plus a few others (cameras).
+async function loadMt511(cfg) {
+  const files = ['icons.rwis.geojson', 'icons.cameras.geojson'];
+  const lists = await Promise.all(files.map(async (file) => {
+    const r = await fetch(`https://mt.cdn.iteris-atis.com/geojson/icons/metadata/${file}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error(`${cfg.name} returned HTTP ${r.status}`);
+    return (await r.json()).features || [];
+  }));
+  return lists.flat();
+}
+
+/*
+ * OHGO Public API (publicapi.ohgo.com, ODOT). Needs a free key from
+ * publicapi.ohgo.com in OHGO_API_KEY. Camera sites: Id, Latitude, Longitude,
+ * Location, Description, CameraViews[] ({ Direction, SmallUrl, LargeUrl,
+ * MainRoute }). Field case is taken loosely (docs show PascalCase, the live
+ * error body is camelCase). Untested until a key is set.
+ */
+async function loadOhgo(cfg) {
+  const key = keyFor('oh');
+  const rows = [];
+  for (let page = 1; page <= 50; page++) {
+    const r = await fetch(`https://publicapi.ohgo.com/api/v1/cameras?page-all=true&page=${page}`,
+      { headers: { 'User-Agent': UA, Accept: 'application/json', Authorization: `APIKEY ${key}` }, signal: AbortSignal.timeout(30000) });
+    if (r.status === 401 || r.status === 403) throw new Error(`${cfg.name} rejected the API key (${cfg.keyEnv}).`);
+    if (!r.ok) throw new Error(`${cfg.name} returned HTTP ${r.status}`);
+    const j = await r.json();
+    const results = j.results || j.Results || [];
+    rows.push(...results);
+    const pages = +(j.totalPageCount || j.TotalPageCount || 1);
+    if (!results.length || page >= pages) break;
+  }
+  return rows;
+}
+function parseOhgo(list) {
+  const g = (o, k) => (o ? (o[k] !== undefined ? o[k] : o[k[0].toLowerCase() + k.slice(1)]) : undefined);
+  const features = [];
+  for (const c of list) {
+    const lat = +g(c, 'Latitude'), lon = +g(c, 'Longitude');
+    if (!located(lat, lon)) continue;
+    const vs = (g(c, 'CameraViews') || []).map((v, i) => ({ t: String(g(v, 'MainRoute') || '').trim(), l: dirLabel(g(v, 'Direction'), i), u: g(v, 'LargeUrl') || g(v, 'SmallUrl') }))
+      .filter((v) => https(v.u));
+    if (!vs.length) continue;
+    numberRepeats(vs);
+    features.push(point(lon, lat, {
+      v: g(c, 'Id'), n: String(g(c, 'Location') || g(c, 'Description') || '').trim(), r: vs[0].t, d: '',
+      ...(vs.length > 1 ? { vs } : { u: vs[0].u }),
+    }));
+  }
+  return features;
+}
+
+// DelDOT: { videoCameras: [{ id, title, county, lat, lon, enabled, status, urls.m3u8s }] }. Video only.
+function parseDeldot(list) {
+  const features = [];
+  for (const c of list) {
+    const h = c && c.urls && c.urls.m3u8s;
+    if (!c || !c.enabled || c.status !== 'Active' || !https(h) || !located(+c.lat, +c.lon)) continue;
+    features.push(point(+c.lon, +c.lat, { v: c.id, n: String(c.title || c.id).trim(), r: '', d: '', h, ...(c.county ? { c: c.county } : {}) }));
+  }
+  return features;
+}
+
+// MoDOT Traveler: [{ location, x (lon), y (lat), html (HLS) }]. Video only.
+function parseModot(list) {
+  const features = [];
+  for (const c of list) {
+    if (!c || !https(c.html) || !located(+c.y, +c.x)) continue;
+    const id = (/\/rtplive\/([^/]+)\//.exec(c.html) || [])[1] || c.location;
+    features.push(point(+c.x, +c.y, { v: id, n: String(c.location || '').trim(), r: '', d: '', h: c.html }));
+  }
+  return features;
+}
+
+// ODOT TripCheck (ESRI JSON): attributes cameraId, filename, latitude, longitude, route, title.
+function parseTripcheck(list) {
+  const features = [];
+  for (const f of list) {
+    const a = (f && f.attributes) || {};
+    if (!a.filename || !located(+a.latitude, +a.longitude)) continue;
+    features.push(point(+a.longitude, +a.latitude, {
+      v: a.cameraId, n: String(a.title || '').trim(), r: String(a.route || '').trim(), d: '',
+      u: `https://tripcheck.com/RoadCams/cams/${encodeURIComponent(a.filename)}`,
+    }));
+  }
+  return features;
+}
+
+// MDOT SHA CHART: { data: [{ id, cctvIp, commMode, opStatus, name, description, lat, lon }] }. HLS as CHART's own player builds it.
+function parseChart(list) {
+  const features = [];
+  for (const c of list) {
+    if (!c || c.commMode !== 'ONLINE' || !/^[a-z0-9.-]+$/i.test(c.cctvIp || '') || !/^[a-f0-9]+$/i.test(c.id || '')) continue;
+    if (!located(+c.lat, +c.lon)) continue;
+    features.push(point(+c.lon, +c.lat, {
+      v: c.id, n: String(c.description || c.name || '').trim(), r: '', d: '',
+      h: `https://${c.cctvIp}/rtplive/${c.id}/playlist.m3u8`,
+      ...(c.cameraCategories && c.cameraCategories[0] ? { s: c.cameraCategories[0] } : {}),
+    }));
+  }
+  return features;
+}
+
+// MiDrive camera list: HTML fragments — lat/lon/id inside the county "Go to" link, the still in the image's src.
+function parseMidrive(list) {
+  const features = [];
+  for (const c of list) {
+    const link = /lat=(-?[\d.]+)&lon=(-?[\d.]+)[^"]*?&id=(\d+)/.exec((c && c.county) || '');
+    const src = /src="(https:\/\/[^"]+)"/.exec((c && c.image) || '');
+    if (!link || !src || !located(+link[1], +link[2])) continue;
+    const county = String(c.county).replace(/<[^>]*>.*$/s, '').trim();
+    features.push(point(+link[2], +link[1], {
+      v: +link[3],
+      n: `${String(c.route || '').trim()}${String(c.location || '').trim() ? ' ' + String(c.location).trim() : ''}`.trim(),
+      r: '', d: '', u: src[1].replace(/&amp;/g, '&'),
+      ...(county ? { s: county } : {}),
+    }));
+  }
+  return features;
+}
+
+// WSDOT (the feed its mobile app reads): { cameras: { items: [{ id, url, title, roadName, direction, milepost, lat, lon }] } }.
+function parseWsdot(list) {
+  const features = [];
+  for (const c of list) {
+    if (!c || !https(c.url) || !located(+c.lat, +c.lon)) continue;
+    features.push(point(+c.lon, +c.lat, {
+      v: c.id, n: String(c.title || '').trim(), r: c.roadName || '',
+      // WSDOT direction is N/S/E/W or B (both ways), which says nothing on its own.
+      d: [c.direction && c.direction !== 'B' ? c.direction : '', c.milepost ? `Mile ${c.milepost}` : ''].filter(Boolean).join(' · '), u: c.url,
+    }));
+  }
+  return features;
+}
+
+/*
+ * WV511 serves its cameras as a script (`var camera_data = {count, cams}`);
+ * every camera streams from roadsummary.com under its md5 id — what WV511's
+ * own player (flowplayeri.aspx) loads. Description holds "[BER]I-81 @ 0.5".
+ */
+async function loadWv511(cfg) {
+  const r = await fetch(cfg.api, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(30000) });
+  if (!r.ok) throw new Error(`${cfg.name} returned HTTP ${r.status}`);
+  const s = await r.text();
+  const at = s.indexOf('var camera_data');
+  const open = at < 0 ? -1 : s.indexOf('{', at);
+  if (open < 0) throw new Error(`${cfg.name} returned an unexpected response.`);
+  let depth = 0, end = open, inStr = false;
+  for (; end < s.length; end++) {
+    const ch = s[end];
+    if (inStr) { if (ch === '\\') end++; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') inStr = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) break;
+  }
+  const cams = JSON.parse(s.slice(open, end + 1)).cams || [];
+  // Most WV511 streams are switched off at any time (89 of 133 answered 204 on
+  // 2026-10-18), and the feed lists them all. Keep only those whose playlist
+  // answers now; if none do (roadsummary unreachable), keep the list as is.
+  const live = new Set();
+  const queue = cams.filter((c) => c && /^[A-Za-z0-9_-]+$/.test(c.md5 || ''));
+  await Promise.all(Array.from({ length: 8 }, async () => {
+    for (let c; (c = queue.shift());) {
+      try {
+        const r = await fetch(`https://vtc1.roadsummary.com/rtplive/${c.md5}/playlist.m3u8`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000) });
+        if (r.status === 200 && /#EXT-X-STREAM-INF|#EXTINF/.test(await r.text())) live.add(c.md5);
+      } catch { /* offline or slow: leave it out */ }
+    }
+  }));
+  return live.size ? cams.filter((c) => live.has(c.md5)) : cams;
+}
+function parseWv511(list) {
+  const features = [];
+  for (const c of list) {
+    if (!c || !/^[A-Za-z0-9_-]+$/.test(c.md5 || '') || !located(+c.start_lat, +c.start_lng)) continue;
+    const text = String(c.description || '').replace(/<span[\s\S]*?<\/span>/g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, '').trim();
+    const m = /^\[([A-Z]+)\]\s*(.*)$/.exec(text);
+    features.push(point(+c.start_lng, +c.start_lat, {
+      v: c.md5, n: (m ? m[2] : text) || c.title || c.md5, r: c.title || '', d: '',
+      h: `https://vtc1.roadsummary.com/rtplive/${c.md5}/playlist.m3u8`,
+    }));
+  }
+  return features;
+}
+
 // Shared 511 platform (GA, NC): cameras with Views, snapshot at /map/Cctv/<viewId>.
 function parse511(list) {
   const features = [];
@@ -514,7 +932,7 @@ function parseTdot(list) {
 
 async function cameras(region) {
   const hit = cache[region];
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.body;
+  if (hit && Date.now() - hit.at < (REGIONS[region].ttl || TTL_MS)) return hit.body;
   if (inflight[region]) return inflight[region];
   inflight[region] = (async () => {
     try {
