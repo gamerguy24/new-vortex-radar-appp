@@ -12,6 +12,8 @@
  *   KY Traffic Cams       KYTC (ArcGIS)               — snapshot URL per camera (`u`)
  *   MS MDOT Traffic Cams  MDOT, mdottraffic.com       — views fetched when a site is opened (`x`)
  *   LA 511 Traffic Cams   LADOTD, 511la.org           — snapshot URL per view (`u` / `vs`)
+ *   AR iDrive Traffic Cams ARDOT, idrivearkansas.com  — stills; live video only on their site (`w` link)
+ *   TX DriveTexas Cams    TxDOT, drivetexas.org       — live HLS video, tokened URL fetched on open (`x`)
  *
  * Thousands of cameras, so each is drawn as a clustered GeoJSON layer on the
  * GPU, not one DOM marker each (the BuoyCAMs approach would stall the map at
@@ -34,6 +36,8 @@ const REGIONS = {
   // MDOT's stills are live Wowza thumbnails; its own site refreshes them every 5 s.
   ms: { label: 'MS MDOT Traffic Cams', credit: 'MDOTtraffic · MDOT', host: null, switchId: 'armrMs511CamsSwitchElem', imgRefreshMs: 15000 },
   la: { label: 'LA 511 Traffic Cams', credit: '511LA · LADOTD', host: 'https://www.511la.org', switchId: 'armrLa511CamsSwitchElem' },
+  ar: { label: 'AR iDrive Traffic Cams', credit: 'iDriveArkansas · ARDOT', host: null, switchId: 'armrAr511CamsSwitchElem' },
+  tx: { label: 'TX DriveTexas Traffic Cams', credit: 'DriveTexas · TxDOT', host: null, switchId: 'armrTx511CamsSwitchElem' },
 };
 
 const LIST_REFRESH_MS = 10 * 60 * 1000;   // matches the server cache
@@ -66,6 +70,8 @@ function injectStyles() {
   background: #000; color: var(--vx-text-2); font-size: 0.85em; border-radius: var(--vx-r-2); padding: 12px; box-sizing: border-box; }
 .ga511-pop-views { display: flex; flex-wrap: wrap; gap: 4px; }
 .ga511-pop-views:empty { display: none; }
+.ga511-pop-link { font-size: 0.8em; color: var(--vx-accent); text-decoration: none; }
+.ga511-pop-link:hover { text-decoration: underline; }
 .ga511-pop-views button { font: inherit; font-size: 0.8em; min-width: 32px; padding: 3px 8px; border-radius: var(--vx-r-2); cursor: pointer;
   background: transparent; color: var(--vx-text); border: 1px solid var(--vx-border, rgba(255,255,255,0.18)); }
 .ga511-pop-views button[aria-pressed="true"] { border-color: var(--vx-accent); color: var(--vx-accent); }
@@ -176,6 +182,10 @@ export const addMs511Cams = (w) => addRegion('ms', w);
 export const removeMs511Cams = (w) => removeRegion('ms', w);
 export const addLa511Cams = (w) => addRegion('la', w);
 export const removeLa511Cams = (w) => removeRegion('la', w);
+export const addAr511Cams = (w) => addRegion('ar', w);
+export const removeAr511Cams = (w) => removeRegion('ar', w);
+export const addTx511Cams = (w) => addRegion('tx', w);
+export const removeTx511Cams = (w) => removeRegion('tx', w);
 
 async function refresh(L) {
   try {
@@ -230,6 +240,7 @@ function camClick(L, e) {
       <div id="ga511-media"><div class="ga511-pop-msg">Loading camera…</div></div>
       <div class="ga511-pop-views" id="ga511-views" role="group" aria-label="Camera views"></div>
       <div class="ga511-pop-foot"><span id="ga511-time"></span><span>${esc(L.cfg.credit)}</span></div>
+      ${String(p.w || '').startsWith('https://') ?`<a class="ga511-pop-link" href="${esc(p.w)}" target="_blank" rel="noopener">Watch live video on ${esc(L.cfg.credit.split(' · ')[0])} ↗</a>` : ''}
     </div>`;
   popupState.region = L.region;
   popupState.popup = new gl.Popup({ closeButton: true, closeOnClick: true, className: 'ga511-popup', maxWidth: '500px', offset: 10 })
@@ -261,6 +272,8 @@ function showMessage(msg) {
   stopMedia();
   const box = document.getElementById('ga511-media');
   if (box) box.innerHTML = `<div class="ga511-pop-msg">${esc(msg)}</div>`;
+  const t = document.getElementById('ga511-time');
+  if (t) t.textContent = '';
 }
 
 function showViews(L, title, views) {
@@ -288,7 +301,7 @@ function showView(L, title, views, i) {
   const label = esc(v.t || title);
   if (v.h) {
     box.innerHTML = `<video class="ga511-pop-img" id="ga511-video" muted autoplay playsinline controls aria-label="Live traffic camera: ${label}"></video>`;
-    if (time) time.textContent = 'Live video';
+    if (time) time.textContent = 'Connecting to live video…';
     playHls(document.getElementById('ga511-video'), v.h, popupState.token);
     return;
   }
@@ -324,6 +337,10 @@ function loadHls() {
 
 function playHls(video, src, token) {
   if (!video) return;
+  video.addEventListener('playing', () => {
+    const t = document.getElementById('ga511-time');
+    if (t && token === popupState.token) t.textContent = 'Live video';
+  }, { once: true });
   // hls.js wherever Media Source Extensions exist. Native HLS only without
   // them (older iOS): recent desktop Chrome answers "maybe" to canPlayType for
   // HLS but did not play these streams.
@@ -337,7 +354,8 @@ function playHls(video, src, token) {
       else showMessage('This browser cannot play live camera video.');
       return;
     }
-    const h = new Hls({ liveDurationInfinity: true });
+    // Some DOT streams take several seconds to wake up: allow for it.
+    const h = new Hls({ liveDurationInfinity: true, manifestLoadingTimeOut: 15000, manifestLoadingMaxRetry: 2 });
     popupState.hls = h;
     h.loadSource(src);
     h.attachMedia(video);

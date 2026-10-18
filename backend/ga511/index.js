@@ -11,8 +11,10 @@
  *   GET /api/511cams/ok   ODOT OKTraffic (oktraffic.org) no key (public API, live HLS video)
  *   GET /api/511cams/ky   KYTC traffic cameras (ArcGIS)  no key (public FeatureServer)
  *   GET /api/511cams/ms   MDOT MDOTtraffic.com           no key (public page method)
- *   GET /api/511cams/ms/views/:site   the camera views at one MDOT site
  *   GET /api/511cams/la   LADOTD 511LA (511la.org)       no key (public list page data)
+ *   GET /api/511cams/ar   ARDOT iDriveArkansas           no key (public GeoJSON; stills only)
+ *   GET /api/511cams/tx   TxDOT DriveTexas (MapLarge)    no key (public table; live HLS video)
+ *   GET /api/511cams/:region/views/:id   cameras looked up when one is opened (ms, tx)
  *
  * → GeoJSON points, one per enabled camera view.
  *
@@ -72,11 +74,25 @@ const REGIONS = {
   // MDOTtraffic.com's map calls an ASP.NET page method (POST, {"d": [...]})
   // that lists camera SITES only; a site's views live in its map bubble page,
   // fetched on demand by /api/511cams/ms/views/:site (siteViews below).
-  ms: { name: 'MDOTtraffic', api: 'https://www.mdottraffic.com/default.aspx/LoadCameraData', keyless: true, post: true, parse: parseMdot },
+  ms: { name: 'MDOTtraffic', api: 'https://www.mdottraffic.com/default.aspx/LoadCameraData', keyless: true, post: true, parse: parseMdot,
+    views: { id: (s) => (/^\d{1,6}$/.test(s) && +s > 0 ? +s : null), get: (site) => siteViews(site), maxAge: 600 } },
   // 511LA is on the shared platform, but its developer API needs a key we do
   // not have. Its public /cctv list page reads this keyless DataTables
   // endpoint instead, 100 rows at most per request (loadListPages).
   la: { name: '511LA', api: 'https://www.511la.org/List/GetData/Cameras', host: 'https://www.511la.org', keyless: true, load: loadListPages, parse: parseList511 },
+  // iDriveArkansas publishes this GeoJSON (CORS *, 60 s cache) and a keyless
+  // snapshot per camera at layers.idrivearkansas.com/cameras/<id>.jpg. Its live
+  // video is NOT usable here: the CDN wants a session cookie on
+  // .idrivearkansas.com, minted only after an AWS WAF bot check (sometimes a
+  // CAPTCHA) and refused to other origins. Getting round that would mean
+  // defeating their bot protection, so the popup links to their site instead.
+  ar: { name: 'iDriveArkansas', api: 'https://layers.idrivearkansas.com/cameras.geojson', keyless: true, parse: parseArdot },
+  // DriveTexas keeps its cameras in a public MapLarge table (CORS *). Video
+  // only: the table's imageurl points at "localhost". Each row's HLS URL
+  // carries a token that lapses after 10 minutes, so the list carries no URLs
+  // and a fresh one is looked up when a camera is opened (txViews).
+  tx: { name: 'DriveTexas', api: 'https://dtx-e-cdn.maplarge.com', keyless: true, load: loadTxList, parse: parseTx,
+    views: { id: (s) => (/^[A-Za-z0-9_-]{1,64}$/.test(s) ? s : null), get: (name) => txViews(name), maxAge: 0 } },
 };
 const TTL_MS = 10 * 60 * 1000;
 const UA = 'EchoRadar (radar.twistcasterlivemedia.com)';
@@ -368,6 +384,86 @@ function parseList511(list) {
   return features;
 }
 
+/*
+ * iDriveArkansas cameras.geojson: id, status ("online"), name ("I-30 @ Red
+ * River"), route_type_abbr + route, direction_name, hls_stream_protected
+ * (cookie-gated, unused). Snapshot = layers.idrivearkansas.com/cameras/<id>.jpg
+ * (what their own image API redirects to; a PNG, 720x405, 60 s cache).
+ * `w` = where to watch the live video.
+ */
+function parseArdot(list) {
+  const features = [];
+  for (const f of list) {
+    const p = (f && f.properties) || {};
+    const c = (f && f.geometry && f.geometry.coordinates) || [];
+    const lon = +c[0], lat = +c[1];
+    if (p.status !== 'online' || p.id == null || !located(lat, lon)) continue;
+    const road = p.route ? `${p.route_type_abbr === 'Interstate' ? 'I-' : p.route_type_abbr === 'US' ? 'US ' : 'Hwy '}${p.route}` : '';
+    features.push(point(lon, lat, {
+      v: p.id,
+      n: String(p.name || '').trim(),
+      r: road,
+      d: p.direction_name || '',
+      u: `https://layers.idrivearkansas.com/cameras/${encodeURIComponent(p.id)}.jpg`,
+      w: 'https://www.idrivearkansas.com/',
+    }));
+  }
+  return features;
+}
+
+/*
+ * DriveTexas / MapLarge. The table name rolls to a new version every couple of
+ * minutes (with fresh stream tokens); queries must name the ACTIVE version,
+ * because CloudFront caches a query URL for days and an unversioned query soon
+ * hands back expired tokens. GetActiveTableID itself is cached only 30 s.
+ */
+const TX_HOST = 'https://dtx-e-cdn.maplarge.com';
+let txTable = null;   // { at, table }
+async function txActiveTable() {
+  if (txTable && Date.now() - txTable.at < 30 * 1000) return txTable.table;
+  const r = await fetch(`${TX_HOST}/Remote/GetActiveTableID?shortTableId=appgeo/cameraPoint&cacheBust=${Math.round(Date.now() / 1000)}`,
+    { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`DriveTexas returned HTTP ${r.status}`);
+  const j = await r.json();
+  if (!j || !j.success || !j.table) throw new Error('DriveTexas returned an unexpected response.');
+  txTable = { at: Date.now(), table: j.table };
+  return j.table;
+}
+async function txQuery(sqlselect, where, take) {
+  const table = await txActiveTable();
+  const request = JSON.stringify({ action: 'table/query', query: { sqlselect, start: 0, table, take, where } });
+  const r = await fetch(`${TX_HOST}/Api/ProcessDirect?request=${encodeURIComponent(request)}`,
+    { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(30000) });
+  if (!r.ok) throw new Error(`DriveTexas returned HTTP ${r.status}`);
+  const j = await r.json();
+  if (!j || !j.success || !j.data || !j.data.data) throw new Error('DriveTexas returned an unexpected response.');
+  // MapLarge answers column-wise: { name: [...], XY: [...] } → rows.
+  const cols = j.data.data, keys = Object.keys(cols);
+  const n = keys.length ? Math.min(...keys.map((k) => cols[k].length)) : 0;
+  return Array.from({ length: n }, (_, i) => Object.fromEntries(keys.map((k) => [k, cols[k][i]])));
+}
+function loadTxList() { return txQuery(['name', 'description', 'XY'], [], 20000); }
+
+// Rows: name ("TX_DAL_500"), description ("IH20 @ CR118 MM 41 Pecos CTY (EB)"), XY (WKT).
+function parseTx(list) {
+  const features = [];
+  for (const row of list) {
+    const m = /POINT\s*\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)/.exec(row.XY || '');
+    const lon = m ? +m[1] : NaN, lat = m ? +m[2] : NaN;
+    if (!row.name || /test/i.test(row.name) || !located(lat, lon)) continue;
+    features.push(point(lon, lat, { v: row.name, n: String(row.description || row.name).trim(), r: '', d: '', x: 1 }));
+  }
+  return features;
+}
+
+// One camera's stream, with a token minted at the current table version.
+async function txViews(name) {
+  const rows = await txQuery(['name', 'description', 'httpsurl'], [{ col: 'name', test: 'Equal', value: name }], 1);
+  const row = rows[0];
+  if (!row || !/^https:\/\//.test(row.httpsurl || '')) return [];
+  return [{ t: String(row.description || name).trim(), l: '1', h: row.httpsurl }];
+}
+
 // Shared 511 platform (GA, NC): cameras with Views, snapshot at /map/Cctv/<viewId>.
 function parse511(list) {
   const features = [];
@@ -442,15 +538,19 @@ function attachGa511({ app, requireAuth }) {
     res.json(Object.fromEntries(Object.keys(REGIONS).map((r) => [r, usable(r)])));
   });
 
-  app.get('/api/511cams/ms/views/:site', requireAuth, async (req, res) => {
-    const site = Number(req.params.site);
-    if (!Number.isInteger(site) || site <= 0 || site > 1e6) return res.status(400).json({ error: 'Bad camera site.' });
+  // Regions whose cameras are looked up only when someone opens one (`x`).
+  app.get('/api/511cams/:region/views/:id', requireAuth, async (req, res) => {
+    const region = String(req.params.region || '').toLowerCase();
+    const v = REGIONS[region] && REGIONS[region].views;
+    if (!v) return res.status(404).json({ error: 'Unknown 511 region.' });
+    const id = v.id(String(req.params.id || ''));
+    if (id == null) return res.status(400).json({ error: 'Bad camera id.' });
     try {
-      const views = await siteViews(site);
-      res.setHeader('Cache-Control', 'private, max-age=600');
+      const views = await v.get(id);
+      res.setHeader('Cache-Control', v.maxAge ? `private, max-age=${v.maxAge}` : 'no-store');
       res.json({ views });
     } catch (e) {
-      console.warn(`[511] ms site ${site} views unavailable:`, e.message);
+      console.warn(`[511] ${region} camera ${id} views unavailable:`, e.message);
       res.status(502).json({ error: e.message });
     }
   });

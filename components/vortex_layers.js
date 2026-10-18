@@ -21,7 +21,7 @@ import { addMPING, removeMPING } from './mping.js';
 import { addBuoys, removeBuoys } from './buoys.js';
 import { addHurricaneTracks, removeHurricaneTracks } from './hurricane_tracks.js';
 import { addBuoyCams, removeBuoyCams } from './buoycams.js';
-import { addGa511Cams, removeGa511Cams, addNc511Cams, removeNc511Cams, addTn511Cams, removeTn511Cams, addAl511Cams, removeAl511Cams, addSc511Cams, removeSc511Cams, addOk511Cams, removeOk511Cams, addKy511Cams, removeKy511Cams, addMs511Cams, removeMs511Cams, addLa511Cams, removeLa511Cams } from './ga511_cams.js?v=la1';
+import { addGa511Cams, removeGa511Cams, addNc511Cams, removeNc511Cams, addTn511Cams, removeTn511Cams, addAl511Cams, removeAl511Cams, addSc511Cams, removeSc511Cams, addOk511Cams, removeOk511Cams, addKy511Cams, removeKy511Cams, addMs511Cams, removeMs511Cams, addLa511Cams, removeLa511Cams, addAr511Cams, removeAr511Cams, addTx511Cams, removeTx511Cams } from './ga511_cams.js?v=artx1';
 import { addFireDanger, removeFireDanger, addDay1FireWx, removeDay1FireWx, addDay2FireWx, removeDay2FireWx, addWildfires, removeWildfires } from './fire_weather.js';
 import { addFirePerimeters, removeFirePerimeters, addActiveFires, removeActiveFires } from './fire_perimeters.js';
 
@@ -112,6 +112,8 @@ function init() {
     onToggle('armrKy511CamsSwitchElem', (on) => withMap((w) => on ? addKy511Cams(w) : removeKy511Cams(w), 'KY Traffic Cams'));
     onToggle('armrMs511CamsSwitchElem', (on) => withMap((w) => on ? addMs511Cams(w) : removeMs511Cams(w), 'MS MDOT Traffic Cams'));
     onToggle('armrLa511CamsSwitchElem', (on) => withMap((w) => on ? addLa511Cams(w) : removeLa511Cams(w), 'LA 511 Traffic Cams'));
+    onToggle('armrAr511CamsSwitchElem', (on) => withMap((w) => on ? addAr511Cams(w) : removeAr511Cams(w), 'AR iDrive Traffic Cams'));
+    onToggle('armrTx511CamsSwitchElem', (on) => withMap((w) => on ? addTx511Cams(w) : removeTx511Cams(w), 'TX DriveTexas Traffic Cams'));
     onToggle('armrFireDangerSwitchElem', (on) => withMap((w) => on ? addFireDanger(w) : removeFireDanger(), 'Fire Danger'));
     onToggle('armrDay1FireWxSwitchElem', (on) => withMap((w) => on ? addDay1FireWx(w) : removeDay1FireWx(), 'Day 1 Fire Wx'));
     onToggle('armrDay2FireWxSwitchElem', (on) => withMap((w) => on ? addDay2FireWx(w) : removeDay2FireWx(), 'Day 2 Fire Wx'));
