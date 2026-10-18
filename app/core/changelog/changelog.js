@@ -22,6 +22,13 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'October 18, 2026',
+        items: [
+            { title: 'Traffic cameras for Oklahoma, Kentucky and Mississippi', desc: 'Three more states are in the menu under Cameras & More. OK Traffic Cams shows about 160 ODOT camera sites as live video rather than still pictures. KY Traffic Cams shows about 240 KYTC cameras. MS MDOT Traffic Cams shows about 460 MDOT camera sites, with pictures that update every 15 seconds while open. Many Oklahoma and Mississippi sites have several cameras facing different ways: tap the direction buttons under the picture to switch between them. Free for everyone.' },
+            { title: 'Traffic cameras for Louisiana', desc: 'Turn on LA 511 Traffic Cams in the menu, under Cameras & More, to see about 340 LADOTD camera sites from 511LA, with nearly 500 cameras between them. Tap a camera to see its latest picture, which updates every minute while it is open. Where a site has more than one camera, buttons such as NB and SB under the picture switch between them. Free for everyone.' },
+        ],
+    },
+    {
         date: 'October 17, 2026',
         items: [
             { title: 'New graphic: Alert Spotlight', desc: 'Echo Graphics has a new template, Alert Spotlight, for frost advisories, freeze warnings, wind and heat advisories, fog and more. Pick a state and an alert type, then press Fill from live NWS alerts: every county under that alert is painted in its official colour and the times are filled in for you. A panel beside the map shows the headline, when it starts and ends, and up to three lines of your own, such as "Lows in the low to mid 30s" and "Protect outdoor plants", each with a matching icon. You can still paint counties by hand.' },

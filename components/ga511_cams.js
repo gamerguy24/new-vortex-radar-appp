@@ -8,6 +8,10 @@
  *   TN SmartWay Cams      TDOT open data (smartway)   — snapshot URL per camera (`u`)
  *   AL ALGO Traffic Cams  ALDOT, algotraffic.com      — snapshot URL per camera (`u`)
  *   SC 511 Traffic Cams   SCDOT, 511sc.org            — snapshot URL per camera (`u`)
+ *   OK Traffic Cams       ODOT, oktraffic.org         — live HLS video, several per pole (`vs`)
+ *   KY Traffic Cams       KYTC (ArcGIS)               — snapshot URL per camera (`u`)
+ *   MS MDOT Traffic Cams  MDOT, mdottraffic.com       — views fetched when a site is opened (`x`)
+ *   LA 511 Traffic Cams   LADOTD, 511la.org           — snapshot URL per view (`u` / `vs`)
  *
  * Thousands of cameras, so each is drawn as a clustered GeoJSON layer on the
  * GPU, not one DOM marker each (the BuoyCAMs approach would stall the map at
@@ -25,14 +29,20 @@ const REGIONS = {
   tn: { label: 'TN SmartWay Traffic Cams', credit: 'SmartWay · TDOT', host: null, switchId: 'armrTn511CamsSwitchElem' },
   al: { label: 'AL ALGO Traffic Cams', credit: 'ALGO Traffic · ALDOT', host: null, switchId: 'armrAl511CamsSwitchElem' },
   sc: { label: 'SC 511 Traffic Cams', credit: '511SC · SCDOT', host: null, switchId: 'armrSc511CamsSwitchElem' },
+  ok: { label: 'OK Traffic Cams', credit: 'OKTraffic · ODOT', host: null, switchId: 'armrOk511CamsSwitchElem' },
+  ky: { label: 'KY Traffic Cams', credit: 'KYTC', host: null, switchId: 'armrKy511CamsSwitchElem' },
+  // MDOT's stills are live Wowza thumbnails; its own site refreshes them every 5 s.
+  ms: { label: 'MS MDOT Traffic Cams', credit: 'MDOTtraffic · MDOT', host: null, switchId: 'armrMs511CamsSwitchElem', imgRefreshMs: 15000 },
+  la: { label: 'LA 511 Traffic Cams', credit: '511LA · LADOTD', host: 'https://www.511la.org', switchId: 'armrLa511CamsSwitchElem' },
 };
 
 const LIST_REFRESH_MS = 10 * 60 * 1000;   // matches the server cache
 const IMG_REFRESH_MS = 60 * 1000;         // the 511 sites refresh snapshots about this often
+const HLS_JS = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js';
 const CAM_COLOR = '#3d9be9';               // data colour for these layers, not interface state
 
 // One popup across all regions — opening a camera closes any other.
-const popupState = { popup: null, imgTimer: null };
+const popupState = { popup: null, imgTimer: null, hls: null, token: 0 };
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -52,6 +62,13 @@ function injectStyles() {
 .ga511-pop-title { font-weight: 700; font-size: 0.95em; line-height: 1.25; padding-right: 18px; }
 .ga511-pop-sub { font-size: 0.8em; color: var(--vx-text-2); }
 .ga511-pop-img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #000; border-radius: var(--vx-r-2); display: block; }
+.ga511-pop-msg { width: 100%; aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; text-align: center;
+  background: #000; color: var(--vx-text-2); font-size: 0.85em; border-radius: var(--vx-r-2); padding: 12px; box-sizing: border-box; }
+.ga511-pop-views { display: flex; flex-wrap: wrap; gap: 4px; }
+.ga511-pop-views:empty { display: none; }
+.ga511-pop-views button { font: inherit; font-size: 0.8em; min-width: 32px; padding: 3px 8px; border-radius: var(--vx-r-2); cursor: pointer;
+  background: transparent; color: var(--vx-text); border: 1px solid var(--vx-border, rgba(255,255,255,0.18)); }
+.ga511-pop-views button[aria-pressed="true"] { border-color: var(--vx-accent); color: var(--vx-accent); }
 .ga511-pop-foot { display: flex; justify-content: space-between; align-items: center; font-size: 0.75em; color: var(--vx-text-2); font-variant-numeric: tabular-nums; }`;
   document.head.appendChild(s);
 }
@@ -151,6 +168,14 @@ export const addAl511Cams = (w) => addRegion('al', w);
 export const removeAl511Cams = (w) => removeRegion('al', w);
 export const addSc511Cams = (w) => addRegion('sc', w);
 export const removeSc511Cams = (w) => removeRegion('sc', w);
+export const addOk511Cams = (w) => addRegion('ok', w);
+export const removeOk511Cams = (w) => removeRegion('ok', w);
+export const addKy511Cams = (w) => addRegion('ky', w);
+export const removeKy511Cams = (w) => removeRegion('ky', w);
+export const addMs511Cams = (w) => addRegion('ms', w);
+export const removeMs511Cams = (w) => removeRegion('ms', w);
+export const addLa511Cams = (w) => addRegion('la', w);
+export const removeLa511Cams = (w) => removeRegion('la', w);
 
 async function refresh(L) {
   try {
@@ -198,35 +223,141 @@ function camClick(L, e) {
   const roadDir = [p.r, p.d].filter(Boolean).join(' ');
   const title = coded && roadDir ? roadDir : (p.n || roadDir || 'Traffic camera');
   const sub = [coded ? null : roadDir, p.s, p.c ? `${p.c} County` : null, coded ? p.n : null].filter(Boolean).join(' · ');
-  // Shared-platform snapshots are built from the view id; TDOT sends a URL per camera.
-  const base = p.u ? String(p.u).split('?')[0] : `${L.cfg.host}/map/Cctv/${encodeURIComponent(p.v)}`;
-  const snap = () => `${base}?t=${Date.now()}`;
-  const now = () => 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const html = `<div class="ga511-pop">
       <div class="ga511-pop-title">${esc(title)}</div>
       ${sub ? `<div class="ga511-pop-sub">${esc(sub)}</div>` : ''}
-      <img class="ga511-pop-img" id="ga511-img" src="${snap()}" alt="Traffic camera: ${esc(title)}">
-      <div class="ga511-pop-foot"><span id="ga511-time">${now()}</span><span>${esc(L.cfg.credit)}</span></div>
+      <div class="ga511-pop-sub" id="ga511-view-title" hidden></div>
+      <div id="ga511-media"><div class="ga511-pop-msg">Loading camera…</div></div>
+      <div class="ga511-pop-views" id="ga511-views" role="group" aria-label="Camera views"></div>
+      <div class="ga511-pop-foot"><span id="ga511-time"></span><span>${esc(L.cfg.credit)}</span></div>
     </div>`;
   popupState.region = L.region;
   popupState.popup = new gl.Popup({ closeButton: true, closeOnClick: true, className: 'ga511-popup', maxWidth: '500px', offset: 10 })
     .setLngLat(f.geometry.coordinates)
     .setHTML(html)
     .addTo(e.target);
-  popupState.popup.on('close', stopImgRefresh);
+  popupState.popup.on('close', stopMedia);
+  const token = ++popupState.token;
+
+  // Views: OKTraffic sends several per pole (`vs`; GL hands nested properties
+  // back as JSON strings), MDOT's are fetched per site (`x`), the rest have one.
+  if (p.x) {
+    fetch(`/api/511cams/${L.region}/views/${encodeURIComponent(p.v)}`, { cache: 'no-store' })
+      .then((r) => r.json().then((j) => { if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`); return j.views || []; }))
+      .then((views) => { if (token === popupState.token) showViews(L, title, views); })
+      .catch((err) => { if (token === popupState.token) showMessage(`Camera unavailable: ${err.message}`); });
+    return;
+  }
+  let views = p.vs;
+  if (typeof views === 'string') { try { views = JSON.parse(views); } catch { views = null; } }
+  if (!Array.isArray(views) || !views.length) {
+    // Shared-platform snapshots are built from the view id; the others send a URL per camera.
+    views = [{ u: p.u || `${L.cfg.host}/map/Cctv/${encodeURIComponent(p.v)}` }];
+  }
+  showViews(L, title, views);
+}
+
+function showMessage(msg) {
+  stopMedia();
+  const box = document.getElementById('ga511-media');
+  if (box) box.innerHTML = `<div class="ga511-pop-msg">${esc(msg)}</div>`;
+}
+
+function showViews(L, title, views) {
+  if (!views.length) { showMessage('This camera site has no cameras online right now.'); return; }
+  const bar = document.getElementById('ga511-views');
+  if (bar && views.length > 1) {
+    bar.innerHTML = views.map((v, i) => `<button type="button" data-i="${i}" title="${esc(v.t || '')}" aria-pressed="false">${esc(v.l || i + 1)}</button>`).join('');
+    bar.addEventListener('click', (ev) => {
+      const b = ev.target.closest('button[data-i]');
+      if (b) showView(L, title, views, +b.dataset.i);
+    });
+  }
+  showView(L, title, views, 0);
+}
+
+function showView(L, title, views, i) {
+  stopMedia();
+  const v = views[i];
+  const box = document.getElementById('ga511-media');
+  if (!box || !v) return;
+  for (const b of document.querySelectorAll('#ga511-views button')) b.setAttribute('aria-pressed', String(+b.dataset.i === i));
+  const vt = document.getElementById('ga511-view-title');
+  if (vt) { vt.textContent = views.length > 1 ? v.t || '' : ''; vt.hidden = !vt.textContent; }
+  const time = document.getElementById('ga511-time');
+  const label = esc(v.t || title);
+  if (v.h) {
+    box.innerHTML = `<video class="ga511-pop-img" id="ga511-video" muted autoplay playsinline controls aria-label="Live traffic camera: ${label}"></video>`;
+    if (time) time.textContent = 'Live video';
+    playHls(document.getElementById('ga511-video'), v.h, popupState.token);
+    return;
+  }
+  const snap = () => { const u = new URL(v.u); u.searchParams.set('t', Date.now()); return u.href; };
+  const now = () => 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  box.innerHTML = `<img class="ga511-pop-img" id="ga511-img" src="${esc(snap())}" alt="Traffic camera: ${label}">`;
+  if (time) time.textContent = now();
   // Keep the snapshot live while it is open.
   popupState.imgTimer = setInterval(() => {
     const img = document.getElementById('ga511-img');
-    if (!img) { stopImgRefresh(); return; }
+    if (!img) { stopMedia(); return; }
     img.src = snap();
     const t = document.getElementById('ga511-time');
     if (t) t.textContent = now();
-  }, IMG_REFRESH_MS);
+  }, L.cfg.imgRefreshMs || IMG_REFRESH_MS);
 }
 
-function stopImgRefresh() { clearInterval(popupState.imgTimer); popupState.imgTimer = null; }
+// hls.js is loaded the first time someone opens a video camera, not with the page.
+let hlsLoad = null;
+function loadHls() {
+  if (window.Hls) return Promise.resolve(window.Hls);
+  if (!hlsLoad) {
+    hlsLoad = new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = HLS_JS;
+      sc.onload = () => (window.Hls ? resolve(window.Hls) : reject(new Error('hls.js did not load')));
+      sc.onerror = () => { hlsLoad = null; reject(new Error('could not load the video player')); };
+      document.head.appendChild(sc);
+    });
+  }
+  return hlsLoad;
+}
+
+function playHls(video, src, token) {
+  if (!video) return;
+  // hls.js wherever Media Source Extensions exist. Native HLS only without
+  // them (older iOS): recent desktop Chrome answers "maybe" to canPlayType for
+  // HLS but did not play these streams.
+  const native = () => { video.src = src; video.play().catch(() => {}); };
+  const mse = window.MediaSource || window.ManagedMediaSource;
+  if (!mse && video.canPlayType('application/vnd.apple.mpegurl')) { native(); return; }
+  loadHls().then((Hls) => {
+    if (token !== popupState.token || !document.body.contains(video)) return;
+    if (!Hls.isSupported()) {
+      if (video.canPlayType('application/vnd.apple.mpegurl')) native();
+      else showMessage('This browser cannot play live camera video.');
+      return;
+    }
+    const h = new Hls({ liveDurationInfinity: true });
+    popupState.hls = h;
+    h.loadSource(src);
+    h.attachMedia(video);
+    h.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    h.on(Hls.Events.ERROR, (_e, data) => {
+      if (!data || !data.fatal) return;
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR) h.recoverMediaError();
+      else if (token === popupState.token) showMessage('This camera’s video is not available right now.');
+    });
+  }).catch((err) => { if (token === popupState.token) showMessage(`Video unavailable: ${err.message}`); });
+}
+
+function stopMedia() {
+  clearInterval(popupState.imgTimer);
+  popupState.imgTimer = null;
+  if (popupState.hls) { try { popupState.hls.destroy(); } catch (e) {} popupState.hls = null; }
+}
 function closePopup() {
-  stopImgRefresh();
+  stopMedia();
+  popupState.token++;
   if (popupState.popup) { try { popupState.popup.remove(); } catch (e) {} popupState.popup = null; }
 }
 
