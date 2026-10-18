@@ -1582,57 +1582,82 @@ td.day.active, span.month.active, span.year.active {
 }
 
 
+/*
+ * Map popup (app/core/popup/VortexPopup.js) in Echo Radar tokens. The arrow
+ * is two stacked borders: the outer in the line colour, the inner in the
+ * surface colour, so it reads as part of the card.
+ */
 .vortex_popup {
     position: absolute;
     z-index: 1;
-
     width: auto;
     height: auto;
-    background-color: rgb(50, 50, 50);
-    color: rgb(180, 180, 180);
-    padding: 10px;
-    border-radius: 7px;
-    white-space: nowrap;
+    padding: 10px 12px;
+    background: var(--vx-surface);
+    color: var(--vx-text);
+    border: 1px solid var(--vx-line-2);
+    border-radius: var(--vx-r-3);
+    box-shadow: var(--vx-shadow-lg);
+    font-family: var(--vx-font);
     font-size: 12px;
-    border: 0.75px solid rgb(100, 100, 100);
+    white-space: nowrap;
 }
-/* https://cssarrowplease.com/ */
 .vortex_popup:after, .vortex_popup:before {
-	top: 100%;
-	left: 50%;
-	border: solid transparent;
-	content: '';
-	height: 0;
-	width: 0;
-	position: absolute;
-	/* pointer-events: none; */
-}
-.vortex_popup:after {
-	border-color: rgba(50, 50, 50, 0);
-	border-top-color: #323232;
-	border-width: 10px;
-	margin-left: -10px;
-}
-.vortex_popup:before {
-	border-color: rgba(100, 100, 100, 0);
-	border-top-color: #646464;
-	border-width: 11px;
-	margin-left: -11px;
-}
-/* https://stackoverflow.com/a/19719176/18758797 */
-/* .vortex_popup:after {
-    content:'';
-    position: absolute;
     top: 100%;
     left: 50%;
-    margin-left: -10px;
-    width: 0;
+    border: solid transparent;
+    content: '';
     height: 0;
-    border: 2px solid red;
-    border-top: solid 10px rgb(50, 50, 50);
-    border-left: solid 10px transparent;
-    border-right: solid 10px transparent;
-} */
+    width: 0;
+    position: absolute;
+}
+.vortex_popup:after {
+    border-top-color: var(--vx-surface);
+    border-width: 10px;
+    margin-left: -10px;
+}
+.vortex_popup:before {
+    border-top-color: var(--vx-line-2);
+    border-width: 11px;
+    margin-left: -11px;
+}
+
+/*
+ * NHC tropical outlook card (app/hurricanes/nhc/nhc_process_outlooks.js):
+ * the chance of formation in 48 hours and 7 days as two tiles. The bar on
+ * each tile is NHC's own risk colour (yellow / orange / red for low /
+ * medium / high), data colour, so it is not themed.
+ */
+.vx-olk { white-space: normal; display: flex; flex-direction: column; gap: 8px; }
+.vx-olk-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.vx-olk-title { font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--vx-text); }
+.vx-olk-num { font-size: 11px; color: var(--vx-text-3); font-variant-numeric: tabular-nums; }
+.vx-olk-sub { font-size: 11px; color: var(--vx-text-2); margin-top: -4px; }
+.vx-olk-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.vx-olk-tile {
+    --olk-cat: #ffff54;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    padding: 7px 6px 6px;
+    background: var(--vx-surface-2);
+    border: 1px solid var(--vx-line);
+    border-top: 3px solid var(--olk-cat);
+    border-radius: var(--vx-r-2);
+}
+.vx-olk-tile[data-cat="medium"] { --olk-cat: #f09737; }
+.vx-olk-tile[data-cat="high"] { --olk-cat: #d62e1f; }
+.vx-olk-when { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--vx-text-2); }
+.vx-olk-pct { font-size: 26px; font-weight: 800; line-height: 1.05; color: var(--vx-text); font-variant-numeric: tabular-nums; }
+.vx-olk-cat { font-size: 10.5px; color: var(--vx-text-3); }
+.vx-olk-disc {
+    max-height: 140px; overflow-y: auto;
+    padding: 7px 8px;
+    background: var(--vx-surface-2);
+    border: 1px solid var(--vx-line);
+    border-radius: var(--vx-r-2);
+    font-size: 11.5px; line-height: 1.45; color: var(--vx-text-2);
+    white-space: pre-line;
+}
+.vx-olk-src { font-size: 10px; color: var(--vx-text-3); text-align: right; }
 
 .alert_popup_info {
     position: absolute;

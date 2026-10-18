@@ -13,27 +13,34 @@ function _click_listener(e) {
     const lat = e.lngLat.lat;
     const properties = e.features[0].properties;
 
-    // The KMZ values already carry the sign ("30%"), with a Low/Medium/High category beside them.
-    var percentage_html = '';
-    for (const [key, label] of [['2day', 'Next 48 hours'], ['7day', 'Next 7 days']]) {
-        if (!properties.hasOwnProperty(key + '_percentage')) continue;
+    // Echo Radar outlook card (styles: .vx-olk in index.css). The KMZ values
+    // already carry the sign ("30%"), with NHC's Low / Medium / High beside them.
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const tiles = [['2day', '48 hours'], ['7day', '7 days']].filter(([key]) => properties.hasOwnProperty(key + '_percentage')).map(([key, label]) => {
         const pct = String(properties[key + '_percentage']).replace('%', '').trim();
-        const cat = properties[key + '_category'] ? ` (${properties[key + '_category']})` : '';
-        percentage_html += `<div style="font-size: 16px; text-align: center">${label}: <b>${pct}%</b>${cat}</div>`;
-    }
+        const cat = String(properties[key + '_category'] || '').trim();
+        return `<div class="vx-olk-tile" data-cat="${esc(cat.toLowerCase())}">
+                <span class="vx-olk-when">${label}</span>
+                <span class="vx-olk-pct">${esc(pct)}%</span>
+                ${cat ? `<span class="vx-olk-cat">${esc(cat)}</span>` : ''}
+            </div>`;
+    }).join('');
 
     const popup_content =
-        `<div style="overflow-y: scroll; max-height: 150px; white-space: initial;">
-            ${percentage_html}
-            <br>
-            <div style="text-align: center">Chance of tropical cyclone formation</div>
-            <div>Disturbance <b>#${properties.Disturbance}</b></div>
-            <div><b>Discussion:</b></div>
-            <div class="code">${properties.Discussion}</div>
-        </div>`
+        `<div class="vx-olk">
+            <div class="vx-olk-head">
+                <span class="vx-olk-title">Tropical outlook</span>
+                ${properties.Disturbance != null ? `<span class="vx-olk-num">Area ${esc(properties.Disturbance)}</span>` : ''}
+            </div>
+            <div class="vx-olk-sub">Chance of tropical cyclone formation</div>
+            ${tiles ? `<div class="vx-olk-tiles">${tiles}</div>` : ''}
+            ${properties.Discussion ? `<div class="vx-olk-disc">${esc(properties.Discussion)}</div>` : ''}
+            <div class="vx-olk-src">National Hurricane Center</div>
+        </div>`;
 
     const popup = new VortexPopup([lng, lat], popup_content);
-    popup.vortex_popup_div.css({ 'maxWidth': '200px', 'minWidth': '200px' });
+    popup.vortex_popup_div.css({ 'maxWidth': '290px', 'minWidth': '260px' });
     popup.add_to_map();
     // new mapboxgl.Popup({ className: 'alertPopup'})
     //     .setLngLat([lng, lat])
