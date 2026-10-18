@@ -8,7 +8,7 @@ import Dialog from "../js/ui/dialog.js";
  * dropping the menu item) means the door is still visible to anyone looking for
  * it, and adding sponsors back later is just markup.
  */
-const SPONSOR_EMAIL = 'admin@extremeweathervideos.com';
+const SPONSOR_EMAIL = 'admin@echoradarwx.com';
 
 export default function openSponsors() {
     const content = `
