@@ -21,7 +21,7 @@ import { addMPING, removeMPING } from './mping.js';
 import { addBuoys, removeBuoys } from './buoys.js';
 import { addHurricaneTracks, removeHurricaneTracks } from './hurricane_tracks.js';
 import { addBuoyCams, removeBuoyCams } from './buoycams.js';
-import { addGa511Cams, removeGa511Cams, addNc511Cams, removeNc511Cams, addTn511Cams, removeTn511Cams } from './ga511_cams.js?v=tn2';
+import { addGa511Cams, removeGa511Cams, addNc511Cams, removeNc511Cams, addTn511Cams, removeTn511Cams, addAl511Cams, removeAl511Cams, addSc511Cams, removeSc511Cams } from './ga511_cams.js?v=sc1';
 import { addFireDanger, removeFireDanger, addDay1FireWx, removeDay1FireWx, addDay2FireWx, removeDay2FireWx, addWildfires, removeWildfires } from './fire_weather.js';
 import { addFirePerimeters, removeFirePerimeters, addActiveFires, removeActiveFires } from './fire_perimeters.js';
 
@@ -106,6 +106,8 @@ function init() {
     onToggle('armrGa511CamsSwitchElem', (on) => withMap((w) => on ? addGa511Cams(w) : removeGa511Cams(w), 'GA 511 Traffic Cams'));
     onToggle('armrNc511CamsSwitchElem', (on) => withMap((w) => on ? addNc511Cams(w) : removeNc511Cams(w), 'NC 511 Traffic Cams'));
     onToggle('armrTn511CamsSwitchElem', (on) => withMap((w) => on ? addTn511Cams(w) : removeTn511Cams(w), 'TN SmartWay Traffic Cams'));
+    onToggle('armrAl511CamsSwitchElem', (on) => withMap((w) => on ? addAl511Cams(w) : removeAl511Cams(w), 'AL ALGO Traffic Cams'));
+    onToggle('armrSc511CamsSwitchElem', (on) => withMap((w) => on ? addSc511Cams(w) : removeSc511Cams(w), 'SC 511 Traffic Cams'));
     onToggle('armrFireDangerSwitchElem', (on) => withMap((w) => on ? addFireDanger(w) : removeFireDanger(), 'Fire Danger'));
     onToggle('armrDay1FireWxSwitchElem', (on) => withMap((w) => on ? addDay1FireWx(w) : removeDay1FireWx(), 'Day 1 Fire Wx'));
     onToggle('armrDay2FireWxSwitchElem', (on) => withMap((w) => on ? addDay2FireWx(w) : removeDay2FireWx(), 'Day 2 Fire Wx'));

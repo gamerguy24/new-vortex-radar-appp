@@ -6,6 +6,8 @@
  *   GA 511 Traffic Cams   Georgia DOT, 511ga.org      (~4,300 cameras)
  *   NC 511 Traffic Cams   NCDOT, drivenc.gov          (~1,000 cameras)
  *   TN SmartWay Cams      TDOT open data (smartway)   — snapshot URL per camera (`u`)
+ *   AL ALGO Traffic Cams  ALDOT, algotraffic.com      — snapshot URL per camera (`u`)
+ *   SC 511 Traffic Cams   SCDOT, 511sc.org            — snapshot URL per camera (`u`)
  *
  * Thousands of cameras, so each is drawn as a clustered GeoJSON layer on the
  * GPU, not one DOM marker each (the BuoyCAMs approach would stall the map at
@@ -21,6 +23,8 @@ const REGIONS = {
   ga: { label: 'GA 511 Traffic Cams', credit: 'Georgia 511 · GDOT', host: 'https://511ga.org', switchId: 'armrGa511CamsSwitchElem' },
   nc: { label: 'NC 511 Traffic Cams', credit: 'DriveNC · NCDOT', host: 'https://www.drivenc.gov', switchId: 'armrNc511CamsSwitchElem' },
   tn: { label: 'TN SmartWay Traffic Cams', credit: 'SmartWay · TDOT', host: null, switchId: 'armrTn511CamsSwitchElem' },
+  al: { label: 'AL ALGO Traffic Cams', credit: 'ALGO Traffic · ALDOT', host: null, switchId: 'armrAl511CamsSwitchElem' },
+  sc: { label: 'SC 511 Traffic Cams', credit: '511SC · SCDOT', host: null, switchId: 'armrSc511CamsSwitchElem' },
 };
 
 const LIST_REFRESH_MS = 10 * 60 * 1000;   // matches the server cache
@@ -143,6 +147,10 @@ export const addNc511Cams = (w) => addRegion('nc', w);
 export const removeNc511Cams = (w) => removeRegion('nc', w);
 export const addTn511Cams = (w) => addRegion('tn', w);
 export const removeTn511Cams = (w) => removeRegion('tn', w);
+export const addAl511Cams = (w) => addRegion('al', w);
+export const removeAl511Cams = (w) => removeRegion('al', w);
+export const addSc511Cams = (w) => addRegion('sc', w);
+export const removeSc511Cams = (w) => removeRegion('sc', w);
 
 async function refresh(L) {
   try {
