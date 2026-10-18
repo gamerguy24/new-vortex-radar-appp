@@ -3,6 +3,7 @@ const kmz_to_geojson = require('../kmz_to_geojson');
 const set_layer_order = require('../../core/map/setLayerOrder');
 const map = require('../../core/map/map');
 const VortexPopup = require('../../core/popup/VortexPopup');
+const turf = require('@turf/turf');
 
 function _click_listener(e) {
     const features = map.queryRenderedFeatures(e.point);
@@ -12,21 +13,20 @@ function _click_listener(e) {
     const lat = e.lngLat.lat;
     const properties = e.features[0].properties;
 
+    // The KMZ values already carry the sign ("30%"), with a Low/Medium/High category beside them.
     var percentage_html = '';
-    if (properties.hasOwnProperty('2day_percentage')) {
-        percentage_html += `<div style="font-size: 20px; text-align: center">2-day: <b>${properties['2day_percentage']}%</b></div>`;
-    }
-    if (properties.hasOwnProperty('5day_percentage')) {
-        percentage_html += `<div style="font-size: 20px; text-align: center">2]5-day: <b>${properties['5day_percentage']}%</b></div>`;
-    }
-    if (properties.hasOwnProperty('7day_percentage')) {
-        percentage_html += `<div style="font-size: 20px; text-align: center">7-day: <b>${properties['7day_percentage']}%</b></div>`;
+    for (const [key, label] of [['2day', 'Next 48 hours'], ['7day', 'Next 7 days']]) {
+        if (!properties.hasOwnProperty(key + '_percentage')) continue;
+        const pct = String(properties[key + '_percentage']).replace('%', '').trim();
+        const cat = properties[key + '_category'] ? ` (${properties[key + '_category']})` : '';
+        percentage_html += `<div style="font-size: 16px; text-align: center">${label}: <b>${pct}%</b>${cat}</div>`;
     }
 
     const popup_content =
         `<div style="overflow-y: scroll; max-height: 150px; white-space: initial;">
             ${percentage_html}
             <br>
+            <div style="text-align: center">Chance of tropical cyclone formation</div>
             <div>Disturbance <b>#${properties.Disturbance}</b></div>
             <div><b>Discussion:</b></div>
             <div class="code">${properties.Discussion}</div>
@@ -83,6 +83,8 @@ function nhc_plot_outlook(kmz_blob, id) {
     kmz_to_geojson(kmz_blob, (geojson) => {
         geojson = _sort_order(geojson);
 
+        // A basin with nothing to watch has no features at all.
+        if (!geojson.features.length) return;
         // apparently we need to check for epac/cpac duplicate outlooks - epac gets priority
         const string_coords = JSON.stringify(geojson.features[0].geometry.coordinates);
         if (!coordinates_already_seen.includes(string_coords)) {
@@ -135,6 +137,8 @@ function nhc_plot_outlook(kmz_blob, id) {
                         map.getCanvas().style.cursor = '';
                     })
                     map.on('click', layer_name, _click_listener);
+
+                    _add_chance_label(cur_feature, `hurricane_outlook_point_label_${x}${id}`);
 
                 } else if (type == 'Point') {
                     const source_name = `hurricane_outlook_point_${x}${id}_source`;
@@ -198,6 +202,58 @@ function nhc_plot_outlook(kmz_blob, id) {
         }
         set_layer_order();
     })
+}
+
+/*
+ * The chance of development, printed on the area itself as on a TV tropics
+ * graphic: "48 HRS 0%" over "7 DAYS 30%", at the area's centre. White on a
+ * dark halo so it reads on any area colour; the area's own fill (NHC yellow /
+ * orange / red for low / medium / high) carries the risk level.
+ */
+
+function _add_chance_label(polygon_feature, name) {
+    const p = polygon_feature.properties || {};
+    const pct = (key) => {
+        const v = String(p[key + '_percentage'] == null ? '' : p[key + '_percentage']).replace('%', '').trim();
+        return v === '' ? null : v + '%';
+    };
+    const p2 = pct('2day'), p7 = pct('7day');
+    if (!p2 && !p7) return;
+
+    let centre;
+    try { centre = turf.centerOfMass(polygon_feature).geometry.coordinates; } catch (e) { return; }
+    const source_name = `${name}_source`;
+    const layer_name = `${name}_layer`;
+    map.addSource(source_name, {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'Point', coordinates: centre }, properties: {
+            p2: p2 || '-', p7: p7 || '-',
+        } },
+    });
+    map.addLayer({
+        'id': layer_name,
+        'type': 'symbol',
+        'source': source_name,
+        'layout': {
+            'text-field': ['format',
+                '48 HRS  ', { 'font-scale': 0.7 }, ['get', 'p2'], { 'font-scale': 1.2 },
+                '\n7 DAYS  ', { 'font-scale': 0.7 }, ['get', 'p7'], { 'font-scale': 1.2 }],
+            'text-font': ['Open Sans Bold'],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 2, 13, 6, 20],
+            'text-line-height': 1.25,
+            'text-justify': 'center',
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+        },
+        'paint': {
+            'text-color': '#ffffff',
+            'text-halo-color': 'rgba(0, 0, 0, 0.85)',
+            'text-halo-width': 2.2,
+            'text-halo-blur': 0.5,
+        },
+    });
+    // The id contains "outlook_point" (see the call), so setLayerOrder lifts it above the areas with the X markers.
+    window.vortexData.hurricane_layers.push(source_name, layer_name);
 }
 
 // Sort the GeoJSON object by Disturbance property
