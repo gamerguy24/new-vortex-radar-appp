@@ -13,7 +13,7 @@ $('#armrAboutBtn').click(function() {
 
     const html_content =
 `<div style="text-align: left; padding: 4px 20px; color: ${text};">
-<p style="margin: 0 0 4px; color: ${muted};">Meet the storm chasers, meteorologists, and media professionals behind EWV extremeweathervideos LLC.</p>
+<p style="margin: 0 0 4px; color: ${muted};">Meet the storm chasers, meteorologists, and media professionals behind EWV &amp; TCL Media.</p>
 
 ${heading('The Team')}
 ${person('David Wallis', 'Cumming, GA')}
@@ -26,6 +26,10 @@ ${person('Joseph Pisani', 'Atlanta, GA')}
 ${person('Candace Pisani', 'Atlanta, GA')}
 ${person('Dan Klawien', 'Elkhorn, WI')}
 ${person('Rob Salso', 'Brandon, FL')}
+
+${heading('Revenue Holders')}
+<p style="margin: 0 0 8px; font-size: 14px;">The sole revenue holders of Echo Radar WX:</p>
+${['David Wallis', 'Nick Carter', 'Joseph Pisani', 'Nathan Bradley', 'Mandy Genes'].map((name) => `<div style="margin-bottom: 6px;"><b style="color: ${text};">${name}</b></div>`).join('')}
 
 ${heading('SpotterNetwork Integration')}
 <p style="margin: 0; font-size: 14px;">Our team uses SpotterNetwork to share real-time position data during active weather events. All spotters are registered with unique callsigns and follow NWS reporting protocols.</p>
