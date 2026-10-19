@@ -1,23 +1,26 @@
 # MediaMTX config for Echo Radar's RTMP server (Chase Stream Hub).
-# Setup: tools/RTMP_SETUP.md. Copy to /etc/mediamtx/mediamtx.yml.
+# Setup: tools/RTMP_SETUP.md — tools/broadcast/install_ingest.sh installs it
+# on the 24/7 broadcast box and fills in the secret and addresses.
 #
-# OBS sends RTMP to :1935. MediaMTX asks Echo Radar whether each stream key
-# may publish (authHTTPAddress), and turns streams into HLS on 127.0.0.1:8888,
-# which only Echo Radar reads (it serves viewers at /live/<id>/index.m3u8).
+# OBS sends RTMP to :1935. MediaMTX asks Echo Radar whether each stream key may
+# publish and each viewer may watch (authHTTPAddress), and serves HLS on
+# 127.0.0.1:8888, which Caddy puts on https://ingest.echoradarwx.com.
 
 logLevel: info
 logDestinations: [stdout]
 
-# Every publish and read is checked by Echo Radar. Put the SAME long random
-# value here as MEDIAMTX_HOOK_SECRET in Echo Radar's .env, and use the app's
-# port (PORT in .env, 3333 by default).
+# Every publish and read is checked by Echo Radar. The secret must be the
+# SAME value as MEDIAMTX_HOOK_SECRET in Echo Radar's .env. If MediaMTX runs on
+# the same box as Echo Radar, http://127.0.0.1:3333 works here too.
 authMethod: http
-authHTTPAddress: http://127.0.0.1:3333/internal/mediamtx/auth?secret=CHANGE_ME_TO_THE_SAME_SECRET
+authHTTPAddress: https://echoradarwx.com/internal/mediamtx/auth?secret=CHANGE_ME_TO_THE_SAME_SECRET
 authHTTPExclude: []
 
-# Control API: Echo Radar polls it to show "Receiving your stream". Local only.
+# Control API: Echo Radar polls it (with the secret) to show "Receiving your
+# stream". Local; Caddy forwards /v3/ to it.
 api: yes
 apiAddress: 127.0.0.1:9997
+apiTrustedProxies: ['127.0.0.1']
 metrics: no
 pprof: no
 playback: no
@@ -30,10 +33,11 @@ webrtc: no
 srt: no
 moq: no
 
-# Output: HLS for Echo Radar's in-app player. Local only; viewers go through
-# Echo Radar (signed in), never straight to MediaMTX.
+# Output: HLS for Echo Radar's in-app player. Local; Caddy serves it over
+# HTTPS. Each viewer needs a watch token signed by Echo Radar.
 hls: yes
 hlsAddress: 127.0.0.1:8888
+hlsTrustedProxies: ['127.0.0.1']
 hlsAlwaysRemux: yes
 hlsVariant: fmp4
 hlsSegmentCount: 7
@@ -43,5 +47,5 @@ pathDefaults:
   source: publisher
 
 paths:
-  # Stream keys arrive as live/<key>; Echo Radar refuses anything it did not issue.
+  # Streams arrive as live/<id>; Echo Radar refuses any id or password it did not issue.
   all_others:

@@ -1,0 +1,16 @@
+# echo-radar-ingest — Caddy in front of MediaMTX on the broadcast box.
+# Installed by tools/broadcast/install_ingest.sh as /etc/caddy/Caddyfile.
+# Caddy gets and renews the HTTPS certificate by itself (needs ports 80 + 443
+# open and the DNS record set to DNS only).
+
+ingest.echoradarwx.com {
+	# MediaMTX's status API, polled by the main Echo Radar app. MediaMTX asks
+	# Echo Radar to check every call, so only the app (holding the secret) gets in.
+	handle /v3/* {
+		reverse_proxy 127.0.0.1:9997
+	}
+	# HLS for viewers. Each needs a watch token signed by Echo Radar.
+	handle {
+		reverse_proxy 127.0.0.1:8888
+	}
+}

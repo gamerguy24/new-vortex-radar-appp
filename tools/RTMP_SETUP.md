@@ -2,105 +2,97 @@
 
 Gives every approved streamer an RTMP URL and private stream key for OBS,
 shown in the Chase Stream Hub under **Stream key (RTMP)**. Viewers watch inside
-Echo Radar. The video is received by **MediaMTX** (one free program, no
-dependencies) on the same Linux box as Echo Radar.
+Echo Radar. The video is handled by **MediaMTX** (one free program) on the
+**24/7 broadcast box** (the Oracle Cloud server), which has a public IP and
+plenty of free bandwidth. The main app only checks keys and signs watch links;
+no video passes through it.
 
 ```
-OBS ──RTMP :1935──▶ MediaMTX ──"is this key allowed?"──▶ Echo Radar
-                       └── HLS (local) ──▶ Echo Radar /live/<id>/ ──▶ viewers
+OBS ──RTMP :1935──▶ MediaMTX on the broadcast box ──"is this key allowed?"──▶ main app
+viewer ──▶ main app /live/<id>/index.m3u8 (signed in) ──redirect + signed token──▶
+           https://ingest.echoradarwx.com/live/<id>/index.m3u8 (Caddy → MediaMTX)
 ```
 
-## 1. Install MediaMTX
+## 1. Pick a secret
 
-On the Linux box (64-bit Intel/AMD; pick the `arm64` file for a Raspberry Pi):
-
-1. Open https://github.com/bluenviron/mediamtx/releases/latest and copy the
-   link to `mediamtx_<version>_linux_amd64.tar.gz`.
-2. Then:
-
-```bash
-cd /tmp
-curl -LO <the link you copied>
-tar xzf mediamtx_*_linux_amd64.tar.gz mediamtx
-sudo install -m 755 mediamtx /usr/local/bin/mediamtx
-sudo mkdir -p /etc/mediamtx
-sudo cp /path/to/VortexRadar/tools/mediamtx.yml /etc/mediamtx/mediamtx.yml
-```
-
-## 2. Pick a secret and put it in two places
+On any machine:
 
 ```bash
 openssl rand -hex 32
 ```
 
-- In `/etc/mediamtx/mediamtx.yml`, replace `CHANGE_ME_TO_THE_SAME_SECRET` with it.
-  If Echo Radar does not run on port 3333, change that port too.
-- In Echo Radar's `.env`, add `MEDIAMTX_HOOK_SECRET=<the same value>`.
-
-Restart Echo Radar. Its log should no longer say "Echo Radar RTMP server is off".
-
-## 3. Run MediaMTX as a service
-
-`/etc/systemd/system/mediamtx.service`:
-
-```ini
-[Unit]
-Description=MediaMTX (Echo Radar RTMP server)
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-ExecStart=/usr/local/bin/mediamtx /etc/mediamtx/mediamtx.yml
-Restart=always
-RestartSec=3
-DynamicUser=yes
-
-[Install]
-WantedBy=multi-user.target
-```
+## 2. Broadcast box (Oracle)
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now mediamtx
-journalctl -u mediamtx -f      # should list "[RTMP] listener opened on :1935"
+ssh ubuntu@<broadcast box>
+cd ~/VortexRadar && git pull          # or copy the new files over
+sudo bash tools/broadcast/install_ingest.sh <the secret>
 ```
 
-## 4. Let OBS reach it from the internet
+It installs MediaMTX and Caddy, opens TCP 80/443/1935 in the box's own
+firewall, starts both as services, and prints the remaining steps. It does
+not touch the 24/7 broadcast.
 
-RTMP cannot go through the Cloudflare Tunnel (the tunnel only carries web
-traffic), so port 1935 has to reach the box directly:
+## 3. Oracle Cloud console
 
-1. **Router:** forward **TCP 1935** to the Linux box's local IP.
-2. **Firewall on the box** (if ufw is on): `sudo ufw allow 1935/tcp`
-3. **Cloudflare DNS** for echoradarwx.com: add an **A** record, name `ingest`,
-   value = your home's public IP (https://ifconfig.me), and set Proxy status to
-   **DNS only** (grey cloud). An orange cloud will not work for RTMP.
-   - This makes your home IP visible for `ingest.echoradarwx.com`.
-   - If your home IP changes, update this record (or use Cloudflare DDNS).
+Networking ▸ Virtual cloud networks ▸ your VCN ▸ Security Lists ▸ Default
+Security List ▸ **Add Ingress Rules**: source `0.0.0.0/0`, IP protocol TCP,
+destination ports `80,443,1935`. (Without this, Oracle drops the traffic before
+it reaches the box, whatever the box's firewall says.)
 
-Streamers then use `rtmp://ingest.echoradarwx.com/live`. To use a different
-address, set `RTMP_PUBLIC_URL` in `.env`.
+## 4. Cloudflare DNS
 
-## 5. Test
+echoradarwx.com ▸ DNS ▸ Add record: type **A**, name `ingest`, IPv4 = the
+broadcast box's public IP, Proxy status **DNS only** (grey cloud).
+RTMP cannot go through Cloudflare's proxy or tunnel, and Caddy needs to reach
+the box directly to get its HTTPS certificate.
 
-1. Open the Chase Stream Hub. Under **Stream key (RTMP)** you should see your
-   server and key, and the status **Waiting for OBS**. "Server offline" means
-   Echo Radar cannot reach MediaMTX (step 3), and "not switched on" means
-   MEDIAMTX_HOOK_SECRET is missing (step 2).
+If you had pointed `ingest` at your home IP before, change it to the Oracle IP
+and remove the router's port 1935 forward.
+
+## 5. Main app `.env`
+
+```
+MEDIAMTX_HOOK_SECRET=<the same secret>
+MEDIAMTX_HLS_PUBLIC_URL=https://ingest.echoradarwx.com
+MEDIAMTX_API_URL=https://ingest.echoradarwx.com
+RTMP_PUBLIC_URL=rtmp://ingest.echoradarwx.com/live
+```
+
+Restart the main app. If MediaMTX was running on the main box from an earlier
+setup, stop it there: `sudo systemctl disable --now mediamtx`.
+
+## 6. Test
+
+1. Chase Stream Hub ▸ **Your Echo Radar stream server** should say
+   **Waiting for OBS**. "Server offline" means the main app cannot reach
+   `https://ingest.echoradarwx.com/v3/` (steps 3–5, or Caddy still getting its
+   certificate: `journalctl -u caddy -f` on the broadcast box).
 2. In OBS: Settings ▸ Stream ▸ Service **Custom**, paste the Server and Stream
-   key, then Start Streaming. Or press **Use for Go Live** in the Hub and Echo
-   Radar fills them into OBS for you at Go Live.
-3. Within about 10 seconds the Hub shows **Receiving your stream**, and other
-   users can watch from your live marker.
+   key (the key looks like `a1b2c3d4e5?pass=erx_…`; paste all of it). Or press
+   **Use for Go Live** and Echo Radar fills them into OBS at Go Live.
+3. Start streaming. Within about 10 seconds the Hub shows **Receiving your
+   stream**, and signed-in users can watch from your live marker.
 
-OBS settings that work well: Settings ▸ Output ▸ Keyframe Interval **2 s**,
-video bitrate **2500–4500 Kbps**.
+If OBS says the connection failed: check port 1935 (steps 2–4). If it connects
+and drops straight away, the key was refused (wrong or old key, or the account
+is not approved to stream); `journalctl -u mediamtx -f` shows
+`failed to authenticate`. If every stream is refused, check that Cloudflare
+(Security ▸ Events) is not blocking MediaMTX's calls to
+`echoradarwx.com/internal/mediamtx/auth`.
 
-## Limits
+OBS settings that work well: Output ▸ Keyframe Interval **2 s**, video bitrate
+**2500–4500 Kbps**.
 
-- Viewers' video is sent out over this box's internet **upload**. A 4 Mbps
-  stream to 5 viewers uses about 20 Mbps of upload, so check your upload speed
-  before many people watch at once.
-- Latency is roughly 6–10 seconds behind live.
-- Only approved streamers' keys work. **New key** in the Hub replaces a leaked
-  key; the old one stops working on its next connection.
+## Notes
+
+- Watch links are signed by the main app and last 6 hours; the stream key never
+  appears in one. Only signed-in Echo Radar users get a link.
+- MediaMTX checks with the main app once per viewer and once per stream start,
+  not per video segment.
+- Latency is about 6–10 seconds.
+- **New key** in the Hub replaces a leaked key; the old one stops working on its
+  next connection.
+- Running MediaMTX on the main box instead: leave `MEDIAMTX_HLS_PUBLIC_URL`
+  unset, point `authHTTPAddress` at `http://127.0.0.1:<PORT>`, forward port 1935
+  there; the main app then relays the video itself (and uses its upload).
