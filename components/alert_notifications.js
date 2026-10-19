@@ -476,25 +476,17 @@ async function openDialog() {
     };
 
     /*
-     * Email alerts (paid).
+     * Email alerts — FREE for every signed-in user since 2026-10-18 (they were
+     * a paid add-on; the Stripe product is gone).
      *
-     * Four states, decided by the server: not available on this server yet
-     * ("Coming soon"), available but not subscribed (price + Subscribe, which
-     * goes to Stripe checkout), subscribed (enter an address), and on.
+     * States, decided by the server: not available on this server yet
+     * ("Coming soon", no SMTP), enter an address, and on.
      * Signing up is a two-step — send a code, type it back — and nothing turns
      * on until the code matches. The server enforces all of it; this only
      * walks through it.
      */
     let awaiting = false;      // a code has been sent
     let typed = null;          // survives a re-render
-
-    function money(price) {
-        if (!price || price.amount == null) return '';
-        const amt = (price.amount / 100).toLocaleString(undefined, {
-            style: 'currency', currency: (price.currency || 'usd').toUpperCase(),
-        });
-        return price.interval ? `${amt}/${price.interval}` : amt;
-    }
 
     /*
      * Which warnings and watches to email. Saved the moment a box changes;
@@ -519,20 +511,18 @@ async function openDialog() {
           </div>`;
     }
 
-    function emailHtml(current, accountEmail, canManage, summary) {
-        const manage = canManage ? '<button data-act="manage">Manage subscription</button>' : '';
+    function emailHtml(current, accountEmail, summary) {
         if (current) {
             return `<div class="vr-al-ch"><b>Email alerts</b>
                 <div class="vr-al-on">✓ On — ${escapeHtml(current.value)}</div>
                 <div class="vr-al-actions">
                   <button data-act="test">Send a test</button>
                   <button data-act="off">Turn off</button>
-                  ${manage}
                 </div>
                 ${typesHtml(summary)}</div>`;
         }
         const value = typed != null ? typed : (accountEmail || '');
-        return `<div class="vr-al-ch"><b>Email alerts</b>
+        return `<div class="vr-al-ch"><b>Email alerts — free</b>
             <div class="vr-al-note">An email when a warning covers one of your places, with the full
               National Weather Service text.</div>
             <div class="vr-al-add">
@@ -544,16 +534,14 @@ async function openDialog() {
               <input id="vr-al-email-code" inputmode="numeric" maxlength="6" placeholder="6-digit code" />
               <button class="vr-al-primary" data-act="verify">Confirm</button>
             </div>` : ''}
-            ${manage ? `<div class="vr-al-actions">${manage}</div>` : ''}
           </div>`;
     }
 
     async function refreshContact() {
         const host = $('vr-al-contact');
         try {
-            const [mine, plan, summary] = await Promise.all([
+            const [mine, summary] = await Promise.all([
                 j(`${API}/signup`),
-                j('/api/billing/alerts').catch(() => ({})),
                 j(API).catch(() => ({})),
             ]);
             const soon = `<div class="vr-al-ch"><b>Email alerts<span class="vr-al-soon">Coming soon</span></b>
@@ -561,17 +549,9 @@ async function openDialog() {
                 your places.</div></div>`;
             if (!mine.available) {
                 host.innerHTML = soon;
-            } else if (!mine.subscribed) {
-                const price = money(plan.price);
-                host.innerHTML = plan.configured
-                    ? `<div class="vr-al-ch"><b>Email alerts${price ? ` — ${escapeHtml(price)}` : ''}</b>
-                        <div class="vr-al-note">Get an email the moment a warning covers one of your places,
-                        matched to the exact warning shape. Cancel any time.</div>
-                        <div class="vr-al-actions"><button class="vr-al-primary" data-act="subscribe">Subscribe</button></div></div>`
-                    : soon;
             } else {
                 const accountEmail = summary && summary.preferences ? summary.preferences.email : '';
-                host.innerHTML = emailHtml(mine.email, accountEmail, plan.canManage, summary);
+                host.innerHTML = emailHtml(mine.email, accountEmail, summary);
             }
             host.querySelectorAll('button[data-act]').forEach((b) => {
                 b.onclick = () => contactAction(b.dataset.act, b);
@@ -610,12 +590,7 @@ async function openDialog() {
         });
         btn.disabled = true;
         try {
-            if (act === 'subscribe' || act === 'manage') {
-                msg('Opening Stripe…');
-                const out = await post(act === 'subscribe' ? '/api/billing/alerts/checkout' : '/api/billing/portal');
-                if (out && out.url) { window.location.href = out.url; return; }
-                throw new Error('Could not open Stripe.');
-            } else if (act === 'start') {
+            if (act === 'start') {
                 typed = ($('vr-al-email-val') || {}).value || '';
                 msg('Sending a code…');
                 const out = await post(`${API}/signup`, { value: typed });

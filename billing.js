@@ -39,22 +39,6 @@ function createBilling({ store }) {
     // Configured tiers, lowest -> highest.
     const configuredTiers = ['tier1', 'tier2', 'tier3'].filter((t) => PRICE_BY_TIER[t]);
 
-    /*
-     * Email weather alerts: a subscription of its own, NOT a tier.
-     *
-     * It sits on a separate axis from the tier ladder — somebody can hold
-     * Tier Three and alerts, either one, or neither — so it is kept in its own
-     * user fields (alertsStatus, alertsSubscriptionId, alertsPeriodEnd) and
-     * the webhook routes its events away from the tier code. Without that, an
-     * alerts purchase would be read as a tier purchase (granting the top tier)
-     * and cancelling alerts would drop a paying member to free.
-     *
-     * Set STRIPE_ALERTS_PRODUCT (prod_…) and the product's default price is
-     * used; STRIPE_PRICE_ALERTS (price_…) picks a specific price instead.
-     */
-    const ALERTS_PRODUCT = (process.env.STRIPE_ALERTS_PRODUCT || '').trim() || null;
-    let alertsPriceId = (process.env.STRIPE_PRICE_ALERTS || '').trim() || null;
-
     let stripe = null;
     if (STRIPE_SECRET) {
         try { stripe = new (require('stripe'))(STRIPE_SECRET); }
@@ -66,68 +50,16 @@ function createBilling({ store }) {
     } else {
         console.log(`[billing] Configured tiers: ${configuredTiers.join(', ')}`);
     }
-    const isAlertsConfigured = !!(stripe && (ALERTS_PRODUCT || alertsPriceId));
-    if (isAlertsConfigured) console.log('[billing] Email alerts subscription configured');
-
-    // The alerts price: the explicit one, else the product's default price.
-    let alertsInfo = null;          // { priceId, amount, currency, interval }
-    async function getAlertsPrice() {
-        if (!isAlertsConfigured) return null;
-        if (alertsInfo) return alertsInfo;
-        try {
-            if (!alertsPriceId) {
-                const product = await stripe.products.retrieve(ALERTS_PRODUCT);
-                const dp = product.default_price;
-                alertsPriceId = typeof dp === 'string' ? dp : (dp && dp.id) || null;
-                if (!alertsPriceId) {
-                    console.error('[billing] alerts product has no default price — set one in Stripe or set STRIPE_PRICE_ALERTS');
-                    return null;
-                }
-            }
-            const price = await stripe.prices.retrieve(alertsPriceId);
-            alertsInfo = {
-                priceId: price.id,
-                amount: price.unit_amount,
-                currency: price.currency,
-                interval: price.recurring && price.recurring.interval,
-            };
-            return alertsInfo;
-        } catch (e) {
-            console.error('[billing] alerts price lookup failed:', e.message);
-            return null;
-        }
-    }
-
-    /** Is this subscription the alerts one? By price, product, or the stamp from checkout. */
-    function isAlertsSubscription(sub) {
-        const price = sub && sub.items && sub.items.data && sub.items.data[0] && sub.items.data[0].price;
-        if (price) {
-            if (alertsPriceId && price.id === alertsPriceId) return true;
-            const prod = typeof price.product === 'string' ? price.product : price.product && price.product.id;
-            if (ALERTS_PRODUCT && prod === ALERTS_PRODUCT) return true;
-        }
-        return !!(sub && sub.metadata && sub.metadata.kind === 'alerts');
-    }
-
-    function alertsFields(sub) {
-        return {
-            alertsSubscriptionId: sub.id,
-            alertsStatus: sub.status,
-            alertsPeriodEnd: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
-        };
-    }
 
     /*
-     * Does this user have email alerts? Admins always do. With no
-     * Stripe at all (development) nothing is gated, like every other gate
-     * here; with Stripe set up but no alerts product, nobody does.
+     * Does this user have email alerts? Every signed-in user does: email
+     * alerts are FREE (owner's decision, 2026-10-18). They were a paid add-on
+     * with a Stripe product of their own; it had no subscribers and was
+     * deleted from Stripe, so that code is gone. This is the one switch the
+     * email channel (critical_messaging.js) checks.
      */
     function hasAlerts(user) {
-        if (!user) return false;
-        if (user.isAdmin) return true;
-        if (!stripe) return true;
-        if (!isAlertsConfigured) return false;
-        return ACTIVE_STATUSES.has(user.alertsStatus);
+        return !!user;
     }
 
     // Lazily fetch + cache each configured price's amount/currency/interval so
@@ -194,11 +126,7 @@ function createBilling({ store }) {
             subscriptionStatus: user.subscriptionStatus || null,
             currentPeriodEnd: user.subscriptionCurrentPeriodEnd || null,
             hasStripeCustomer: !!user.stripeCustomerId,
-            alerts: {
-                active: hasAlerts(user),
-                status: user.alertsStatus || null,
-                currentPeriodEnd: user.alertsPeriodEnd || null,
-            },
+            alerts: { active: hasAlerts(user), free: true },
         };
     }
 
@@ -272,16 +200,6 @@ function createBilling({ store }) {
                 if (!userId) { console.warn('[billing] checkout.completed missing client_reference_id'); return; }
                 const subscriptionId = data.subscription;
                 const sub = subscriptionId ? await stripe.subscriptions.retrieve(subscriptionId) : null;
-                if ((sub && isAlertsSubscription(sub)) || (data.metadata && data.metadata.kind === 'alerts')) {
-                    const u = store.getById(userId);
-                    if (!u) { console.warn(`[billing] alerts checkout for unknown user ${userId}`); return; }
-                    store.update(u, {
-                        stripeCustomerId: data.customer,
-                        ...(sub ? alertsFields(sub) : { alertsSubscriptionId: subscriptionId, alertsStatus: 'active' }),
-                    });
-                    console.log(`[billing] user ${userId} subscribed to email alerts`);
-                    return;
-                }
                 const status = (sub && sub.status) || 'active';
                 const periodEnd = sub && sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
                 const paidTier = sub ? tierFromSubscription(sub)
@@ -305,12 +223,6 @@ function createBilling({ store }) {
             case 'customer.subscription.created':
             case 'customer.subscription.updated':
             case 'customer.subscription.deleted': {
-                if (isAlertsSubscription(data)) {
-                    const u = store.getByStripeCustomer(data.customer);
-                    if (u) store.update(u, alertsFields(data));
-                    else console.warn(`[billing] ${event.type} (alerts) for unknown customer ${data.customer}`);
-                    break;
-                }
                 const status = data.status;
                 const periodEnd = data.current_period_end ? new Date(data.current_period_end * 1000).toISOString() : null;
                 const tier = ACTIVE_STATUSES.has(status) ? tierFromSubscription(data) : 'free';
@@ -345,53 +257,9 @@ function createBilling({ store }) {
             res.json({ signedIn: true, email: req.user.email, billingConfigured: isBillingConfigured, tiers, ...billingState(req.user) });
         });
 
-        /*
-         * Email alerts: the price to show, and a checkout for it. Kept
-         * apart from /checkout so a tier purchase can never be mistaken for
-         * this one or the other way round.
-         */
-        router.get('/alerts', async (req, res) => {
-            const info = await getAlertsPrice();
-            res.json({
-                configured: isAlertsConfigured && !!info,
-                price: info ? { amount: info.amount, currency: info.currency, interval: info.interval } : null,
-                active: hasAlerts(req.user),
-                status: (req.user && req.user.alertsStatus) || null,
-                canManage: !!(req.user && req.user.stripeCustomerId && req.user.alertsSubscriptionId),
-            });
-        });
-
-        router.post('/alerts/checkout', async (req, res) => {
-            if (!req.user) return res.status(401).json({ error: 'Sign in first' });
-            const info = await getAlertsPrice();
-            if (!info) return res.status(503).json({ error: 'Email alerts are not on sale yet.' });
-            if (hasAlerts(req.user)) return res.status(400).json({ error: 'You already have email alerts.' });
-            try {
-                const origin = `${req.protocol}://${req.get('host')}`;
-                const user = req.user;
-                let customerId = user.stripeCustomerId;
-                if (!customerId) {
-                    const customer = await stripe.customers.create({ email: user.email, metadata: { user_id: String(user.id) } });
-                    customerId = customer.id;
-                    store.update(user, { stripeCustomerId: customerId });
-                }
-                const session = await stripe.checkout.sessions.create({
-                    mode: 'subscription',
-                    payment_method_types: ['card'],
-                    line_items: [{ price: info.priceId, quantity: 1 }],
-                    customer: customerId,
-                    client_reference_id: String(user.id),
-                    metadata: { kind: 'alerts' },
-                    subscription_data: { metadata: { kind: 'alerts' } },
-                    success_url: `${origin}/?alerts=success`,
-                    cancel_url: `${origin}/?alerts=cancelled`,
-                    allow_promotion_codes: true,
-                });
-                res.json({ url: session.url });
-            } catch (err) {
-                console.error('[billing] alerts checkout error', err);
-                res.status(500).json({ error: 'Could not start checkout' });
-            }
+        // Email alerts are free: this only says so (the client asks before showing the sign-up).
+        router.get('/alerts', (req, res) => {
+            res.json({ free: true, active: hasAlerts(req.user) });
         });
 
         router.post('/checkout', async (req, res) => {

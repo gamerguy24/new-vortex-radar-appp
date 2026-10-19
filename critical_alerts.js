@@ -17,8 +17,8 @@
  *    channels (email, text gateway, Discord, Telegram, ntfy), history and the
  *    admin dashboard.
  *
- * ── EMAIL (critical_messaging.js): paid (the Email Alerts subscription in
- *    billing.js), sent through the server's own SMTP.
+ * ── EMAIL (critical_messaging.js): free for signed-in users (was a paid
+ *    add-on until 2026-10-18; billing.js hasAlerts), sent through the server's own SMTP.
  *
  * Attached from server.js: attachCriticalAlerts({ app, requireAuth, requireAdmin,
  *   DATA_DIR, readJson, writeJson, getUser, hasAlerts, sendMail, mailReady }).
@@ -491,7 +491,7 @@ function attachCriticalAlerts({
     }
 
     /*
-     * Email (paid). Also separately non-fatal: with no SMTP the channel
+     * Email (free). Also separately non-fatal: with no SMTP the channel
      * reports itself unavailable, never that push stops.
      */
     let messaging = null;

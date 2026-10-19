@@ -1,8 +1,9 @@
 /*
  * critical_messaging.js — weather warnings by email
  * ────────────────────────────────────────────────────────────────────────────
- * The `email` channel of Critical Weather Alerts, and a paid feature: it
- * needs the Email Alerts subscription (billing.js). Mail goes out through the
+ * The `email` channel of Critical Weather Alerts. FREE for every signed-in
+ * user since 2026-10-18 (it was a paid add-on; billing.js hasAlerts is the
+ * one switch, still checked here). Mail goes out through the
  * server's own SMTP — the same transport password resets use — so there is no
  * third-party messaging service involved.
  *
@@ -19,8 +20,8 @@
  * SAY ONLY WHAT THE OFFICE SAID. Event, place, expiry, the issuing office, and
  * the office's own description and instructions, verbatim.
  *
- * NO SUBSCRIPTION, NO EMAIL. The gate is checked again at send time, so a
- * subscription that lapses stops the mail without anybody tidying the list.
+ * THE GATE IS CHECKED AT SEND TIME TOO (hasAlerts), so if email is ever
+ * gated again, mail stops without anybody tidying the list.
  */
 
 const path = require('path');
@@ -203,7 +204,7 @@ function attachCriticalMessaging({
     });
 
     app.post('/api/critical/signup', requireAuth, async (req, res) => {
-        if (!paid(req.user.id)) return res.status(402).json({ error: 'Email alerts need a subscription.' });
+        if (!paid(req.user.id)) return res.status(402).json({ error: 'Email alerts are not available for this account.' });
         if (!available()) return res.status(503).json({ error: 'Email is not set up on this server yet.' });
         const value = normEmail(req.body && req.body.value);
         if (!value) return res.status(400).json({ error: 'That does not look like an email address.' });
