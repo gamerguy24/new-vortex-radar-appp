@@ -1337,6 +1337,7 @@ function publicStreamConfig(c) {
     return {
         titleTemplate: c.titleTemplate || '🔴 LIVE — chasing near {place} — {time}',
         obs: {
+            enabled: !!(c.obs && c.obs.enabled),
             host: (c.obs && c.obs.host) || 'localhost',
             port: (c.obs && c.obs.port) || 4455,
             overlaySource: (c.obs && c.obs.overlaySource) || '',
@@ -1390,6 +1391,7 @@ app.post('/api/stream/config', requireAuth, (req, res) => {
                 : (b.rtmp && b.rtmp.clearKey ? '' : (cur.rtmp && cur.rtmp.key) || ''),
         },
         obs: {
+            enabled: (b.obs && b.obs.enabled != null) ? !!b.obs.enabled : !!(cur.obs && cur.obs.enabled),
             host: clampStr((b.obs && b.obs.host) || (cur.obs && cur.obs.host) || 'localhost', 120),
             port: clampNum(b.obs && b.obs.port) || (cur.obs && cur.obs.port) || 4455,
             overlaySource: clampStr((b.obs && b.obs.overlaySource) != null ? b.obs.overlaySource : (cur.obs && cur.obs.overlaySource) || '', 120),

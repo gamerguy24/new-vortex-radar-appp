@@ -20,7 +20,7 @@
  * ES module, loaded via a <script type="module"> tag on the main page.
  */
 
-import OBSClient from './obs_websocket.js';
+import OBSClient from './obs_websocket.js?v=obs2';
 import { openMiniPlayer } from './stream_player.js?v=beacon2';
 
 const API = '/api/stream';
@@ -253,13 +253,16 @@ async function goLive() {
             obs = new OBSClient();
             obs.onStatus((s) => setObsStatus(s));
             obs.on('StreamStateChanged', (d) => { if (d && d.outputActive === false && live) toast('OBS stopped streaming.', 'warn'); });
-            const obsPass = ($('vrsh-obs-pass') && $('vrsh-obs-pass').value) || (cfg.obs && cfg.obs.password) || undefined;
-            await obs.connect(cfg.obs.host, cfg.obs.port, obsPass);
+            const s = obsSettings();
+            try { await obs.connect(s.host, s.port, s.password); }
+            catch (e) { showObsResult(e.message, false); throw e; }
             if (manualIngest) {
                 await obs.setStreamService(manualIngest.server, manualIngest.key);
                 toast('OBS pointed at your RTMP destination.', 'ok');
             }
-            if (!(await obs.isStreaming())) await obs.startStream();
+            try { await obs.startStreamAndWait(); }
+            catch (e) { showObsResult(e.message, false); throw e; }
+            showObsResult('OBS is streaming.', true);
         } else if (manualIngest) {
             toast('Turn on "Control OBS" so Echo Radar can push your RTMP key into OBS.', 'warn');
         }
@@ -316,12 +319,11 @@ async function stopObsStream() {
         setObsStatus('disconnected');
         return;
     }
-    const host = cfg && cfg.obs && cfg.obs.host;
-    if (!obsWasUsed || !host) return; // OBS wasn't part of this stream
-    const pass = ($('vrsh-obs-pass') && $('vrsh-obs-pass').value) || (cfg.obs && cfg.obs.password) || undefined;
+    if (!obsWasUsed) return; // OBS wasn't part of this stream
+    const s = obsSettings();
     const tmp = new OBSClient();
     try {
-        await tmp.connect(host, cfg.obs.port, pass);
+        await tmp.connect(s.host, s.port, s.password);
         if (await tmp.isStreaming()) await tmp.stopStream();
     } catch (e) { /* OBS unreachable — nothing we can stop */ }
     finally { try { tmp.disconnect(); } catch {} obs = null; setObsStatus('disconnected'); }
@@ -468,6 +470,43 @@ function setObsStatus(s) {
     const [txt, col] = map[s] || ['—', 'var(--vx-text-2)'];
     el.textContent = txt; el.style.color = col;
 }
+// The reason under the OBS settings, so a failure stays readable after the toast goes.
+function showObsResult(text, ok) {
+    const el = $('vrsh-obs-result');
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = ok ? 'var(--vx-ok)' : 'var(--vx-bad)';
+    el.hidden = !text;
+}
+// OBS settings as typed in the panel now (else as saved), so Test and Go Live
+// use what the chaser sees whether or not they pressed Save.
+function obsSettings() {
+    const val = (id) => ($(id) && $(id).value.trim()) || '';
+    return {
+        host: val('vrsh-obs-host') || (cfg && cfg.obs && cfg.obs.host) || 'localhost',
+        port: parseInt(val('vrsh-obs-port'), 10) || (cfg && cfg.obs && cfg.obs.port) || 4455,
+        password: ($('vrsh-obs-pass') && $('vrsh-obs-pass').value) || (cfg && cfg.obs && cfg.obs.password) || undefined,
+    };
+}
+async function testObs() {
+    const btn = $('vrsh-obs-test');
+    if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
+    showObsResult('Connecting to OBS… if your browser asks to allow access to this computer, choose Allow.', true);
+    const t = new OBSClient();
+    t.onStatus((s) => setObsStatus(s));
+    try {
+        const s = obsSettings();
+        await t.connect(s.host, s.port, s.password);
+        const ver = await t.getVersion().catch(() => ({}));
+        const streaming = await t.isStreaming();
+        showObsResult(`Connected to OBS${ver.obsVersion ? ' ' + ver.obsVersion : ''}${streaming ? ' (it is streaming now)' : ''}. Echo Radar can start and stop it.`, true);
+    } catch (e) {
+        showObsResult(e.message, false);
+    } finally {
+        t.disconnect();
+        if (btn) { btn.disabled = false; btn.textContent = 'Test OBS connection'; }
+    }
+}
 function updateLocationUI() {
     if ($('vrsh-loc')) $('vrsh-loc').textContent = place.label || 'Waiting for GPS…';
     if ($('vrsh-title-preview')) $('vrsh-title-preview').textContent = buildTitle();
@@ -505,6 +544,7 @@ function openPanel() {
     $('vrsh-close').onclick = closePanel;
     $('vrsh-golive').onclick = () => { live ? stopLive() : goLive(); };
     $('vrsh-save').onclick = saveConfig;
+    $('vrsh-obs-test').onclick = testObs;
     $('vrsh-agents-refresh').onclick = refreshAgents;
     $('vrsh-remote-enable').onchange = async () => {
         const on = $('vrsh-remote-enable').checked;
@@ -586,7 +626,9 @@ function panelHTML() {
         <div class="vrsh-field"><label>OBS password</label><input id="vrsh-obs-pass" type="password" placeholder="(leave blank to keep saved)" /></div>
         <div class="vrsh-field"><label>Overlay text source (optional)</label><input id="vrsh-obs-overlay" type="text" placeholder="e.g. LiveTitle" /></div>
       </div>
-      <div class="vrsh-hint">In OBS: Tools ▸ WebSocket Server Settings ▸ enable. Add a Text source and put its name above to show the live title on your stream.</div>
+      <div class="vrsh-hint">In OBS: Tools ▸ WebSocket Server Settings ▸ tick <b>Enable WebSocket server</b>, then <b>Show Connect Info</b> for the port and password. OBS must run on the computer this page is open on (host <b>localhost</b>). Add a Text source and put its name above to show the live title on your stream.</div>
+      <div class="vrsh-actions" style="margin-top:8px"><button id="vrsh-obs-test" class="vrsh-mini" type="button">Test OBS connection</button></div>
+      <div id="vrsh-obs-result" class="vrsh-hint" hidden></div>
 
       <div class="vrsh-section">Stream key (RTMP)</div>
       <label class="vrsh-check"><input id="vrsh-rtmp-enable" type="checkbox" /> Push my own RTMP URL + key into OBS when I go live</label>
@@ -630,6 +672,7 @@ function syncForm() {
     set('vrsh-rtmp-url', (cfg.rtmp && cfg.rtmp.url) || '');
     set('vrsh-rtmp-key', (cfg.rtmp && cfg.rtmp.key) || '');
     chk('vrsh-rtmp-enable', cfg.rtmp && cfg.rtmp.enabled);
+    chk('vrsh-obs-enable', cfg.obs && cfg.obs.enabled);
     $('vrsh-obs-pass').placeholder = cfg.obs.hasPassword ? '•••••• (saved — blank keeps it)' : '(none)';
     $('vrsh-discord').placeholder = cfg.discordConfigured ? 'saved — blank keeps it' : 'https://discord.com/api/webhooks/…';
     chk('vrsh-remote-enable', cfg.remoteControl);
@@ -650,6 +693,7 @@ async function saveConfig() {
             key: $('vrsh-rtmp-key') ? $('vrsh-rtmp-key').value.trim() : '',
         },
         obs: {
+            enabled: $('vrsh-obs-enable').checked,
             host: $('vrsh-obs-host').value.trim() || 'localhost',
             port: parseInt($('vrsh-obs-port').value, 10) || 4455,
             overlaySource: $('vrsh-obs-overlay').value.trim(),
@@ -679,8 +723,8 @@ async function ensureAgentObs() {
     if (agentObs && agentObs.connected) return agentObs;
     agentObs = new OBSClient();
     agentObs.onStatus((s) => { if (s === 'disconnected') reportAgentStatus(); });
-    const pass = (cfg && cfg.obs && cfg.obs.password) || undefined;
-    await agentObs.connect(cfg.obs.host, cfg.obs.port, pass);
+    const s = obsSettings();
+    await agentObs.connect(s.host, s.port, s.password);
     return agentObs;
 }
 async function runAgentCommand(cmd) {
@@ -690,7 +734,7 @@ async function runAgentCommand(cmd) {
             if (cfg.rtmp && cfg.rtmp.enabled && cfg.rtmp.url && cfg.rtmp.key) {
                 await agentObs.setStreamService(cfg.rtmp.url, cfg.rtmp.key);
             }
-            if (!(await agentObs.isStreaming())) await agentObs.startStream();
+            await agentObs.startStreamAndWait();
             showBadge(true);
         } else if (cmd.action === 'stop') {
             if (await agentObs.isStreaming()) await agentObs.stopStream();
