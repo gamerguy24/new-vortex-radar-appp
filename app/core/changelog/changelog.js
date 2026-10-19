@@ -24,7 +24,7 @@ const CHANGELOG = [
     {
         date: 'October 19, 2026',
         items: [
-            { title: 'Website radar is sharper and no longer loads in squares', desc: 'The radar you can put on your own website (api.echoradarwx.com) now loads a radar’s whole range at once, and the national radar for the whole country at once. Panning or zooming out no longer shows a square patch of radar with an empty map around it while the rest catches up. It is also sharper: when you stop moving, the part you are looking at is redrawn at your screen’s full resolution, including on phones and high-resolution screens, which used to look blurry. Switching between the national radar and a single radar no longer leaves the map blank while the next one loads.' },
+            { title: 'Website radar is sharper and no longer loads in squares', desc: 'The radar you can put on your own website (api.echoradarwx.com) now loads a radar’s whole range at once, and the national radar for the whole country at once. Panning or zooming out no longer shows a square patch of radar with an empty map around it while the rest catches up. It is also sharper: when you stop moving, the part you are looking at is redrawn at your screen’s full resolution, including on phones and high-resolution screens, which used to look blurry. Storm edges far from the radar are smooth instead of blocky steps. Switching between the national radar and a single radar no longer leaves the map blank while the next one loads.' },
         ],
     },
     {

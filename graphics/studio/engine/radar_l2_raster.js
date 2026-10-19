@@ -572,7 +572,7 @@ function separableGrid(p, OW, OH, inv) {
  *
  * @param {object} radar   result of loadSweep()
  * @param {object} scene   { projection, width, height }
- * @param {object} o       { smooth, minDbz, fadeDbz, palette, quality, maxQuality }
+ * @param {object} o       { smooth, softEdges, minDbz, fadeDbz, palette, quality, maxQuality }
  * @returns {HTMLCanvasElement|null}
  */
 export function rasterize(radar, scene, o = {}) {
@@ -602,6 +602,7 @@ export function rasterize(radar, scene, o = {}) {
   const minValue = isRef ? (Number.isFinite(o.minDbz) ? o.minDbz : 15) : -Infinity;
   const fadeSpan = isRef ? Math.max(0.001, Number.isFinite(o.fadeDbz) ? o.fadeDbz : 8) : 0.001;
   const smooth = o.smooth !== false;
+  const softEdges = smooth && o.softEdges === true;
 
   // Render at the scene's own resolution unless capped, then let the caller
   // scale up. Super-res gates are worth more pixels than a national mosaic is.
@@ -731,6 +732,7 @@ export function rasterize(radar, scene, o = {}) {
       if (ri < 0) continue;
 
       let value = null;
+      let edgeAlpha = 1;
 
       if (!smooth) {
         const row = data[ri];
@@ -768,8 +770,27 @@ export function rasterize(radar, scene, o = {}) {
         w = (1 - fAz) * fR;           if (v01 != null && w > 0) { sum += v01 * w; wsum += w; }
         w = fAz * (1 - fR);           if (v10 != null && w > 0) { sum += v10 * w; wsum += w; }
         w = fAz * fR;                 if (v11 != null && w > 0) { sum += v11 * w; wsum += w; }
-        if (wsum < 0.35) continue;    // mostly empty → leave it transparent
-        value = sum / wsum;
+        if (softEdges) {
+          /*
+           * The cutoff below draws an echo's edge as a hard line along the
+           * radial, a beam wide: far from the radar a beam is a kilometre or
+           * more, so edges come out as steps. Instead the empty gates count as
+           * a value already faded out, so reflectivity falls away smoothly to
+           * nothing (the edge is a contour of the field), and anything else
+           * fades its alpha with the share of real gates around it.
+           */
+          if (wsum <= 0) continue;
+          if (isRef) {
+            value = sum + (1 - wsum) * (minValue - fadeSpan);
+          } else {
+            if (wsum < 0.2) continue;
+            value = sum / wsum;
+            edgeAlpha = Math.min(1, (wsum - 0.2) / 0.4);
+          }
+        } else {
+          if (wsum < 0.35) continue;    // mostly empty → leave it transparent
+          value = sum / wsum;
+        }
       }
 
       if (value == null || value < minValue) continue;
@@ -781,6 +802,9 @@ export function rasterize(radar, scene, o = {}) {
       if (isRef) {
         const t = (value - minValue) / fadeSpan;
         if (t < 1) alpha = Math.round(255 * Math.max(0, t));
+        if (alpha <= 2) continue;
+      } else if (edgeAlpha < 1) {
+        alpha = Math.round(255 * edgeAlpha);
         if (alpha <= 2) continue;
       }
 

@@ -231,7 +231,7 @@ const pending = new Map();
 function getWorker() {
     if (worker) return worker;
     if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return null;
-    worker = new Worker('/embed/radar_worker.js?v=embed3', { type: 'module' });
+    worker = new Worker('/embed/radar_worker.js?v=embed4', { type: 'module' });
     worker.onmessage = (e) => { const { id, result } = e.data || {}; const r = pending.get(id); if (r) { pending.delete(id); r(result); } };
     worker.onerror = () => { for (const r of pending.values()) r({ ok: false, reason: 'radar worker stopped' }); pending.clear(); worker = null; };
     return worker;
