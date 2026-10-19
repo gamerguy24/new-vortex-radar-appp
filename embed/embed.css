@@ -19,14 +19,15 @@ html, body { margin: 0; height: 100%; background: var(--vx-bg); font-family: var
 
 .erx-legend {
     position: absolute; left: 8px; bottom: 22px; z-index: 2;
-    width: min(240px, calc(100% - 16px)); box-sizing: border-box;
+    width: min(300px, calc(100% - 16px)); box-sizing: border-box;
     padding: 6px 8px 5px;
     background: var(--vx-surface); color: var(--vx-text);
     border: 1px solid var(--vx-line-2); border-radius: var(--vx-r-3);
     box-shadow: var(--vx-shadow); font-size: 11px;
 }
 .erx-legend-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-weight: 700; }
-.erx-legend-head span:last-child { color: var(--vx-text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.erx-legend-head span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erx-legend-head span:last-child { flex: 0 0 auto; white-space: nowrap; color: var(--vx-text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .erx-ramp { height: 8px; border-radius: 2px; }
 .erx-ticks { display: flex; justify-content: space-between; margin-top: 2px; color: var(--vx-text-3); font-size: 10px; font-variant-numeric: tabular-nums; }
 

@@ -5,7 +5,8 @@
  *   <script src="https://api.echoradarwx.com/embed.js" async></script>
  *
  * Turns every [data-echoradar] element into the live radar (an iframe of
- * /embed). Settings: data-lat, data-lon, data-zoom, data-style
+ * /embed). Settings: data-lat, data-lon, data-zoom, data-site (e.g. KFFC),
+ * data-product (reflectivity|velocity), data-style
  * (dark|light|satellite), data-warnings, data-legend, data-controls,
  * data-interactive (1/0), data-height (CSS length, default 450px).
  * Plain JavaScript, no dependencies; safe to include more than once.
@@ -14,7 +15,7 @@
     var me = document.currentScript;
     var origin = 'https://api.echoradarwx.com';
     try { if (me && me.src) origin = new URL(me.src).origin; } catch (e) { /* keep default */ }
-    var KEYS = ['lat', 'lon', 'zoom', 'style', 'warnings', 'legend', 'controls', 'interactive'];
+    var KEYS = ['lat', 'lon', 'zoom', 'site', 'product', 'style', 'warnings', 'legend', 'controls', 'interactive'];
 
     function mount(el) {
         if (el.getAttribute('data-echoradar-ready')) return;

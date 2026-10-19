@@ -45,9 +45,11 @@
 <body>
 <div class="wrap">
   <header><img src="/logo.png" alt=""><h1>Embed Echo Radar WX</h1></header>
-  <p class="lede">Put the live weather radar on your own website, free. It shows the NOAA national radar mosaic,
-    updated every two minutes, with active National Weather Service warnings drawn on top. Visitors can pan, zoom and tap a
-    warning for details. No account or key needed: pick your settings, copy a snippet, paste it into your page.</p>
+  <p class="lede">Put the live weather radar on your own website, free. It is the same radar as the Echo Radar app: the
+    full-resolution scan from the nearest NOAA NEXRAD radar, straight from NOAA's Level 2 data, with active National Weather
+    Service warnings on top. Visitors can pan, zoom, tap a radar to switch to it, and tap a warning for details. Zoomed out
+    to the whole country, it shows the national radar mosaic. No account or key needed: pick your settings, copy a snippet,
+    paste it into your page.</p>
 
   <div class="grid">
     <div class="card" id="builder">
@@ -59,9 +61,17 @@
         <label>Zoom (0–12) <input type="number" id="f-zoom" step="0.5" min="0" max="12" value="6"></label>
         <label>Height <input type="text" id="f-height" value="450px"></label>
       </div>
-      <label>Map style
-        <select id="f-style"><option value="dark">Dark</option><option value="light">Light</option><option value="satellite">Satellite</option></select>
+      <label>Radar site
+        <select id="f-site"><option value="">Nearest to the map centre (follows as you pan)</option></select>
       </label>
+      <div class="row2">
+        <label>Product
+          <select id="f-product"><option value="">Reflectivity</option><option value="velocity">Velocity</option></select>
+        </label>
+        <label>Map style
+          <select id="f-style"><option value="">Echo Radar</option><option value="light">Light</option><option value="satellite">Satellite</option></select>
+        </label>
+      </div>
       <div class="checks">
         <label><input type="checkbox" id="f-warnings" checked> NWS warnings</label>
         <label><input type="checkbox" id="f-legend" checked> Legend and radar time</label>
@@ -87,7 +97,9 @@
     <tr><th>Setting</th><th>Values</th><th>Default</th></tr>
     <tr><td><code>lat</code>, <code>lon</code></td><td>Map centre in decimal degrees</td><td>The lower 48</td></tr>
     <tr><td><code>zoom</code></td><td>0 (world) to 12 (neighbourhood)</td><td>3.6</td></tr>
-    <tr><td><code>style</code></td><td><code>dark</code>, <code>light</code>, <code>satellite</code></td><td><code>dark</code></td></tr>
+    <tr><td><code>site</code></td><td>A NEXRAD radar id, e.g. <code>KFFC</code>: always show that radar</td><td>Nearest to the centre</td></tr>
+    <tr><td><code>product</code></td><td><code>reflectivity</code>, <code>velocity</code></td><td><code>reflectivity</code></td></tr>
+    <tr><td><code>style</code></td><td><code>dark</code> (the Echo Radar map), <code>light</code>, <code>satellite</code></td><td><code>dark</code></td></tr>
     <tr><td><code>warnings</code></td><td><code>1</code> show NWS warnings, <code>0</code> hide</td><td><code>1</code></td></tr>
     <tr><td><code>legend</code></td><td><code>1</code> / <code>0</code>: dBZ colour scale and the radar's time</td><td><code>1</code></td></tr>
     <tr><td><code>controls</code></td><td><code>1</code> / <code>0</code>: zoom buttons</td><td><code>1</code></td></tr>
@@ -97,8 +109,10 @@
     <code>data-height</code>. With the iframe, add them to the address: <code>https://api.echoradarwx.com/embed?lat=33.75&amp;lon=-84.39&amp;zoom=6</code>.</p>
 
   <h2>Good to know</h2>
-  <p class="muted">Radar data: NOAA MRMS. Warnings: National Weather Service. The radar refreshes itself every two minutes and the
-    warnings every minute, so the page never needs reloading. Please keep the Echo Radar WX badge visible. For full
+  <p class="muted">Radar data: NOAA NEXRAD Level 2 and MRMS. Warnings: National Weather Service. The radar picks up each new scan
+    by itself (radars scan every two to six minutes) and the warnings refresh every minute, so the page never needs reloading.
+    Zoomed in, the full-resolution radar is downloaded by each visitor's browser (around 10 to 30 MB per scan), so it suits
+    a desktop or Wi-Fi more than a phone on a slow connection. Please keep the Echo Radar WX badge visible. For full
     single-site radar, velocity, alerts to your phone and more, use the app at <a href="https://echoradarwx.com" target="_blank" rel="noopener">echoradarwx.com</a>.
     Never rely on any one website in life-threatening weather: follow your local NWS office and emergency officials.</p>
 </div>
@@ -107,7 +121,7 @@
 (function () {
   var ORIGIN = location.origin;
   var $ = function (id) { return document.getElementById(id); };
-  var keys = ['lat', 'lon', 'zoom', 'style'];
+  var keys = ['lat', 'lon', 'zoom', 'site', 'product', 'style'];
   var flags = ['warnings', 'legend', 'controls', 'interactive'];
   var escHtml = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
   var timer = null;
@@ -146,6 +160,25 @@
         b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500);
       }).catch(function () { b.textContent = 'Select and copy'; });
     });
+  });
+  // The radar list, for the site picker: the WSR-88Ds the embed can show.
+  var siteTable = null;
+  fetch('/embed/radar-sites.json').then(function (r) { return r.json(); }).then(function (t) {
+    siteTable = t;
+    var sel = $('f-site');
+    Object.keys(t).filter(function (id) { return t[id] && t[id].type === 'WSR-88D'; }).sort().forEach(function (id) {
+      var o = document.createElement('option');
+      o.value = id; o.textContent = id + (t[id].name ? ' — ' + t[id].name : '');
+      sel.appendChild(o);
+    });
+  }).catch(function () {});
+  // Picking a site centres the builder on it.
+  $('f-site').addEventListener('change', function () {
+    var id = $('f-site').value;
+    if (!id || !siteTable || !siteTable[id]) return;
+    $('f-lat').value = (+siteTable[id].lat).toFixed(2); $('f-lon').value = (+siteTable[id].lon).toFixed(2);
+    if (+$('f-zoom').value < 6) $('f-zoom').value = 7;
+    render();
   });
   render();
 })();

@@ -38,7 +38,21 @@ const PRODUCTS = {
   velocity: { code: 'VEL', label: 'Base Velocity' },
 };
 
-const L2_BUCKET = 'https://noaa-nexrad-level2.s3.amazonaws.com';
+let L2_BUCKET = 'https://noaa-nexrad-level2.s3.amazonaws.com';
+
+/*
+ * Which public Level 2 bucket to list and download from. The default
+ * (noaa-nexrad-level2) refuses a browser LISTING, which is why the Studio and
+ * the broadcast relay through our server. unidata-nexrad-level2 holds the same
+ * volumes under the same keys and answers both listing and GET with CORS
+ * open, so a page with no relay (the public embed) can read it directly —
+ * every byte from AWS, none through our box. Only AWS S3 hosts are accepted.
+ */
+export function setL2Bucket(url) {
+  const u = String(url || '').replace(/\/+$/, '');
+  if (!/^https:\/\/[a-z0-9.-]+\.s3\.amazonaws\.com$/.test(u)) throw new Error('not an S3 bucket URL: ' + url);
+  L2_BUCKET = u;
+}
 
 /*
  * WHERE THE RELAY LIVES, AND WHETHER TO TRY S3 DIRECTLY AT ALL.

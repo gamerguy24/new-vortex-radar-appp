@@ -44,6 +44,12 @@ const EMBED_ASSETS = {
     '/components/mrms.js': 'components/mrms.js',
     '/components/mrms_products.js': 'components/mrms_products.js',
     '/components/palettes.js': 'components/palettes.js',
+    '/components/basemap_palette.json': 'components/basemap_palette.json',
+    // Single-site Level 2: the app's decoder + the Studio's rasteriser (both
+    // already public for /broadcast), and the app's radar site pills.
+    '/dist/l2_bundle.js': 'dist/l2_bundle.js',
+    '/graphics/studio/engine/radar_l2_raster.js': 'graphics/studio/engine/radar_l2_raster.js',
+    '/broadcast/site_markers.js': 'broadcast/site_markers.js',
     '/logo.png': 'logo.png',
 };
 
@@ -68,6 +74,15 @@ function attachEmbedApi(app) {
     const embedPage = send('embed/index.html', { type: 'html', maxAge: 300, frame: true });
     const loader = send('embed/loader.js', { type: 'application/javascript', maxAge: 3600, cors: true });
     const docs = send('embed/docs.html', { type: 'html', maxAge: 300 });
+    // Radar positions, from the app's own NEXRAD_LOCATIONS table (as /broadcast uses).
+    const radarSites = (req, res) => {
+        try {
+            const { NEXRAD_LOCATIONS } = require('./app/radar/libnexrad/nexrad_locations');
+            res.set('Cache-Control', 'public, max-age=86400').set('Access-Control-Allow-Origin', '*').json(NEXRAD_LOCATIONS);
+        } catch (e) {
+            res.status(500).json({ error: 'radar site table unavailable' });
+        }
+    };
     const health = (req, res) => {
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('Access-Control-Allow-Origin', '*');
@@ -92,6 +107,7 @@ function attachEmbedApi(app) {
         if (p === '/embed' || p === '/embed/') return embedPage(req, res);
         if (p === '/embed.js') return loader(req, res);
         if (p === '/v1/health') return health(req, res);
+        if (p === '/embed/radar-sites.json') return radarSites(req, res);
         if (p === '/robots.txt') return res.type('text/plain').send('User-agent: *\nAllow: /$\nDisallow: /embed\n');
         if (p.startsWith('/embed/')) return embedStatic(req, res, () => res.status(404).json({ error: 'Not found' }));
         if (EMBED_ASSETS[p]) {
@@ -106,6 +122,7 @@ function attachEmbedApi(app) {
     app.get(['/embed', '/embed/'], embedPage);
     app.get('/embed.js', loader);
     app.get('/embed/docs', docs);
+    app.get('/embed/radar-sites.json', radarSites);
     app.use('/embed', embedStatic);
 
     console.log('[embed] public radar embed on', EMBED_HOSTS.join(', '), '(and /embed on the app host)');
