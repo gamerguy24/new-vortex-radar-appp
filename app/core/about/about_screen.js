@@ -27,8 +27,8 @@ ${person('Candace Pisani', 'Atlanta, GA')}
 ${person('Dan Klawien', 'Elkhorn, WI')}
 ${person('Rob Salso', 'Brandon, FL')}
 
-${heading('Revenue Holders')}
-<p style="margin: 0 0 8px; font-size: 14px;">The sole revenue holders of Echo Radar WX:</p>
+${heading('Management Team')}
+<p style="margin: 0 0 8px; font-size: 14px;">The management team of Echo Radar WX:</p>
 ${['David Wallis', 'Nick Carter', 'Joseph Pisani', 'Nathan Bradley', 'Mandy Genes'].map((name) => `<div style="margin-bottom: 6px;"><b style="color: ${text};">${name}</b></div>`).join('')}
 
 ${heading('SpotterNetwork Integration')}
