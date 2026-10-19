@@ -25,7 +25,8 @@
  * ES module, loaded via <script type=module>.
  */
 
-import { openMiniPlayer, trackedPosition } from './stream_player.js';
+import { openMiniPlayer, trackedPosition } from './stream_player.js?v=beacon1';
+import { beaconStreamForUrl, beaconTrack } from './beacon_streams.js?v=beacon1';
 
 // The creator card at the top of the panel. Set to null to remove it.
 const FEATURED_CREATOR = { handle: 'westgacountryboy' };
@@ -72,9 +73,12 @@ function platformIcon(p) {
 }
 
 // A streamer broadcasting through the Chase Stream Hub reports their position
-// there, so that is what the player follows.
+// there, so that is what the player follows. Otherwise, a stream paired with a
+// Spotter Network beacon (beacon_streams.js) follows that beacon.
 function trackFor(s) {
-  return s.live ? { kind: 'hub', id: s.id } : null;
+  if (s.live) return { kind: 'hub', id: s.id };
+  const b = beaconStreamForUrl(s.url);
+  return b ? beaconTrack(b) : null;
 }
 
 function openStream(s) {

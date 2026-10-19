@@ -6,7 +6,14 @@
  * Spotter Network blocks direct browser requests (CORS), so these calls go
  * through the Echo Radar server proxy (/api/spotters/*), which forwards to
  * spotternetwork.org server-side.
+ *
+ * Beacons with a stream (components/beacon_streams.js) get a "Watch live"
+ * button and a ringed marker. When one of those beacons comes on, the mini
+ * player opens by itself and follows it (unless something else is already
+ * playing — then it just says so); when it goes off, following stops.
  */
+import { beaconStreamFor, beaconTrack } from './beacon_streams.js?v=beacon1';
+import { openMiniPlayer, isPlayerOpen, playerTrack, endTracking } from './stream_player.js?v=beacon1';
 
 const SPOTTER_APP_ID = '55f78b6ed31f5';
 const SPOTTER_POSITIONS_URL = '/api/spotters/positions';
@@ -16,8 +23,13 @@ const REFRESH_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 let _spotterMarkers = [];
 let _refreshTimer = null;
 let _popup = null;
+// Beacon-stream spotters seen in the last refresh (by their configured name),
+// so a beacon coming on or going off can be told from one that stayed on.
+let _liveBeacons = null;
 
 function _createMarkerEl(props) {
+    const stream = beaconStreamFor(props);
+    if (stream) return _createStreamMarkerEl(props, stream);
     const el = document.createElement('div');
     el.title = props.callsign || 'Spotter';
     el.style.cssText = `
@@ -38,6 +50,68 @@ function _createMarkerEl(props) {
     return el;
 }
 
+// A beacon with a stream: the usual dot with a red live ring and its name.
+function _createStreamMarkerEl(props, stream) {
+    const el = document.createElement('div');
+    el.className = 'vx-beacon-live';
+    el.title = `${stream.name} — streaming beacon`;
+    el.innerHTML = '<span class="vx-beacon-dot"></span><span class="vx-beacon-tag"></span>';
+    el.querySelector('.vx-beacon-tag').textContent = stream.name;
+    return el;
+}
+
+function _watch(stream) {
+    if (_popup) { _popup.remove(); _popup = null; }
+    // onLayer: the beacon marker here already shows where they are, so the
+    // player draws no second marker on top of it.
+    openMiniPlayer({ url: stream.url, name: stream.name, platform: stream.platform, track: { ...beaconTrack(stream), onLayer: true } });
+}
+
+function _toast(html, actionLabel, onAction) {
+    const t = document.createElement('div');
+    t.className = 'vx-beacon-toast';
+    t.innerHTML = '<span></span>';
+    t.querySelector('span').textContent = html;
+    if (actionLabel) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = actionLabel;
+        b.onclick = () => { t.remove(); onAction(); };
+        t.appendChild(b);
+    }
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 9000);
+}
+
+/*
+ * After each refresh: a streaming beacon that has just come on is followed
+ * (the player opens on it), and one that has gone off stops being followed.
+ * The first refresh after the layer is switched on counts as "just came on".
+ */
+function _checkBeacons(positions) {
+    const now = new Map();
+    for (const p of positions) { const b = beaconStreamFor(p); if (b) now.set(b.spotter, b); }
+    const before = _liveBeacons || new Map();
+    const following = playerTrack();
+    for (const [key, b] of now) {
+        if (before.has(key)) continue;
+        if (!isPlayerOpen()) {
+            _watch(b);
+            _toast(`${b.name}'s beacon is on — following.`);
+        } else if (!(following && following.kind === 'spotter' && following.callsign === b.spotter)) {
+            _toast(`${b.name}'s beacon is on.`, 'Watch & follow', () => _watch(b));
+        }
+    }
+    for (const [key, b] of before) {
+        if (now.has(key)) continue;
+        if (following && following.kind === 'spotter' && following.callsign === b.spotter) {
+            endTracking(`${b.name}'s beacon is off — stopped following.`);
+        }
+        _toast(`${b.name}'s beacon went off.`);
+    }
+    _liveBeacons = now;
+}
+
 function _showSpotterPopup(map, lngLat, props) {
     if (_popup) { _popup.remove(); _popup = null; }
 
@@ -47,6 +121,7 @@ function _showSpotterPopup(map, lngLat, props) {
     const ham = props.ham || '';
     const dir = props.dir != null ? `${props.dir}°` : '';
     const note = props.note || '';
+    const stream = beaconStreamFor(props);
 
     let timeStr = '';
     if (reportAt) {
@@ -65,6 +140,7 @@ function _showSpotterPopup(map, lngLat, props) {
             ${dir ? `<div style="margin-bottom:2px;">Heading: ${dir}</div>` : ''}
             ${note ? `<div style="margin-bottom:2px; color:#aaa;">${note}</div>` : ''}
             ${timeStr ? `<div style="color:#aaa; font-size:11px; margin-bottom:6px;">Last report: ${timeStr}</div>` : ''}
+            ${stream ? `<button type="button" class="vx-beacon-watch" id="spotter-watch">▶ Watch live · follow beacon</button>` : ''}
             <div id="spotter-reports-content" style="margin-top:6px; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px;">
                 <div style="color:#aaa; font-size:11px;">Loading reports...</div>
             </div>
@@ -75,6 +151,10 @@ function _showSpotterPopup(map, lngLat, props) {
         .setLngLat(lngLat)
         .setHTML(loadingHtml)
         .addTo(map);
+    if (stream) {
+        const btn = document.getElementById('spotter-watch');
+        if (btn) btn.onclick = () => _watch(stream);
+    }
 
     const spotterId = props.id || props.spotter_id || '';
     if (!spotterId) {
@@ -189,6 +269,7 @@ export async function addSpotterMarkers(mapInstance) {
     });
 
     console.log(`[Spotters] Loaded ${positions.length} spotter positions.`);
+    _checkBeacons(positions);
 
     _refreshTimer = setTimeout(() => addSpotterMarkers(mapInstance), REFRESH_INTERVAL_MS);
 }
@@ -202,4 +283,5 @@ function _clearMarkers() {
 
 export function removeSpotterMarkers() {
     _clearMarkers();
+    _liveBeacons = null;
 }

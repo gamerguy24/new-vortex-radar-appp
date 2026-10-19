@@ -21,7 +21,7 @@
  */
 
 import OBSClient from './obs_websocket.js';
-import { openMiniPlayer } from './stream_player.js';
+import { openMiniPlayer } from './stream_player.js?v=beacon1';
 
 const API = '/api/stream';
 const LIVE_PING_MS = 15000;   // how often we push our moving position while live

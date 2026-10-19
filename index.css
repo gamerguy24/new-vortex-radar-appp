@@ -582,6 +582,78 @@ https://tobiasahlin.com/spinkit/
     display: none;
 }
 
+/*
+ * Data inspector hover readout (app/radar/inspector/menu_item.js): follows
+ * the pointer on mouse/trackpad screens. The swatch is the radar's own colour
+ * for the value (data colour, not themed).
+ */
+.vx-inspect-tip {
+    position: fixed;
+    z-index: 1003;
+    display: none;
+    pointer-events: none;
+    padding: 6px 9px;
+    background: var(--vx-surface);
+    color: var(--vx-text);
+    border: 1px solid var(--vx-line-2);
+    border-radius: var(--vx-r-3);
+    box-shadow: var(--vx-shadow);
+    font-family: var(--vx-font);
+    white-space: nowrap;
+}
+.vx-inspect-val { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.vx-inspect-sw { width: 11px; height: 11px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55); }
+.vx-inspect-sub { margin-top: 2px; font-size: 11px; color: var(--vx-text-2); font-variant-numeric: tabular-nums; }
+.vx-inspect-sub:empty { display: none; }
+
+/*
+ * Streaming spotter beacons (components/spotters.js + beacon_streams.js): the
+ * spotter dot with a red live ring and the streamer's name, the popup's Watch
+ * button, and the "beacon is on / off" notices. Dot orange and live red are
+ * data colours (the spotter layer's and "live"), not interface state.
+ */
+.vx-beacon-live { position: relative; width: 18px; height: 18px; cursor: pointer; }
+.vx-beacon-dot {
+    position: absolute; inset: 2px;
+    background: #ff9800; border: 2px solid #1f2937; border-radius: 50%;
+    box-shadow: 0 0 0 2px #e5322d;
+}
+@media (prefers-reduced-motion: no-preference) {
+    .vx-beacon-dot { animation: vxBeaconPulse 1.6s ease-out infinite; }
+}
+@keyframes vxBeaconPulse {
+    0% { box-shadow: 0 0 0 2px #e5322d, 0 0 0 2px rgba(229, 50, 45, 0.6); }
+    100% { box-shadow: 0 0 0 2px #e5322d, 0 0 0 12px rgba(229, 50, 45, 0); }
+}
+.vx-beacon-tag {
+    position: absolute; left: 50%; top: 21px; transform: translateX(-50%);
+    padding: 1px 6px; white-space: nowrap;
+    background: var(--vx-surface); color: var(--vx-text);
+    border: 1px solid var(--vx-line-2); border-radius: var(--vx-r-2);
+    font-family: var(--vx-font); font-size: 10.5px; font-weight: 700;
+    pointer-events: none;
+}
+.vx-beacon-watch {
+    display: block; width: 100%; margin: 4px 0 6px; padding: 6px 8px;
+    font-family: var(--vx-font); font-size: 12px; font-weight: 700;
+    color: var(--vx-accent-ink, #111); background: var(--vx-accent);
+    border: none; border-radius: var(--vx-r-2); cursor: pointer;
+}
+.vx-beacon-watch:hover { background: var(--vx-accent-hi, var(--vx-accent)); }
+.vx-beacon-toast {
+    position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 100075;
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; max-width: min(92vw, 420px);
+    background: var(--vx-surface); color: var(--vx-text);
+    border: 1px solid var(--vx-line-2); border-radius: var(--vx-r-3); box-shadow: var(--vx-shadow-lg);
+    font-family: var(--vx-font); font-size: 13px;
+}
+.vx-beacon-toast button {
+    flex: 0 0 auto; padding: 4px 9px; font: inherit; font-size: 12px; font-weight: 700;
+    color: var(--vx-accent); background: var(--vx-accent-soft); border: 1px solid var(--vx-accent-line);
+    border-radius: var(--vx-r-2); cursor: pointer;
+}
+
 .new-file {
     color: rgb(17, 167, 17);
 }

@@ -1523,6 +1523,10 @@ function streamLinkInfo(url) {
     if (platform === 'youtube' && /^(channel|c|user)$/.test(handle) && seg[1]) handle = seg[1];
     if (platform === 'web' || /^(watch|live|video|videos)$/i.test(handle)) handle = '';
     handle = handle.replace(/^@/, '');
+    // A bare platform address ("youtube.com") names no channel and opens the
+    // site's home page: leave it out rather than list a row that leads nowhere.
+    // A video link (youtube.com/watch?v=…) and a personal site ('web') stay.
+    if (platform !== 'web' && !seg.length) return null;
     return { platform, url: u.toString(), handle: handle ? '@' + handle : host };
 }
 

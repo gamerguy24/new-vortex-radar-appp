@@ -52,13 +52,17 @@ function format_value(value) {
             product_code == 'REF' || product_code == 153 /* N0B */ || product_code == 94 /* NXQ */ || product_code == 180 /* TZ0 */ || product_code == 186 /* TZL */ || // reflectivity
             product_code == 'SW' /* || product_code == 'NSW' */ // spectrum width
             ) {
-                // round to the nearest 0.5
-                value = Math.floor(value * 2) / 2;
+                // round to the nearest 0.5. Not floor: the value decoded from the
+                // framebuffer comes back a hair under (52.49997), and floor made every
+                // reading 0.5 low.
+                value = Math.round(value * 2) / 2;
             } else if (
                 product_code == 154 /* N0G */ || product_code == 99 /* N0U */ || product_code == 182 /* TVX */ || product_code == 'VEL' // velocity
             ) {
-                // round to the nearest 0.5
-                value = Math.floor(value * 2) / 2;
+                // round to the nearest 0.5. Not floor: the value decoded from the
+                // framebuffer comes back a hair under (52.49997), and floor made every
+                // reading 0.5 low.
+                value = Math.round(value * 2) / 2;
                 // // round to the nearest 0.1
                 // // level 2 & 3 velocity values are provided by default in m/s
                 // value = parseFloat(value.toFixed(1));

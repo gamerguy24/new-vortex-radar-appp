@@ -405,6 +405,8 @@ function wireResize(el, grip) {
 function ensureTrackMarker(lat, lng, name) {
     const m = mapObj(), g = GL();
     if (!m || !g) return;
+    // Followed from a Spotters-layer beacon: that beacon already marks them.
+    if (cur.track && cur.track.onLayer) return;
     if (!cur.marker) {
         const el = document.createElement('div');
         el.className = 'vsp-track-marker';
@@ -465,7 +467,12 @@ function renderStatus() {
     if (!cur) return;
     const foot = cur.el.querySelector('#vsp-foot');
     if (!foot) return;
-    if (!cur.track) { foot.style.display = 'none'; return; }
+    if (!cur.track) {
+        // Following ended on its own (the beacon went off): say so, not nothing.
+        if (cur.endedMsg) { foot.style.display = ''; foot.innerHTML = '<span>' + esc(cur.endedMsg) + '</span>'; }
+        else foot.style.display = 'none';
+        return;
+    }
     if (!cur.lastFix) {
         foot.innerHTML = cur.noFix
             ? '<span>No live position for <b>' + esc(cur.name) + '</b> right now.</span>'
@@ -607,5 +614,25 @@ export function closeMiniPlayer() {
 
 export function isPlayerOpen() { return !!cur; }
 
+/** What the open player is following ({kind, callsign|id}), or null. */
+export function playerTrack() { return cur && cur.track ? cur.track : null; }
+
+/**
+ * Stop following without closing the video (the person's beacon went off).
+ * The marker goes, the Follow button goes, and the footer shows `message`.
+ */
+export function endTracking(message) {
+    if (!cur || !cur.track) return;
+    if (cur.timer) { clearInterval(cur.timer); cur.timer = null; }
+    if (cur.marker) { try { cur.marker.remove(); } catch {} cur.marker = null; }
+    if (cur.gestureOff) { try { cur.gestureOff(); } catch {} cur.gestureOff = null; }
+    const btn = cur.el.querySelector('#vsp-follow');
+    if (btn) btn.remove();
+    cur.track = null;
+    cur.following = false;
+    cur.endedMsg = message || '';
+    renderStatus();
+}
+
 // Non-module callers (marker popups built as HTML strings, console, etc.)
-window.VortexStreamPlayer = { open: openMiniPlayer, close: closeMiniPlayer, isOpen: isPlayerOpen, findSpotter };
+window.VortexStreamPlayer = { open: openMiniPlayer, close: closeMiniPlayer, isOpen: isPlayerOpen, findSpotter, playerTrack, endTracking };

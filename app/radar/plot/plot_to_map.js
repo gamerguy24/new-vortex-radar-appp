@@ -71,7 +71,10 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
 
     var fb;
     function createFramebuffer(gl) {
+        // Replacing one (the window was resized): free the old buffer first.
+        if (S.fb_texture) { try { gl.deleteTexture(S.fb_texture); gl.deleteFramebuffer(S.fb); } catch (e) {} }
         const targetTexture = gl.createTexture();
+        S.fb_texture = targetTexture;
         gl.bindTexture(gl.TEXTURE_2D, targetTexture);
 
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.drawingBufferWidth, gl.drawingBufferHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -81,11 +84,17 @@ function plot_to_map(verticies_arr, colors_arr, product, nexrad_factory) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
         S.fb = gl.createFramebuffer();
+        // Remember the size: the inspector maps screen pixels onto this buffer,
+        // so it has to track the drawing buffer when the window is resized.
+        S.fb_size = [gl.drawingBufferWidth, gl.drawingBufferHeight];
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, S.fb);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0);
     }
     function renderToFramebuffer(gl, matrix) {
+        if (!S.fb_size || S.fb_size[0] !== gl.drawingBufferWidth || S.fb_size[1] !== gl.drawingBufferHeight) {
+            createFramebuffer(gl);
+        }
         gl.useProgram(this.programFramebuffer);
 
         // set uniforms for the framebuffer shaders
