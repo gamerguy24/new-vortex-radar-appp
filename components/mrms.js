@@ -478,6 +478,9 @@ function _gridWindow(grid) {
         north: latTop, south: latBot,
     };
 
+    // { wholeGrid: true } (the public embed): always the whole mosaic, so a
+    // pan or zoom-out never shows the edge of a screen-sized patch.
+    if (_mapWrapper && _mapWrapper.wholeGrid) return full;
     const map = _getMap();
     if (!map || typeof map.getBounds !== 'function') return full;
     let b;
@@ -586,7 +589,8 @@ function paintToCanvas(values, grid, win) {
     let targetW = winCols;
     const map = _getMap();
     try {
-        if (map && typeof map.getCanvas === 'function' && typeof map.getBounds === 'function') {
+        if (_mapWrapper && _mapWrapper.wholeGrid) targetW = MAX_CANVAS_PX;
+        else if (map && typeof map.getCanvas === 'function' && typeof map.getBounds === 'function') {
             const b = map.getBounds();
             const viewLon = b.getEast() - b.getWest();
             const winLon = win.east - win.west;
@@ -875,6 +879,7 @@ async function _repaint() {
  */
 function _hookMapMove() {
     if (_moveHooked) return;
+    if (_mapWrapper && _mapWrapper.wholeGrid) return;   // painted once for every view
     const map = _getMap();
     if (!map || typeof map.on !== 'function') return;
     _moveHooked = true;

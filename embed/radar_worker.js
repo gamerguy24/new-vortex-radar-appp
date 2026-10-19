@@ -10,7 +10,8 @@
  * passes through the Echo Radar box.
  *
  * Messages: { id, type: 'load', payload: { site, product } }
- *           { id, type: 'draw', payload: { view } }
+ *           { id, type: 'cover', payload: { width, minDbz } }  the radar's whole range
+ *           { id, type: 'draw', payload: { view } }             one view, finer
  * Replies:  { id, result }
  */
 globalThis.window = globalThis;   // the decoder bundle looks for window
@@ -65,6 +66,28 @@ async function load({ site, product = 'reflectivity' }) {
     return { ok: true, changed: true, meta: meta() };
 }
 
+// The box around the radar's furthest gate. Drawn once per scan, it sits
+// under every view, so panning and zooming out never uncover a blank edge.
+function coverageBox() {
+    const ranges = radar.sweep && radar.sweep.ranges;
+    const km = (ranges && ranges.length ? ranges[ranges.length - 1] : 460) + 2;
+    const { lat, lon } = radar.location;
+    const dLat = km / 111.32, dLon = km / (111.32 * Math.max(0.2, Math.cos(lat * D2R)));
+    return { west: lon - dLon, east: lon + dLon, north: Math.min(85, lat + dLat), south: Math.max(-85, lat - dLat) };
+}
+
+async function cover({ width = 2400, minDbz }) {
+    if (!radar) return { ok: false, reason: 'no scan loaded' };
+    const box = coverageBox();
+    // Height in mercator, so the square-in-km box keeps its true shape.
+    const height = Math.max(1, Math.round(width * (mercY(box.north) - mercY(box.south)) / ((box.east - box.west) * D2R)));
+    const view = { ...box, width, height };
+    const canvas = rasterize(radar, { width, height, projection: projectionFor(view) },
+        { quality: width, smooth: true, minDbz, palette: null });
+    const out = canvas || new OffscreenCanvas(2, 2);
+    return { ok: true, blob: await out.convertToBlob({ type: 'image/png' }), box, meta: meta() };
+}
+
 async function draw({ view }) {
     if (!radar) return { ok: false, reason: 'no scan loaded' };
     const canvas = rasterize(radar, { width: view.width, height: view.height, projection: projectionFor(view) },
@@ -80,6 +103,7 @@ self.onmessage = async (e) => {
         await ready;
         if (type === 'load') result = await load(payload || {});
         else if (type === 'draw') result = await draw(payload || {});
+        else if (type === 'cover') result = await cover(payload || {});
         else if (type === 'clear') { radar = null; volumeUrl = null; releaseVolumeCaches(); result = { ok: true }; }
         else result = { ok: false, reason: 'unknown request: ' + type };
     } catch (err) {

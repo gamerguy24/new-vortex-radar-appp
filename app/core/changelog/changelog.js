@@ -22,6 +22,12 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'October 19, 2026',
+        items: [
+            { title: 'Website radar no longer loads in squares', desc: 'The radar you can put on your own website (api.echoradarwx.com) now loads a radar’s whole range at once, and the national radar for the whole country at once. Panning or zooming out no longer shows a square patch of radar with an empty map around it while the rest catches up. Zoomed in close, it still sharpens the part you are looking at when you stop moving. Switching between the national radar and a single radar no longer leaves the map blank while the next one loads.' },
+        ],
+    },
+    {
         date: 'October 18, 2026',
         items: [
             { title: 'Traffic cameras for Oklahoma, Kentucky and Mississippi', desc: 'Three more states are in the menu under Cameras & More. OK Traffic Cams shows about 160 ODOT camera sites as live video rather than still pictures. KY Traffic Cams shows about 240 KYTC cameras. MS MDOT Traffic Cams shows about 460 MDOT camera sites, with pictures that update every 15 seconds while open. Many Oklahoma and Mississippi sites have several cameras facing different ways: tap the direction buttons under the picture to switch between them. Free for everyone.' },
