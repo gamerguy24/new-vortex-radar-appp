@@ -1521,12 +1521,15 @@ function streamLinkInfo(url) {
     // also has /channel/<id> and /c/<name>.
     let handle = seg[0] || '';
     if (platform === 'youtube' && /^(channel|c|user)$/.test(handle) && seg[1]) handle = seg[1];
-    if (platform === 'web' || /^(watch|live|video|videos)$/i.test(handle)) handle = '';
+    // youtu.be/<id> is one video, not a channel.
+    if (platform === 'web' || host === 'youtu.be' || /^(watch|live|video|videos)$/i.test(handle)) handle = '';
     handle = handle.replace(/^@/, '');
-    // A bare platform address ("youtube.com") names no channel and opens the
-    // site's home page: leave it out rather than list a row that leads nowhere.
-    // A video link (youtube.com/watch?v=…) and a personal site ('web') stay.
-    if (platform !== 'web' && !seg.length) return null;
+    // A platform link that names no channel — the bare site ("youtube.com"),
+    // or a /watch, /live or /video link — has nothing to show as its name and,
+    // once that one broadcast is over, leads nowhere: leave it out rather than
+    // list a "youtube.com" row (David, 2026-10-18). A personal site ('web')
+    // is its own channel, so it stays.
+    if (platform !== 'web' && !handle) return null;
     return { platform, url: u.toString(), handle: handle ? '@' + handle : host };
 }
 

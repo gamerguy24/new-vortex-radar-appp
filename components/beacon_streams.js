@@ -18,8 +18,8 @@
  * layer on:  VortexStreamPlayer.findSpotter('pisani')
  */
 export const BEACON_STREAMS = [
-    // Stream link still to come from David (2026-10-18): fill in `url` to switch it on.
-    { spotter: 'Joseph Pisani', name: 'Joseph Pisani', url: '', platform: '' },
+    // Joseph Pisani streams on the Extreme Weather Videos YouTube channel.
+    { spotter: 'Joseph Pisani', name: 'Extreme Weather Videos', url: 'https://www.youtube.com/@Extremeweathervideos/live', platform: 'YouTube' },
     // Nathan Bradley streams on TikTok as West GA Country Boy.
     { spotter: 'Nathan Bradley', name: 'West GA Country Boy', url: 'https://www.tiktok.com/@westgacountryboy/live', platform: 'TikTok' },
 ];

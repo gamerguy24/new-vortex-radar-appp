@@ -25,8 +25,8 @@
  * ES module, loaded via <script type=module>.
  */
 
-import { openMiniPlayer, trackedPosition } from './stream_player.js?v=beacon1';
-import { beaconStreamForUrl, beaconTrack } from './beacon_streams.js?v=beacon1';
+import { openMiniPlayer, trackedPosition } from './stream_player.js?v=beacon2';
+import { BEACON_STREAMS, beaconStreamForUrl, beaconTrack } from './beacon_streams.js?v=beacon2';
 
 // The creator card at the top of the panel. Set to null to remove it.
 const FEATURED_CREATOR = { handle: 'westgacountryboy' };
@@ -116,7 +116,14 @@ async function fetchStreams() {
   const r = await fetch('/api/featured-streams', { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const d = await r.json();
-  return Array.isArray(d.streams) ? d.streams : [];
+  const list = Array.isArray(d.streams) ? d.streams : [];
+  // Beacon streamers (beacon_streams.js) are featured too, even if their
+  // channel is not on an approved account here; skip any the server listed.
+  for (const b of BEACON_STREAMS) {
+    if (!b.url || list.some((s) => beaconStreamForUrl(s.url) === b)) continue;
+    list.push({ id: 'beacon:' + b.spotter, name: b.name, platform: String(b.platform || '').toLowerCase(), url: b.url, live: false });
+  }
+  return list;
 }
 
 function rowsHtml(list) {

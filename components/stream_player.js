@@ -184,7 +184,12 @@ async function resolveYouTubeLiveId(url) {
         const r = await fetch('/api/proxy?url=' + url, { credentials: 'same-origin' });
         if (!r.ok) return '';
         const html = await r.text();
-        const m = html.match(/"videoId":"([\w-]{11})"/);
+        // While the channel is live, /@handle/live is that broadcast's own page
+        // and its canonical link is the watch URL. When it is not live, the page
+        // is the channel's and the canonical link says so: then there is
+        // nothing to play (the first "videoId" on it is just an old upload).
+        const canon = (html.match(/<link rel="canonical" href="([^"]+)"/) || [])[1] || '';
+        const m = canon.match(/[?&]v=([\w-]{11})/);
         return m ? m[1] : '';
     } catch { return ''; }
 }
