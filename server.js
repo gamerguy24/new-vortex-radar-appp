@@ -1371,6 +1371,10 @@ app.get('/api/stream/config', requireAuth, (req, res) => {
     res.json({ config: publicStreamConfig(streamConfigs[req.user.id]) });
 });
 
+// Echo Radar's own RTMP server (MediaMTX beside this app): per-streamer key,
+// MediaMTX's key check, and the in-app watch link. See stream_ingest.js.
+require('./stream_ingest').attachStreamIngest(app, { streamConfigs, saveStreamConfigs, findById, canStream, requireAuth, requireStreamer });
+
 // Save config. Secret fields (discordWebhook, obs.password) are only overwritten
 // when the client actually sends a new value, so re-saving other settings
 // doesn't wipe them.

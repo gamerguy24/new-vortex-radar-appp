@@ -13,7 +13,7 @@
  * playing — then it just says so); when it goes off, following stops.
  */
 import { beaconStreamFor, beaconTrack } from './beacon_streams.js?v=beacon2';
-import { openMiniPlayer, isPlayerOpen, playerTrack, endTracking } from './stream_player.js?v=beacon2';
+import { openMiniPlayer, isPlayerOpen, playerTrack, endTracking } from './stream_player.js?v=hls1';
 
 const SPOTTER_APP_ID = '55f78b6ed31f5';
 const SPOTTER_POSITIONS_URL = '/api/spotters/positions';

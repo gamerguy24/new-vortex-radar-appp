@@ -21,7 +21,7 @@
  */
 
 import OBSClient from './obs_websocket.js?v=obs2';
-import { openMiniPlayer } from './stream_player.js?v=beacon2';
+import { openMiniPlayer } from './stream_player.js?v=hls1';
 
 const API = '/api/stream';
 const LIVE_PING_MS = 15000;   // how often we push our moving position while live
@@ -40,6 +40,7 @@ let place = { town: '', county: '', state: '', label: '' };
 let myMarker = null;
 let obsWasUsed = false;        // true once a live session connected to OBS
 let isAdmin = false;           // operator (can control other chasers)
+let ingest = null;             // { enabled, server, key, watchPath, live, serverUp } — Echo Radar's own RTMP server
 let canStreamState = false;    // approved (or admin) → allowed to go live
 let streamRequestState = null; // { status, requestedAt } if a request is on file
 let agentSSE = null;           // chaser agent: SSE link that receives commands
@@ -175,7 +176,13 @@ async function refreshOtherChasers() {
 }
 
 // ─── GPS while live ───────────────────────────────────────────────────────────
-function currentStreamUrl() { return ($('vrsh-stream-url') && $('vrsh-stream-url').value.trim()) || ''; }
+function currentStreamUrl() {
+    const typed = ($('vrsh-stream-url') && $('vrsh-stream-url').value.trim()) || '';
+    if (typed) return typed;
+    // Streaming to Echo Radar's server: the watch link is ours.
+    const rtmpUrl = ($('vrsh-rtmp-url') && $('vrsh-rtmp-url').value.trim()) || (cfg && cfg.rtmp && cfg.rtmp.url) || '';
+    return (ingest && ingest.enabled && rtmpUrl === ingest.server) ? location.origin + ingest.watchPath : '';
+}
 
 async function onPosition(pos) {
     lastPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -545,6 +552,13 @@ function openPanel() {
     $('vrsh-golive').onclick = () => { live ? stopLive() : goLive(); };
     $('vrsh-save').onclick = saveConfig;
     $('vrsh-obs-test').onclick = testObs;
+    $('vrsh-ingest-copy-server').onclick = () => ingest && copyText(ingest.server, 'Server');
+    $('vrsh-ingest-copy-key').onclick = () => ingest && copyText(ingest.key, 'Stream key');
+    $('vrsh-ingest-show').onclick = (e) => { const b = e.currentTarget; b.dataset.on = b.dataset.on === '1' ? '' : '1'; b.textContent = b.dataset.on ? 'Hide' : 'Show'; renderIngest(); };
+    $('vrsh-ingest-use').onclick = useIngest;
+    $('vrsh-ingest-reset').onclick = resetIngestKey;
+    // Keep "Receiving your stream" current while the panel is open.
+    setInterval(() => { const p = $('vrsh-panel'); if (p && p.style.display !== 'none' && ingest && ingest.enabled) loadIngest(); }, 10000);
     $('vrsh-agents-refresh').onclick = refreshAgents;
     $('vrsh-remote-enable').onchange = async () => {
         const on = $('vrsh-remote-enable').checked;
@@ -571,6 +585,52 @@ async function refreshAccess() {
         streamRequestState = a.request || streamRequestState;
     } catch {}
     applyAccessGating();
+    loadIngest();
+}
+
+// ─── Echo Radar's own RTMP server: this streamer's server + key ───────────────
+async function loadIngest() {
+    if (!canStreamState || !$('vrsh-ingest')) return;
+    try { ingest = await api('GET', '/ingest'); } catch { ingest = null; }
+    renderIngest();
+}
+function renderIngest() {
+    const box = $('vrsh-ingest');
+    if (!box) return;
+    box.hidden = !ingest;
+    if (!ingest) return;
+    $('vrsh-ingest-body').hidden = !ingest.enabled;
+    $('vrsh-ingest-off').hidden = !!ingest.enabled;
+    const st = $('vrsh-ingest-state');
+    if (!ingest.enabled) { st.textContent = 'not switched on'; st.style.color = 'var(--vx-text-2)'; return; }
+    $('vrsh-ingest-server').textContent = ingest.server;
+    const show = $('vrsh-ingest-show').dataset.on === '1';
+    $('vrsh-ingest-key').textContent = show ? ingest.key : '•'.repeat(24);
+    const [txt, col] = ingest.live ? ['Receiving your stream', 'var(--vx-ok)']
+        : ingest.serverUp ? ['Waiting for OBS', 'var(--vx-text-2)'] : ['Server offline', 'var(--vx-bad)'];
+    st.textContent = txt; st.style.color = col;
+}
+async function copyText(text, what) {
+    try { await navigator.clipboard.writeText(text); toast(what + ' copied.', 'ok'); }
+    catch { window.prompt('Copy the ' + what.toLowerCase() + ':', text); }
+}
+// Fill the RTMP fields with Echo Radar's server so Go Live pushes them into OBS.
+async function useIngest() {
+    if (!ingest || !ingest.enabled) return;
+    $('vrsh-rtmp-url').value = ingest.server;
+    $('vrsh-rtmp-key').value = ingest.key;
+    $('vrsh-rtmp-enable').checked = true;
+    if ($('vrsh-stream-url') && !$('vrsh-stream-url').value.trim()) $('vrsh-stream-url').value = location.origin + ingest.watchPath;
+    await saveConfig();
+    if (!$('vrsh-obs-enable').checked) toast('Tick "Control OBS when I go live" too, or paste the server and key into OBS yourself.', 'warn');
+}
+async function resetIngestKey() {
+    if (!window.confirm('Make a new stream key? The old one stops working, so OBS needs the new one before your next stream.')) return;
+    const wasUsing = ingest && $('vrsh-rtmp-url').value.trim() === ingest.server;
+    try { ingest = await api('POST', '/ingest/reset'); } catch (e) { toast('Could not make a new key: ' + e.message, 'error'); return; }
+    renderIngest();
+    if (wasUsing) { $('vrsh-rtmp-key').value = ingest.key; await saveConfig(); }
+    toast('New stream key made.', 'ok');
 }
 
 // Show + poll the operator dashboard while the panel is open (admins only).
@@ -631,6 +691,17 @@ function panelHTML() {
       <div id="vrsh-obs-result" class="vrsh-hint" hidden></div>
 
       <div class="vrsh-section">Stream key (RTMP)</div>
+      <div id="vrsh-ingest" class="vrsh-ingest" hidden>
+        <div class="vrsh-ingest-head">Your Echo Radar stream server <span id="vrsh-ingest-state" class="vrsh-status">—</span></div>
+        <div id="vrsh-ingest-off" class="vrsh-hint" hidden>Echo Radar's stream server is not switched on yet. Use your own RTMP details below for now.</div>
+        <div id="vrsh-ingest-body">
+          <div class="vrsh-kv"><span class="vrsh-kv-k">Server</span><code id="vrsh-ingest-server"></code><button id="vrsh-ingest-copy-server" class="vrsh-mini" type="button">Copy</button></div>
+          <div class="vrsh-kv"><span class="vrsh-kv-k">Stream key</span><code id="vrsh-ingest-key"></code><button id="vrsh-ingest-show" class="vrsh-mini" type="button">Show</button><button id="vrsh-ingest-copy-key" class="vrsh-mini" type="button">Copy</button></div>
+          <div class="vrsh-actions" style="margin-top:8px"><button id="vrsh-ingest-use" class="vrsh-mini" type="button">Use for Go Live</button><button id="vrsh-ingest-reset" class="vrsh-mini vrsh-mini-danger" type="button">New key</button></div>
+          <div class="vrsh-hint">In OBS: Settings ▸ Stream ▸ Service <b>Custom</b>, then paste the Server and Stream key. Or press <b>Use for Go Live</b> and Echo Radar puts them into OBS for you. People watch you inside Echo Radar from your live marker. Keep the key secret; <b>New key</b> replaces it if it leaks.</div>
+        </div>
+      </div>
+      <div class="vrsh-hint" style="margin-top:10px">Or send your stream somewhere else (YouTube, Twitch…) with your own RTMP URL and key:</div>
       <label class="vrsh-check"><input id="vrsh-rtmp-enable" type="checkbox" /> Push my own RTMP URL + key into OBS when I go live</label>
       <div class="vrsh-grid">
         <div class="vrsh-field"><label>RTMP URL</label><input id="vrsh-rtmp-url" type="text" placeholder="rtmp://your-server/app" /></div>
@@ -911,6 +982,11 @@ function injectStyles() {
     .vrsh-preview span{color:var(--vx-accent-hi)}
     .vrsh-status{font-size:11px;font-weight:600}
     .vrsh-soon{color:var(--vx-warn)}
+    .vrsh-ingest{border:1px solid var(--vx-line);border-radius:var(--vx-r-2);padding:10px 12px;margin:4px 0 2px}
+    .vrsh-ingest-head{font-size:13px;font-weight:700;margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .vrsh-kv{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
+    .vrsh-kv-k{font-size:12px;color:var(--vx-text-2);min-width:76px}
+    .vrsh-kv code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:12px;background:var(--vx-surface);border:1px solid var(--vx-line);border-radius:var(--vx-r-2);padding:5px 8px}
     .vrsh-mini{border:1px solid var(--vx-line);background:var(--vx-surface);color:var(--vx-accent-hi);border-radius:var(--vx-r-2);padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
     .vrsh-mini:hover{background:#16223c}
     .vrsh-mini-danger{color:#f7a4a4;border-color:#4a2630}

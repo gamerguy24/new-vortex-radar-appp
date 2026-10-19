@@ -1,0 +1,47 @@
+# MediaMTX config for Echo Radar's RTMP server (Chase Stream Hub).
+# Setup: tools/RTMP_SETUP.md. Copy to /etc/mediamtx/mediamtx.yml.
+#
+# OBS sends RTMP to :1935. MediaMTX asks Echo Radar whether each stream key
+# may publish (authHTTPAddress), and turns streams into HLS on 127.0.0.1:8888,
+# which only Echo Radar reads (it serves viewers at /live/<id>/index.m3u8).
+
+logLevel: info
+logDestinations: [stdout]
+
+# Every publish and read is checked by Echo Radar. Put the SAME long random
+# value here as MEDIAMTX_HOOK_SECRET in Echo Radar's .env, and use the app's
+# port (PORT in .env, 3333 by default).
+authMethod: http
+authHTTPAddress: http://127.0.0.1:3333/internal/mediamtx/auth?secret=CHANGE_ME_TO_THE_SAME_SECRET
+authHTTPExclude: []
+
+# Control API: Echo Radar polls it to show "Receiving your stream". Local only.
+api: yes
+apiAddress: 127.0.0.1:9997
+metrics: no
+pprof: no
+playback: no
+
+# Ingest: RTMP only, open to the internet on port 1935.
+rtmp: yes
+rtmpAddress: :1935
+rtsp: no
+webrtc: no
+srt: no
+moq: no
+
+# Output: HLS for Echo Radar's in-app player. Local only; viewers go through
+# Echo Radar (signed in), never straight to MediaMTX.
+hls: yes
+hlsAddress: 127.0.0.1:8888
+hlsAlwaysRemux: yes
+hlsVariant: fmp4
+hlsSegmentCount: 7
+hlsSegmentDuration: 2s
+
+pathDefaults:
+  source: publisher
+
+paths:
+  # Stream keys arrive as live/<key>; Echo Radar refuses anything it did not issue.
+  all_others:

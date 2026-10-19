@@ -243,15 +243,36 @@ export async function resolveEmbed(url) {
         const v = document.createElement('video');
         v.controls = true; v.autoplay = true; v.playsInline = true;
         v.style.cssText = 'width:100%;height:100%;background:#000;display:block';
-        if (/\.m3u8($|\?)/i.test(u.pathname + u.search) && window.Hls && window.Hls.isSupported && window.Hls.isSupported()) {
-            const hls = new window.Hls(); hls.loadSource(url); hls.attachMedia(v);
-            v._vspHls = hls;
+        const isHls = /\.m3u8($|\?)/i.test(u.pathname + u.search);
+        if (isHls && !v.canPlayType('application/vnd.apple.mpegurl')) {
+            // No built-in HLS (Chrome, Edge, Firefox on desktop): hls.js.
+            loadHlsJs().then((Hls) => {
+                if (!Hls || !Hls.isSupported()) { v.src = url; return; }
+                const hls = new Hls({ lowLatencyMode: true });
+                hls.loadSource(url); hls.attachMedia(v);
+                v._vspHls = hls;
+            });
         } else {
-            v.src = url; // Safari/iOS play HLS natively; everything plays mp4/webm
+            v.src = url; // Safari/iOS/Android play HLS natively; everything plays mp4/webm
         }
         return v;
     }
     return null; // unknown host — don't frame it, it's probably X-Frame-Options blocked
+}
+
+let hlsJs = null;
+function loadHlsJs() {
+    if (window.Hls) return Promise.resolve(window.Hls);
+    if (!hlsJs) {
+        hlsJs = new Promise((resolve) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.20/hls.min.js';
+            s.onload = () => resolve(window.Hls || null);
+            s.onerror = () => { hlsJs = null; resolve(null); };
+            document.head.appendChild(s);
+        });
+    }
+    return hlsJs;
 }
 
 // ─── styles ───────────────────────────────────────────────────────────────────
