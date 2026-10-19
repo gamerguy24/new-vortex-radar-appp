@@ -386,6 +386,10 @@ function setSessionCookie(res, token) {
 const app = express();
 app.disable('x-powered-by');
 
+// The public radar embed (api.echoradarwx.com). FIRST, so on the API host it
+// answers before any other route and nothing of the app is reachable there.
+require('./embed_api').attachEmbedApi(app);
+
 // Stripe webhook needs the RAW request body for signature verification, so it
 // MUST be mounted before express.json parses it.
 app.use('/api/billing', billing.webhookRouter());

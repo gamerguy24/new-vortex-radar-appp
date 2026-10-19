@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Echo Radar WX — Embed the live radar</title>
+<meta name="description" content="Put Echo Radar WX's live weather radar and NWS warnings on your website, free. Copy one snippet.">
+<link rel="icon" href="/logo.png">
+<link rel="stylesheet" href="/components/tokens.css?v=embed1">
+<style>
+  html, body { margin: 0; background: var(--vx-bg); color: var(--vx-text); font-family: var(--vx-font); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 28px 16px 48px; }
+  header { display: flex; align-items: center; gap: 10px; }
+  header img { width: 34px; height: 34px; border-radius: 6px; }
+  h1 { font-size: 24px; margin: 0; letter-spacing: -.01em; }
+  .lede { color: var(--vx-text-2); font-size: 15px; line-height: 1.5; margin: 10px 0 22px; max-width: 64ch; }
+  h2 { font-size: 15px; margin: 30px 0 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--vx-accent); }
+  .grid { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--vx-surface); border: 1px solid var(--vx-line-2); border-radius: var(--vx-r-3); padding: 14px; }
+  label { display: block; font-size: 12px; color: var(--vx-text-2); margin: 0 0 10px; }
+  input[type=number], input[type=text], select {
+    display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 7px 8px;
+    background: var(--vx-surface-2); color: var(--vx-text); border: 1px solid var(--vx-line-2);
+    border-radius: var(--vx-r-2); font: inherit; font-size: 13px;
+  }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .checks label { display: flex; align-items: center; gap: 7px; color: var(--vx-text); font-size: 13px; margin-bottom: 7px; }
+  .preview { height: 420px; border-radius: var(--vx-r-3); overflow: hidden; border: 1px solid var(--vx-line-2); background: var(--vx-surface-2); }
+  .preview iframe { width: 100%; height: 100%; border: 0; display: block; }
+  pre { margin: 0; padding: 12px; overflow-x: auto; background: var(--vx-surface-2); border: 1px solid var(--vx-line); border-radius: var(--vx-r-2);
+        font-family: var(--vx-mono); font-size: 12.5px; line-height: 1.5; color: var(--vx-text); white-space: pre-wrap; word-break: break-all; }
+  .snip { margin-bottom: 14px; }
+  .snip-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 13px; font-weight: 700; }
+  button.copy { font: inherit; font-size: 12px; font-weight: 700; padding: 5px 10px; cursor: pointer; border-radius: var(--vx-r-2);
+                color: var(--vx-accent); background: var(--vx-accent-soft); border: 1px solid var(--vx-accent-line); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--vx-line); vertical-align: top; }
+  th { color: var(--vx-text-2); font-weight: 600; }
+  td code, p code { font-family: var(--vx-mono); font-size: 12px; color: var(--vx-text); background: var(--vx-surface-2); padding: 1px 5px; border-radius: 3px; }
+  .muted { color: var(--vx-text-2); font-size: 13px; line-height: 1.55; }
+  a { color: var(--vx-accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><img src="/logo.png" alt=""><h1>Embed Echo Radar WX</h1></header>
+  <p class="lede">Put the live weather radar on your own website, free. It shows the NOAA national radar mosaic,
+    updated every two minutes, with active National Weather Service warnings drawn on top. Visitors can pan, zoom and tap a
+    warning for details. No account or key needed: pick your settings, copy a snippet, paste it into your page.</p>
+
+  <div class="grid">
+    <div class="card" id="builder">
+      <div class="row2">
+        <label>Latitude <input type="number" id="f-lat" step="0.01" value="33.75"></label>
+        <label>Longitude <input type="number" id="f-lon" step="0.01" value="-84.39"></label>
+      </div>
+      <div class="row2">
+        <label>Zoom (0–12) <input type="number" id="f-zoom" step="0.5" min="0" max="12" value="6"></label>
+        <label>Height <input type="text" id="f-height" value="450px"></label>
+      </div>
+      <label>Map style
+        <select id="f-style"><option value="dark">Dark</option><option value="light">Light</option><option value="satellite">Satellite</option></select>
+      </label>
+      <div class="checks">
+        <label><input type="checkbox" id="f-warnings" checked> NWS warnings</label>
+        <label><input type="checkbox" id="f-legend" checked> Legend and radar time</label>
+        <label><input type="checkbox" id="f-controls" checked> Zoom buttons</label>
+        <label><input type="checkbox" id="f-interactive" checked> Let visitors pan and zoom</label>
+      </div>
+    </div>
+    <div class="preview" id="preview"></div>
+  </div>
+
+  <h2>Your snippet</h2>
+  <div class="snip">
+    <div class="snip-head"><span>Recommended: script tag (resizes to fit your page)</span><button class="copy" data-for="code-script">Copy</button></div>
+    <pre id="code-script"></pre>
+  </div>
+  <div class="snip">
+    <div class="snip-head"><span>Or a plain iframe (for site builders that block scripts)</span><button class="copy" data-for="code-iframe">Copy</button></div>
+    <pre id="code-iframe"></pre>
+  </div>
+
+  <h2>Settings</h2>
+  <table>
+    <tr><th>Setting</th><th>Values</th><th>Default</th></tr>
+    <tr><td><code>lat</code>, <code>lon</code></td><td>Map centre in decimal degrees</td><td>The lower 48</td></tr>
+    <tr><td><code>zoom</code></td><td>0 (world) to 12 (neighbourhood)</td><td>3.6</td></tr>
+    <tr><td><code>style</code></td><td><code>dark</code>, <code>light</code>, <code>satellite</code></td><td><code>dark</code></td></tr>
+    <tr><td><code>warnings</code></td><td><code>1</code> show NWS warnings, <code>0</code> hide</td><td><code>1</code></td></tr>
+    <tr><td><code>legend</code></td><td><code>1</code> / <code>0</code>: dBZ colour scale and the radar's time</td><td><code>1</code></td></tr>
+    <tr><td><code>controls</code></td><td><code>1</code> / <code>0</code>: zoom buttons</td><td><code>1</code></td></tr>
+    <tr><td><code>interactive</code></td><td><code>1</code> / <code>0</code>: <code>0</code> fixes the view in place</td><td><code>1</code></td></tr>
+  </table>
+  <p class="muted">With the script tag, put each setting on the element as <code>data-lat="33.75"</code> and so on, plus
+    <code>data-height</code>. With the iframe, add them to the address: <code>https://api.echoradarwx.com/embed?lat=33.75&amp;lon=-84.39&amp;zoom=6</code>.</p>
+
+  <h2>Good to know</h2>
+  <p class="muted">Radar data: NOAA MRMS. Warnings: National Weather Service. The radar refreshes itself every two minutes and the
+    warnings every minute, so the page never needs reloading. Please keep the Echo Radar WX badge visible. For full
+    single-site radar, velocity, alerts to your phone and more, use the app at <a href="https://echoradarwx.com" target="_blank" rel="noopener">echoradarwx.com</a>.
+    Never rely on any one website in life-threatening weather: follow your local NWS office and emergency officials.</p>
+</div>
+
+<script>
+(function () {
+  var ORIGIN = location.origin;
+  var $ = function (id) { return document.getElementById(id); };
+  var keys = ['lat', 'lon', 'zoom', 'style'];
+  var flags = ['warnings', 'legend', 'controls', 'interactive'];
+  var escHtml = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var timer = null;
+
+  function settings() {
+    var s = {};
+    keys.forEach(function (k) { var v = $('f-' + k).value.trim(); if (v !== '') s[k] = v; });
+    flags.forEach(function (k) { if (!$('f-' + k).checked) s[k] = '0'; });
+    return s;
+  }
+  function height() {
+    var h = $('f-height').value.trim();
+    return /^\d+(\.\d+)?(px|vh|em|rem|%)$/.test(h) ? h : (/^\d+$/.test(h) ? h + 'px' : '450px');
+  }
+  function render() {
+    var s = settings();
+    var qs = Object.keys(s).map(function (k) { return k + '=' + encodeURIComponent(s[k]); }).join('&');
+    var src = ORIGIN + '/embed' + (qs ? '?' + qs : '');
+    var data = Object.keys(s).map(function (k) { return ' data-' + k + '="' + escHtml(s[k]) + '"'; }).join('');
+    $('code-script').textContent = '<div data-echoradar' + data + ' data-height="' + height() + '"></div>\n'
+      + '<script src="' + ORIGIN + '/embed.js" async><\/script>';
+    $('code-iframe').textContent = '<iframe src="' + src + '" title="Live weather radar by Echo Radar WX"\n'
+      + '  style="width:100%;height:' + height() + ';border:0;border-radius:8px" loading="lazy" allowfullscreen></iframe>';
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      var box = $('preview');
+      box.style.height = height();
+      box.innerHTML = '<iframe title="Preview" src="' + escHtml(src) + '"></iframe>';
+    }, 400);
+  }
+  document.querySelectorAll('#builder input, #builder select').forEach(function (el) { el.addEventListener('input', render); el.addEventListener('change', render); });
+  document.querySelectorAll('button.copy').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = $(b.getAttribute('data-for')).textContent;
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () {
+        b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500);
+      }).catch(function () { b.textContent = 'Select and copy'; });
+    });
+  });
+  render();
+})();
+</script>
+</body>
+</html>

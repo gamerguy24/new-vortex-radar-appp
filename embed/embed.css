@@ -1,0 +1,58 @@
+/*
+ * The embeddable radar (embed/index.html). Interface in Echo Radar tokens;
+ * radar and warning colours are data colours and are not themed.
+ */
+html, body { margin: 0; height: 100%; background: var(--vx-bg); font-family: var(--vx-font); }
+#map { position: absolute; inset: 0; }
+
+.erx-badge {
+    position: absolute; top: 8px; left: 8px; z-index: 2;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 9px 4px 5px;
+    background: var(--vx-surface); color: var(--vx-text);
+    border: 1px solid var(--vx-line-2); border-radius: var(--vx-r-3);
+    box-shadow: var(--vx-shadow);
+    font-size: 12px; font-weight: 800; letter-spacing: .01em; text-decoration: none;
+}
+.erx-badge img { border-radius: 3px; display: block; }
+.erx-badge:hover { border-color: var(--vx-accent-line); }
+
+.erx-legend {
+    position: absolute; left: 8px; bottom: 22px; z-index: 2;
+    width: min(240px, calc(100% - 16px)); box-sizing: border-box;
+    padding: 6px 8px 5px;
+    background: var(--vx-surface); color: var(--vx-text);
+    border: 1px solid var(--vx-line-2); border-radius: var(--vx-r-3);
+    box-shadow: var(--vx-shadow); font-size: 11px;
+}
+.erx-legend-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-weight: 700; }
+.erx-legend-head span:last-child { color: var(--vx-text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.erx-ramp { height: 8px; border-radius: 2px; }
+.erx-ticks { display: flex; justify-content: space-between; margin-top: 2px; color: var(--vx-text-3); font-size: 10px; font-variant-numeric: tabular-nums; }
+
+.erx-msg {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 3;
+    padding: 10px 14px; max-width: 80%;
+    background: var(--vx-surface); color: var(--vx-text);
+    border: 1px solid var(--vx-line-2); border-radius: var(--vx-r-3); font-size: 13px; text-align: center;
+}
+
+/* Warning popup */
+.erx-popup .mapboxgl-popup-content {
+    background: var(--vx-surface); color: var(--vx-text);
+    border: 1px solid var(--vx-line-2); border-radius: var(--vx-r-3);
+    box-shadow: var(--vx-shadow-lg); padding: 9px 11px; font-family: var(--vx-font);
+}
+.erx-popup .mapboxgl-popup-tip { border-top-color: var(--vx-surface) !important; border-bottom-color: var(--vx-surface) !important; }
+.erx-popup .mapboxgl-popup-close-button { color: var(--vx-text-2); font-size: 16px; padding: 2px 6px; }
+.erx-pop-ev { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; padding-right: 14px; }
+.erx-pop-sw { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
+.erx-pop-area { margin-top: 3px; font-size: 11.5px; color: var(--vx-text-2); max-width: 240px; }
+.erx-pop-when { margin-top: 4px; font-size: 11px; color: var(--vx-text-3); font-variant-numeric: tabular-nums; }
+
+.mapboxgl-ctrl-group { background: var(--vx-surface) !important; border: 1px solid var(--vx-line-2); }
+.mapboxgl-ctrl-group button + button { border-top: 1px solid var(--vx-line) !important; }
+.mapboxgl-ctrl-group button .mapboxgl-ctrl-icon { filter: invert(1) brightness(.85); }
+
+/* components/mrms.js adds the app's own MRMS legend; the embed has its own. */
+#vortexMrmsLegend { display: none !important; }

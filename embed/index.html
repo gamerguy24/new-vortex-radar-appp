@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Echo Radar WX — Live Radar</title>
+<meta name="robots" content="noindex">
+<!--
+  The public, embeddable radar (api.echoradarwx.com/embed). No login: it shows
+  only public data — NOAA MRMS national radar and NWS warnings — fetched by the
+  viewer's browser straight from NOAA and api.weather.gov. Settings come from
+  the URL; see embed/docs.html for the list and embed/embed_app.js for the code.
+-->
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css" rel="stylesheet">
+<link rel="stylesheet" href="/components/tokens.css?v=embed1">
+<link rel="stylesheet" href="/embed/embed.css?v=embed1">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js"></script>
+</head>
+<body>
+<div id="map" aria-label="Live weather radar map"></div>
+
+<a class="erx-badge" id="erx-badge" href="https://echoradarwx.com" target="_blank" rel="noopener">
+  <img src="/logo.png" alt="" width="18" height="18"><span>Echo Radar WX</span>
+</a>
+
+<div class="erx-legend" id="erx-legend" hidden>
+  <div class="erx-legend-head"><span>Radar</span><span id="erx-time">Loading…</span></div>
+  <div class="erx-ramp" id="erx-ramp"></div>
+  <div class="erx-ticks"><span>5</span><span>20</span><span>35</span><span>50</span><span>65</span><span>dBZ</span></div>
+</div>
+
+<div class="erx-msg" id="erx-msg" hidden></div>
+
+<script type="module" src="/embed/embed_app.js?v=embed1"></script>
+</body>
+</html>
