@@ -18,7 +18,7 @@ globalThis.window = globalThis;   // the decoder bundle looks for window
 const ready = import('/dist/l2_bundle.js?v=embed1');
 import {
   listLatestVolume, loadSweepFromUrl, rasterize, paletteStops, setL2Bucket, setL2Relay, setCacheLimits, releaseVolumeCaches,
-} from '/graphics/studio/engine/radar_l2_raster.js?v=embed2';
+} from '/graphics/studio/engine/radar_l2_raster.js?v=embed3';
 
 setL2Bucket('https://unidata-nexrad-level2.s3.amazonaws.com');
 // No relay for the public embed: point the fallback at nothing rather than at
@@ -91,7 +91,7 @@ async function cover({ width = 2400, minDbz }) {
 async function draw({ view }) {
     if (!radar) return { ok: false, reason: 'no scan loaded' };
     const canvas = rasterize(radar, { width: view.width, height: view.height, projection: projectionFor(view) },
-        { quality: view.quality, smooth: true, minDbz: view.minDbz, palette: null });
+        { quality: view.quality, maxQuality: view.quality, smooth: true, minDbz: view.minDbz, palette: null });
     const out = canvas || new OffscreenCanvas(2, 2);
     return { ok: true, blob: await out.convertToBlob({ type: 'image/png' }), painted: !!canvas, meta: meta() };
 }

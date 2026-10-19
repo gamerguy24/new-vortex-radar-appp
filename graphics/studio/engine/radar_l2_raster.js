@@ -572,7 +572,7 @@ function separableGrid(p, OW, OH, inv) {
  *
  * @param {object} radar   result of loadSweep()
  * @param {object} scene   { projection, width, height }
- * @param {object} o       { smooth, minDbz, fadeDbz, palette, quality }
+ * @param {object} o       { smooth, minDbz, fadeDbz, palette, quality, maxQuality }
  * @returns {HTMLCanvasElement|null}
  */
 export function rasterize(radar, scene, o = {}) {
@@ -605,7 +605,9 @@ export function rasterize(radar, scene, o = {}) {
 
   // Render at the scene's own resolution unless capped, then let the caller
   // scale up. Super-res gates are worth more pixels than a national mosaic is.
-  const quality = Math.max(320, Math.min(2400, o.quality || 1600));
+  // maxQuality: a caller drawing for a big or high-DPI screen (the public
+  // embed) may go past the usual 2400.
+  const quality = Math.max(320, Math.min(o.maxQuality || 2400, o.quality || 1600));
   const OW = Math.min(quality, Math.max(scene.width, 320));
   const scale = OW / scene.width;
   const OH = Math.max(1, Math.round(scene.height * scale));

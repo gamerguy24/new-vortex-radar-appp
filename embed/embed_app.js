@@ -30,7 +30,7 @@
  *   controls     1 | 0   zoom buttons                (default 1)
  *   interactive  1 | 0   pan / zoom allowed          (default 1)
  */
-import { addMRMS, removeMRMS, getMRMSFrameTime } from '/components/mrms.js?v=embed2';
+import { addMRMS, removeMRMS, getMRMSFrameTime, paintMRMSView, getMRMSBaseDegPerPx } from '/components/mrms.js?v=embed3';
 import Palettes from '/components/palettes.js';
 import { addSiteMarkers, fetchSiteStatus, setSiteMarkerStatus, keepSiteMarkersOnTop, siteMarkersLayerId } from '/broadcast/site_markers.js?v=embed1';
 
@@ -47,17 +47,18 @@ const ALERTS_EVERY_MS = 60 * 1000;
 const SITE_ZOOM = 5.5;
 const SCAN_CHECK_MS = 60 * 1000;     // look for a newer volume (radars scan every 2-6 min)
 const SITE_RANGE_KM = 230;           // beyond this from the centre, the nearest site takes over
-// Two pictures of the same scan, so no view ever shows the edge of a patch:
-//   cover   the radar's whole range, drawn once per scan; it sits under every
-//           pan and zoom-out
-//   detail  just the view (plus a margin), drawn sharper after the map stops
-//           when zoomed in past DETAIL_ZOOM; shown only while it covers the
-//           whole screen, otherwise the cover takes over
+// Two pictures of the same data, so no view ever shows the edge of a patch
+// and none is blurry:
+//   cover   everything: the radar's whole range (or the whole national
+//           mosaic), drawn once per scan; it sits under every pan and zoom-out
+//   detail  just the view (plus a margin) at the screen's own pixel density,
+//           drawn after the map stops whenever the screen is finer than the
+//           cover; shown only while it covers the whole screen
 // Only one is visible at a time: stacked, their opacities would add up.
-const COVER_PX = 2400;               // cover width (the rasteriser's ceiling)
-const DETAIL_ZOOM = 7;               // below this the cover is as sharp as the screen
-const DETAIL_PAD = 0.3;              // margin around the view, as a fraction of it
-const DETAIL_MAX_PX = 2400;
+const COVER_PX = 2400;               // single-radar cover width
+const DETAIL_PAD = 0.15;             // margin around the view, as a fraction of it
+const DETAIL_MAX_PX = 4096;          // longest side of a sharp picture
+const SHARPER = 1.15;                // draw one once the screen is this much finer than the cover
 const MRMS_IDLE_MS = 3 * 60 * 1000;  // drop the hidden mosaic after this long zoomed in
 const MIN_DBZ = 10;                   // below this is clear-air haze around the radar
 
@@ -168,18 +169,29 @@ function setLegendText(title, time) {
 // zooming out never shows a screen-sized patch. Zooming in only HIDES it, so
 // coming back out is instant; it is dropped after a few minutes zoomed in.
 const MRMS_LAYER = 'mrms-img-layer';   // components/mrms.js
+const NDETAIL = { src: 'erx-mrms-sharp', layer: 'erx-mrms-sharp-layer', opacity: 0.7 };   // mrms.js's opacity
 let mrmsOn = false, mrmsIdle = null;
+let nationalShown = false;
+let ndetail = null;      // { west, north, east, south } of the sharp mosaic picture
+let nDrawing = 0;
 function setVisible(layer, on) {
     if (map.getLayer(layer)) map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none');
 }
+function syncNationalLayers() {
+    const useDetail = nationalShown && coversView(ndetail);
+    setVisible(NDETAIL.layer, useDetail);
+    setVisible(MRMS_LAYER, nationalShown && !useDetail);
+}
 async function showNational() {
     clearTimeout(mrmsIdle); mrmsIdle = null;
-    setVisible(MRMS_LAYER, true);
+    nationalShown = true;
+    syncNationalLayers();
     if (!mrmsOn) {
         mrmsOn = true;
         try { await addMRMS({ map, wholeGrid: true }); }   // paints, then refreshes itself every 2 minutes
         catch (e) { console.warn('[embed] mosaic unavailable:', e); }
         if (mode !== 'national' && cover) { hideNational(); return; }   // zoomed in while it loaded
+        syncNationalLayers();
     }
     if (mode !== 'national') return;
     const iso = getMRMSFrameTime();
@@ -187,9 +199,27 @@ async function showNational() {
 }
 function hideNational() {
     if (!mrmsOn) return;
-    setVisible(MRMS_LAYER, false);
+    nationalShown = false;
+    syncNationalLayers();
     clearTimeout(mrmsIdle);
-    mrmsIdle = setTimeout(() => { if (mode !== 'national' && mrmsOn) { mrmsOn = false; removeMRMS(); } }, MRMS_IDLE_MS);
+    mrmsIdle = setTimeout(() => {
+        if (mode !== 'national' && mrmsOn) { mrmsOn = false; removeMRMS(); dropImages(NDETAIL); ndetail = null; }
+    }, MRMS_IDLE_MS);
+}
+// The whole mosaic is drawn coarser than the screen once zoomed in a little:
+// lay a picture of just the view over it, at the screen's density.
+async function drawNationalDetail() {
+    if (mode !== 'national' || !mrmsOn) return;
+    const token = ++nDrawing;
+    const base = getMRMSBaseDegPerPx();
+    const v = base && screenDegPerPx() * SHARPER < base ? sharpView({ west: -180, east: 180, north: 85, south: -85 }) : null;
+    const r = v && paintMRMSView(v, v.width);
+    if (!r) { ndetail = null; syncNationalLayers(); return; }
+    const blob = await new Promise((res) => r.canvas.toBlob(res, 'image/png'));
+    if (token !== nDrawing || mode !== 'national' || !blob) return;
+    setImage(NDETAIL, blob, r);
+    ndetail = r;
+    syncNationalLayers();
 }
 
 // ── single-site Level 2 (zoomed in) ──
@@ -201,7 +231,7 @@ const pending = new Map();
 function getWorker() {
     if (worker) return worker;
     if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return null;
-    worker = new Worker('/embed/radar_worker.js?v=embed2', { type: 'module' });
+    worker = new Worker('/embed/radar_worker.js?v=embed3', { type: 'module' });
     worker.onmessage = (e) => { const { id, result } = e.data || {}; const r = pending.get(id); if (r) { pending.delete(id); r(result); } };
     worker.onerror = () => { for (const r of pending.values()) r({ ok: false, reason: 'radar worker stopped' }); pending.clear(); worker = null; };
     return worker;
@@ -238,45 +268,53 @@ function setImage(which, blob, b) {
         // Cover under detail, both under the warnings.
         const before = which === COVER && map.getLayer(DETAIL.layer) ? DETAIL.layer : 'radar-webgl';
         map.addLayer({ id: which.layer, type: 'raster', source: which.src,
-            paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0, 'raster-resampling': 'linear' } }, before);
+            paint: { 'raster-opacity': which.opacity || 0.85, 'raster-fade-duration': 0, 'raster-resampling': 'linear' } }, before);
     }
     if (objectUrls[which.src]) URL.revokeObjectURL(objectUrls[which.src]);
     objectUrls[which.src] = url;
 }
-function dropSiteImages() {
-    for (const w of [DETAIL, COVER]) {
+function dropImages(...which) {
+    for (const w of which) {
         if (map.getLayer(w.layer)) map.removeLayer(w.layer);
         if (map.getSource(w.src)) map.removeSource(w.src);
         if (objectUrls[w.src]) { URL.revokeObjectURL(objectUrls[w.src]); delete objectUrls[w.src]; }
     }
-    cover = null; detail = null;
+}
+function dropSiteImages() { dropImages(DETAIL, COVER); cover = null; detail = null; }
+
+// Screen pixels are DEVICE pixels: a phone or a retina laptop has two or three
+// per CSS pixel, and a picture drawn for CSS pixels looks soft on it.
+const dpr = () => Math.min(3, window.devicePixelRatio || 1);
+function screenDegPerPx() {
+    const b = map.getBounds();
+    return (b.getEast() - b.getWest()) / ((map.getContainer().clientWidth || 800) * dpr());
+}
+function coversView(b) {
+    if (!b) return false;
+    const v = map.getBounds();
+    return v.getWest() >= b.west && v.getEast() <= b.east && v.getNorth() <= b.north && v.getSouth() >= b.south;
 }
 // The sharp picture while it fills the screen, the whole-range one otherwise.
 function syncSiteLayers() {
     if (mode !== 'site') { setVisible(COVER.layer, false); setVisible(DETAIL.layer, false); return; }
-    let useDetail = false;
-    if (detail) {
-        const b = map.getBounds();
-        useDetail = b.getWest() >= detail.west && b.getEast() <= detail.east && b.getNorth() <= detail.north && b.getSouth() >= detail.south;
-    }
+    const useDetail = coversView(detail);
     setVisible(DETAIL.layer, useDetail);
     setVisible(COVER.layer, !useDetail);
 }
-// The view plus a margin, clipped to the radar's range; null if off its range.
-function detailView() {
+// The view plus a margin, clipped to `box`, sized in device pixels; null if
+// the view is off the box.
+function sharpView(box) {
     const el = map.getContainer();
     const w = el.clientWidth || 800, h = el.clientHeight || 500;
     const nw = map.unproject([-w * DETAIL_PAD, -h * DETAIL_PAD]);
     const se = map.unproject([w * (1 + DETAIL_PAD), h * (1 + DETAIL_PAD)]);
-    const b = cover.box;
-    const v = { west: Math.max(nw.lng, b.west), east: Math.min(se.lng, b.east), north: Math.min(nw.lat, b.north), south: Math.max(se.lat, b.south) };
+    const v = { west: Math.max(nw.lng, box.west), east: Math.min(se.lng, box.east), north: Math.min(nw.lat, box.north), south: Math.max(se.lat, box.south) };
     if (!(v.east > v.west) || !(v.north > v.south)) return null;
     const a = map.project([v.west, v.north]), c = map.project([v.east, v.south]);
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    let pw = (c.x - a.x) * dpr, ph = (c.y - a.y) * dpr;
+    let pw = (c.x - a.x) * dpr(), ph = (c.y - a.y) * dpr();
     const k = Math.min(1, DETAIL_MAX_PX / Math.max(pw, ph));
     pw = Math.max(2, Math.round(pw * k)); ph = Math.max(2, Math.round(ph * k));
-    return { ...v, width: pw, height: ph, quality: DETAIL_MAX_PX, minDbz: MIN_DBZ };
+    return { ...v, width: pw, height: ph };
 }
 function siteLegend() {
     const s = sites.find((x) => x.id === site.id);
@@ -288,9 +326,10 @@ let drawing = 0;
 async function drawDetail() {
     if (mode !== 'site' || !site.meta || !cover) return;
     const token = ++drawing;
-    const v = map.getZoom() >= DETAIL_ZOOM ? detailView() : null;
+    const coverDegPerPx = (cover.box.east - cover.box.west) / COVER_PX;
+    const v = screenDegPerPx() * SHARPER < coverDegPerPx ? sharpView(cover.box) : null;
     if (!v) { detail = null; syncSiteLayers(); return; }
-    const r = await ask('draw', { view: v });
+    const r = await ask('draw', { view: { ...v, quality: DETAIL_MAX_PX, minDbz: MIN_DBZ } });
     if (token !== drawing || mode !== 'site') return;
     if (r && r.ok && r.blob) { setImage(DETAIL, r.blob, v); detail = v; }
     syncSiteLayers();
@@ -322,7 +361,7 @@ async function loadSite(id, { force = false } = {}) {
                 setLegendText(`${id} · no recent scan`, '');
                 // Not another radar's picture in its place: the mosaic, if loaded.
                 dropSiteImages();
-                if (mode === 'site') { clearTimeout(mrmsIdle); setVisible(MRMS_LAYER, true); }
+                if (mode === 'site' && mrmsOn) { clearTimeout(mrmsIdle); nationalShown = true; syncNationalLayers(); }
             }
             return;
         }
@@ -361,7 +400,7 @@ async function update() {
         // The radar picture stays up until the mosaic has painted.
         if (mode !== 'national') { mode = 'national'; legendFor('national'); }
         await showNational();
-        if (mode === 'national') syncSiteLayers();
+        if (mode === 'national') { syncSiteLayers(); await drawNationalDetail(); }
     }
 }
 
@@ -506,9 +545,16 @@ map.on('load', async () => {
     });
     // Mid-gesture: drop to the whole-range picture the moment the sharp one
     // stops covering the screen.
-    map.on('move', syncSiteLayers);
+    map.on('move', () => { syncSiteLayers(); syncNationalLayers(); });
     // Newer scans: the worker only re-downloads when the listing has moved on.
     setInterval(() => { if (mode === 'site' && site.id) loadSite(site.id); else if (mode === 'national') showNational(); }, SCAN_CHECK_MS);
     // Keep the mosaic's time current between refreshes.
-    setInterval(() => { if (mode === 'national') { const iso = getMRMSFrameTime(); if (iso) setLegendText('National radar', fmtTime(Date.parse(iso))); } }, 20 * 1000);
+    // A new mosaic frame also redraws the sharp picture of the view.
+    let lastFrame = null;
+    setInterval(() => {
+        if (mode !== 'national') return;
+        const iso = getMRMSFrameTime();
+        if (iso) setLegendText('National radar', fmtTime(Date.parse(iso)));
+        if (iso && iso !== lastFrame) { lastFrame = iso; drawNationalDetail(); }
+    }, 20 * 1000);
 });

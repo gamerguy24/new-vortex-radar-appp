@@ -67,6 +67,7 @@ let _productId       = DEFAULT_PRODUCT_ID;
 let _frame           = null;   // { key, values, grid }
 let _moveTimer       = null;
 let _moveHooked      = false;
+let _baseDegPerPx    = null;   // resolution of the picture on the map
 
 function _product() { return getProduct(_productId); }
 
@@ -468,7 +469,7 @@ const MAX_CANVAS_PX = 3600;
 const SUPERSAMPLE = 3;
 const VIEW_PAD = 0.25;            // fraction of the view added on each side
 
-function _gridWindow(grid) {
+function _fullWindow(grid) {
     const lonW0 = grid.lon1 > 180 ? grid.lon1 - 360 : grid.lon1;
     const latTop = Math.max(grid.lat1, grid.lat2);
     const latBot = Math.min(grid.lat1, grid.lat2);
@@ -477,7 +478,11 @@ function _gridWindow(grid) {
         west: lonW0, east: lonW0 + (grid.nx - 1) * grid.di,
         north: latTop, south: latBot,
     };
+    return full;
+}
 
+function _gridWindow(grid) {
+    const full = _fullWindow(grid);
     // { wholeGrid: true } (the public embed): always the whole mosaic, so a
     // pan or zoom-out never shows the edge of a screen-sized patch.
     if (_mapWrapper && _mapWrapper.wholeGrid) return full;
@@ -489,10 +494,17 @@ function _gridWindow(grid) {
 
     const padLon = (b.getEast() - b.getWest()) * VIEW_PAD;
     const padLat = (b.getNorth() - b.getSouth()) * VIEW_PAD;
-    const west = Math.max(full.west, b.getWest() - padLon);
-    const east = Math.min(full.east, b.getEast() + padLon);
-    const south = Math.max(full.south, b.getSouth() - padLat);
-    const north = Math.min(full.north, b.getNorth() + padLat);
+    return _clipWindow(grid, b.getWest() - padLon, b.getEast() + padLon, b.getSouth() - padLat, b.getNorth() + padLat);
+}
+
+// The grid cells covering a lon/lat box, or null if the box misses the grid.
+function _clipWindow(grid, west0, east0, south0, north0) {
+    const full = _fullWindow(grid);
+    const latTop = full.north;
+    const west = Math.max(full.west, west0);
+    const east = Math.min(full.east, east0);
+    const south = Math.max(full.south, south0);
+    const north = Math.min(full.north, north0);
     // Off the grid entirely (looking at Europe, say): nothing to draw.
     if (!(east > west) || !(north > south)) return null;
 
@@ -567,7 +579,7 @@ function _gridWindow(grid) {
  * a real value would drag every storm edge down and ring it with invented
  * weak returns.
  */
-function paintToCanvas(values, grid, win) {
+function paintToCanvas(values, grid, win, widthPx) {
     const { nx, ny, scanMode } = grid;
     const product = _product();
     const isRef = !!product.reflectivity;
@@ -589,7 +601,8 @@ function paintToCanvas(values, grid, win) {
     let targetW = winCols;
     const map = _getMap();
     try {
-        if (_mapWrapper && _mapWrapper.wholeGrid) targetW = MAX_CANVAS_PX;
+        if (widthPx) targetW = widthPx;
+        else if (_mapWrapper && _mapWrapper.wholeGrid) targetW = MAX_CANVAS_PX;
         else if (map && typeof map.getCanvas === 'function' && typeof map.getBounds === 'function') {
             const b = map.getBounds();
             const viewLon = b.getEast() - b.getWest();
@@ -865,6 +878,7 @@ async function _repaint() {
     const win = _gridWindow(grid);
     if (!win) { _removeFromMap(); return; }   // map is off the grid entirely
     const canvas = paintToCanvas(values, grid, win);
+    _baseDegPerPx = (win.east - win.west) / canvas.width;
     const dataUrl = await _canvasUrl(canvas);
     if (!_active) return;                    // switched off while encoding
     _addImageToMap(dataUrl, [
@@ -1134,6 +1148,22 @@ export function getMRMSProductId() { return _productId; }
  * one that reads hours wrong when it is formatted as local time. The 24/7
  * broadcast page puts this on air.
  */
+/*
+ * For a caller that keeps the whole mosaic up ({ wholeGrid: true }) and lays
+ * a sharper picture of just its view over it when zoomed in (the public
+ * embed): paint the frame already in memory for a lon/lat box, about widthPx
+ * across. Returns { canvas, west, east, north, south } or null.
+ */
+export function paintMRMSView({ west, east, south, north }, widthPx) {
+    if (!_frame || !_active) return null;
+    const win = _clipWindow(_frame.grid, west, east, south, north);
+    if (!win) return null;
+    const canvas = paintToCanvas(_frame.values, _frame.grid, win, widthPx);
+    return { canvas, west: win.west, east: win.east, north: win.north, south: win.south };
+}
+// Degrees of longitude per pixel of the picture on the map now.
+export function getMRMSBaseDegPerPx() { return _baseDegPerPx; }
+
 export function getMRMSFrameTime() {
     return _lastRenderedKey ? _parseTimestamp(_lastRenderedKey) : null;
 }
