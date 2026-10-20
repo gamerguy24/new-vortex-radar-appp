@@ -121,10 +121,16 @@ if [ -n "$TUNNEL_TOKEN" ]; then
         echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' > /etc/apt/sources.list.d/cloudflared.list
         apt-get update -qq && apt-get install -y -qq cloudflared
     fi
-    if systemctl list-unit-files cloudflared.service >/dev/null 2>&1 && systemctl is-enabled cloudflared >/dev/null 2>&1; then
-        echo "   cloudflared is already installed as a service here; leaving it as it is."
+    if systemctl is-active --quiet cloudflared; then
+        echo "   cloudflared is already running here; leaving it as it is."
         echo "   (To switch it to this token: sudo cloudflared service uninstall, then run this again.)"
     else
+        # A connector that is installed but not running (e.g. stuck on a
+        # missing token file) is replaced with this token.
+        if systemctl cat cloudflared.service >/dev/null 2>&1; then
+            echo "   replacing a cloudflared service that was not running"
+            cloudflared service uninstall >/dev/null 2>&1 || true
+        fi
         cloudflared service install "$TUNNEL_TOKEN"
     fi
 fi
