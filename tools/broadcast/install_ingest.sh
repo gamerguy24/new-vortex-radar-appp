@@ -154,6 +154,10 @@ case "$hook_code" in
 esac
 
 IP="$(curl -fsS4 https://ifconfig.me 2>/dev/null || echo '<this box public IP>')"
+IP_NOTE=""
+[ "$IP" = "193.122.152.119" ] || IP_NOTE="
+   This box's IP is ${IP}, not the default, so also set
+     RTMP_PUBLIC_URL=rtmp://${IP}/live"
 cat <<EOF
 
 Done on this box. What is left:
@@ -167,9 +171,7 @@ Done on this box. What is left:
      subdomain stream   domain echoradarwx.com   service HTTP  localhost:8099
    (Cloudflare makes the DNS entry for it by itself.)
 
-3. The MAIN app's .env (the box people use) needs INGEST_SECRET=<the same secret>.
-   This box's IP is ${IP}; if that is not 193.122.152.119, also set
-     RTMP_PUBLIC_URL=rtmp://${IP}/live
+3. The MAIN app's .env (the box people use) needs INGEST_SECRET=<the same secret>.${IP_NOTE}
 
 Check: the Chase Stream Hub should say "Waiting for OBS" under Your Echo Radar
 stream server. Logs: journalctl -u nginx -f   journalctl -u cloudflared -f
