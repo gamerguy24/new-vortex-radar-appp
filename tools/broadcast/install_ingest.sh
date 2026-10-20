@@ -60,9 +60,13 @@ cd "$(dirname "$0")/../.."
 ROOT="$(pwd)"
 
 echo "== Switching off the earlier MediaMTX setup (if any)"
-if systemctl list-unit-files mediamtx.service 2>/dev/null | grep -q mediamtx; then
+if systemctl cat mediamtx.service >/dev/null 2>&1; then
     systemctl disable --now mediamtx 2>/dev/null || true
     echo "   mediamtx stopped and disabled"
+fi
+if pgrep -x mediamtx >/dev/null 2>&1; then
+    pkill -x mediamtx || true   # one started by hand, outside systemd
+    echo "   a running mediamtx was stopped"
 fi
 if [ -f /etc/caddy/Caddyfile ] && grep -q 'echo-radar-ingest' /etc/caddy/Caddyfile; then
     systemctl disable --now caddy 2>/dev/null || true   # it only served the old setup, on port 8099
@@ -127,7 +131,15 @@ fi
 
 echo "== Starting"
 systemctl enable nginx >/dev/null 2>&1
-systemctl restart nginx
+if ! systemctl restart nginx; then
+    echo
+    echo "nginx would not start. Its own reason:" >&2
+    journalctl -u nginx -n 15 --no-pager -o cat >&2 || true
+    echo
+    echo "What is already using nginx's ports (1935, 8098, 8099):" >&2
+    ss -ltnp 2>/dev/null | grep -E ':(1935|8098|8099)\b' >&2 || echo "   nothing" >&2
+    exit 1
+fi
 sleep 2
 systemctl --no-pager --lines=0 status nginx | grep -E '●|Active:' || true
 
