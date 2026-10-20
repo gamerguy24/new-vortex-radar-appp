@@ -1,9 +1,14 @@
-# echo-radar-ingest — Caddy in front of MediaMTX on the broadcast box.
+# echo-radar-ingest — local router in front of MediaMTX on the broadcast box.
 # Installed by tools/broadcast/install_ingest.sh as /etc/caddy/Caddyfile.
-# Caddy gets and renews the HTTPS certificate by itself (needs ports 80 + 443
-# open and the DNS record set to DNS only).
+#
+# Plain HTTP on 127.0.0.1:8099 only: nothing here faces the internet. The
+# Cloudflare Tunnel on this box publishes it (e.g. https://stream.echoradarwx.com
+# -> http://localhost:8099), so there is no certificate, no port 80/443 and no
+# DNS record to manage. Any Host is accepted, since the tunnel passes the public one.
 
-ingest.echoradarwx.com {
+http://:8099 {
+	bind 127.0.0.1
+
 	# MediaMTX's status API, polled by the main Echo Radar app. MediaMTX asks
 	# Echo Radar to check every call, so only the app (holding the secret) gets in.
 	handle /v3/* {

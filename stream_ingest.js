@@ -25,9 +25,9 @@
  *
  * Env:
  *   MEDIAMTX_HOOK_SECRET     shared secret, also in mediamtx.yml's authHTTPAddress (required)
- *   RTMP_PUBLIC_URL          what streamers paste into OBS (default rtmp://ingest.echoradarwx.com/live)
- *   MEDIAMTX_HLS_PUBLIC_URL  MediaMTX's public HTTPS address, e.g. https://ingest.echoradarwx.com
- *                            (set when MediaMTX runs on another box; viewers are sent there)
+ *   RTMP_PUBLIC_URL          what streamers paste into OBS, e.g. rtmp://<broadcast box IP>/live
+ *   MEDIAMTX_HLS_PUBLIC_URL  MediaMTX's public HTTPS address, e.g. https://stream.echoradarwx.com
+ *                            (the broadcast box's Cloudflare Tunnel; viewers are sent there)
  *   MEDIAMTX_API_URL         MediaMTX control API (default http://127.0.0.1:9997; remote:
  *                            the same public address, which forwards /v3/ to it)
  *   MEDIAMTX_HLS_URL         MediaMTX HLS when it runs on THIS box (default http://127.0.0.1:8888)

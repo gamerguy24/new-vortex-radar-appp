@@ -4,39 +4,46 @@
 # 24/7 broadcast box, so chasers' OBS streams land on a machine with a public
 # IP and free bandwidth instead of the main app's home connection.
 #
+# No DNS records and no certificates: OBS connects to this box's IP on port
+# 1935, and viewers reach the video through a Cloudflare Tunnel on this box.
+#
 #   cd ~/VortexRadar && git pull
-#   sudo bash tools/broadcast/install_ingest.sh <MEDIAMTX_HOOK_SECRET>
+#   sudo bash tools/broadcast/install_ingest.sh <MEDIAMTX_HOOK_SECRET> --tunnel-token <TOKEN>
 #
 # The secret must be the SAME value as MEDIAMTX_HOOK_SECRET in the MAIN app's
 # .env (make one with: openssl rand -hex 32). Options:
-#   --host NAME   public name for RTMP and HLS   (default ingest.echoradarwx.com)
-#   --app URL     the main Echo Radar app        (default https://echoradarwx.com)
+#   --tunnel-token TOKEN  install the Cloudflare Tunnel connector with this token
+#                         (Cloudflare dashboard > Networking > Tunnels > Create a
+#                         tunnel > copy the token from the install command).
+#                         Leave it out if this box already runs that tunnel.
+#   --app URL             the main Echo Radar app (default https://echoradarwx.com)
 #
 # What it does: installs MediaMTX (latest release) as the `mediamtx` service
-# with tools/mediamtx.yml, installs Caddy to put MediaMTX's HLS and status API
-# on https://<host> with an automatic certificate, and opens TCP 80, 443 and
-# 1935 in this box's firewall. It changes nothing about the broadcast itself.
+# with tools/mediamtx.yml; Caddy as a local-only router on 127.0.0.1:8099
+# (HLS + status API) for the tunnel to publish; opens TCP 1935 in this box's
+# firewall; and, with --tunnel-token, cloudflared. It does not touch the
+# 24/7 broadcast.
 #
 # Still to do by hand (it prints these at the end):
-#   - Oracle Cloud console: allow TCP 80, 443, 1935 in the subnet's security list
-#   - Cloudflare DNS: A record <host> -> this box's public IP, DNS only (grey cloud)
-#   - main app .env: MEDIAMTX_HLS_PUBLIC_URL and MEDIAMTX_API_URL, then restart it
+#   - Oracle Cloud console: allow TCP 1935 in the subnet's security list
+#   - Cloudflare tunnel: route stream.echoradarwx.com -> http://localhost:8099
+#   - main app .env, then restart it
 
 set -euo pipefail
 
 SECRET="${1:-}"
-HOST_NAME="ingest.echoradarwx.com"
 APP_URL="https://echoradarwx.com"
+TUNNEL_TOKEN=""
 shift || true
 while [ $# -gt 0 ]; do
     case "$1" in
-        --host) HOST_NAME="$2"; shift 2 ;;
+        --tunnel-token) TUNNEL_TOKEN="$2"; shift 2 ;;
         --app) APP_URL="${2%/}"; shift 2 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
 if [ -z "$SECRET" ] || [ "${SECRET#--}" != "$SECRET" ]; then
-    echo "usage: sudo bash tools/broadcast/install_ingest.sh <MEDIAMTX_HOOK_SECRET> [--host NAME] [--app URL]" >&2
+    echo "usage: sudo bash tools/broadcast/install_ingest.sh <MEDIAMTX_HOOK_SECRET> [--tunnel-token TOKEN] [--app URL]" >&2
     exit 1
 fi
 if ! printf '%s' "$SECRET" | grep -Eq '^[A-Za-z0-9_-]{16,}$'; then
@@ -74,31 +81,45 @@ chown root:mediamtx /etc/mediamtx/mediamtx.yml
 chmod 640 /etc/mediamtx/mediamtx.yml      # it holds the secret
 install -m 644 "$ROOT/tools/broadcast/mediamtx.service" /etc/systemd/system/mediamtx.service
 
-echo "== Caddy (HTTPS for $HOST_NAME)"
+echo "== Caddy (local router on 127.0.0.1:8099 for the tunnel)"
 command -v caddy >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq caddy; }
 mkdir -p /etc/caddy
 if [ -f /etc/caddy/Caddyfile ] && ! grep -q 'echo-radar-ingest' /etc/caddy/Caddyfile; then
     cp /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.bak-$(date +%Y%m%d%H%M%S)"
     echo "   kept the old Caddyfile as /etc/caddy/Caddyfile.bak-*"
 fi
-sed "s#ingest.echoradarwx.com#${HOST_NAME}#" "$ROOT/tools/broadcast/Caddyfile.ingest" > /etc/caddy/Caddyfile
+install -m 644 "$ROOT/tools/broadcast/Caddyfile.ingest" /etc/caddy/Caddyfile
 
-echo "== Firewall (TCP 80, 443, 1935)"
+echo "== Firewall (TCP 1935 for OBS)"
 # Oracle's Ubuntu images ship iptables rules that REJECT everything but SSH;
-# the ACCEPTs have to go above that line.
+# the ACCEPT has to go above that line.
 if command -v iptables >/dev/null 2>&1; then
-    for port in 80 443 1935; do
-        if ! iptables -C INPUT -p tcp --dport "$port" -m state --state NEW -j ACCEPT 2>/dev/null; then
-            at="$(iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" { print $1; exit }')"
-            if [ -n "$at" ]; then iptables -I INPUT "$at" -p tcp --dport "$port" -m state --state NEW -j ACCEPT
-            else iptables -A INPUT -p tcp --dport "$port" -m state --state NEW -j ACCEPT; fi
-        fi
-    done
+    if ! iptables -C INPUT -p tcp --dport 1935 -m state --state NEW -j ACCEPT 2>/dev/null; then
+        at="$(iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" { print $1; exit }')"
+        if [ -n "$at" ]; then iptables -I INPUT "$at" -p tcp --dport 1935 -m state --state NEW -j ACCEPT
+        else iptables -A INPUT -p tcp --dport 1935 -m state --state NEW -j ACCEPT; fi
+    fi
     if command -v netfilter-persistent >/dev/null 2>&1; then netfilter-persistent save >/dev/null
     elif [ -d /etc/iptables ]; then iptables-save > /etc/iptables/rules.v4; fi
 fi
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
-    ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; ufw allow 1935/tcp >/dev/null
+    ufw allow 1935/tcp >/dev/null
+fi
+
+if [ -n "$TUNNEL_TOKEN" ]; then
+    echo "== Cloudflare Tunnel connector"
+    if ! command -v cloudflared >/dev/null 2>&1; then
+        mkdir -p --mode=0755 /usr/share/keyrings
+        curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg
+        echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' > /etc/apt/sources.list.d/cloudflared.list
+        apt-get update -qq && apt-get install -y -qq cloudflared
+    fi
+    if systemctl list-unit-files cloudflared.service >/dev/null 2>&1 && systemctl is-enabled cloudflared >/dev/null 2>&1; then
+        echo "   cloudflared is already installed as a service here; leaving it as it is."
+        echo "   (To switch it to this token: sudo cloudflared service uninstall, then run this again.)"
+    else
+        cloudflared service install "$TUNNEL_TOKEN"
+    fi
 fi
 
 echo "== Starting"
@@ -109,26 +130,29 @@ systemctl enable --now caddy
 systemctl reload caddy 2>/dev/null || systemctl restart caddy
 sleep 2
 systemctl --no-pager --lines=0 status mediamtx caddy | grep -E '●|Active:' || true
+code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8099/v3/paths/list || true)"
+echo "   local router answers: HTTP $code (401 is right: only Echo Radar may read it)"
 
 IP="$(curl -fsS4 https://ifconfig.me 2>/dev/null || echo '<this box public IP>')"
 cat <<EOF
 
-Done on this box. Three things left:
+Done on this box. What is left:
 
 1. Oracle Cloud console: Networking > Virtual cloud networks > your VCN >
-   Security lists (or the instance's subnet) > Add ingress rules:
-   source 0.0.0.0/0, TCP, destination ports 80, 443 and 1935.
+   Security Lists > Default Security List > Add Ingress Rules:
+   source 0.0.0.0/0, TCP, destination port 1935.
 
-2. Cloudflare DNS for echoradarwx.com: A record
-     name ${HOST_NAME%%.*}   value ${IP}   Proxy status: DNS only (grey cloud)
-   Caddy fetches the HTTPS certificate by itself once that resolves.
+2. Cloudflare: Networking > Tunnels > this box's tunnel > Routes > Add route >
+   Published application:
+     subdomain stream   domain echoradarwx.com   service HTTP  localhost:8099
+   (Cloudflare makes the DNS entry for it by itself.)
 
 3. The MAIN app's .env (the box people use), then restart it:
      MEDIAMTX_HOOK_SECRET=<the same secret>
-     MEDIAMTX_HLS_PUBLIC_URL=https://${HOST_NAME}
-     MEDIAMTX_API_URL=https://${HOST_NAME}
-     RTMP_PUBLIC_URL=rtmp://${HOST_NAME}/live
+     RTMP_PUBLIC_URL=rtmp://${IP}/live
+     MEDIAMTX_HLS_PUBLIC_URL=https://stream.echoradarwx.com
+     MEDIAMTX_API_URL=https://stream.echoradarwx.com
 
 Check: the Chase Stream Hub should say "Waiting for OBS" under Your Echo Radar
-stream server. Logs: journalctl -u mediamtx -f   and   journalctl -u caddy -f
+stream server. Logs: journalctl -u mediamtx -f   journalctl -u cloudflared -f
 EOF

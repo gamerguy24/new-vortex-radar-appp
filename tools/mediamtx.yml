@@ -4,7 +4,8 @@
 #
 # OBS sends RTMP to :1935. MediaMTX asks Echo Radar whether each stream key may
 # publish and each viewer may watch (authHTTPAddress), and serves HLS on
-# 127.0.0.1:8888, which Caddy puts on https://ingest.echoradarwx.com.
+# 127.0.0.1:8888, which the box's Cloudflare Tunnel publishes (via Caddy on
+# 127.0.0.1:8099) as https://stream.echoradarwx.com.
 
 logLevel: info
 logDestinations: [stdout]
@@ -17,7 +18,7 @@ authHTTPAddress: https://echoradarwx.com/internal/mediamtx/auth?secret=CHANGE_ME
 authHTTPExclude: []
 
 # Control API: Echo Radar polls it (with the secret) to show "Receiving your
-# stream". Local; Caddy forwards /v3/ to it.
+# stream". Local; Caddy forwards /v3/ to it, behind the tunnel.
 api: yes
 apiAddress: 127.0.0.1:9997
 apiTrustedProxies: ['127.0.0.1']
@@ -33,8 +34,8 @@ webrtc: no
 srt: no
 moq: no
 
-# Output: HLS for Echo Radar's in-app player. Local; Caddy serves it over
-# HTTPS. Each viewer needs a watch token signed by Echo Radar.
+# Output: HLS for Echo Radar's in-app player. Local; reached through Caddy
+# and the tunnel. Each viewer needs a watch token signed by Echo Radar.
 hls: yes
 hlsAddress: 127.0.0.1:8888
 hlsTrustedProxies: ['127.0.0.1']
