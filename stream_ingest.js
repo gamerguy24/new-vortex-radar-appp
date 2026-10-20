@@ -119,6 +119,8 @@ function attachStreamIngest(app, { streamConfigs, saveStreamConfigs, findById, c
             return res.status(200).end();
         }
         console.log(`[ingest] refused a stream key for ${String(b.name || '?').slice(0, 40)} from ${String(b.addr || '?').slice(0, 45)}`);
+        // Tells install_ingest.sh's self-test this was us, not the login gate's 401.
+        res.setHeader('X-Echo-Ingest', 'refused');
         return res.status(401).end();
     });
 

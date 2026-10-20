@@ -150,14 +150,18 @@ sleep 2
 systemctl --no-pager --lines=0 status nginx | grep -E '●|Active:' || true
 
 stat_code="$(curl -s -o /dev/null -w '%{http_code}' -H "X-Ingest-Secret: ${SECRET}" http://127.0.0.1:8099/stat || true)"
-hook_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -d 'app=live&name=0000000000&pass=test' http://127.0.0.1:8098/publish || true)"
+hook_headers="$(curl -s -D - -o /dev/null -X POST -d 'app=live&name=0000000000&pass=test' http://127.0.0.1:8098/publish || true)"
+hook_code="$(printf '%s' "$hook_headers" | awk 'NR == 1 { print $2 }')"
 echo "   stream status page: HTTP $stat_code (200 is right)"
-case "$hook_code" in
-    401) echo "   key check: OK, Echo Radar answered and refused a made-up key, as it should" ;;
-    403) echo "   key check: Echo Radar answered but the secret does not match INGEST_SECRET in its .env" ;;
-    404) echo "   key check: Echo Radar answered but does not have the new code yet (update and restart it)" ;;
-    *)   echo "   key check: could not reach Echo Radar at ${APP_URL} (HTTP $hook_code); is it running with INGEST_SECRET set?" ;;
-esac
+if printf '%s' "$hook_headers" | grep -qi '^x-echo-ingest: refused'; then
+    echo "   key check: OK, Echo Radar answered and refused a made-up key, as it should"
+else
+    case "$hook_code" in
+        403) echo "   key check: Echo Radar answered but either its secret does not match INGEST_SECRET in its .env, or it does not have the new code yet" ;;
+        401|404) echo "   key check: Echo Radar answered but does not have the new code yet (update and restart it)" ;;
+        *)   echo "   key check: could not reach Echo Radar at ${APP_URL} (HTTP ${hook_code:-none}); is it running with INGEST_SECRET set?" ;;
+    esac
+fi
 
 IP="$(curl -fsS4 https://ifconfig.me 2>/dev/null || echo '<this box public IP>')"
 IP_NOTE=""
