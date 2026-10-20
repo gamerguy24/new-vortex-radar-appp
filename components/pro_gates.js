@@ -72,14 +72,20 @@ function upgradeToast(name, requiredTier) {
   const el = document.createElement('div');
   el.id = 'proGateToast';
   el.className = 'pro-toast';
-  el.innerHTML = `<span><b>${name}</b> requires ${tierName}.</span><button class="pro-toast-btn">Upgrade</button>`;
+  el.setAttribute('role', 'status');
+  el.innerHTML = `<span><b>${name}</b> requires ${tierName}.</span><button class="pro-toast-btn">Upgrade</button><button class="pro-toast-dismiss" aria-label="Dismiss">Dismiss</button>`;
+  // Dismiss (button or Escape) just closes it; nothing else happens.
+  const close = () => { el.remove(); clearTimeout(timer); document.removeEventListener('keydown', onKey, true); };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
   el.querySelector('.pro-toast-btn').onclick = () => {
-    el.remove();
+    close();
     // Open the plan picker with the tier this feature needs pre-highlighted.
     if (window.vortexBilling && window.vortexBilling.startCheckout) window.vortexBilling.startCheckout('tier' + requiredTier);
   };
+  el.querySelector('.pro-toast-dismiss').onclick = close;
+  document.addEventListener('keydown', onKey, true);
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 6000);
+  const timer = setTimeout(close, 8000);
 }
 
 // The server enforces the same tiers on the paid data endpoints (see

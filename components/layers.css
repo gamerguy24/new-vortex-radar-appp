@@ -632,6 +632,12 @@
     font-size: 12px; cursor: pointer;
 }
 .pro-toast-btn:hover { filter: brightness(1.06); }
+.pro-toast-dismiss {
+    background: none; color: var(--vx-text-2);
+    border: 1px solid rgba(255,255,255,0.18); border-radius: var(--vx-r-2); padding: 6px 12px; font-weight: 700;
+    font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.pro-toast-dismiss:hover { color: var(--vx-text); border-color: rgba(255,255,255,0.35); }
 
 /* ── Panel scrolling ─────────────────────────────────────────────────────────
  * App-wide rule: a floating panel must never hide content it cannot scroll to.

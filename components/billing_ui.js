@@ -62,6 +62,9 @@ function ensurePickerStyles() {
     .vtp-panel{background:var(--vx-surface);border:1px solid rgba(255,255,255,0.12);border-radius:var(--vx-r-3);max-width:760px;width:100%;max-height:88vh;overflow:auto;box-shadow:var(--vx-shadow-lg);font-family:var(--vx-font);color:var(--vx-text);}
     .vtp-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.08);font-weight:700;font-size:16px;}
     .vtp-x{background:none;border:none;color:var(--vx-text-2);font-size:26px;line-height:1;cursor:pointer;padding:0 4px;}
+    .vtp-foot{display:flex;justify-content:center;padding:0 18px 18px;}
+    .vtp-notnow{background:none;border:1px solid rgba(255,255,255,0.18);color:var(--vx-text-2);border-radius:var(--vx-r-2);padding:8px 22px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;}
+    .vtp-notnow:hover{color:var(--vx-text);border-color:rgba(255,255,255,0.35);}
     .vtp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;padding:18px;}
     .vtp-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:var(--vx-r-3);padding:16px;display:flex;flex-direction:column;}
     .vtp-card-hl{border-color:var(--vx-accent);box-shadow:0 0 0 1px var(--vx-accent) inset;}
@@ -103,12 +106,16 @@ function openTierPicker(preferred) {
   overlay.innerHTML = `<div class="vtp-panel">
       <div class="vtp-head"><span>Choose your plan</span><button class="vtp-x" aria-label="Close">&times;</button></div>
       <div class="vtp-cards">${cards}</div>
+      <div class="vtp-foot"><button class="vtp-notnow">Not now</button></div>
     </div>`;
   document.body.appendChild(overlay);
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true); };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey, true);
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay || e.target.classList.contains('vtp-x')) { overlay.remove(); return; }
+    if (e.target === overlay || e.target.classList.contains('vtp-x') || e.target.classList.contains('vtp-notnow')) { close(); return; }
     const btn = e.target.closest('.vtp-choose');
-    if (btn) { overlay.remove(); go('checkout', { tier: btn.dataset.tier }); }
+    if (btn) { close(); go('checkout', { tier: btn.dataset.tier }); }
   });
 }
 
