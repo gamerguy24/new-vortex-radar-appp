@@ -698,7 +698,7 @@ function panelHTML() {
           <div class="vrsh-kv"><span class="vrsh-kv-k">Server</span><code id="vrsh-ingest-server"></code><button id="vrsh-ingest-copy-server" class="vrsh-mini" type="button">Copy</button></div>
           <div class="vrsh-kv"><span class="vrsh-kv-k">Stream key</span><code id="vrsh-ingest-key"></code><button id="vrsh-ingest-show" class="vrsh-mini" type="button">Show</button><button id="vrsh-ingest-copy-key" class="vrsh-mini" type="button">Copy</button></div>
           <div class="vrsh-actions" style="margin-top:8px"><button id="vrsh-ingest-use" class="vrsh-mini" type="button">Use for Go Live</button><button id="vrsh-ingest-reset" class="vrsh-mini vrsh-mini-danger" type="button">New key</button></div>
-          <div class="vrsh-hint">In OBS: Settings ▸ Stream ▸ Service <b>Custom</b>, then paste the Server and Stream key. Or press <b>Use for Go Live</b> and Echo Radar puts them into OBS for you. People watch you inside Echo Radar from your live marker. Keep the key secret; <b>New key</b> replaces it if it leaks.</div>
+          <div class="vrsh-hint">In OBS: Settings ▸ Stream ▸ Service <b>Custom</b>, then paste the Server and Stream key. Keep OBS's normal H.264 video and AAC audio, with a 2 s keyframe interval. Or press <b>Use for Go Live</b> and Echo Radar puts them into OBS for you. People watch you inside Echo Radar from your live marker. Keep the key secret; <b>New key</b> replaces it if it leaks.</div>
         </div>
       </div>
       <div class="vrsh-hint" style="margin-top:10px">Or send your stream somewhere else (YouTube, Twitch…) with your own RTMP URL and key:</div>

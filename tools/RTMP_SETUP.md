@@ -2,102 +2,129 @@
 
 Gives every approved streamer an RTMP server and private stream key for OBS,
 shown in the Chase Stream Hub under **Stream key (RTMP)**. Viewers watch inside
-Echo Radar. The video is handled by **MediaMTX** on the **24/7 broadcast box**
-(the Oracle server), which has a public IP and plenty of bandwidth. The main
-app only checks keys and signs watch links; no video passes through it.
+Echo Radar. The video is handled by **nginx** (Ubuntu's `nginx` plus its RTMP
+module) on the **24/7 broadcast box** (the free Oracle server), which has a
+public IP and plenty of bandwidth. The main app only checks keys and signs
+watch links; no video passes through it. Nothing here costs money.
 
 No DNS records and no certificates to manage:
 
 ```
-OBS ──RTMP──▶ rtmp://<Oracle IP>/live  (port 1935, the only port opened)
-                 │  MediaMTX asks the main app: "is this key allowed?"
+OBS ──RTMP──▶ rtmp://193.122.152.119/live  (port 1935, the only port opened)
+                 │  nginx asks the main app: "is this key allowed?"
 viewer ──▶ main app /live/<id>/index.m3u8 (signed in)
-       ──redirect + signed token──▶ https://stream.echoradarwx.com  (Cloudflare Tunnel
-                                    on the Oracle box → Caddy :8099 → MediaMTX)
+       ──redirect, signed link──▶ https://stream.echoradarwx.com/w/…  (Cloudflare
+                                  Tunnel on the Oracle box → nginx :8099)
 ```
 
+nginx checks each watch link's signature itself, so the main app is not
+asked once per viewer.
+
 ## 1. Make a secret
+
+On any Linux box or Git Bash:
 
 ```bash
 openssl rand -hex 32
 ```
 
-## 2. Make a Cloudflare Tunnel for the Oracle box
+Keep it somewhere safe; it goes in two places (steps 2 and 4).
+
+## 2. Main app: new code + `.env`, then restart it
+
+Update the main app (the box people use) to this version, add one line to its
+`.env`, and restart it:
+
+```
+INGEST_SECRET=<the secret>
+```
+
+Only if the Oracle box's IP is not `193.122.152.119`, also add
+`RTMP_PUBLIC_URL=rtmp://<its IP>/live`.
+
+## 3. Make a Cloudflare Tunnel for the Oracle box
+
+Skip this if the box already has its `oracle-stream` tunnel from the earlier
+setup.
 
 Cloudflare dashboard ▸ **Networking ▸ Tunnels ▸ Create a tunnel** ▸ Cloudflared ▸
 name it `oracle-stream` ▸ Save. On the install page, pick **Debian** and
 **arm64**. The command shown ends with a long token after `service install`:
 copy just that token. (Don't run Cloudflare's command; the script below does it.)
 
-## 3. Run the installer on the Oracle box
+## 4. Run the installer on the Oracle box
 
 ```bash
 ssh -i <your key> ubuntu@193.122.152.119
-cd ~/VortexRadar && git pull          # or copy the new files over
+cd ~/VortexRadar && git pull
 sudo bash tools/broadcast/install_ingest.sh <the secret> --tunnel-token <the token>
 ```
 
-It installs MediaMTX, a local-only Caddy router, and the tunnel connector, and
-opens port 1935 in the box's own firewall. It does not touch the 24/7 broadcast.
-It prints the remaining steps and this box's public IP.
+(Leave out `--tunnel-token …` if you skipped step 3.)
 
-## 4. Oracle Cloud console: open port 1935
+It installs nginx and its RTMP module from Ubuntu, switches off the earlier
+MediaMTX and Caddy if they are there, and opens port 1935 in the box's own
+firewall. It does not touch the 24/7 broadcast. At the end it checks that it
+can reach the main app and prints the result:
+
+- `key check: OK` — all good.
+- `secret does not match` — the secret in step 2 and step 4 differ.
+- `does not have the new code yet` — step 2 is not done.
+- `could not reach Echo Radar` — the main app is down, or Cloudflare is
+  blocking the request (check Security ▸ Events for echoradarwx.com).
+
+## 5. Oracle Cloud console: open port 1935
+
+Skip if it is already open from the earlier setup.
 
 Networking ▸ Virtual cloud networks ▸ **vortex radar** ▸ Security Lists ▸
 Default Security List ▸ **Add Ingress Rules**: source CIDR `0.0.0.0/0`,
 IP protocol TCP, destination port `1935`. This is the only port needed.
 
-## 5. Cloudflare: publish the video
+## 6. Cloudflare: publish the video
 
-Back on the tunnel (Networking ▸ Tunnels ▸ `oracle-stream`) ▸ **Routes ▸ Add
+Skip if the `stream` route already exists from the earlier setup (it points at
+the same `localhost:8099`).
+
+On the tunnel (Networking ▸ Tunnels ▸ `oracle-stream`) ▸ **Routes ▸ Add
 route ▸ Published application**: subdomain `stream`, domain `echoradarwx.com`,
 service type **HTTP**, URL `localhost:8099`. Save. Cloudflare creates the DNS
 entry itself; there is nothing to add under DNS.
-
-## 6. Main app `.env`, then restart the main app
-
-```
-MEDIAMTX_HOOK_SECRET=<the same secret>
-RTMP_PUBLIC_URL=rtmp://193.122.152.119/live
-MEDIAMTX_HLS_PUBLIC_URL=https://stream.echoradarwx.com
-MEDIAMTX_API_URL=https://stream.echoradarwx.com
-```
 
 ## 7. Test
 
 1. Chase Stream Hub ▸ **Your Echo Radar stream server** should say
    **Waiting for OBS**, and Server should read `rtmp://193.122.152.119/live`.
    "Server offline" means the main app cannot reach
-   `https://stream.echoradarwx.com/v3/` (steps 2, 3, 5 or 6).
+   `https://stream.echoradarwx.com/stat` (steps 2, 4 or 6).
 2. In OBS: Settings ▸ Stream ▸ Service **Custom**, paste the Server and the
    whole Stream key (it looks like `a1b2c3d4e5?pass=erx_…`). Or press
    **Use for Go Live** and Echo Radar fills them into OBS at Go Live.
 3. Start streaming. Within about 10 seconds the Hub shows **Receiving your
    stream**, and signed-in users can watch from your live marker.
 
-If OBS cannot connect at all: port 1935 (steps 3–4). If it connects and drops
+If OBS cannot connect at all: port 1935 (steps 4–5). If it connects and drops
 straight away, the key was refused (wrong or old key, or the account is not
-approved to stream): `journalctl -u mediamtx -f` shows `failed to authenticate`.
+approved to stream): the main app's log shows `[ingest] refused a stream key`.
 
-OBS settings that work well: Output ▸ Keyframe Interval **2 s**, video bitrate
-**2500–4500 Kbps**.
-
-## Cleaning up an earlier setup
-
-- MediaMTX on the main (home) box: `sudo systemctl disable --now mediamtx`,
-  and remove the router's port 1935 forward.
-- An `ingest` DNS record in Cloudflare is no longer used; delete it.
-- Ports 80/443 opened by the earlier version of the script have nothing
-  listening on them now; you can remove those Oracle ingress rules.
+OBS settings that work: Output ▸ Keyframe Interval **2 s**, video bitrate
+**2500–4500 Kbps**, video encoder **H.264** (x264 or the graphics card's
+H.264) and audio **AAC**, which are OBS's defaults. HEVC/AV1 streams connect
+but do not play.
 
 ## Notes
 
-- If the Oracle box's public IP ever changes, update `RTMP_PUBLIC_URL` and
+- If the Oracle box's public IP ever changes, set `RTMP_PUBLIC_URL` and
   restart the main app; streamers then copy the new Server.
 - Watch links are signed by the main app and last 6 hours; the stream key never
-  appears in one. Only signed-in Echo Radar users get a link. MediaMTX checks
-  with the main app once per viewer and once per stream start.
+  appears in one. Only signed-in Echo Radar users get a link.
+- nginx's RTMP module gets few updates upstream; Ubuntu ships and patches it as
+  `libnginx-mod-rtmp`. Keep the box updated (`sudo apt upgrade`). Only port
+  1935 faces the internet; nginx's other ports listen on 127.0.0.1 only.
+- nginx runs with one worker on purpose: its stream status page only sees the
+  worker that answers. One worker easily carries a few chase streams, since
+  nothing is re-encoded.
 - Viewers' video goes through Cloudflare's network via the tunnel. Cloudflare's
   terms discourage using its free plan mainly for video, so heavy use could
   draw their attention; light chase-stream use is unlikely to.
-- Latency is about 6–10 seconds. **New key** in the Hub replaces a leaked key.
+- Latency is about 6–12 seconds. **New key** in the Hub replaces a leaked key.
