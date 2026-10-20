@@ -24,6 +24,7 @@ const CHANGELOG = [
     {
         date: 'October 20, 2026',
         items: [
+            { title: 'Your Echo Radar stream on your Spotter Network beacon', desc: 'Streamers can now link their Spotter Network beacon to the stream they send to Echo Radar from OBS. In the Chase Stream Hub, under Stream key (RTMP), type your name or callsign exactly as it shows on Spotter Network and press Save settings. While you are streaming, everyone with the Spotters layer on sees a red live ring on your beacon; tapping it plays your stream, and the player follows your beacon as you drive. It can take up to two minutes after you start for your beacon to light up. When you stop, the ring goes and viewers are told you stopped streaming.' },
             { title: 'Chase Stream Hub: Copy buttons work', desc: 'The Copy buttons next to your Echo Radar stream server and stream key now really copy, so pasting into OBS gives you the right text instead of whatever you copied last. You can also click the server or the key itself to select all of it.' },
         ],
     },

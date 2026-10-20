@@ -1349,6 +1349,9 @@ function publicStreamConfig(c) {
         },
         discordConfigured: !!c.discordWebhook,
         remoteControl: !!c.remoteControl,
+        // Their Spotter Network name / callsign: while they stream on Echo
+        // Radar's server, their beacon plays it (stream_ingest.js /beacons).
+        spotter: c.spotter || '',
         // Manual RTMP destination (e.g. a persistent ingest URL + key).
         // Unlike the Discord webhook, the key is returned to the client because
         // the browser is what pushes it into OBS over obs-websocket (OBS is on
@@ -1385,6 +1388,7 @@ app.post('/api/stream/config', requireAuth, (req, res) => {
         ...cur,
         titleTemplate: b.titleTemplate != null ? clampStr(b.titleTemplate, 200) : cur.titleTemplate,
         remoteControl: b.remoteControl != null ? !!b.remoteControl : !!cur.remoteControl,
+        spotter: b.spotter != null ? clampStr(b.spotter, 80).trim() : (cur.spotter || ''),
         rtmp: {
             enabled: !!(b.rtmp && b.rtmp.enabled),
             url: clampStr((b.rtmp && b.rtmp.url) != null ? b.rtmp.url : (cur.rtmp && cur.rtmp.url) || '', 300),

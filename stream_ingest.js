@@ -137,6 +137,27 @@ function attachStreamIngest(app, { streamConfigs, saveStreamConfigs, findById, c
         res.json(describe(ensureIngest(req.user.id, { newKey: true })));
     });
 
+    // Beacons of streamers live on this server right now, for the Spotters
+    // layer (components/beacon_streams.js): their Spotter Network beacon plays
+    // this stream and the player follows it. A streamer links their beacon by
+    // putting their Spotter Network name or callsign in the Hub. Only live
+    // ones are listed, so nobody's name is handed out while they are off air.
+    app.get('/api/stream/beacons', requireAuth, (req, res) => {
+        res.setHeader('Cache-Control', 'no-store');
+        const beacons = [];
+        if (enabled) {
+            for (const [uid, c] of Object.entries(streamConfigs)) {
+                const pid = c && c.ingest && c.ingest.publicId;
+                const spotter = c && typeof c.spotter === 'string' ? c.spotter.trim() : '';
+                if (!pid || !spotter || !livePids.has(pid)) continue;
+                const u = findById(uid);
+                if (!u || u.isLocked || !canStream(u)) continue;
+                beacons.push({ spotter, name: spotter, watchPath: watchPath(pid) });
+            }
+        }
+        res.json({ beacons });
+    });
+
     // Watching, for signed-in users, by public id: off to the broadcast box
     // with a signed link. Its playlists are relative, so the rest follows.
     app.get('/live/:pid/index.m3u8', requireAuth, (req, res) => {

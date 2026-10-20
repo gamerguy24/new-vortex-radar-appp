@@ -11,7 +11,7 @@
 import openSponsors from './sponsors.js?v=echo2';
 import openCams, { addCamMarkers, removeCamMarkers } from './cams.js';
 import openWeatherReport, { addWeatherReportMarkers, removeWeatherReportMarkers } from './weather_report.js';
-import { addSpotterMarkers, removeSpotterMarkers } from './spotters.js?v=beacon4';
+import { addSpotterMarkers, removeSpotterMarkers } from './spotters.js?v=beacon5';
 // Versioned specifiers: an ES import is cached by URL, so a changed module
 // keeps being served from cache until its own URL changes.
 import { addMRMS, removeMRMS, setMRMSProduct, getMRMSProductId } from './mrms.js?v=mrms9';

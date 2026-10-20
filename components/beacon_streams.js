@@ -16,6 +16,11 @@
  *
  * To find the exact Spotter Network name, open the console with the Spotters
  * layer on:  VortexStreamPlayer.findSpotter('pisani')
+ *
+ * Streamers also link their own beacon: they put their Spotter Network name
+ * or callsign in the Chase Stream Hub, and while they stream to Echo Radar's
+ * own server (stream_ingest.js) their beacon plays that stream, ahead of any
+ * entry in this table. refreshEchoBeacons() fetches who that is.
  */
 export const BEACON_STREAMS = [
     // Joseph Pisani streams on the Extreme Weather Videos YouTube channel.
@@ -26,11 +31,41 @@ export const BEACON_STREAMS = [
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+// Streamers live on Echo Radar's server with a linked beacon, as entries
+// shaped like BEACON_STREAMS. A table entry for the same person lends its
+// spotter key and name, so following and the marker label stay the same.
+let echoBeacons = [];
+export async function refreshEchoBeacons() {
+    try {
+        const r = await fetch('/api/stream/beacons', { cache: 'no-store', credentials: 'same-origin' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        echoBeacons = (j.beacons || []).filter((b) => b && b.spotter && b.watchPath).map((b) => {
+            const known = BEACON_STREAMS.find((s) => norm(s.spotter) === norm(b.spotter));
+            return {
+                spotter: known ? known.spotter : b.spotter,
+                name: known ? known.name : b.name,
+                url: location.origin + b.watchPath,
+                platform: 'Echo Radar',
+            };
+        });
+    } catch (e) {
+        console.warn('[beacon-streams] Echo Radar streams unavailable:', e);   // keep the last list
+    }
+    return echoBeacons;
+}
+
+const idsOf = (pos) => [pos.id, pos.spotter_id, pos.callsign, pos.ham, String(pos.first || '') + String(pos.last || '')].map(norm).filter(Boolean);
+
+/** Whether a Spotter Network position row is this spotter (name, callsign, ham call or id). */
+export const isSpotter = (pos, spotter) => !!pos && idsOf(pos).includes(norm(spotter));
+
 /** The stream entry for a Spotter Network position row, or null. */
 export function beaconStreamFor(pos) {
     if (!pos) return null;
-    const ids = [pos.id, pos.spotter_id, pos.callsign, pos.ham, String(pos.first || '') + String(pos.last || '')].map(norm).filter(Boolean);
-    return BEACON_STREAMS.find((b) => b.url && ids.includes(norm(b.spotter))) || null;
+    const ids = idsOf(pos);
+    const match = (b) => b.url && ids.includes(norm(b.spotter));
+    return echoBeacons.find(match) || BEACON_STREAMS.find(match) || null;
 }
 
 /** The stream entry whose stream is this URL (Featured Streams rows), or null. */

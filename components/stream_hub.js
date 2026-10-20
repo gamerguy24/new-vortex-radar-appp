@@ -719,6 +719,8 @@ function panelHTML() {
           <div class="vrsh-kv"><span class="vrsh-kv-k">Stream key</span><code id="vrsh-ingest-key"></code><button id="vrsh-ingest-show" class="vrsh-mini" type="button">Show</button><button id="vrsh-ingest-copy-key" class="vrsh-mini" type="button">Copy</button></div>
           <div class="vrsh-actions" style="margin-top:8px"><button id="vrsh-ingest-use" class="vrsh-mini" type="button">Use for Go Live</button><button id="vrsh-ingest-reset" class="vrsh-mini vrsh-mini-danger" type="button">New key</button></div>
           <div class="vrsh-hint">In OBS: Settings ▸ Stream ▸ Service <b>Custom</b>, then paste the Server and Stream key. Keep OBS's normal H.264 video and AAC audio, with a 2 s keyframe interval. Or press <b>Use for Go Live</b> and Echo Radar puts them into OBS for you. People watch you inside Echo Radar from your live marker. Keep the key secret; <b>New key</b> replaces it if it leaks.</div>
+          <div class="vrsh-field" style="margin-top:10px"><label>Your Spotter Network name or callsign (optional)</label><input id="vrsh-spotter" type="text" maxlength="80" placeholder="e.g. Nathan Bradley" /></div>
+          <div class="vrsh-hint">While you stream here, your Spotter Network beacon on the map gets a live ring and plays this stream, and viewers' players follow your beacon. Use your name exactly as it shows on Spotter Network, then <b>Save settings</b>.</div>
         </div>
       </div>
       <div class="vrsh-hint" style="margin-top:10px">Or send your stream somewhere else (YouTube, Twitch…) with your own RTMP URL and key:</div>
@@ -760,6 +762,7 @@ function syncForm() {
     set('vrsh-obs-port', cfg.obs.port || 4455);
     set('vrsh-obs-overlay', cfg.obs.overlaySource || '');
     set('vrsh-obs-pass', cfg.obs.password || '');
+    set('vrsh-spotter', cfg.spotter || '');
     set('vrsh-rtmp-url', (cfg.rtmp && cfg.rtmp.url) || '');
     set('vrsh-rtmp-key', (cfg.rtmp && cfg.rtmp.key) || '');
     chk('vrsh-rtmp-enable', cfg.rtmp && cfg.rtmp.enabled);
@@ -778,6 +781,7 @@ async function saveConfig() {
     const body = {
         titleTemplate: $('vrsh-title').value,
         remoteControl: $('vrsh-remote-enable') ? $('vrsh-remote-enable').checked : false,
+        spotter: $('vrsh-spotter') ? $('vrsh-spotter').value.trim() : '',
         rtmp: {
             enabled: $('vrsh-rtmp-enable') ? $('vrsh-rtmp-enable').checked : false,
             url: $('vrsh-rtmp-url') ? $('vrsh-rtmp-url').value.trim() : '',

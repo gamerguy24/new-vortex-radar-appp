@@ -12,7 +12,7 @@
  * player opens by itself and follows it (unless something else is already
  * playing — then it just says so); when it goes off, following stops.
  */
-import { beaconStreamFor, beaconTrack } from './beacon_streams.js?v=beacon2';
+import { beaconStreamFor, beaconTrack, isSpotter, refreshEchoBeacons } from './beacon_streams.js?v=beacon3';
 import { openMiniPlayer, isPlayerOpen, playerTrack, endTracking } from './stream_player.js?v=hls1';
 
 const SPOTTER_APP_ID = '55f78b6ed31f5';
@@ -87,27 +87,37 @@ function _toast(html, actionLabel, onAction) {
  * After each refresh: a streaming beacon that has just come on is followed
  * (the player opens on it), and one that has gone off stops being followed.
  * The first refresh after the layer is switched on counts as "just came on".
+ * Starting or stopping an Echo Radar stream while the beacon stays on counts
+ * too: going live there opens (or switches the followed player to) that
+ * stream; stopping just says so.
  */
 function _checkBeacons(positions) {
     const now = new Map();
     for (const p of positions) { const b = beaconStreamFor(p); if (b) now.set(b.spotter, b); }
     const before = _liveBeacons || new Map();
     const following = playerTrack();
+    const isFollowing = (b) => !!(following && following.kind === 'spotter' && following.callsign === b.spotter);
     for (const [key, b] of now) {
-        if (before.has(key)) continue;
-        if (!isPlayerOpen()) {
+        const was = before.get(key);
+        if (was && was.url === b.url) continue;
+        if (was && was.platform === 'Echo Radar') {
+            // Their Echo Radar stream ended; their beacon is still on with a table stream.
+            _toast(`${b.name} stopped streaming on Echo Radar.`);
+            continue;
+        }
+        const what = b.platform === 'Echo Radar' ? `${b.name} is live on Echo Radar` : `${b.name}'s beacon is on`;
+        if (!isPlayerOpen() || (was && isFollowing(b))) {
             _watch(b);
-            _toast(`${b.name}'s beacon is on — following.`);
-        } else if (!(following && following.kind === 'spotter' && following.callsign === b.spotter)) {
-            _toast(`${b.name}'s beacon is on.`, 'Watch & follow', () => _watch(b));
+            _toast(`${what} — following.`);
+        } else if (!isFollowing(b)) {
+            _toast(`${what}.`, 'Watch & follow', () => _watch(b));
         }
     }
     for (const [key, b] of before) {
         if (now.has(key)) continue;
-        if (following && following.kind === 'spotter' && following.callsign === b.spotter) {
-            endTracking(`${b.name}'s beacon is off — stopped following.`);
-        }
-        _toast(`${b.name}'s beacon went off.`);
+        const what = positions.some((p) => isSpotter(p, b.spotter)) ? `${b.name} stopped streaming` : `${b.name}'s beacon is off`;
+        if (isFollowing(b)) endTracking(`${what} — stopped following.`);
+        _toast(`${what}.`);
     }
     _liveBeacons = now;
 }
@@ -230,12 +240,17 @@ export async function addSpotterMarkers(mapInstance) {
 
     let data;
     try {
-        const res = await fetch(SPOTTER_POSITIONS_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: SPOTTER_APP_ID }),
-            cache: 'no-store'
-        });
+        // Who is live on Echo Radar's own server comes along with each
+        // refresh, so their beacons are drawn with their stream.
+        const [res] = await Promise.all([
+            fetch(SPOTTER_POSITIONS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: SPOTTER_APP_ID }),
+                cache: 'no-store'
+            }),
+            refreshEchoBeacons(),
+        ]);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         data = await res.json();
     } catch (err) {
