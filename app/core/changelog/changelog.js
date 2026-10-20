@@ -22,6 +22,12 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'October 20, 2026',
+        items: [
+            { title: 'Chase Stream Hub: Copy buttons work', desc: 'The Copy buttons next to your Echo Radar stream server and stream key now really copy, so pasting into OBS gives you the right text instead of whatever you copied last. You can also click the server or the key itself to select all of it.' },
+        ],
+    },
+    {
         date: 'October 19, 2026',
         items: [
             { title: 'Dismiss button on upgrade messages', desc: 'When you tap a feature that needs a paid plan, the message that tells you so now has a Dismiss button, so you can close it straight away instead of waiting for it to go. The Escape key closes it too. The plan list has a Not now button as well.' },

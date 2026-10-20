@@ -610,9 +610,29 @@ function renderIngest() {
         : ingest.serverUp ? ['Waiting for OBS', 'var(--vx-text-2)'] : ['Server offline', 'var(--vx-bad)'];
     st.textContent = txt; st.style.color = col;
 }
+// The old select-and-copy first: it runs inside the click, so browsers and app
+// windows that quietly ignore navigator.clipboard (it can resolve without
+// writing anything) still copy. The clipboard API is the backup, and a box
+// to copy from by hand the last resort.
+function copyWithSelection(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
+    const prev = document.activeElement;
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    ta.remove();
+    if (prev && prev.focus) prev.focus();
+    return ok;
+}
 async function copyText(text, what) {
+    if (copyWithSelection(text)) { toast(what + ' copied.', 'ok'); return; }
     try { await navigator.clipboard.writeText(text); toast(what + ' copied.', 'ok'); }
-    catch { window.prompt('Copy the ' + what.toLowerCase() + ':', text); }
+    catch { window.prompt('Copy the ' + what.toLowerCase() + ' (Ctrl+C):', text); }
 }
 // Fill the RTMP fields with Echo Radar's server so Go Live pushes them into OBS.
 async function useIngest() {
@@ -986,7 +1006,7 @@ function injectStyles() {
     .vrsh-ingest-head{font-size:13px;font-weight:700;margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .vrsh-kv{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
     .vrsh-kv-k{font-size:12px;color:var(--vx-text-2);min-width:76px}
-    .vrsh-kv code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:12px;background:var(--vx-surface);border:1px solid var(--vx-line);border-radius:var(--vx-r-2);padding:5px 8px}
+    .vrsh-kv code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:12px;user-select:all;-webkit-user-select:all;background:var(--vx-surface);border:1px solid var(--vx-line);border-radius:var(--vx-r-2);padding:5px 8px}
     .vrsh-mini{border:1px solid var(--vx-line);background:var(--vx-surface);color:var(--vx-accent-hi);border-radius:var(--vx-r-2);padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
     .vrsh-mini:hover{background:#16223c}
     .vrsh-mini-danger{color:#f7a4a4;border-color:#4a2630}
