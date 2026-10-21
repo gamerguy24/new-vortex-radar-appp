@@ -70,6 +70,85 @@ function capability() {
     };
 }
 
+/*
+ * The Echo Radar desktop app.
+ *
+ * It has no Web Push, but puts window.echoRadarDesktop in the page with a
+ * notify() of its own. There, "turn on" registers this computer with the
+ * server instead of subscribing, and the page polls an inbox the server fills
+ * with the same notes it pushes to browsers, showing each through notify().
+ * Which computer this is, and how far through the inbox it has read, is kept
+ * in localStorage; the server holds the registration itself.
+ */
+const DESK_KEY = 'vrAlertsDesktop';          // { device, cursor }
+const DESK_POLL_MS = 30 * 1000;
+let deskTimer = null;
+
+const isDesktopApp = () => !!(window.echoRadarDesktop && window.echoRadarDesktop.isDesktopApp
+    && typeof window.echoRadarDesktop.notify === 'function');
+
+function deskState() {
+    try { return JSON.parse(localStorage.getItem(DESK_KEY) || 'null'); } catch (e) { return null; }
+}
+function saveDeskState(s) {
+    try { if (s) localStorage.setItem(DESK_KEY, JSON.stringify(s)); else localStorage.removeItem(DESK_KEY); } catch (e) { /* private mode */ }
+}
+
+async function pollDesktop() {
+    const s = deskState();
+    if (!s || !isDesktopApp()) { stopDesktopPolling(); return; }
+    try {
+        const out = await j(`${API}/push/desktop/inbox?device=${encodeURIComponent(s.device)}&after=${encodeURIComponent(s.cursor || 0)}`);
+        for (const n of (out && out.notes) || []) {
+            try {
+                window.echoRadarDesktop.notify({ title: n.title, body: n.body, url: new URL(n.url || '/', location.origin).href });
+            } catch (e) { console.warn('[alerts] desktop notify failed:', e); }
+        }
+        saveDeskState({ ...s, cursor: out && out.cursor != null ? out.cursor : s.cursor });
+    } catch (e) {
+        // Forgotten by the server (turned off elsewhere, or 30 days unused).
+        if (/not registered/i.test(e.message)) { saveDeskState(null); stopDesktopPolling(); }
+    }
+}
+function startDesktopPolling() {
+    if (deskTimer) return;
+    pollDesktop();
+    deskTimer = setInterval(pollDesktop, DESK_POLL_MS);
+}
+function stopDesktopPolling() {
+    if (deskTimer) { clearInterval(deskTimer); deskTimer = null; }
+}
+
+async function enableDesktop() {
+    const prev = deskState();
+    const device = (prev && prev.device)
+        || (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36));
+    const out = await j(`${API}/push/desktop/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device }),
+    });
+    saveDeskState({ device, cursor: out.cursor || 0 });
+    startDesktopPolling();
+    return out;
+}
+
+async function disableDesktop() {
+    const s = deskState();
+    stopDesktopPolling();
+    saveDeskState(null);
+    if (s) {
+        try {
+            await j(`${API}/push/desktop/unregister`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device: s.device }),
+            });
+        } catch (e) { /* off here regardless */ }
+    }
+    return { ok: true };
+}
+
 async function registration() {
     if (!('serviceWorker' in navigator)) return null;
     // Root scope: the worker is served from / so it can control the whole app.
@@ -77,6 +156,7 @@ async function registration() {
 }
 
 async function currentSubscription() {
+    if (isDesktopApp()) return deskState();
     if (!('serviceWorker' in navigator)) return null;
     const reg = await navigator.serviceWorker.getRegistration('/');
     if (!reg) return null;
@@ -85,6 +165,7 @@ async function currentSubscription() {
 
 /** Ask, register, subscribe, and tell the server. Throws with a readable why. */
 async function enableNotifications() {
+    if (isDesktopApp()) return enableDesktop();
     const cap = capability();
     if (!cap.secure) {
         throw new Error('Notifications need a secure connection. Open the site over https.');
@@ -127,6 +208,7 @@ async function enableNotifications() {
 }
 
 async function disableNotifications() {
+    if (isDesktopApp()) return disableDesktop();
     const sub = await currentSubscription();
     if (!sub) return { ok: true };
     try {
@@ -370,7 +452,9 @@ async function openDialog() {
         try { server = await j(`${API}/status`); } catch (e) { /* not fatal */ }
 
         const lines = [];
-        if (!cap.secure) lines.push('⚠ This page is not on a secure connection, so notifications cannot be used.');
+        const desktop = isDesktopApp();
+        if (desktop) lines.push(sub ? '✓ On for this computer (Echo Radar desktop app, while it is running).' : 'Not on for this computer yet.');
+        else if (!cap.secure) lines.push('⚠ This page is not on a secure connection, so notifications cannot be used.');
         else if (!cap.hasSW || !cap.hasPush) lines.push('⚠ This browser does not support push notifications.');
         else if (cap.permission === 'denied') lines.push('⚠ Blocked in your browser settings for this site.');
         else if (!sub) lines.push('Not on for this device yet.');
@@ -384,7 +468,7 @@ async function openDialog() {
                 : `Watching ${p.alerts} active alerts nationally.`);
         }
         let help = '';
-        if (cap.secure && cap.hasSW && cap.hasPush && cap.permission === 'denied') {
+        if (!desktop && cap.secure && cap.hasSW && cap.hasPush && cap.permission === 'denied') {
             help = '<div class="vr-al-note" style="margin-top:8px"><b>To unblock:</b><ol style="margin:4px 0 0;padding-left:18px">'
                 + unblockSteps().map((s) => `<li>${escapeHtml(s)}</li>`).join('')
                 + '</ol>Email alerts below do not need this.</div>';
@@ -392,7 +476,7 @@ async function openDialog() {
         $('vr-al-state').innerHTML = lines.map((l) => `<div>${escapeHtml(l)}</div>`).join('') + help;
         $('vr-al-test').disabled = !sub;
         $('vr-al-off').disabled = !sub;
-        $('vr-al-enable').disabled = !!sub || !cap.secure || cap.permission === 'denied';
+        $('vr-al-enable').disabled = !!sub || (!desktop && (!cap.secure || cap.permission === 'denied'));
     }
 
     async function refreshLocs() {
@@ -739,6 +823,11 @@ function init() {
             if (m) m.style.display = 'none';
             openDialog();
         });
+    }
+    // The desktop app picks its inbox back up on every start.
+    if (isDesktopApp()) {
+        if (deskState()) startDesktopPolling();
+        return;
     }
     /*
      * Register the worker on load when permission is already granted, so a

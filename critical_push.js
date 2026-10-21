@@ -114,19 +114,59 @@ function attachCriticalPush({ app, requireAuth, DATA_DIR, readJson, writeJson, s
     }
 
     /*
+     * The Echo Radar desktop app (window.echoRadarDesktop in the page) has no
+     * Web Push, so a computer running it registers here instead and polls an
+     * inbox: every note sendToUser makes is also queued for the user's
+     * registered desktops, and the app shows it with its own notify(). Notes
+     * live 30 minutes, the same as a push's TTL, so a laptop that wakes up is
+     * not handed old news; a desktop not seen for 30 days is forgotten.
+     */
+    const DESK_FILE = path.join(DATA_DIR, 'crit_desktop.json');   // userId -> { devices: {id: lastSeen}, inbox: [{id, at, note}] }
+    const INBOX_TTL = 30 * 60 * 1000;
+    const INBOX_MAX = 50;
+    const DESK_IDLE = 30 * 24 * 60 * 60 * 1000;
+    const DEVICE_RE = /^[A-Za-z0-9_-]{8,64}$/;
+    let desk = readJson(DESK_FILE, {});
+    const saveDesk = () => { try { writeJson(DESK_FILE, desk); } catch (e) { /* next write */ } };
+    let lastNoteId = 0;
+    const nextNoteId = () => (lastNoteId = Math.max(Date.now(), lastNoteId + 1));
+
+    function deskFor(userId) {
+        const d = desk[userId];
+        if (!d) return { devices: {}, inbox: [] };
+        const now = Date.now();
+        for (const [id, seen] of Object.entries(d.devices || {})) if (now - seen > DESK_IDLE) delete d.devices[id];
+        d.inbox = (d.inbox || []).filter((n) => now - n.at < INBOX_TTL);
+        return d;
+    }
+    const desktopsFor = (userId) => Object.keys(deskFor(userId).devices || {}).length;
+
+    function queueDesktop(userId, note) {
+        const count = desktopsFor(userId);
+        if (!count) return 0;
+        const d = desk[userId];
+        d.inbox.push({ id: nextNoteId(), at: Date.now(), note });
+        d.inbox = d.inbox.slice(-INBOX_MAX);
+        saveDesk();
+        return count;
+    }
+
+    /*
      * Send to every device a user has registered.
      *
      * A 404 or 410 means that subscription is gone for good — the push service
      * is telling us to forget it, and keeping it would mean trying forever. Any
      * other failure is transient and left alone.
      *
-     * Returns { sent, dropped } so a caller can log something true.
+     * Returns { sent, dropped } so a caller can log something true; desktops
+     * count as sent once the note is in their inbox.
      */
     async function sendToUser(userId, note) {
+        const desktops = queueDesktop(userId, note);
         const list = listFor(userId);
-        if (!list.length) return { sent: 0, dropped: 0 };
+        if (!list.length) return { sent: desktops, dropped: 0 };
         const payload = JSON.stringify(note);
-        let sent = 0;
+        let sent = desktops;
         const dead = [];
         await Promise.all(list.map(async (s) => {
             try {
@@ -148,7 +188,7 @@ function attachCriticalPush({ app, requireAuth, DATA_DIR, readJson, writeJson, s
     }
 
     /** Does this user have anywhere to send to? Used to skip work upstream. */
-    const hasSubscribers = (userId) => listFor(userId).length > 0;
+    const hasSubscribers = (userId) => listFor(userId).length > 0 || desktopsFor(userId) > 0;
 
     // ── routes ───────────────────────────────────────────────────────────────
     /*
@@ -173,6 +213,48 @@ function attachCriticalPush({ app, requireAuth, DATA_DIR, readJson, writeJson, s
         res.json({ ok: true, devices: listFor(req.user.id).length });
     });
 
+    // ── desktop app ──────────────────────────────────────────────────────────
+    // A computer running the desktop app says it wants notifications. The
+    // reply's cursor is the newest note now, so it starts from here rather
+    // than replaying the last half hour.
+    app.post('/api/critical/push/desktop/register', requireAuth, (req, res) => {
+        const device = String((req.body && req.body.device) || '');
+        if (!DEVICE_RE.test(device)) return res.status(400).json({ error: 'device id required' });
+        const d = desk[req.user.id] = deskFor(req.user.id);
+        d.devices = d.devices || {};
+        d.devices[device] = Date.now();
+        // Newest computer kept, like browser subscriptions.
+        const ids = Object.keys(d.devices).sort((a, b) => d.devices[a] - d.devices[b]);
+        for (const id of ids.slice(0, Math.max(0, ids.length - MAX_SUBS_PER_USER))) delete d.devices[id];
+        saveDesk();
+        res.json({ ok: true, cursor: d.inbox.length ? d.inbox[d.inbox.length - 1].id : 0 });
+    });
+
+    app.post('/api/critical/push/desktop/unregister', requireAuth, (req, res) => {
+        const device = String((req.body && req.body.device) || '');
+        const d = desk[req.user.id];
+        if (d && d.devices) { delete d.devices[device]; if (!Object.keys(d.devices).length) delete desk[req.user.id]; saveDesk(); }
+        res.json({ ok: true });
+    });
+
+    // The app polls this; notes newer than its cursor come back for it to show.
+    app.get('/api/critical/push/desktop/inbox', requireAuth, (req, res) => {
+        res.setHeader('Cache-Control', 'no-store');
+        const device = String(req.query.device || '');
+        const d = deskFor(req.user.id);
+        if (!d.devices || !d.devices[device]) return res.status(404).json({ error: 'This computer is not registered for notifications.' });
+        // Seen-times only matter to the 30-day forget, so they are saved hourly, not every poll.
+        const seenBefore = d.devices[device];
+        d.devices[device] = Date.now();
+        if (Date.now() - seenBefore > 60 * 60 * 1000) saveDesk();
+        const after = Number(req.query.after) || 0;
+        const notes = d.inbox.filter((n) => n.id > after);
+        res.json({
+            notes: notes.map((n) => ({ id: n.id, title: n.note.title, body: n.note.body, url: n.note.url || '/' })),
+            cursor: notes.length ? notes[notes.length - 1].id : Math.max(after, d.inbox.length ? d.inbox[d.inbox.length - 1].id : 0),
+        });
+    });
+
     /*
      * A test notification.
      *
@@ -183,7 +265,7 @@ function attachCriticalPush({ app, requireAuth, DATA_DIR, readJson, writeJson, s
      */
     app.post('/api/critical/push/test', requireAuth, async (req, res) => {
         if (!hasSubscribers(req.user.id)) {
-            return res.status(400).json({ error: 'This browser is not subscribed yet.' });
+            return res.status(400).json({ error: 'This device is not subscribed yet.' });
         }
         const out = await sendToUser(req.user.id, {
             title: 'Echo Radar notifications are on',
