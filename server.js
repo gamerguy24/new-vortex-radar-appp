@@ -48,6 +48,18 @@ const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'davidwallis17@gmail.com';
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'davidwallis17@gmail.com').trim().toLowerCase();
 const SESSION_TTL_MS = (parseInt(process.env.SESSION_TTL_DAYS, 10) || 30) * 24 * 60 * 60 * 1000;
 const COOKIE = 'vr_session';
+/*
+ * "This browser has an account here." Set beside every session and kept long
+ * after it, so a signed-out visitor to / who has signed in before goes to the
+ * login screen, and everyone else goes to the info site (INFO_URL) to see what
+ * Echo Radar is first. Holds no identity, only the fact.
+ */
+const ACCOUNT_COOKIE = 'er_acct';
+const ACCOUNT_COOKIE_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+// Where new visitors land. Defaults to the copy served on this host at /info/,
+// which works before the info.echoradarwx.com hostname exists; set
+// INFO_URL=https://info.echoradarwx.com/ once it does.
+const INFO_URL = process.env.INFO_URL || '/info/';
 
 // ─── Outgoing mail ──────────────────────────────────────────────────────────
 // When SMTP is configured a forgotten password needs no admin involvement: the
@@ -380,6 +392,10 @@ function setSessionCookie(res, token) {
         path: '/',
         maxAge: SESSION_TTL_MS,
     });
+    markHasAccount(res);
+}
+function markHasAccount(res) {
+    res.cookie(ACCOUNT_COOKIE, '1', { sameSite: 'lax', path: '/', maxAge: ACCOUNT_COOKIE_MS });
 }
 
 // ─── App ─────────────────────────────────────────────────────────────────────
@@ -389,6 +405,8 @@ app.disable('x-powered-by');
 // The public radar embed (api.echoradarwx.com). FIRST, so on the API host it
 // answers before any other route and nothing of the app is reachable there.
 require('./embed_api').attachEmbedApi(app);
+// The public info site (info.echoradarwx.com), fenced off the same way.
+require('./info_site').attachInfoSite(app);
 
 // Stripe webhook needs the RAW request body for signature verification, so it
 // MUST be mounted before express.json parses it.
@@ -424,6 +442,8 @@ app.use((req, res, next) => {
     } else {
         req.user = sess ? findById(sess.userId) : null;
     }
+    // Accounts signed in before the marker existed get it on their next visit.
+    if (req.user && !req.cookies[ACCOUNT_COOKIE]) markHasAccount(res);
     req.sessionToken = token;
     next();
 });
@@ -454,7 +474,11 @@ app.use('/api/billing', billing.apiRouter());
 
 function requireAuth(req, res, next) {
     if (req.user && !req.user.isLocked) return next();
-    if ((req.headers.accept || '').includes('text/html')) return res.redirect('/login.html');
+    if ((req.headers.accept || '').includes('text/html')) {
+        // A new visitor to the front door sees what Echo Radar is before a login form.
+        if (req.path === '/' && !req.cookies[ACCOUNT_COOKIE]) return res.redirect(INFO_URL);
+        return res.redirect('/login.html');
+    }
     return res.status(401).json({ error: 'Not authenticated' });
 }
 function requireAdmin(req, res, next) {

@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Echo Radar WX — Live Weather Radar, Warnings &amp; Storm Tracking</title>
+<meta name="description" content="Echo Radar WX is live super-res NEXRAD radar with warnings that alert you only when you are inside the polygon, storm tracking with arrival times, 3D storm view, live storm chasers and 50,000 traffic cameras. Works on phone and desktop. Email alerts are free.">
+<link rel="canonical" href="https://info.echoradarwx.com/">
+<meta name="theme-color" content="#0a0b0d">
+<link rel="icon" href="img/logo.png">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Echo Radar WX">
+<meta property="og:title" content="Echo Radar WX — Live radar built for storm season">
+<meta property="og:description" content="Super-res radar every scan, polygon-precise warning alerts, storm tracking, 3D storms and live chasers in one app. Email alerts are free.">
+<meta property="og:url" content="https://info.echoradarwx.com/">
+<meta property="og:image" content="https://info.echoradarwx.com/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Echo Radar WX — Live radar built for storm season">
+<meta name="twitter:description" content="Super-res radar, polygon-precise warning alerts, storm tracking, 3D storms and live chasers. Email alerts are free.">
+<meta name="twitter:image" content="https://info.echoradarwx.com/img/og.jpg">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "name": "Echo Radar WX",
+      "url": "https://info.echoradarwx.com/",
+      "logo": "https://info.echoradarwx.com/logo.png",
+      "email": "admin@echoradarwx.com",
+      "parentOrganization": { "@type": "Organization", "name": "Twistcaster Live Media LLC" }
+    },
+    {
+      "@type": "WebApplication",
+      "name": "Echo Radar WX",
+      "url": "https://echoradarwx.com/",
+      "applicationCategory": "WeatherApplication",
+      "operatingSystem": "Web browser, Windows",
+      "browserRequirements": "Requires a modern web browser",
+      "description": "Live super-res NEXRAD weather radar with NWS warnings, polygon-precise alerts, storm tracking, 3D storm view, satellite, models, live storm chasers and traffic cameras.",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Free account. Paid tiers add more tools." },
+      "featureList": "Super-res NEXRAD Level 2 radar, Loops up to 75 frames, Polygon-based warning alerts, Free email alerts, Storm tracking with arrival times, Impact Times, 3D Storm View, GOES-19 satellite, MRMS national radar, Spotter Network, Live chaser streams, 50,000 traffic cameras, SPC outlooks, Forecast models and soundings, NHC hurricanes, Echo Graphics studio"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "Is Echo Radar free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. A free account gets live super-res radar, warnings, storm tracking, satellite, spotters, chaser streams, traffic cameras and alerts by phone, desktop and email. Paid tiers add tools such as lightning, split screen, models, 3D Storm View and Echo Graphics." } },
+        { "@type": "Question", "name": "Do I need to download an app?", "acceptedAnswer": { "@type": "Answer", "text": "No. Echo Radar runs in your web browser on phones, tablets and computers. There is also an Echo Radar desktop app for Windows." } },
+        { "@type": "Question", "name": "How are Echo Radar alerts different?", "acceptedAnswer": { "@type": "Answer", "text": "Echo Radar alerts you only when your saved place is inside the warning polygon the National Weather Service actually drew, not just somewhere in your county. You can also watch whole states and choose which alerts you get by email." } },
+        { "@type": "Question", "name": "Where does the data come from?", "acceptedAnswer": { "@type": "Answer", "text": "Radar comes from NOAA NEXRAD and MRMS, warnings from the National Weather Service, satellite from GOES-19, outlooks from the Storm Prediction Center and tropical data from the National Hurricane Center." } }
+      ]
+    }
+  ]
+}
+</script>
+
+<style>
+:root {
+  --bg: #0a0b0d;
+  --bg-2: #0e1013;
+  --surface: #121418;
+  --surface-2: #181b20;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.15);
+  --text: #e6e9ed;
+  --text-2: #a2abb6;
+  --text-3: #707a85;
+  --accent: #e8862b;
+  --accent-hi: #f59b48;
+  --accent-ink: #140f08;
+  --accent-soft: rgba(232, 134, 43, 0.12);
+  --accent-line: rgba(232, 134, 43, 0.4);
+  --tor: #e0352b;
+  --svr: #e6b422;
+  --ffw: #2fb35a;
+  --font: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --max: 1160px;
+  --r: 10px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 17px; line-height: 1.55; overflow-x: hidden; }
+img, video { display: block; max-width: 100%; }
+a { color: var(--accent-hi); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3 { line-height: 1.12; letter-spacing: -0.02em; margin: 0; }
+p { margin: 0; }
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .wrap { padding: 0 28px; } }
+.skip { position: absolute; left: -9999px; }
+.skip:focus { left: 16px; top: 12px; z-index: 99; background: var(--accent); color: var(--accent-ink); padding: 8px 12px; border-radius: 6px; }
+
+/* ── buttons ─────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 13px 22px; border-radius: 8px;
+       font: 700 16px/1 var(--font); border: 1px solid transparent; cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s; }
+.btn:hover { text-decoration: none; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: var(--accent-hi); }
+.btn-ghost { color: var(--text); border-color: var(--line-2); background: rgba(255,255,255,0.03); }
+.btn-ghost:hover { border-color: var(--text-3); }
+.btn-sm { padding: 9px 14px; font-size: 14px; }
+:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+
+/* ── header ──────────────────────────────────────────── */
+.top { position: sticky; top: 0; z-index: 20; background: rgba(10, 11, 13, 0.86); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; align-items: center; gap: 18px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 800; font-size: 18px; letter-spacing: -0.01em; }
+.brand:hover { text-decoration: none; }
+.brand img { width: 34px; height: 34px; border-radius: 8px; object-fit: contain; background: #000; }
+.brand span b { color: var(--accent); font-weight: 800; }
+.nav { display: flex; gap: 22px; margin-left: 12px; }
+.nav a { color: var(--text-2); font-size: 15px; font-weight: 500; }
+.nav a:hover { color: var(--text); text-decoration: none; }
+.top-cta { margin-left: auto; display: flex; gap: 10px; }
+@media (max-width: 900px) { .nav { display: none; } }
+@media (max-width: 460px) { .top-cta .btn-ghost { display: none; } .brand span { font-size: 16px; } }
+
+/* ── hero ────────────────────────────────────────────── */
+.hero { position: relative; padding: 64px 0 40px; overflow: hidden; }
+.hero::before { content: ""; position: absolute; inset: -20% -10% auto; height: 760px; pointer-events: none;
+  background: radial-gradient(600px 380px at 78% 30%, rgba(232,134,43,0.13), transparent 70%),
+              radial-gradient(520px 360px at 12% 10%, rgba(64,140,255,0.08), transparent 70%); }
+.hero .wrap { position: relative; display: grid; grid-template-columns: 1fr; gap: 40px; align-items: center; }
+@media (min-width: 980px) { .hero .wrap { grid-template-columns: 1fr 1fr; gap: 48px; } .hero { padding: 84px 0 56px; } }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-hi); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tor); box-shadow: 0 0 0 0 rgba(224,53,43,.7); animation: ping 1.8s infinite; }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(224,53,43,.6); } 70% { box-shadow: 0 0 0 9px rgba(224,53,43,0); } 100% { box-shadow: 0 0 0 0 rgba(224,53,43,0); } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+.hero h1 { font-size: clamp(40px, 6.4vw, 70px); font-weight: 900; margin: 16px 0 18px; }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.lede { font-size: clamp(17px, 2vw, 19.5px); color: var(--text-2); max-width: 36em; }
+.hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 22px; }
+.ticks { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0; margin: 0; list-style: none; color: var(--text-2); font-size: 14.5px; }
+.ticks li { display: flex; align-items: center; gap: 7px; }
+.ticks svg { flex: none; color: var(--accent); }
+
+.shot { position: relative; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line-2); background: var(--surface);
+        box-shadow: 0 30px 80px -20px rgba(0,0,0,.8), 0 0 0 1px rgba(0,0,0,.4); }
+.shot img { width: 100%; height: 100%; object-fit: cover; }
+.hero-shot { aspect-ratio: 16 / 10.5; }
+.hero-shot img { object-position: 50% 50%; }
+.float-card { position: absolute; right: 14px; bottom: 14px; max-width: 300px; background: rgba(14,16,19,.94); border: 1px solid var(--line-2);
+              border-radius: 10px; padding: 12px 14px; font-size: 13.5px; box-shadow: 0 12px 32px rgba(0,0,0,.6); }
+.float-card .app { display: flex; justify-content: space-between; font-size: 11.5px; font-weight: 700; letter-spacing: .08em; color: var(--text-3); margin-bottom: 4px; }
+.float-card .app span { letter-spacing: 0; font-weight: 500; }
+.float-card .t { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14.5px; }
+.float-card .t i { width: 9px; height: 9px; border-radius: 50%; background: var(--tor); flex: none; }
+.float-card p { color: var(--text-2); margin-top: 3px; line-height: 1.4; }
+@media (max-width: 520px) { .float-card { position: static; max-width: none; border-radius: 0; border-width: 1px 0 0; box-shadow: none; } .hero-shot { aspect-ratio: auto; } .hero-shot img { aspect-ratio: 16 / 11; } }
+
+/* ── stat strip ──────────────────────────────────────── */
+.stats { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.stats .wrap { display: grid; grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 820px) { .stats .wrap { grid-template-columns: repeat(4, 1fr); } }
+.stat { padding: 22px 8px; text-align: center; }
+.stat b { display: block; font-size: clamp(26px, 3.4vw, 36px); font-weight: 900; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--text-2); font-size: 14px; }
+
+/* ── sections ────────────────────────────────────────── */
+section { scroll-margin-top: 72px; }
+.sec { padding: 84px 0; }
+.sec-head { max-width: 760px; margin-bottom: 40px; }
+.sec-head.center { margin-left: auto; margin-right: auto; text-align: center; }
+.kicker { font-size: 13px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+.sec h2 { font-size: clamp(30px, 4.4vw, 46px); font-weight: 900; }
+.sec-head p { color: var(--text-2); font-size: 18px; margin-top: 14px; }
+
+/* only-on cards */
+.only { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 680px) { .only { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1020px) { .only { grid-template-columns: repeat(3, 1fr); } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; }
+.card .ic { width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-hi); border: 1px solid var(--accent-line); margin-bottom: 16px; }
+.card h3 { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+.card p { color: var(--text-2); font-size: 15.5px; }
+
+/* feature rows */
+.rows { display: grid; gap: 96px; }
+.row { display: grid; grid-template-columns: 1fr; gap: 28px; align-items: center; }
+@media (min-width: 940px) { .row { grid-template-columns: 1fr 1.15fr; gap: 56px; } .row.flip .row-text { order: 2; } }
+.row-text h3 { font-size: clamp(26px, 3.2vw, 36px); font-weight: 900; margin-bottom: 14px; }
+.row-text > p { color: var(--text-2); font-size: 17.5px; }
+.checks { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 10px; }
+.checks li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 16px; }
+.checks li svg { margin-top: 3px; color: var(--accent); }
+.checks li b { font-weight: 700; }
+.row .shot { aspect-ratio: 16 / 10.5; }
+.badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+         vertical-align: 2px; color: var(--text-2); border: 1px solid var(--line-2); white-space: nowrap; }
+
+/* tour */
+.tour { background: var(--bg-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.tour-grid { display: grid; grid-template-columns: 1fr; gap: 40px; align-items: center; }
+@media (min-width: 860px) { .tour-grid { grid-template-columns: 1fr 380px; gap: 64px; } }
+.phone { width: min(360px, 100%); margin: 0 auto; border-radius: 34px; padding: 10px; background: #050607; border: 1px solid var(--line-2); box-shadow: 0 30px 80px -20px rgba(0,0,0,.9); }
+.phone video { width: 100%; aspect-ratio: 9 / 16; border-radius: 25px; background: #000; object-fit: cover; }
+.steps { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 14px; counter-reset: s; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 34px 1fr; gap: 12px; color: var(--text-2); }
+.steps li::before { content: counter(s); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 14px; color: var(--accent-hi); border: 1px solid var(--accent-line); background: var(--accent-soft); }
+.steps li b { color: var(--text); }
+
+/* everything grid */
+.every { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .every { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1000px) { .every { grid-template-columns: repeat(4, 1fr); } }
+.every .card { padding: 20px; }
+.every h3 { font-size: 15px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-hi); margin-bottom: 12px; }
+.every ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 7px; font-size: 15px; color: var(--text); }
+.every li { padding-left: 14px; position: relative; }
+.every li::before { content: ""; position: absolute; left: 0; top: .62em; width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); }
+
+/* plans */
+.plans { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 700px) { .plans { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1080px) { .plans { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.plan { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; }
+.plan.feature { border-color: var(--accent-line); background: linear-gradient(180deg, rgba(232,134,43,.07), var(--surface) 40%); }
+.plan h3 { font-size: 21px; font-weight: 800; }
+.plan .price { margin: 8px 0 4px; font-size: 32px; font-weight: 900; letter-spacing: -0.02em; }
+.plan .price small { font-size: 15px; font-weight: 500; color: var(--text-2); letter-spacing: 0; }
+.plan .for { color: var(--text-2); font-size: 14.5px; min-height: 2.9em; }
+.plan ul { list-style: none; padding: 0; margin: 18px 0 22px; display: grid; align-content: start; gap: 8px; font-size: 15px; flex: 1; }
+.plan li { display: grid; grid-template-columns: 18px 1fr; gap: 8px; }
+.plan li svg { margin-top: 4px; color: var(--accent); }
+.plan li.inc { color: var(--text-2); font-style: italic; }
+.plan .btn { width: 100%; white-space: normal; text-align: center; line-height: 1.2; }
+.fine { color: var(--text-3); font-size: 14px; margin-top: 18px; text-align: center; }
+
+/* orgs */
+.orgs { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .orgs { grid-template-columns: repeat(3, 1fr); } }
+.orgs .card a.more { display: inline-block; margin-top: 14px; font-weight: 700; font-size: 15px; }
+
+/* faq */
+.faq { max-width: 820px; margin: 0 auto; display: grid; gap: 10px; }
+.faq details { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 0 20px; }
+.faq summary { cursor: pointer; list-style: none; padding: 18px 0; font-weight: 700; font-size: 17px; display: flex; justify-content: space-between; gap: 16px; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; color: var(--accent); font-size: 22px; line-height: 1; flex: none; }
+.faq details[open] summary::after { content: "–"; }
+.faq details p { color: var(--text-2); padding: 0 0 18px; font-size: 16px; }
+
+/* final cta */
+.final { text-align: center; padding: 96px 0; position: relative; overflow: hidden; border-top: 1px solid var(--line); }
+.final::before { content: ""; position: absolute; left: 50%; top: 50%; width: 1100px; height: 1100px; transform: translate(-50%, -50%); pointer-events: none;
+  background: repeating-radial-gradient(circle, rgba(232,134,43,.07) 0 1px, transparent 1px 90px); mask-image: radial-gradient(circle, #000 20%, transparent 65%); -webkit-mask-image: radial-gradient(circle, #000 20%, transparent 65%); }
+.final .wrap { position: relative; }
+.final img { width: 120px; height: auto; margin: 0 auto 22px; mix-blend-mode: screen; }
+.final h2 { font-size: clamp(32px, 5vw, 54px); font-weight: 900; }
+.final p { color: var(--text-2); font-size: 18px; margin: 14px auto 28px; max-width: 34em; }
+.final .hero-ctas { justify-content: center; margin: 0; }
+
+footer { border-top: 1px solid var(--line); padding: 36px 0 44px; color: var(--text-3); font-size: 14px; }
+footer .wrap { display: grid; gap: 18px; }
+footer .links { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+footer .links a { color: var(--text-2); }
+footer .safety { max-width: 70ch; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Echo Radar WX home"><img src="img/logo.png" alt="" width="34" height="34"><span>Echo Radar <b>WX</b></span></a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#only">Why Echo</a>
+      <a href="#features">Features</a>
+      <a href="#tour">Tour</a>
+      <a href="#plans">Plans</a>
+      <a href="#orgs">For organizations</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="top-cta">
+      <a class="btn btn-ghost btn-sm" data-app="/login.html" href="https://echoradarwx.com/login.html">Log in</a>
+      <a class="btn btn-primary btn-sm" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Create free account</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" id="top">
+    <div class="wrap">
+      <div>
+        <div class="eyebrow"><span class="live-dot" aria-hidden="true"></span>Live radar · Warnings · Storm chasing</div>
+        <h1>Live radar built for <em>storm season.</em></h1>
+        <p class="lede">Full-resolution NEXRAD the moment it scans, warnings that only alert you when you are actually inside the polygon, and live storm chasers on the map. Use it in your browser on your phone or computer.</p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Create your free account</a>
+          <a class="btn btn-ghost" href="#tour">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>
+            Watch the 60-second tour
+          </a>
+        </div>
+        <ul class="ticks">
+          <li><svg width="16" height="16"><use href="#i-check"/></svg>Free account</li>
+          <li><svg width="16" height="16"><use href="#i-check"/></svg>Email alerts are free</li>
+          <li><svg width="16" height="16"><use href="#i-check"/></svg>Nothing to install</li>
+        </ul>
+      </div>
+      <figure class="shot hero-shot" style="margin:0">
+        <img src="img/hero.jpg" alt="Echo Radar showing super-res radar over Arizona with a Severe Thunderstorm Warning, its hail and wind tags, and Radar and Track buttons" width="1080" height="708" fetchpriority="high">
+        <figcaption class="float-card">
+          <div class="app">ECHO RADAR <span>now</span></div>
+          <div class="t"><i aria-hidden="true"></i>Tornado Warning</div>
+          <p>Home is inside the warning. Take shelter now.</p>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <div class="stats" aria-label="Echo Radar by the numbers">
+    <div class="wrap">
+      <div class="stat"><b>75</b><span>frame radar loops</span></div>
+      <div class="stat"><b>~50,000</b><span>traffic cameras, 44 states</span></div>
+      <div class="stat"><b>25</b><span>national radar (MRMS) products</span></div>
+      <div class="stat"><b>$0</b><span>for email alerts</span></div>
+    </div>
+  </div>
+
+  <!-- ── what only Echo has ─────────────────────────────────── -->
+  <section class="sec" id="only">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="kicker">Why Echo Radar</div>
+        <h2>Things you won't find together in any other radar app.</h2>
+        <p>Most radar apps show you the storm. Echo Radar also tells you whether it will reach you, shows you the people watching it, and lets you see it from the ground.</p>
+      </div>
+      <div class="only">
+        <article class="card">
+          <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 9l7-5 9 6-4 10-9-2z"/><circle cx="11" cy="12" r="2" fill="currentColor"/></svg></div>
+          <h3>Alerts by polygon, not county</h3>
+          <p>You're alerted only when your saved place is inside the warning the forecast office actually drew. A warning at the far end of your county won't wake you up for nothing.</p>
+        </article>
+        <article class="card">
+          <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18L18 5"/><circle cx="8" cy="14.3" r="1.6" fill="currentColor"/><circle cx="12" cy="10.6" r="1.6" fill="currentColor"/><circle cx="16" cy="7" r="1.6" fill="currentColor"/></svg></div>
+          <h3>One-tap storm tracking</h3>
+          <p>Press <b>Track</b> on any warning to see where the storm will be in 15, 30, 45 and 60 minutes. Impact Times lists the towns in its path and how many people live there.</p>
+        </article>
+        <article class="card">
+          <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></div>
+          <h3>Live chasers on the map</h3>
+          <p>Chasers who stream show a red live ring on their Spotter Network beacon. Tap one to watch, and the player follows them as they drive. Chasers can stream into Echo Radar straight from OBS.</p>
+        </article>
+        <article class="card">
+          <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h13l2 3v5H3z"/><circle cx="17" cy="9" r="0"/><path d="M8 16v4M5 20h6"/><circle cx="12" cy="11.5" r="2"/></svg></div>
+          <h3>About 50,000 traffic cameras</h3>
+          <p>DOT cameras in 44 states, right on the radar map, with live video across Texas. See what the storm looks like from the road before you drive into it.</p>
+        </article>
+        <article class="card">
+          <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></div>
+          <h3>Storms in 3D</h3>
+          <p>Turn the radar into a 3D storm you can orbit and zoom, in the same reflectivity colours, to see how tall the core reaches and where the hail is.</p>
+        </article>
+        <article class="card">
+          <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 13l3-3 2 2 4-4"/></svg></div>
+          <h3>Broadcast graphics, built in</h3>
+          <p>Echo Graphics makes on-air warning graphics from live NWS data. Pick a state and alert type, and every county is coloured and every time filled in for you.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── tour ────────────────────────────────────────────────── -->
+  <section class="sec tour" id="tour">
+    <div class="wrap tour-grid">
+      <div>
+        <div class="kicker">60-second tour</div>
+        <h2 style="font-size:clamp(30px,4.4vw,46px);font-weight:900">See Echo Radar in one minute.</h2>
+        <p style="color:var(--text-2);font-size:18px;margin-top:14px">A quick narrated walk through the app, recorded on live storms.</p>
+        <ol class="steps">
+          <li><span><b>Super-res radar</b>, live the moment the radar scans, with loops up to 75 frames.</span></li>
+          <li><span><b>Warnings and alerts</b> on your phone, desktop and email, only when you're inside the polygon.</span></li>
+          <li><span><b>Storm tracking</b> with arrival times and the towns in its path.</span></li>
+          <li><span><b>3D storms, satellite, fronts, chasers and cameras</b>, all on one map.</span></li>
+        </ol>
+      </div>
+      <div class="phone">
+        <video controls playsinline preload="none" poster="img/tour-poster.jpg" aria-label="Echo Radar 60-second narrated tour">
+          <source src="tour.mp4" type="video/mp4">
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── feature rows ────────────────────────────────────────── -->
+  <section class="sec" id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="kicker">Features</div>
+        <h2>Everything you need on a storm day, in one place.</h2>
+      </div>
+
+      <div class="rows">
+        <div class="row">
+          <div class="row-text">
+            <h3>Radar the moment it scans</h3>
+            <p>Echo Radar decodes NOAA's full-resolution Level 2 NEXRAD data right in your browser, so you see every scan at full detail as soon as it's available.</p>
+            <ul class="checks">
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Super-res reflectivity and velocity</b>, with velocity dealiasing</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Loops up to 75 frames</b> and a Live button that keeps you on the newest scan</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Tornado vortex (TVS) and hail signature</b> markers</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Data inspector</b>: point at a storm to read its dBZ, speed and beam height</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>National radar (MRMS)</b> with 25 products, and split screen for two storms at once <span class="badge">Tier Two</span></span></li>
+            </ul>
+          </div>
+          <div class="shot"><img src="img/radar_polygon.jpg" alt="Super-res base reflectivity loop over northern Arizona with a warning polygon and radar site markers" width="1600" height="820" loading="lazy" style="object-position:62% 50%"></div>
+        </div>
+
+        <div class="row flip">
+          <div class="row-text">
+            <h3>Warnings the second they drop</h3>
+            <p>Every NWS warning is on the map as it's issued, with its hail, wind and tornado tags and a countdown to when it expires. PDS warnings flash so you can't miss them.</p>
+            <ul class="checks">
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Notifications on your phone and desktop</b>, even with the app closed</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Free email alerts</b>, and you choose which alert types you get</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Save places</b> by address, city or ZIP, or <b>watch up to 10 whole states</b></span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Radar and Track buttons</b> on every warning</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>A filtered Active Alerts list</b> and search for any warning or watch</span></li>
+            </ul>
+          </div>
+          <div class="shot"><img src="img/warning_popup.jpg" alt="A Severe Thunderstorm Warning popup showing expiry, tornado possible, 1 inch hail and 50 mph wind, with Radar and Track buttons" width="1600" height="822" loading="lazy" style="object-position:50% 45%"></div>
+        </div>
+
+        <div class="row">
+          <div class="row-text">
+            <h3>Know when it gets to you</h3>
+            <p>Track a storm straight from its warning. Echo Radar projects its path with arrival times along the way, and you can drag the track if the storm turns.</p>
+            <ul class="checks">
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>15, 30, 45 and 60 minute</b> markers along the path</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Impact Times</b>: the communities in the path and their population</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Manual Storm Track</b> for any cell you choose <span class="badge">Tier Two</span></span></li>
+            </ul>
+          </div>
+          <div class="shot"><img src="img/storm_track.jpg" alt="A storm track projected from a warning, with 15, 30, 45 and 60 minute markers and the Impact Times panel" width="1600" height="822" loading="lazy" style="object-position:55% 40%"></div>
+        </div>
+
+        <div class="row flip">
+          <div class="row-text">
+            <h3>Watch it live from the ground</h3>
+            <p>See who is out there and what they are seeing. Spotter Network positions, storm reports and live chaser video all appear right on the radar map.</p>
+            <ul class="checks">
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Spotter Network</b> beacons, with live rings on chasers who stream</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Storm reports</b> from users and mPING, and you can file your own</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Chase Stream Hub</b>: go live from OBS with your own Echo Radar stream key</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Traffic cameras in 44 states</b>, about 50,000 in all</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Field Tracking</b> for chase teams, off until you turn it on</span></li>
+            </ul>
+          </div>
+          <div class="shot"><img src="img/spotters.jpg" alt="Spotter Network beacons across the United States with the Reports and Spotters menu open" width="1600" height="820" loading="lazy" style="object-position:70% 50%"></div>
+        </div>
+
+        <div class="row">
+          <div class="row-text">
+            <h3>The whole picture, in layers</h3>
+            <p>Add what you need on top of the radar from one Layers menu, from satellite and fronts to wildfires and power outages.</p>
+            <ul class="checks">
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>GOES-19 satellite</b>: GeoColor and every infrared band, 7 through 16</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Surface obs</b> with dew point, <b>wind particles</b> and <b>wildfire perimeters</b></span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Live lightning, surface fronts, power outages, buoys and tides</b> <span class="badge">Tier One</span></span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Chance of tropical development</b> on the map</span></li>
+            </ul>
+          </div>
+          <div class="shot"><img src="img/goes.jpg" alt="GOES satellite infrared imagery layered on the Echo Radar map" width="1600" height="820" loading="lazy" style="object-position:72% 40%"></div>
+        </div>
+
+        <div class="row flip">
+          <div class="row-text">
+            <h3>Forecast tools the pros use</h3>
+            <p>Look ahead with outlooks, forecast models and soundings, then build a graphic to share it, all in the same app.</p>
+            <ul class="checks">
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>SPC severe and fire weather outlooks</b>, and NHC hurricanes with spaghetti models and Hurricane Hunters</span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Models &amp; Forecast</b>: HRRR, NAM 3 km, ECMWF and more, with CAPE, shear and severe parameters <span class="badge">Tier Three</span></span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Soundings on every model</b></span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>3D Storm View</b> and the <b>Echo Graphics</b> studio <span class="badge">Tier Three</span></span></li>
+            </ul>
+          </div>
+          <div class="shot"><img src="img/storm3d.jpg" alt="3D Storm View showing a thunderstorm core in reflectivity colours" width="1400" height="918" loading="lazy"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── everything ──────────────────────────────────────────── -->
+  <section class="sec" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="kicker">The full list</div>
+        <h2>Everything in Echo Radar.</h2>
+      </div>
+      <div class="every">
+        <div class="card">
+          <h3>Radar</h3>
+          <ul>
+            <li>Super-res Level 2 NEXRAD</li>
+            <li>Level 3 products</li>
+            <li>Velocity with dealiasing</li>
+            <li>Loops up to 75 frames</li>
+            <li>National radar (MRMS), 25 products</li>
+            <li>TVS and hail markers</li>
+            <li>Data inspector</li>
+            <li>Colortables and smoothing</li>
+            <li>Split screen</li>
+            <li>Upload your own radar file</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Warnings &amp; tracking</h3>
+          <ul>
+            <li>Live NWS warnings and watches</li>
+            <li>Phone and desktop notifications</li>
+            <li>Free email alerts</li>
+            <li>Saved places and whole states</li>
+            <li>Track from any warning</li>
+            <li>Impact Times and population</li>
+            <li>Manual Storm Track</li>
+            <li>Warning Graphic</li>
+            <li>Draw on the map</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Chasers &amp; cameras</h3>
+          <ul>
+            <li>Spotter Network</li>
+            <li>Live chaser streams</li>
+            <li>Stream from OBS</li>
+            <li>User and mPING storm reports</li>
+            <li>Field Tracking</li>
+            <li>Traffic cameras, 44 states</li>
+            <li>BuoyCAMs</li>
+            <li>Push-to-talk radio</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Weather &amp; forecast</h3>
+          <ul>
+            <li>GOES-19 GeoColor and IR</li>
+            <li>Live lightning</li>
+            <li>Surface fronts and obs</li>
+            <li>Wind particles</li>
+            <li>SPC severe and fire outlooks</li>
+            <li>Models, soundings, ECMWF</li>
+            <li>NHC hurricanes and spaghetti models</li>
+            <li>Wildfires, outages, tides, buoys</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── plans ───────────────────────────────────────────────── -->
+  <section class="sec" id="plans" style="background:var(--bg-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+    <div class="wrap">
+      <div class="sec-head center">
+        <div class="kicker">Plans</div>
+        <h2>Start free. Add tools when you want them.</h2>
+        <p>Every account gets live radar, warnings and alerts. Each paid tier includes everything below it.</p>
+      </div>
+      <div class="plans">
+        <div class="plan feature">
+          <h3>Free</h3>
+          <div class="price">$0</div>
+          <p class="for">Everything you need to stay ahead of a storm.</p>
+          <ul>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Super-res radar and loops</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Live warnings and watches</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Phone, desktop and email alerts</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Track and Impact Times</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Satellite and national radar</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Spotters, chasers and cameras</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>SPC outlooks and hurricanes</li>
+          </ul>
+          <a class="btn btn-primary" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Create free account</a>
+        </div>
+        <div class="plan">
+          <h3>Tier One</h3>
+          <div class="price"><small>More layers</small></div>
+          <p class="for">For weather watchers who want more on the map.</p>
+          <ul>
+            <li class="inc"><svg width="14" height="14"><use href="#i-check"/></svg>Everything in Free</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Live lightning</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Surface fronts</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Power outages</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Tide stations and buoys</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>BuoyCAMs</li>
+          </ul>
+          <a class="btn btn-ghost" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Start free, upgrade in app</a>
+        </div>
+        <div class="plan">
+          <h3>Tier Two</h3>
+          <div class="price"><small>For chasers</small></div>
+          <p class="for">Follow the storm you pick, two at a time.</p>
+          <ul>
+            <li class="inc"><svg width="14" height="14"><use href="#i-check"/></svg>Everything in Tier One</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Manual Storm Track</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Split screen</li>
+          </ul>
+          <a class="btn btn-ghost" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Start free, upgrade in app</a>
+        </div>
+        <div class="plan">
+          <h3>Tier Three</h3>
+          <div class="price"><small>Everything</small></div>
+          <p class="for">The full forecasting and graphics toolkit.</p>
+          <ul>
+            <li class="inc"><svg width="14" height="14"><use href="#i-check"/></svg>Everything in Tier Two</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Models &amp; Forecast</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>3D Storm View</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Echo Graphics studio</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Warning Graphic</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>My Locations</li>
+          </ul>
+          <a class="btn btn-ghost" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Start free, upgrade in app</a>
+        </div>
+      </div>
+      <p class="fine">Prices are shown in the app when you choose a plan. Manage or cancel your plan any time from your account.</p>
+    </div>
+  </section>
+
+  <!-- ── organizations ───────────────────────────────────────── -->
+  <section class="sec" id="orgs">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="kicker">For organizations</div>
+        <h2>Built for newsrooms, schools and emergency managers too.</h2>
+      </div>
+      <div class="orgs">
+        <article class="card">
+          <h3>Echo Pro</h3>
+          <p>A professional workspace for TV and radio stations, school districts and emergency management agencies. Set the counties you cover, and their warnings rise to the top with the population affected, ready for air.</p>
+          <a class="more" href="mailto:admin@echoradarwx.com?subject=Echo%20Pro">Ask about a licence →</a>
+        </article>
+        <article class="card">
+          <h3>EOC Mode</h3>
+          <p>An emergency operations board for running an incident: warnings sorted by what matters first, a live population-affected count, field reports, spotters, storm tracks and power outages on one screen.</p>
+          <a class="more" href="mailto:admin@echoradarwx.com?subject=EOC%20Mode">Talk to us →</a>
+        </article>
+        <article class="card">
+          <h3>Radar for your website</h3>
+          <p>Put Echo Radar's live radar and NWS warnings on your own site, free, with no login. Copy one snippet and visitors can tap any radar site to switch to it.</p>
+          <a class="more" href="https://api.echoradarwx.com/">Get the embed code →</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── faq ─────────────────────────────────────────────────── -->
+  <section class="sec" id="faq" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head center">
+        <div class="kicker">Questions</div>
+        <h2>Frequently asked questions</h2>
+      </div>
+      <div class="faq">
+        <details>
+          <summary>Is Echo Radar free?</summary>
+          <p>Yes. A free account gets live super-res radar, warnings, storm tracking, satellite, spotters, chaser streams, traffic cameras and alerts by phone, desktop and email. Paid tiers add tools like live lightning, split screen, forecast models, 3D Storm View and Echo Graphics.</p>
+        </details>
+        <details>
+          <summary>Do I need to download an app?</summary>
+          <p>No. Echo Radar runs in your web browser on phones, tablets and computers, so there's nothing to install. There is also an Echo Radar desktop app for Windows.</p>
+        </details>
+        <details>
+          <summary>How are the alerts different?</summary>
+          <p>Echo Radar alerts you only when a place you saved is inside the warning polygon the National Weather Service actually drew, not just somewhere in your county. You can save places by address, city or ZIP, watch up to 10 whole states, and choose which alert types reach you by email.</p>
+        </details>
+        <details>
+          <summary>How do I get notifications on my phone?</summary>
+          <p>Open Alert Notifications in the menu, turn them on and add your places. On iPhone, add Echo Radar to your Home Screen first, since Apple only allows notifications from websites saved there. Email alerts work on any device.</p>
+        </details>
+        <details>
+          <summary>Where does the data come from?</summary>
+          <p>Radar comes from NOAA's NEXRAD network and MRMS, warnings from the National Weather Service, satellite from GOES-19, outlooks from the Storm Prediction Center and tropical data from the National Hurricane Center.</p>
+        </details>
+        <details>
+          <summary>Can I stream my chase to Echo Radar?</summary>
+          <p>Yes. Approved streamers get their own Echo Radar stream key in the Chase Stream Hub to use with OBS. Link your Spotter Network beacon and everyone with the Spotters layer on can watch you live from your position on the map.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap">
+      <img src="img/logo.png" alt="" width="92" height="92" loading="lazy">
+      <h2>Be ready before the next storm.</h2>
+      <p>Create a free account in under a minute. Live radar, live warnings and alerts for the places you care about.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Create your free account</a>
+        <a class="btn btn-ghost" data-app="/login.html" href="https://echoradarwx.com/login.html">I already have an account</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a data-app="/login.html" href="https://echoradarwx.com/login.html">Log in</a>
+      <a data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Create account</a>
+      <a href="#plans">Plans</a>
+      <a href="https://api.echoradarwx.com/">Radar for your website</a>
+      <a href="mailto:admin@echoradarwx.com">Contact</a>
+    </div>
+    <p class="safety">Echo Radar shows data from NOAA and the National Weather Service. In dangerous weather, always follow official NWS warnings and your local emergency officials.</p>
+    <p>© <span id="yr">2026</span> Twistcaster Live Media LLC. Echo Radar WX.</p>
+  </div>
+</footer>
+
+<script>
+  // Point app links at the app on whichever host this page is served from:
+  // info.echoradarwx.com -> echoradarwx.com, or this same host at /info/.
+  (function () {
+    var h = location.hostname, app = '';
+    if (/^info\./.test(h)) app = location.protocol + '//' + h.replace(/^info\./, '') + (location.port ? ':' + location.port : '');
+    else if (h === '' || location.protocol === 'file:') app = 'https://echoradarwx.com';
+    document.querySelectorAll('a[data-app]').forEach(function (a) { a.href = app + a.getAttribute('data-app'); });
+    document.getElementById('yr').textContent = new Date().getFullYear();
+  })();
+</script>
+</body>
+</html>

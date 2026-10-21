@@ -519,7 +519,10 @@
 
     // On load: an in-progress password recovery takes priority; otherwise show
     // the saved-profile chooser (if any), else the sign-in forms.
+    // ?signup (the info site's "Create free account") opens straight on Create account.
+    const wantsSignup = /[?&]signup\b/.test(location.search) || location.hash === '#register';
     if (getResetToken()) { showRecovery('pending'); checkResetStatus(true); }
+    else if (wantsSignup) { showForms(true); activateTab('register'); document.getElementById('register-email').focus(); }
     else if (loadProfiles().length) showChooser(); else showForms(false);
 
     fetch('/auth/support', { headers: { 'Accept': 'application/json' } })
