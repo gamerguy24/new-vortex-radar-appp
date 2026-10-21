@@ -35,8 +35,7 @@
       "name": "Echo Radar WX",
       "url": "https://info.echoradarwx.com/",
       "logo": "https://info.echoradarwx.com/logo.png",
-      "email": "admin@echoradarwx.com",
-      "parentOrganization": { "@type": "Organization", "name": "Twistcaster Live Media LLC" }
+      "email": "admin@echoradarwx.com"
     },
     {
       "@type": "WebApplication",
@@ -47,13 +46,23 @@
       "browserRequirements": "Requires a modern web browser",
       "description": "Live super-res NEXRAD weather radar with NWS warnings, polygon-precise alerts, storm tracking, 3D storm view, satellite, models, live storm chasers and traffic cameras.",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Free account. Paid tiers add more tools." },
+      "sameAs": ["https://apps.microsoft.com/detail/9NBFQ0C936T0"],
       "featureList": "Super-res NEXRAD Level 2 radar, Loops up to 75 frames, Polygon-based warning alerts, Free email alerts, Storm tracking with arrival times, Impact Times, 3D Storm View, GOES-19 satellite, MRMS national radar, Spotter Network, Live chaser streams, 50,000 traffic cameras, SPC outlooks, Forecast models and soundings, NHC hurricanes, Echo Graphics studio"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "Echo Radar WX for Windows",
+      "operatingSystem": "Windows 10, Windows 11",
+      "applicationCategory": "WeatherApplication",
+      "downloadUrl": "https://apps.microsoft.com/detail/9NBFQ0C936T0",
+      "installUrl": "https://apps.microsoft.com/detail/9NBFQ0C936T0",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
     },
     {
       "@type": "FAQPage",
       "mainEntity": [
         { "@type": "Question", "name": "Is Echo Radar free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. A free account gets live super-res radar, warnings, storm tracking, satellite, spotters, chaser streams, traffic cameras and alerts by phone, desktop and email. Paid tiers add tools such as lightning, split screen, models, 3D Storm View and Echo Graphics." } },
-        { "@type": "Question", "name": "Do I need to download an app?", "acceptedAnswer": { "@type": "Answer", "text": "No. Echo Radar runs in your web browser on phones, tablets and computers. There is also an Echo Radar desktop app for Windows." } },
+        { "@type": "Question", "name": "Do I need to download an app?", "acceptedAnswer": { "@type": "Answer", "text": "No. Echo Radar runs in your web browser on phones, tablets and computers. There is also a free Echo Radar WX app for Windows in the Microsoft Store." } },
         { "@type": "Question", "name": "How are Echo Radar alerts different?", "acceptedAnswer": { "@type": "Answer", "text": "Echo Radar alerts you only when your saved place is inside the warning polygon the National Weather Service actually drew, not just somewhere in your county. You can also watch whole states and choose which alerts you get by email." } },
         { "@type": "Question", "name": "Where does the data come from?", "acceptedAnswer": { "@type": "Answer", "text": "Radar comes from NOAA NEXRAD and MRMS, warnings from the National Weather Service, satellite from GOES-19, outlooks from the Storm Prediction Center and tropical data from the National Hurricane Center." } }
       ]
@@ -156,6 +165,13 @@ p { margin: 0; }
 .float-card .t i { width: 9px; height: 9px; border-radius: 50%; background: var(--tor); flex: none; }
 .float-card p { color: var(--text-2); margin-top: 3px; line-height: 1.4; }
 @media (max-width: 520px) { .float-card { position: static; max-width: none; border-radius: 0; border-width: 1px 0 0; box-shadow: none; } .hero-shot { aspect-ratio: auto; } .hero-shot img { aspect-ratio: 16 / 11; } }
+
+.store { display: inline-flex; align-items: center; gap: 11px; padding: 9px 18px 9px 14px; border-radius: 8px; background: #000; color: #fff;
+         border: 1px solid var(--line-2); transition: border-color .15s; }
+.store:hover { text-decoration: none; border-color: var(--text-3); }
+.store span { display: grid; font-weight: 700; font-size: 16px; line-height: 1.15; text-align: left; }
+.store small { font-size: 11.5px; font-weight: 500; color: #c9ced4; }
+.also { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--text-2); font-size: 15px; }
 
 /* ── stat strip ──────────────────────────────────────── */
 .stats { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--bg-2); }
@@ -308,8 +324,15 @@ footer .safety { max-width: 70ch; }
         <ul class="ticks">
           <li><svg width="16" height="16"><use href="#i-check"/></svg>Free account</li>
           <li><svg width="16" height="16"><use href="#i-check"/></svg>Email alerts are free</li>
-          <li><svg width="16" height="16"><use href="#i-check"/></svg>Nothing to install</li>
+          <li><svg width="16" height="16"><use href="#i-check"/></svg>Works in your browser</li>
         </ul>
+        <div class="also">
+          <a class="store" href="https://apps.microsoft.com/detail/9NBFQ0C936T0" target="_blank" rel="noopener" aria-label="Get Echo Radar WX from the Microsoft Store">
+            <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="0" y="0" width="10.5" height="10.5" fill="#f25022"/><rect x="11.5" y="0" width="10.5" height="10.5" fill="#7fba00"/><rect x="0" y="11.5" width="10.5" height="10.5" fill="#00a4ef"/><rect x="11.5" y="11.5" width="10.5" height="10.5" fill="#ffb900"/></svg>
+            <span><small>Get it from</small>Microsoft Store</span>
+          </a>
+          <span>Free desktop app for Windows</span>
+        </div>
       </div>
       <figure class="shot hero-shot" style="margin:0">
         <img src="img/hero.jpg" alt="Echo Radar showing super-res radar over Arizona with a Severe Thunderstorm Warning, its hail and wind tags, and Radar and Track buttons" width="1080" height="708" fetchpriority="high">
@@ -670,7 +693,7 @@ footer .safety { max-width: 70ch; }
         </details>
         <details>
           <summary>Do I need to download an app?</summary>
-          <p>No. Echo Radar runs in your web browser on phones, tablets and computers, so there's nothing to install. There is also an Echo Radar desktop app for Windows.</p>
+          <p>No. Echo Radar runs in your web browser on phones, tablets and computers, so there's nothing to install. If you'd like a desktop app, Echo Radar WX for Windows is free in the <a href="https://apps.microsoft.com/detail/9NBFQ0C936T0" target="_blank" rel="noopener">Microsoft Store</a>, with warning notifications that pop up on your desktop.</p>
         </details>
         <details>
           <summary>How are the alerts different?</summary>
@@ -701,6 +724,12 @@ footer .safety { max-width: 70ch; }
         <a class="btn btn-primary" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Create your free account</a>
         <a class="btn btn-ghost" data-app="/login.html" href="https://echoradarwx.com/login.html">I already have an account</a>
       </div>
+      <div style="margin-top:22px">
+        <a class="store" href="https://apps.microsoft.com/detail/9NBFQ0C936T0" target="_blank" rel="noopener" aria-label="Get Echo Radar WX from the Microsoft Store">
+          <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="0" y="0" width="10.5" height="10.5" fill="#f25022"/><rect x="11.5" y="0" width="10.5" height="10.5" fill="#7fba00"/><rect x="0" y="11.5" width="10.5" height="10.5" fill="#00a4ef"/><rect x="11.5" y="11.5" width="10.5" height="10.5" fill="#ffb900"/></svg>
+          <span><small>Get it from</small>Microsoft Store</span>
+        </a>
+      </div>
     </div>
   </section>
 </main>
@@ -711,11 +740,12 @@ footer .safety { max-width: 70ch; }
       <a data-app="/login.html" href="https://echoradarwx.com/login.html">Log in</a>
       <a data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Create account</a>
       <a href="#plans">Plans</a>
+      <a href="https://apps.microsoft.com/detail/9NBFQ0C936T0" target="_blank" rel="noopener">Windows app</a>
       <a href="https://api.echoradarwx.com/">Radar for your website</a>
       <a href="mailto:admin@echoradarwx.com">Contact</a>
     </div>
     <p class="safety">Echo Radar shows data from NOAA and the National Weather Service. In dangerous weather, always follow official NWS warnings and your local emergency officials.</p>
-    <p>© <span id="yr">2026</span> Twistcaster Live Media LLC. Echo Radar WX.</p>
+    <p>© <span id="yr">2026</span> Echo Radar WX.</p>
   </div>
 </footer>
 
