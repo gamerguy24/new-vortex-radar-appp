@@ -32,6 +32,7 @@ const FEATURES = [
   { id: 'armrPowerOutagesBtn', name: 'Power Outages', tier: 1 },
   // Tier Two
   { id: 'mstMenuItemDiv', name: 'Manual Storm Track', tier: 2 },
+  { id: 'armrMstBtn', name: 'Manual Storm Track', tier: 2 },
   { id: 'vortexSplitBtn', name: 'Split Screen', tier: 2 },
   // Tier Three
   { id: 'warnGraphicBtn', name: 'Warning Graphic', tier: 3 },

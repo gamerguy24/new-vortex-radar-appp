@@ -51,6 +51,7 @@ function injectStyles() {
     .mst-mode button{border:none;background:transparent;color:#cdd9f0;font-weight:700;font-size:12.5px;
       padding:6px 14px;border-radius:var(--vx-r-2);cursor:pointer;font-family:inherit}
     .mst-mode button.on{background:#1f7ae0;color:#fff}
+    .mst-mode button.mst-stop{margin-left:2px;border-left:1px solid #22344f;border-radius:0 var(--vx-r-2) var(--vx-r-2) 0}
     .mst-hint{position:absolute;bottom:auto;top:108px;left:50%;transform:translateX(-50%);
       z-index:100060;background:var(--vx-surface);color:#cdd9f0;border:1px solid #22344f;
       border-radius:var(--vx-r-3);padding:6px 14px;font-size:12px;font-family:var(--vx-font);

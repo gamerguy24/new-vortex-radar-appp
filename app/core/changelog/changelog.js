@@ -22,6 +22,12 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'October 21, 2026',
+        items: [
+            { title: 'Draw and Manual Storm Track are switches under Tools', desc: 'Draw on Map and Manual Storm Track now sit together under Tools in the menu, each with an on/off switch, and Manual Storm Track has left the bottom toolbar (Echo Graphics and Draw already had). Switch one on and the menu closes so you can use it straight away; open the menu again and its switch shows it is still on, so you can switch it off there. Opening the menu no longer turns them off by itself. You can also stop either tool from the map: Drawing on at the top of the map, the new Stop button next to Cellular and Linear for the storm track, or the Escape key.' },
+        ],
+    },
+    {
         date: 'October 20, 2026',
         items: [
             { title: 'Your Echo Radar stream on your Spotter Network beacon', desc: 'Streamers can now link their Spotter Network beacon to the stream they send to Echo Radar from OBS. In the Chase Stream Hub, under Stream key (RTMP), type your name or callsign exactly as it shows on Spotter Network and press Save settings. While you are streaming, everyone with the Spotters layer on sees a red live ring on your beacon; tapping it plays your stream, and the player follows your beacon as you drive. It can take up to two minutes after you start for your beacon to light up. When you stop, the ring goes and viewers are told you stopped streaming.' },

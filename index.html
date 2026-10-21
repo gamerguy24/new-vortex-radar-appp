@@ -867,11 +867,21 @@
                         3D Storm View
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <!-- Starts the pen (app/draw/menu_item.js); it used to be a tool-rail icon. -->
+                    <!-- Pen and storm-track on/off (app/draw/menu_item.js,
+                         app/tools/manual_storm_track/menu_item.js); both used to be tool-rail icons. -->
                     <div class="vortexRadarMenuRow armrMiddle" id="armrDrawBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-pencil"></i>
                         Draw on Map
-                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrDrawSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrMstBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-tornado"></i>
+                        Manual Storm Track
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrMstSwitchElem">
+                        </div>
                     </div>
                     <div class="vortexRadarMenuRow armrMiddle" id="armrGraphicsStudioBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-palette"></i>

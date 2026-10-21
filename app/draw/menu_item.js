@@ -2,12 +2,13 @@ const draw_functions = require('./draw_functions');
 
 const div_elem = '#drawMenuItemDiv';
 const icon_elem = '#drawMenuItemIcon';
+const switch_elem = '#armrDrawSwitchElem';
 
 /*
  * The pen's on/off state is still the (now hidden) rail icon's class, so the
  * storm-track, sounding and Pro code that clicks or reads it keeps working.
- * Starting it is the menu's Tools › Draw on Map row; stopping it is the
- * floating Stop drawing button or Escape, since the rail has no pencil.
+ * The menu's Tools › Draw on Map switch mirrors that class and turns it on or
+ * off; the floating Stop drawing button and Escape also turn it off.
  */
 function onKey(e) {
     if (e.key === 'Escape' && $(icon_elem).hasClass('menu_item_selected')) $(icon_elem).click();
@@ -40,12 +41,14 @@ $(icon_elem).on('click', function () {
 
         draw_functions.enable_drawing();
         showStop();
+        $(switch_elem).prop('checked', true);
     } else if ($(icon_elem).hasClass('menu_item_selected')) {
         $(icon_elem).removeClass('menu_item_selected');
         $(icon_elem).addClass('menu_item_not_selected');
 
         draw_functions.disable_drawing();
         hideStop();
+        $(switch_elem).prop('checked', false);
     }
 })
 
@@ -54,19 +57,23 @@ function _disable() {
     $(icon_elem).addClass('menu_item_not_selected');
     draw_functions.disable_drawing();
     hideStop();
+    $(switch_elem).prop('checked', false);
 }
 $('#colorPickerItemDiv').on('click', function () {
     if ($(this).find('span').hasClass('menu_item_selected')) {
         _disable();
     }
 })
-$('#settingsItemDiv').on('click', function () {
-    _disable();
-})
 
-// Menu › Tools › Draw on Map: close the menu and start the pen. (Opening the
-// menu already stopped any drawing, so this only ever turns it on.)
-$('#armrDrawBtn').on('click', function () {
-    $('#vortexRadarMenuMainScreen .armsHeaderExitBtn').click();   // the menu's own close
-    if (!$(icon_elem).hasClass('menu_item_selected')) $(icon_elem).click();
+// Menu › Tools › Draw on Map. Turning it on closes the menu so you can draw
+// straight away; turning it off leaves the menu open. The whole row toggles,
+// like the other switch rows.
+function setFromMenu(on) {
+    if (on !== $(icon_elem).hasClass('menu_item_selected')) $(icon_elem).click();
+    if (on) $('#vortexRadarMenuMainScreen .armsHeaderExitBtn').click();   // the menu's own close
+}
+$(switch_elem).on('change', function () { setFromMenu(this.checked); });
+$('#armrDrawBtn').on('click', function (e) {
+    if (e.target.closest('.form-check')) return;   // the switch's own change handles it
+    setFromMenu(!$(icon_elem).hasClass('menu_item_selected'));
 })

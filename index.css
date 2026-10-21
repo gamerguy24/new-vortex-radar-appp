@@ -2810,13 +2810,15 @@ body.vortex-split #mapDual.vortex-pane-active::after {
     box-shadow: inset 0 0 0 2px var(--vx-accent, #e8862b);
 }
 
-/* Echo Graphics and Draw live in the menu (Tools), not the tool rail. The
-   nodes stay in the page because other code drives them (the draw tool's
-   on/off state is its icon's class) and the Pro interface moves them into
-   its own menus, where these rules no longer apply. Each takes the spacer
-   after it along. */
+/* Echo Graphics, Draw and Manual Storm Track live in the menu (Tools), not
+   the tool rail. The nodes stay in the page because other code drives them
+   (each tool's on/off state is its icon's class) and the Pro interface moves
+   them into its own menus, where these rules no longer apply. Each takes the
+   spacer after it along. */
 #vortexBarIcons > #drawMenuItemDiv,
 #vortexBarIcons > #drawMenuItemDiv + .vortexIconSpacer,
+#vortexBarIcons > #mstMenuItemDiv,
+#vortexBarIcons > #mstMenuItemDiv + .vortexIconSpacer,
 #vortexBarIcons > #vortexGraphicsBtn,
 #vortexBarIcons > #vortexGraphicsBtn + .vortexIconSpacer { display: none !important; }
 
