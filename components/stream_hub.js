@@ -21,7 +21,7 @@
  */
 
 import OBSClient from './obs_websocket.js?v=obs2';
-import { openMiniPlayer } from './stream_player.js?v=hls1';
+import { openMiniPlayer } from './stream_player.js?v=hls2';
 
 const API = '/api/stream';
 const LIVE_PING_MS = 15000;   // how often we push our moving position while live
@@ -179,9 +179,10 @@ async function refreshOtherChasers() {
 function currentStreamUrl() {
     const typed = ($('vrsh-stream-url') && $('vrsh-stream-url').value.trim()) || '';
     if (typed) return typed;
-    // Streaming to Echo Radar's server: the watch link is ours.
+    // Streaming to Echo Radar's server (it says it is receiving us, or OBS is
+    // pointed at it from here): the watch link is ours.
     const rtmpUrl = ($('vrsh-rtmp-url') && $('vrsh-rtmp-url').value.trim()) || (cfg && cfg.rtmp && cfg.rtmp.url) || '';
-    return (ingest && ingest.enabled && rtmpUrl === ingest.server) ? location.origin + ingest.watchPath : '';
+    return (ingest && ingest.enabled && (ingest.live || rtmpUrl === ingest.server)) ? location.origin + ingest.watchPath : '';
 }
 
 async function onPosition(pos) {

@@ -25,7 +25,7 @@
  * ES module, loaded via <script type=module>.
  */
 
-import { openMiniPlayer, trackedPosition } from './stream_player.js?v=hls1';
+import { openMiniPlayer, trackedPosition } from './stream_player.js?v=hls2';
 import { BEACON_STREAMS, beaconStreamForUrl, beaconTrack } from './beacon_streams.js?v=beacon3';
 
 // The creator card at the top of the panel. Set to null to remove it.

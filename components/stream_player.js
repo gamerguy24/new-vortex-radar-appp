@@ -201,7 +201,7 @@ async function resolveYouTubeLiveId(url) {
  */
 export async function resolveEmbed(url) {
     let u;
-    try { u = new URL(url); } catch { return null; }
+    try { u = new URL(url, location.href); } catch { return null; }   // our own /live/… links are relative
     const host = u.hostname.replace(/^www\./, '').toLowerCase();
     const parent = location.hostname;
 

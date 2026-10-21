@@ -1376,7 +1376,7 @@ app.get('/api/stream/config', requireAuth, (req, res) => {
 
 // Echo Radar's own RTMP server (nginx on the broadcast box): per-streamer key,
 // nginx's key check, and the in-app watch link. See stream_ingest.js.
-require('./stream_ingest').attachStreamIngest(app, { streamConfigs, saveStreamConfigs, findById, canStream, requireAuth, requireStreamer });
+const streamIngest = require('./stream_ingest').attachStreamIngest(app, { streamConfigs, saveStreamConfigs, findById, canStream, requireAuth, requireStreamer });
 
 // Save config. Secret fields (discordWebhook, obs.password) are only overwritten
 // when the client actually sends a new value, so re-saving other settings
@@ -1494,12 +1494,16 @@ app.get('/api/stream/live', requireAuth, (req, res) => {
     for (const [uid, s] of liveSessions) {
         if (uid === req.user.id) continue;
         if (s.lat == null || s.lng == null) continue;
+        // Streaming to Echo Radar's own server: that is the video to watch,
+        // whatever the Hub sent (it only knows when its RTMP fields match).
+        const ing = streamConfigs[uid] && streamConfigs[uid].ingest;
+        const echoUrl = ing && streamIngest.livePids.has(ing.publicId) ? `/live/${ing.publicId}/index.m3u8` : '';
         list.push({
             id: uid,
             lat: s.lat, lng: s.lng,
             place: s.place || '',
             title: s.title || '',
-            url: s.url || '',
+            url: echoUrl || s.url || '',
             name: (s.email || '').split('@')[0],
             startedAt: s.startedAt,
         });
