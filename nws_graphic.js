@@ -662,7 +662,7 @@ async function renderWarningGraphic(alert, opts = {}) {
   // branding (right side of banner)
   ctx.textAlign = 'right';
   ctx.font = `800 22px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.96)';
-  ctx.fillText('VORTEX RADAR', W - 24, bannerH / 2 - 6);
+  ctx.fillText('ECHO RADAR', W - 24, bannerH / 2 - 6);
   ctx.font = `700 12px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.82)';
   ctx.fillText('LIVE WARNING', W - 24, bannerH / 2 + 14);
   ctx.textAlign = 'left';
