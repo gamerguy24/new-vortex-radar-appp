@@ -368,39 +368,22 @@
                 <div id="vortexRadarMenuMainScreen" class="armScreen">
                     <div class="armsHeader">Menu<div class="armsHeaderExitBtn"><i class="fa fa-xmark"></i></div></div>
                     <br>
-                    <div class="armrHeader">SETTINGS</div>
-                    <div class="vortexRadarMenuRow armrTop" id="armrSettingsBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-gear"></i>
-                        Settings
+                    <div class="armrHeader">OUTLOOKS</div>
+                    <div class="vortexRadarMenuRow armrTop" id="armrSevereBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-cloud-bolt"></i>
+                        Severe
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrColortablesBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-palette"></i>
-                        Colortables
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrTropicalBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
+                        Tropical
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrGateFilterBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-filter"></i>
-                        Reflectivity Gate Filter
+                    <div class="vortexRadarMenuRow armrBottom" id="armrFireBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
+                        Fire
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
-                    <div class="vortexRadarMenuRow armrBottom" id="armrSmoothingBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-wand-magic-sparkles"></i>
-                        Smoothing
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSmoothingSwitchElem">
-                        </div>
-                    </div>
-
-                    <br>
-
-                    <div class="armrHeader">OPEN FILE</div>
-                    <div class="vortexRadarMenuRow" id="armrUploadFileBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-upload"></i>
-                        Upload Radar File
-                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
-                    </div>
-
                     <br>
 
                     <div class="armrHeader">IMAGERY & RADAR</div>
@@ -460,7 +443,6 @@
                     </div>
                     <br>
 
-
                     <div class="armrHeader">SURFACE & MARINE</div>
                     <div class="vortexRadarMenuRow armrTop" id="armrSurfaceFrontsBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-wind"></i>
@@ -489,35 +471,6 @@
                         <div class="form-check form-switch">
                             <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrBuoysSwitchElem">
                         </div>
-                    </div>
-                    <br>
-
-                    <div class="armrHeader">REPORTS & SPOTTERS</div>
-                    <div class="vortexRadarMenuRow armrTop" id="armrSpottersBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-user-group"></i>
-                        Spotter Network
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSpottersSwitchElem">
-                        </div>
-                    </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrReportsBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-tower-observation"></i>
-                        User Storm Reports
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-community-reports-layer">
-                        </div>
-                    </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrMPINGBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-cloud-showers-heavy"></i>
-                        mPING Reports
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrMPINGSwitchElem">
-                        </div>
-                    </div>
-                    <div class="vortexRadarMenuRow armrBottom" id="armrReportWeatherBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-flag"></i>
-                        Report Weather
-                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
                     <br>
 
@@ -879,20 +832,31 @@
                     </div>
                     <br>
 
-                    <div class="armrHeader">OUTLOOKS</div>
-                    <div class="vortexRadarMenuRow armrTop" id="armrSevereBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-cloud-bolt"></i>
-                        Severe
-                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    <div class="armrHeader">REPORTS & SPOTTERS</div>
+                    <div class="vortexRadarMenuRow armrTop" id="armrSpottersBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-user-group"></i>
+                        Spotter Network
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSpottersSwitchElem">
+                        </div>
                     </div>
-                    <div class="vortexRadarMenuRow armrMiddle" id="armrTropicalBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-hurricane"></i>
-                        Tropical
-                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrReportsBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-tower-observation"></i>
+                        User Storm Reports
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="toggle-community-reports-layer">
+                        </div>
                     </div>
-                    <div class="vortexRadarMenuRow armrBottom" id="armrFireBtn">
-                        <i class="armrIcon armrIcon-Blue fa-solid fa-fire"></i>
-                        Fire
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrMPINGBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-cloud-showers-heavy"></i>
+                        mPING Reports
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrMPINGSwitchElem">
+                        </div>
+                    </div>
+                    <div class="vortexRadarMenuRow armrBottom" id="armrReportWeatherBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-flag"></i>
+                        Report Weather
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
                     <br>
@@ -901,6 +865,12 @@
                     <div class="vortexRadarMenuRow armrTop" id="armrStorm3DBtn">
                         <i class="armrIcon armrIcon-Blue fa-solid fa-cube"></i>
                         3D Storm View
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <!-- Starts the pen (app/draw/menu_item.js); it used to be a tool-rail icon. -->
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrDrawBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-pencil"></i>
+                        Draw on Map
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
                     <div class="vortexRadarMenuRow armrMiddle" id="armrGraphicsStudioBtn">
@@ -923,6 +893,41 @@
                         Field Tracking
                         <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
                     </div>
+                    <br>
+
+                    <div class="armrHeader">SETTINGS</div>
+                    <div class="vortexRadarMenuRow armrTop" id="armrSettingsBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-gear"></i>
+                        Settings
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrColortablesBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-palette"></i>
+                        Colortables
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="vortexRadarMenuRow armrMiddle" id="armrGateFilterBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-filter"></i>
+                        Reflectivity Gate Filter
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="vortexRadarMenuRow armrBottom" id="armrSmoothingBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-wand-magic-sparkles"></i>
+                        Smoothing
+                        <div class="form-check form-switch">
+                            <input class="form-check-input toggleSwitchContainter" onfocus="this.blur();" type="checkbox" role="switch" id="armrSmoothingSwitchElem">
+                        </div>
+                    </div>
+
+                    <br>
+
+                    <div class="armrHeader">OPEN FILE</div>
+                    <div class="vortexRadarMenuRow" id="armrUploadFileBtn">
+                        <i class="armrIcon armrIcon-Blue fa-solid fa-upload"></i>
+                        Upload Radar File
+                        <i class="armrIconArrowRight fa-solid fa-chevron-right"></i>
+                    </div>
+
                     <br>
 
                     <div class="armrHeader">INFO</div>

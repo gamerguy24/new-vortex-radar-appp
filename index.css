@@ -2809,3 +2809,34 @@ body.vortex-split #map.vortex-pane-active::after,
 body.vortex-split #mapDual.vortex-pane-active::after {
     box-shadow: inset 0 0 0 2px var(--vx-accent, #e8862b);
 }
+
+/* Echo Graphics and Draw live in the menu (Tools), not the tool rail. The
+   nodes stay in the page because other code drives them (the draw tool's
+   on/off state is its icon's class) and the Pro interface moves them into
+   its own menus, where these rules no longer apply. Each takes the spacer
+   after it along. */
+#vortexBarIcons > #drawMenuItemDiv,
+#vortexBarIcons > #drawMenuItemDiv + .vortexIconSpacer,
+#vortexBarIcons > #vortexGraphicsBtn,
+#vortexBarIcons > #vortexGraphicsBtn + .vortexIconSpacer { display: none !important; }
+
+/* Shown while the pen is on, now that the rail has no pencil to turn it off. */
+#vxDrawStop {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 70px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100050;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--vx-surface);
+    color: var(--vx-text);
+    border: 1px solid var(--vx-accent);
+    border-radius: var(--vx-r-3);
+    box-shadow: var(--vx-shadow);
+    font: 600 13px var(--vx-font);
+    cursor: pointer;
+}
+#vxDrawStop i { color: var(--vx-accent); }
