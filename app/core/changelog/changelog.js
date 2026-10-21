@@ -24,6 +24,7 @@ const CHANGELOG = [
     {
         date: 'October 21, 2026',
         items: [
+            { title: 'Support tickets reach the team faster', desc: 'When you open a support ticket, the Echo Radar admins are now notified straight away, and reminded every day until someone answers it, so tickets no longer wait for an admin to happen to check.' },
             { title: 'Draw and Manual Storm Track are switches under Tools', desc: 'Draw on Map and Manual Storm Track now sit together under Tools in the menu, each with an on/off switch, and Manual Storm Track has left the bottom toolbar (Echo Graphics and Draw already had). Switch one on and the menu closes so you can use it straight away; open the menu again and its switch shows it is still on, so you can switch it off there. Opening the menu no longer turns them off by itself. You can also stop either tool from the map: Drawing on at the top of the map, the new Stop button next to Cellular and Linear for the storm track, or the Escape key.' },
         ],
     },

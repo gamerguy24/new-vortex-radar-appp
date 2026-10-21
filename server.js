@@ -1100,8 +1100,9 @@ app.post('/api/settings', requireAuth, (req, res) => {
 // ─── Support tickets ─────────────────────────────────────────────────────────
 // An in-app help desk. Any signed-in user can open a ticket and hold a threaded
 // conversation with the admins; admins triage every ticket, reply, and change
-// status. Stored as JSON like the rest of the app — no email is sent (there is
-// no SMTP wired), so replies live in-app and surface via an unread badge.
+// status. Stored as JSON like the rest of the app. Replies live in-app and
+// surface via an unread badge; admins are also notified of new and unanswered
+// tickets (see "Support ticket notifications" below).
 const TICKET_CATEGORIES = ['Bug', 'Billing', 'Feature request', 'Account', 'Other'];
 const TICKET_STATUSES = ['open', 'answered', 'closed'];
 const findTicket = (id) => tickets.find((t) => t.id === id);
@@ -1189,6 +1190,7 @@ function openPasswordResetTicket(user, note) {
     };
     tickets.push(t);
     saveTickets();
+    notifyAdminsNewTicket(t);
     return t;
 }
 
@@ -1232,6 +1234,7 @@ app.post('/api/support/tickets', requireAuth, (req, res) => {
     };
     tickets.push(ticket);
     saveTickets();
+    notifyAdminsNewTicket(ticket);
     res.json({ ticket: ticketFull(ticket, req.user) });
 });
 
@@ -1319,6 +1322,102 @@ app.get('/api/support/admin/tickets', requireAdmin, (req, res) => {
     list.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
     res.json({ tickets: list.map((t) => ticketSummary(t, req.user)) });
 });
+
+// ─── Support ticket notifications (admins only) ──────────────────────────────
+// Every admin hears about a new ticket straight away, and again once a day for
+// as long as it sits unanswered. ADMINS ONLY: recipients come from the user
+// store's isAdmin flag at send time — never from the ticket or the request — so
+// the person who opened the ticket, or any other non-admin, is never on the
+// list. Two channels, each used when available: the push / desktop
+// notifications an admin turned on in Alert Notifications, and email when SMTP
+// is configured. A send that fails is logged and never reaches the request.
+const TICKET_REMIND_MS = 24 * 60 * 60 * 1000;
+let criticalAlerts = null;   // set where Critical Weather Alerts attaches; carries sendToUser
+
+const ticketLink = (id) => `/?support=${encodeURIComponent(id)}`;
+
+// When the ticket started waiting on staff: its first user message after the
+// last admin reply. null when nobody is waiting (answered, closed, or the
+// newest message is from an admin).
+function ticketWaitingSince(t) {
+    if (t.status !== 'open') return null;
+    let since = null;
+    for (let i = t.messages.length - 1; i >= 0; i--) {
+        if (t.messages[i].isAdmin) break;
+        since = t.messages[i].time;
+    }
+    return since;
+}
+
+// items: [{ t, days }] — days 0 for a new ticket, N for N days unanswered.
+async function notifyAdminsOfTickets(items) {
+    const sendToUser = criticalAlerts && criticalAlerts.sendToUser;
+    const admins = users.filter((u) => u.isAdmin && !u.isLocked);
+    for (const admin of admins) {
+        // An admin who opened a ticket of their own is not paged about it.
+        const mine = items.filter(({ t }) => t.userId !== admin.id);
+        if (!mine.length) continue;
+
+        const first = mine[0];
+        const isNew = mine.length === 1 && first.days === 0;
+        const dayWord = (d) => `${d} day${d === 1 ? '' : 's'}`;
+        const title = isNew
+            ? `New support ticket: ${first.t.subject}`
+            : mine.length === 1
+                ? `Support ticket unanswered for ${dayWord(first.days)}`
+                : `${mine.length} support tickets still unanswered`;
+        const lines = mine.map(({ t, days }) =>
+            `${t.subject} — ${t.email} (${t.category}${days ? `, waiting ${dayWord(days)}` : ''})`);
+        const opening = isNew ? clampStr((first.t.messages[0] || {}).body, 200) : '';
+        const url = mine.length === 1 ? ticketLink(first.t.id) : '/?support=all';
+
+        if (sendToUser) {
+            sendToUser(admin.id, {
+                title,
+                body: isNew ? `${first.t.email} · ${first.t.category}\n${opening}` : lines.join('\n').slice(0, 240),
+                tag: `support-${mine.length === 1 ? first.t.id : 'digest'}-${first.days}`,
+                url,
+            }).catch((e) => console.warn('[support] admin push failed:', e.message));
+        }
+        if (mailReady()) {
+            const where = APP_URL ? `\nOpen ${APP_URL}${url} to reply.\n` : '\nReply from Support in the app menu.\n';
+            const text = isNew
+                ? `A new support ticket was opened.\n\n  From:     ${first.t.email}\n  Category: ${first.t.category}\n  Subject:  ${first.t.subject}\n\n${clampStr((first.t.messages[0] || {}).body, 2000)}\n${where}`
+                : `These support tickets are still waiting for an answer:\n\n${lines.map((l) => `  • ${l}`).join('\n')}\n${where}`;
+            sendMail({ to: admin.email, subject: `${APP_NAME} — ${title}`, text: `${text}\nYou get this because you are an ${APP_NAME} admin.\n` })
+                .catch(() => {});
+        }
+    }
+}
+
+function notifyAdminsNewTicket(t) {
+    notifyAdminsOfTickets([{ t, days: 0 }]).catch((e) => console.warn('[support] admin notify failed:', e.message));
+}
+
+// One pass: any ticket that has now waited another whole day gets a reminder.
+// The last day reminded is stored on the ticket (with the wait it belongs to),
+// so a restart neither repeats nor skips one, and a fresh user follow-up
+// starts a new count.
+function remindUnansweredTickets() {
+    const now = Date.now();
+    const due = [];
+    for (const t of tickets) {
+        const since = ticketWaitingSince(t);
+        if (!since) continue;
+        const days = Math.floor((now - new Date(since).getTime()) / TICKET_REMIND_MS);
+        if (days < 1) continue;
+        const r = t.adminReminder;
+        if (r && r.since === since && r.days >= days) continue;
+        t.adminReminder = { since, days };
+        due.push({ t, days });
+    }
+    if (!due.length) return;
+    saveTickets();
+    due.sort((a, b) => b.days - a.days);
+    notifyAdminsOfTickets(due).catch((e) => console.warn('[support] admin reminder failed:', e.message));
+}
+setTimeout(remindUnansweredTickets, 60 * 1000);
+setInterval(remindUnansweredTickets, 60 * 60 * 1000);
 
 // ─── Chase Stream Hub ────────────────────────────────────────────────────────
 // Per-user streaming config (OBS connection, auto-post destinations, title
@@ -2474,7 +2573,7 @@ try {
 // Free-first, self-hosted. Phase 2: data model + saved locations + preferences +
 // admin config. Later phases add the NWS worker, polygon matcher, and channels.
 try {
-    require('./critical_alerts').attachCriticalAlerts({
+    criticalAlerts = require('./critical_alerts').attachCriticalAlerts({
         app, requireAuth, requireAdmin, DATA_DIR, readJson, writeJson,
         getUser: findById, hasAlerts: billing.hasAlerts, sendMail, mailReady, mailError,
     });

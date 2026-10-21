@@ -405,4 +405,24 @@ window.openVortexSupport = openSupport;
     // keep the badge fresh while the app is open
     unreadTimer = setInterval(refreshBadge, 60000);
     window.addEventListener('focus', refreshBadge);
+    openFromLink();
 })();
+
+// Admin ticket notifications link to /?support=<id> (one ticket) or
+// /?support=all (several). The server still decides who may read a ticket.
+async function openFromLink() {
+    let target = null;
+    try { target = new URLSearchParams(location.search).get('support'); } catch (e) { return; }
+    if (!target) return;
+    try {
+        const u = new URL(location.href);
+        u.searchParams.delete('support');
+        history.replaceState(null, '', u.pathname + u.search + u.hash);
+    } catch (e) { /* the link just stays in the address bar */ }
+    if (me.isAdmin) adminMode = true;
+    if (target === 'all') return openSupport();
+    // Straight to the thread; openSupport() would race its list render against it.
+    if (!overlay) buildOverlay();
+    overlay.classList.add('show');
+    openThread(target);
+}

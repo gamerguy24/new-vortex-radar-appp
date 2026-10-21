@@ -589,6 +589,9 @@ function attachCriticalAlerts({
     console.log(`[CRITICAL] Critical Weather Alerts ready (push: ${push ? 'on' : 'off'}, `
         + `poller: ${worker ? 'running' : 'off'}). `
         + `${Object.values(locations).reduce((a, b) => a + (b ? b.length : 0), 0)} saved location(s).`);
+
+    // The support desk pages admins through the same devices (server.js).
+    return { sendToUser: push ? push.sendToUser : null };
 }
 
 module.exports = { attachCriticalAlerts };
