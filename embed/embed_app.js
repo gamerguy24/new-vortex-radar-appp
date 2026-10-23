@@ -107,22 +107,32 @@ function showMsg(text) { const m = $('erx-msg'); m.textContent = text || ''; m.h
 const fmtTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 
 // ── map ──
-if (!window.mapboxgl || !mapboxgl.supported || !mapboxgl.supported()) {
-    showMsg('This browser cannot show the radar map (WebGL is off or unsupported).');
-    throw new Error('mapbox-gl unsupported');
+// No mapboxgl.supported() gate: it is stricter than the map itself and says
+// "no" on phones that draw the map fine (the app has no such check). Just try
+// to make the map; Mapbox throws if WebGL really is unavailable.
+const NO_MAP_MSG = 'This browser cannot show the radar map (WebGL is off or unsupported).';
+if (!window.mapboxgl) {
+    showMsg('The radar map could not load. Check your connection and reload.');
+    throw new Error('mapbox-gl did not load');
 }
 mapboxgl.accessToken = MAPBOX_TOKEN;
-const map = new mapboxgl.Map({
-    container: 'map',
-    style: STYLES[opts.style],
-    center: [opts.lon, opts.lat],
-    zoom: opts.zoom,
-    interactive: opts.interactive,
-    attributionControl: false,
-    projection: 'mercator',
-    dragRotate: false,
-    pitchWithRotate: false,
-});
+let map;
+try {
+    map = new mapboxgl.Map({
+        container: 'map',
+        style: STYLES[opts.style],
+        center: [opts.lon, opts.lat],
+        zoom: opts.zoom,
+        interactive: opts.interactive,
+        attributionControl: false,
+        projection: 'mercator',
+        dragRotate: false,
+        pitchWithRotate: false,
+    });
+} catch (e) {
+    showMsg(NO_MAP_MSG);
+    throw e;
+}
 map.touchZoomRotate && map.touchZoomRotate.disableRotation();
 map.addControl(new mapboxgl.AttributionControl({ compact: true, customAttribution: 'Radar: NOAA NEXRAD / MRMS · Warnings: NWS' }), 'bottom-right');
 if (opts.controls && opts.interactive) map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
