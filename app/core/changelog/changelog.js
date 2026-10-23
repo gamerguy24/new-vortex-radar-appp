@@ -22,6 +22,12 @@ const display_vortex_dialog = require('../menu/vortex_dialog');
 
 const CHANGELOG = [
     {
+        date: 'October 23, 2026',
+        items: [
+            { title: 'All traffic cameras under one switch', desc: 'The 45 state traffic camera switches under Cameras & More are now one: Traffic Cams (All States), with about 47,000 DOT cameras across 44 states on the map at once. It also turns on much faster and no longer freezes the map while the cameras load. Tap a camera and its picture or live video opens just as before. Free for everyone.' },
+        ],
+    },
+    {
         date: 'October 21, 2026',
         items: [
             { title: 'Support tickets reach the team faster', desc: 'When you open a support ticket, the Echo Radar admins are now notified straight away, and reminded every day until someone answers it, so tickets no longer wait for an admin to happen to check.' },

@@ -15,6 +15,8 @@
  *   GET /api/511cams/ar   ARDOT iDriveArkansas           no key (public GeoJSON; stills only)
  *   GET /api/511cams/tx   TxDOT DriveTexas (MapLarge)    no key (public table; live HLS video)
  *   GET /api/511cams/:region/views/:id   cameras looked up when one is opened (ms, tx)
+ *   GET /api/511cams/national            every state above in one layer (see NATIONAL)
+ *   GET /api/511cams/:region/cam/:id     one camera's details, for the national layer's popup
  *
  * → GeoJSON points, one per enabled camera view.
  *
@@ -53,6 +55,8 @@
  * their cameras and stream records. This is the same filter it sends for the
  * public: in-service web cameras not blocked from the traveller site.
  */
+const zlib = require('zlib');
+
 const OK_FILTER = JSON.stringify({ include: [{ relation: 'mapCameras', scope: { include: 'streamDictionary',
   where: { status: { neq: 'Out Of Service' }, type: 'Web', blockAtis: { neq: '1' } } } }] });
 
@@ -930,6 +934,24 @@ function parseTdot(list) {
   return features;
 }
 
+/*
+ * A region's parsed list, indexed by camera id. Parsed once per cached body,
+ * so the national layer and the camera lookups share the work.
+ */
+const parsed = {};      // region -> { body, features, byId }
+function indexed(region, body) {
+  const hit = parsed[region];
+  if (hit && hit.body === body) return hit;
+  const features = JSON.parse(body).features || [];
+  const byId = new Map();
+  for (const f of features) {
+    const k = String(f.properties.v);
+    const list = byId.get(k);
+    if (list) list.push(f); else byId.set(k, [f]);
+  }
+  return (parsed[region] = { body, features, byId });
+}
+
 async function cameras(region) {
   const hit = cache[region];
   if (hit && Date.now() - hit.at < (REGIONS[region].ttl || TTL_MS)) return hit.body;
@@ -947,6 +969,55 @@ async function cameras(region) {
     }
   })();
   return inflight[region];
+}
+
+/*
+ * NATIONAL: every usable region's cameras as one layer, about 50,000 points.
+ * Each point carries only its region (`g`) and camera id (`v`); the popup
+ * fetches the rest from /api/511cams/:region/cam/:id when a camera is opened.
+ * Shipping every name, snapshot and stream URL for 50,000 cameras up front is
+ * what made switching traffic cams on slow.
+ *
+ * Built from the per-region caches, gzipped once, and served stale while a
+ * rebuild runs, so turning the layer on never waits on 45 DOT sites. A region
+ * that fails is left out of that build rather than failing the whole layer.
+ */
+const national = { at: 0, body: null, gz: null };
+let nationalInflight = null;
+
+// Regions fetched at once while building: all 45 together (several paging
+// through dozens of requests) exhausts connections and most fail.
+const NATIONAL_CONCURRENCY = 6;
+
+async function buildNational() {
+  const queue = Object.keys(REGIONS).filter(usable);
+  const features = [];
+  await Promise.all(Array.from({ length: NATIONAL_CONCURRENCY }, async () => {
+    for (let g; (g = queue.shift());) {
+      try {
+        for (const f of indexed(g, await cameras(g)).features) {
+          features.push({ type: 'Feature', geometry: f.geometry, properties: { g, v: f.properties.v } });
+        }
+      } catch (e) {
+        console.warn(`[511] ${g} left out of the national layer:`, e.message);
+      }
+    }
+  }));
+  if (!features.length) throw new Error('No traffic cameras are available right now.');
+  const body = JSON.stringify({ type: 'FeatureCollection', fetchedAt: new Date().toISOString(), features });
+  return { at: Date.now(), body, gz: zlib.gzipSync(body) };
+}
+
+function nationalCams() {
+  const fresh = national.body && Date.now() - national.at < TTL_MS;
+  if (!fresh && !nationalInflight) {
+    nationalInflight = buildNational()
+      .then((n) => Object.assign(national, n))
+      .finally(() => { nationalInflight = null; });
+    // With a list to serve meanwhile, a failed rebuild only gets logged.
+    if (national.body) nationalInflight.catch((e) => console.warn('[511] national rebuild failed, serving cached list:', e.message));
+  }
+  return national.body ? Promise.resolve(national) : nationalInflight;
 }
 
 function attachGa511({ app, requireAuth }) {
@@ -973,6 +1044,45 @@ function attachGa511({ app, requireAuth }) {
     }
   });
 
+  // Before /:region, which would otherwise take "national" as a region name.
+  app.get('/api/511cams/national', requireAuth, async (req, res) => {
+    try {
+      const n = await nationalCams();
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.setHeader('Vary', 'Accept-Encoding');
+      if (/gzip/i.test(req.headers['accept-encoding'] || '')) {
+        res.setHeader('Content-Encoding', 'gzip');
+        res.send(n.gz);
+      } else {
+        res.send(n.body);
+      }
+    } catch (e) {
+      console.warn('[511] national cameras unavailable:', e.message);
+      res.status(502).json({ error: e.message });
+    }
+  });
+
+  // One camera's full properties. Ids are unique within almost every feed; where
+  // two share one, ?ll=lon,lat (the clicked point) picks the right camera.
+  app.get('/api/511cams/:region/cam/:id', requireAuth, async (req, res) => {
+    const region = String(req.params.region || '').toLowerCase();
+    if (!REGIONS[region] || !usable(region)) return res.status(404).json({ error: 'Unknown 511 region.' });
+    try {
+      const matches = indexed(region, await cameras(region)).byId.get(String(req.params.id)) || [];
+      const [lon, lat] = String(req.query.ll || '').split(',').map(Number);
+      const dist = (f) => (Number.isFinite(lon) && Number.isFinite(lat)
+        ? (f.geometry.coordinates[0] - lon) ** 2 + (f.geometry.coordinates[1] - lat) ** 2 : 0);
+      const f = matches.slice().sort((a, b) => dist(a) - dist(b))[0];
+      if (!f) return res.status(404).json({ error: 'This camera is no longer listed.' });
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.json({ properties: f.properties });
+    } catch (e) {
+      console.warn(`[511] ${region} camera lookup failed:`, e.message);
+      res.status(502).json({ error: e.message });
+    }
+  });
+
   app.get('/api/511cams/:region', requireAuth, async (req, res) => {
     const region = String(req.params.region || '').toLowerCase();
     const cfg = REGIONS[region];
@@ -993,6 +1103,9 @@ function attachGa511({ app, requireAuth }) {
   });
   console.log('[511] attached —', Object.keys(REGIONS).map((r) => `${r}: ${REGIONS[r].keyless ? 'public' : keyFor(r) ? 'key configured'
     : REGIONS[r].fallbackKey ? 'using SmartWay site key' : REGIONS[r].keyEnv + ' not set'}`).join(', '));
+  // Build the national layer once the server has settled, so the first person
+  // to switch it on is not the one who waits for every DOT site.
+  setTimeout(() => nationalCams().catch((e) => console.warn('[511] national warm-up failed:', e.message)), 20000).unref();
 }
 
 module.exports = { attachGa511 };

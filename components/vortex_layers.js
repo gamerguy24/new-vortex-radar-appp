@@ -21,7 +21,7 @@ import { addMPING, removeMPING } from './mping.js';
 import { addBuoys, removeBuoys } from './buoys.js';
 import { addHurricaneTracks, removeHurricaneTracks } from './hurricane_tracks.js';
 import { addBuoyCams, removeBuoyCams } from './buoycams.js';
-import { STATE_CAM_REGIONS, addStateCams, removeStateCams } from './ga511_cams.js?v=all511';
+import { SWITCH_ID as TRAFFIC_CAMS_SWITCH, addTrafficCams, removeTrafficCams } from './ga511_cams.js?v=national1';
 import { addFireDanger, removeFireDanger, addDay1FireWx, removeDay1FireWx, addDay2FireWx, removeDay2FireWx, addWildfires, removeWildfires } from './fire_weather.js';
 import { addFirePerimeters, removeFirePerimeters, addActiveFires, removeActiveFires } from './fire_perimeters.js';
 
@@ -103,10 +103,8 @@ function init() {
     onToggle('armrTracksAtlSwitchElem', (on) => withMap((w) => on ? addHurricaneTracks('atlantic', w) : removeHurricaneTracks('atlantic'), 'Atlantic Tracks'));
     onToggle('armrTracksEpacSwitchElem', (on) => withMap((w) => on ? addHurricaneTracks('epac', w) : removeHurricaneTracks('epac'), 'E Pacific Tracks'));
     onToggle('armrBuoyCamsSwitchElem', (on) => withMap((w) => on ? addBuoyCams(w) : removeBuoyCams(), 'BuoyCAMs'));
-    // State DOT traffic cameras: one switch per state (components/ga511_cams.js REGIONS).
-    for (const [region, c] of Object.entries(STATE_CAM_REGIONS)) {
-      onToggle(c.switchId, (on) => withMap((w) => on ? addStateCams(region, w) : removeStateCams(region, w), c.label));
-    }
+    // State DOT traffic cameras, every state in one layer (components/ga511_cams.js).
+    onToggle(TRAFFIC_CAMS_SWITCH, (on) => withMap((w) => on ? addTrafficCams(w) : removeTrafficCams(w), 'Traffic Cams'));
     onToggle('armrFireDangerSwitchElem', (on) => withMap((w) => on ? addFireDanger(w) : removeFireDanger(), 'Fire Danger'));
     onToggle('armrDay1FireWxSwitchElem', (on) => withMap((w) => on ? addDay1FireWx(w) : removeDay1FireWx(), 'Day 1 Fire Wx'));
     onToggle('armrDay2FireWxSwitchElem', (on) => withMap((w) => on ? addDay2FireWx(w) : removeDay2FireWx(), 'Day 2 Fire Wx'));
