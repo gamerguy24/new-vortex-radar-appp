@@ -25,6 +25,7 @@ const CHANGELOG = [
         date: 'October 23, 2026',
         items: [
             { title: 'All traffic cameras under one switch', desc: 'The 45 state traffic camera switches under Cameras & More are now one: Traffic Cams (All States), with about 47,000 DOT cameras across 44 states on the map at once. It also turns on much faster and no longer freezes the map while the cameras load. Tap a camera and its picture or live video opens just as before. Free for everyone.' },
+            { title: 'Georgia cameras link to Georgia 511', desc: 'Georgia DOT has stopped sharing its camera pictures and now only plays its cameras on its own Georgia 511 website. Instead of a blank "No live camera feed" picture, tapping a Georgia camera now says so and gives you a link to watch it on Georgia 511.' },
         ],
     },
     {

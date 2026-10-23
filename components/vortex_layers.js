@@ -21,7 +21,7 @@ import { addMPING, removeMPING } from './mping.js';
 import { addBuoys, removeBuoys } from './buoys.js';
 import { addHurricaneTracks, removeHurricaneTracks } from './hurricane_tracks.js';
 import { addBuoyCams, removeBuoyCams } from './buoycams.js';
-import { SWITCH_ID as TRAFFIC_CAMS_SWITCH, addTrafficCams, removeTrafficCams } from './ga511_cams.js?v=national1';
+import { SWITCH_ID as TRAFFIC_CAMS_SWITCH, addTrafficCams, removeTrafficCams } from './ga511_cams.js?v=national2';
 import { addFireDanger, removeFireDanger, addDay1FireWx, removeDay1FireWx, addDay2FireWx, removeDay2FireWx, addWildfires, removeWildfires } from './fire_weather.js';
 import { addFirePerimeters, removeFirePerimeters, addActiveFires, removeActiveFires } from './fire_perimeters.js';
 
