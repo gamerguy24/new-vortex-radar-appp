@@ -35,6 +35,16 @@ function _add_alert_layers(geojson) {
                     ['==', ['get', 'type'], 'border'],
                     5,
                     0
+                ],
+                // Watches already read as shaded areas, so fade their outlines to
+                // cut the clutter where many zones touch; warnings stay full strength.
+                'line-opacity': [
+                    'case',
+                    ['!=', ['get', 'is_watch'], true],
+                    1,
+                    ['==', ['get', 'type'], 'border'],
+                    0.2,
+                    0.45
                 ]
             }
         });
