@@ -497,19 +497,88 @@ function requireStreamer(req, res, next) {
     next();
 }
 
-// ─── Auth API (public) ───────────────────────────────────────────────────────
-app.post('/auth/register', (req, res) => {
+// ─── Sign-up email verification ──────────────────────────────────────────────
+// Creating an account is two steps: /auth/register/send-code emails a 6-digit
+// code, then /auth/register creates the account once that code is entered.
+// Pending sign-ups live in memory only; a restart just means requesting a new code.
+const SIGNUP_CODE_TTL_MS = 15 * 60 * 1000;
+const SIGNUP_MAX_ATTEMPTS = 5;
+const pendingSignups = new Map(); // email -> { codeHash, passwordHash, expiresAt, attempts }
+const hashSignupCode = (email, code) => crypto.createHash('sha256').update(`${email}:${code}`).digest('hex');
+setInterval(() => {
+    const now = Date.now();
+    for (const [email, p] of pendingSignups) if (p.expiresAt < now) pendingSignups.delete(email);
+}, 15 * 60 * 1000).unref();
+
+function signupCodeEmail(code) {
+    return {
+        subject: `${APP_NAME} — your verification code: ${code}`,
+        text:
+            `Welcome to ${APP_NAME}!\n\n` +
+            `Your verification code is:\n\n` +
+            `    ${code}\n\n` +
+            `Enter it on the sign-up page to finish creating your account. ` +
+            `It expires in ${Math.round(SIGNUP_CODE_TTL_MS / 60000)} minutes.\n\n` +
+            `If you did not try to sign up, you can ignore this email.\n\n` +
+            `— ${APP_NAME}\n`,
+    };
+}
+
+app.post('/auth/register/send-code', async (req, res) => {
     const email = normEmail(req.body.email);
     const password = String(req.body.password || '');
     if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
     if (password.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters.' });
     if (findByEmail(email)) return res.status(409).json({ error: 'An account with that email already exists.' });
+    if (!mailReady()) return res.status(503).json({ error: 'Sign-up is temporarily unavailable. Please try again later.' });
+    if (rateLimited(`signup:${email}`, 3, 15 * 60 * 1000) || rateLimited(`signup-ip:${req.ip}`, 10, 60 * 60 * 1000)) {
+        return res.status(429).json({ error: 'Too many codes requested. Please wait a few minutes and try again.' });
+    }
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    const { subject, text } = signupCodeEmail(code);
+    if (!(await sendMail({ to: email, subject, text }))) {
+        return res.status(502).json({ error: 'We could not send an email to that address. Check it and try again.' });
+    }
+    pendingSignups.set(email, {
+        codeHash: hashSignupCode(email, code),
+        passwordHash: hashPassword(password),
+        expiresAt: Date.now() + SIGNUP_CODE_TTL_MS,
+        attempts: 0,
+    });
+    res.json({ ok: true });
+});
+
+// ─── Auth API (public) ───────────────────────────────────────────────────────
+app.post('/auth/register', (req, res) => {
+    const email = normEmail(req.body.email);
+    const code = String(req.body.code || '').replace(/\D/g, '');
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+    if (findByEmail(email)) return res.status(409).json({ error: 'An account with that email already exists.' });
+
+    const pending = pendingSignups.get(email);
+    if (!pending || pending.expiresAt < Date.now()) {
+        pendingSignups.delete(email);
+        return res.status(400).json({ error: 'That code has expired. Request a new one.', codeExpired: true });
+    }
+    const given = Buffer.from(hashSignupCode(email, code), 'hex');
+    const want = Buffer.from(pending.codeHash, 'hex');
+    if (code.length !== 6 || !crypto.timingSafeEqual(given, want)) {
+        pending.attempts += 1;
+        if (pending.attempts >= SIGNUP_MAX_ATTEMPTS) {
+            pendingSignups.delete(email);
+            return res.status(400).json({ error: 'Too many wrong codes. Request a new one.', codeExpired: true });
+        }
+        return res.status(400).json({ error: 'That code is not correct.' });
+    }
+    pendingSignups.delete(email);
 
     const firstUser = users.length === 0; // first account bootstraps an admin
     const user = {
         id: crypto.randomUUID(),
         email,
-        passwordHash: hashPassword(password),
+        passwordHash: pending.passwordHash,
+        emailVerifiedAt: new Date().toISOString(),
         isAdmin: firstUser,
         isLocked: false,
         mustChangePassword: false,

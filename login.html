@@ -164,8 +164,18 @@
       <input id="register-email" name="email" type="email" required autocomplete="email" />
       <label for="register-password">Password (10+ characters)</label>
       <input id="register-password" name="password" type="password" required minlength="10" autocomplete="new-password" />
-      <button class="primary" type="submit">Create account</button>
+      <button class="primary" type="submit">Send verification code</button>
       <div class="msg" id="register-msg" role="alert"></div>
+    </form>
+
+    <form class="form" id="verify-form" autocomplete="off">
+      <p class="sub" style="margin: -6px 0 14px;">We emailed a 6-digit code to <b id="verify-email"></b>. Enter it below to finish creating your account. Check your spam folder if you don't see it.</p>
+      <label for="verify-code">Verification code</label>
+      <input id="verify-code" name="code" type="text" inputmode="numeric" pattern="[0-9 ]*" maxlength="7" required autocomplete="one-time-code" />
+      <button class="primary" type="submit">Verify &amp; create account</button>
+      <button type="button" class="link-btn" id="verify-resend" style="margin-top:12px;">Resend code</button>
+      <button type="button" class="link-btn" id="verify-back" style="margin-top:6px;">‹ Use a different email</button>
+      <div class="msg" id="verify-msg" role="alert"></div>
     </form>
 
     <form class="form" id="admin-form" autocomplete="on">
@@ -230,6 +240,7 @@
     const forms = {
       login: document.getElementById('login-form'),
       register: document.getElementById('register-form'),
+      verify: document.getElementById('verify-form'),
       admin: document.getElementById('admin-form'),
       forgot: document.getElementById('forgot-form'),
       change: document.getElementById('change-form'),
@@ -319,14 +330,49 @@
       setMsg('register-msg', '');
       const email = document.getElementById('register-email').value;
       const password = document.getElementById('register-password').value;
-      const { ok, data } = await postJson('/auth/register', { email, password });
+      const { ok, data } = await postJson('/auth/register/send-code', { email, password });
       btn.disabled = false;
       if (!ok) {
-        setMsg('register-msg', data?.error || 'Could not create account.', 'error');
+        setMsg('register-msg', data?.error || 'Could not send a verification code.', 'error');
+        return;
+      }
+      document.getElementById('verify-email').textContent = email.trim();
+      document.getElementById('verify-code').value = '';
+      setMsg('verify-msg', '');
+      activateTab('verify');
+      document.getElementById('verify-code').focus();
+    });
+
+    forms.verify.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = forms.verify.querySelector('button.primary');
+      btn.disabled = true;
+      setMsg('verify-msg', '');
+      const email = document.getElementById('register-email').value;
+      const code = document.getElementById('verify-code').value;
+      const { ok, data } = await postJson('/auth/register', { email, code });
+      btn.disabled = false;
+      if (!ok) {
+        setMsg('verify-msg', data?.error || 'Could not create account.', 'error');
         return;
       }
       saveProfile(email, data && data.user);
       window.location.href = '/';
+    });
+
+    document.getElementById('verify-resend').addEventListener('click', async () => {
+      const btn = document.getElementById('verify-resend');
+      btn.disabled = true;
+      const email = document.getElementById('register-email').value;
+      const password = document.getElementById('register-password').value;
+      const { ok, data } = await postJson('/auth/register/send-code', { email, password });
+      btn.disabled = false;
+      setMsg('verify-msg', ok ? 'A new code is on its way.' : (data?.error || 'Could not send a new code.'), ok ? 'success' : 'error');
+    });
+
+    document.getElementById('verify-back').addEventListener('click', () => {
+      activateTab('register');
+      document.getElementById('register-email').focus();
     });
 
     forms.forgot.addEventListener('submit', async (e) => {
