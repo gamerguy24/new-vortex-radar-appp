@@ -184,6 +184,16 @@ export function createAdminPanelHTML() {
                 </div>
             </div>
             <div class="admin-panel-pending">
+                <h4><i class="ti ti-api"></i> Radar API keys (api.echoradarwx.com)</h4>
+                <div class="admin-panel-pending-row" style="flex-wrap:wrap;">
+                    <div class="who"><div class="when">Websites need an approved key to embed the radar. Approving emails the key to the requester.</div></div>
+                    <button id="admin-panel-embed-new">Issue a key</button>
+                </div>
+                <div id="admin-panel-embed-list">
+                    <div class="admin-panel-pending-empty">Loading…</div>
+                </div>
+            </div>
+            <div class="admin-panel-pending">
                 <h4><i class="ti ti-bell"></i> Email alert subscribers</h4>
                 <div class="admin-panel-pending-row" style="flex-wrap:wrap;">
                     <div class="who"><div class="when" id="admin-panel-signups-count">Subscribers who get warnings for their saved places by email.</div></div>
@@ -719,6 +729,139 @@ export function initAdminPanel(root) {
         }
     });
 
+    // --- Radar API keys (embed_api.js) ----------------------------------------
+    // Requests from the form at api.echoradarwx.com, and the keys issued.
+    // A key's sites limit where it works; empty means anywhere.
+    let embedKeys = [];
+
+    async function loadEmbedKeys() {
+        const list = $('#admin-panel-embed-list');
+        if (!list) return;
+        list.innerHTML = '<div class="admin-panel-pending-empty">Loading…</div>';
+        try {
+            const data = await api('GET', '/admin/embed-keys');
+            embedKeys = data.keys || [];
+            renderEmbedKeys();
+        } catch (err) {
+            list.innerHTML = `<div class="admin-panel-pending-empty">Error: ${escapeHtml(err.message)}</div>`;
+        }
+    }
+
+    function renderEmbedKeys() {
+        const list = $('#admin-panel-embed-list');
+        if (!embedKeys.length) {
+            list.innerHTML = '<div class="admin-panel-pending-empty">No key requests yet.</div>';
+            return;
+        }
+        list.innerHTML = '';
+        embedKeys.forEach((k) => {
+            const row = document.createElement('div');
+            row.className = 'admin-panel-pending-row';
+            const status = k.status === 'active'
+                ? '<span style="color:var(--vx-ok);font-size:.82em;">✓ active</span>'
+                : k.status === 'pending'
+                    ? '<span style="color:var(--vx-warn);font-size:.82em;">● pending</span>'
+                    : '<span style="color:rgba(255,255,255,.5);font-size:.82em;">revoked</span>';
+            const sites = k.domains.length ? k.domains.map(escapeHtml).join(', ') : '<span style="color:var(--vx-warn);">any website</span>';
+            const usage = k.status !== 'pending'
+                ? `<div class="when">${k.loads} map load${k.loads === 1 ? '' : 's'}${k.lastUsedAt ? ` · last ${fmtDate(k.lastUsedAt)}${k.lastSite ? ` on ${escapeHtml(k.lastSite)}` : ''}` : ''}</div>`
+                : '';
+            const btns = k.status === 'pending'
+                ? `<button data-key-action="approve" data-id="${k.id}" class="primary">Approve</button>
+                   <button data-key-action="deny" data-id="${k.id}">Deny</button>`
+                : k.status === 'active'
+                    ? `<button data-key-action="sites" data-id="${k.id}">Sites</button>
+                       <button data-key-action="copy" data-id="${k.id}">Copy key</button>
+                       <button data-key-action="revoke" data-id="${k.id}" class="danger">Revoke</button>`
+                    : `<button data-key-action="restore" data-id="${k.id}">Restore</button>
+                       <button data-key-action="delete" data-id="${k.id}" class="danger">Delete</button>`;
+            row.innerHTML = `
+                <div class="who">
+                    <div class="email">${escapeHtml(k.name)}${k.email ? ` &lt;${escapeHtml(k.email)}&gt;` : ''} ${status}</div>
+                    <div class="when">${k.status === 'pending' ? `Requested ${fmtDate(k.requestedAt)}` : `Decided ${fmtDate(k.decidedAt)}`}${k.website ? ` · ${escapeHtml(k.website)}` : ''}</div>
+                    <div class="when">Sites: ${sites}</div>
+                    ${k.key ? `<div class="when" style="font-family:var(--vx-mono);user-select:all;">${escapeHtml(k.key)}</div>` : ''}
+                    ${usage}
+                    ${k.use ? `<div class="when">“${escapeHtml(k.use)}”</div>` : ''}
+                </div>
+                ${btns}
+            `;
+            list.appendChild(row);
+        });
+    }
+
+    const sitesField = (value) => `
+        <label>Websites it works on (comma separated; blank = any website)</label>
+        <input id="ap-ek-domains" type="text" autocomplete="off" value="${escapeHtml(value)}" placeholder="example.com, news.example.org" />`;
+    const mailNote = (r, email) => (r.mailed ? ` Key emailed to ${email}.` : email ? ' The email did not send — copy the key and send it yourself.' : '');
+
+    $('#admin-panel-embed-list').addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-key-action]');
+        if (!btn) return;
+        const k = embedKeys.find((x) => x.id === btn.dataset.id);
+        if (!k) return;
+        const action = btn.dataset.keyAction;
+        if (action === 'approve' || action === 'sites') {
+            openModal({
+                title: action === 'approve' ? `Approve key for ${k.name}` : `Sites for ${k.name}`,
+                desc: action === 'approve' ? `A key is created and emailed to ${k.email}.` : 'The key stops working anywhere else as soon as you save.',
+                fields: sitesField(k.domains.join(', ')),
+                onSubmit: async () => {
+                    const domains = root.querySelector('#ap-ek-domains').value;
+                    if (action === 'approve') {
+                        const r = await api('POST', `/admin/embed-keys/${k.id}/approve`, { domains });
+                        flash(`Key approved for ${k.name}.${mailNote(r, k.email)}`, r.mailed || !k.email ? 'success' : 'error');
+                    } else {
+                        await api('POST', `/admin/embed-keys/${k.id}/domains`, { domains });
+                        flash(`Sites updated for ${k.name}.`, 'success');
+                    }
+                    loadEmbedKeys();
+                },
+            });
+            return;
+        }
+        if (action === 'copy') {
+            try { await navigator.clipboard.writeText(k.key); flash('Key copied.', 'success'); }
+            catch (err) { prompt('Copy this key:', k.key); }
+            return;
+        }
+        const ask = {
+            deny: `Deny the key request from ${k.name}?`,
+            revoke: `Revoke ${k.name}'s key? Their embedded radar stops working.`,
+            delete: `Delete ${k.name}'s revoked key for good?`,
+        }[action];
+        if (ask && !confirm(ask)) return;
+        btn.disabled = true;
+        try {
+            if (action === 'deny' || action === 'delete') await api('DELETE', `/admin/embed-keys/${k.id}`);
+            else await api('POST', `/admin/embed-keys/${k.id}/${action}`);
+            flash({ deny: 'Request denied.', revoke: 'Key revoked.', restore: 'Key restored.', delete: 'Key deleted.' }[action], 'success');
+            loadEmbedKeys();
+        } catch (err) { btn.disabled = false; flash(err.message, 'error'); }
+    });
+
+    $('#admin-panel-embed-new').addEventListener('click', () => {
+        openModal({
+            title: 'Issue a radar API key',
+            desc: 'For a site that did not use the request form (your own sites, partners).',
+            fields: `
+                <label>Name</label>
+                <input id="ap-ek-name" type="text" autocomplete="off" placeholder="Who or what it is for" />
+                <label>Email to send it to (optional)</label>
+                <input id="ap-ek-email" type="email" autocomplete="off" />
+                ${sitesField('')}
+            `,
+            onSubmit: async () => {
+                const name = root.querySelector('#ap-ek-name').value.trim();
+                const email = root.querySelector('#ap-ek-email').value.trim();
+                if (!name) throw new Error('Give the key a name.');
+                const r = await api('POST', '/admin/embed-keys', { name, email, domains: root.querySelector('#ap-ek-domains').value });
+                flash(`Key issued for ${name}.${mailNote(r, email)}`, 'success');
+                loadEmbedKeys();
+            },
+        });
+    });
+
     // --- Email alert sign-ups ------------------------------------------------
     // Subscribers with a confirmed address; warnings are emailed to them
     // automatically. Remove is for anyone who asks to come off the list.
@@ -810,6 +953,7 @@ export function initAdminPanel(root) {
         loadUsers();
         loadPending();
         loadStreamRequests();
+        loadEmbedKeys();
         loadSignups();
     });
 
@@ -868,6 +1012,7 @@ export function initAdminPanel(root) {
 
     loadPending();
     loadStreamRequests();
+    loadEmbedKeys();
     loadSignups();
     loadUsers();
 

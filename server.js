@@ -402,9 +402,10 @@ function markHasAccount(res) {
 const app = express();
 app.disable('x-powered-by');
 
-// The public radar embed (api.echoradarwx.com). FIRST, so on the API host it
+// The radar embed (api.echoradarwx.com). FIRST, so on the API host it
 // answers before any other route and nothing of the app is reachable there.
-require('./embed_api').attachEmbedApi(app);
+// Its admin routes (API keys) are mounted further down, with the others.
+const embedApi = require('./embed_api').attachEmbedApi(app, { DATA_DIR, sendMail, SUPPORT_EMAIL, APP_URL });
 // The public info site (info.echoradarwx.com), fenced off the same way.
 require('./info_site').attachInfoSite(app);
 
@@ -1875,6 +1876,9 @@ app.post('/admin/users/:id/stream', requireAdmin, (req, res) => {
     saveUsers();
     res.json({ user: publicUser(user) });
 });
+
+// ─── Radar API keys (requests from api.echoradarwx.com; see embed_api.js) ───
+embedApi.attachAdmin(requireAdmin);
 
 // ─── Remote OBS control relay (operator dashboard → chaser agent) ────────────
 // Chasers who opt in keep Echo Radar open on their streaming PC; their browser holds

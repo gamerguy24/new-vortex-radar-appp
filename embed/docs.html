@@ -39,6 +39,14 @@
   th { color: var(--vx-text-2); font-weight: 600; }
   td code, p code { font-family: var(--vx-mono); font-size: 12px; color: var(--vx-text); background: var(--vx-surface-2); padding: 1px 5px; border-radius: 3px; }
   .muted { color: var(--vx-text-2); font-size: 13px; line-height: 1.55; }
+  textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 7px 8px; resize: vertical;
+             background: var(--vx-surface-2); color: var(--vx-text); border: 1px solid var(--vx-line-2);
+             border-radius: var(--vx-r-2); font: inherit; font-size: 13px; }
+  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .req-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  button.copy:disabled { opacity: .6; cursor: default; }
+  #r-status.bad { color: var(--vx-bad); }
+  #r-status.ok { color: var(--vx-ok); }
   a { color: var(--vx-accent); }
 </style>
 </head>
@@ -48,11 +56,32 @@
   <p class="lede">Put the live weather radar on your own website, free. It is the same radar as the Echo Radar app: the
     full-resolution scan from the nearest NOAA NEXRAD radar, straight from NOAA's Level 2 data, with active National Weather
     Service warnings on top. Visitors can pan, zoom, tap a radar to switch to it, and tap a warning for details. Zoomed out
-    to the whole country, it shows the national radar mosaic. No account or key needed: pick your settings, copy a snippet,
-    paste it into your page.</p>
+    to the whole country, it shows the national radar mosaic. It is free, with an API key: request one below, and once
+    it is approved (we email it to you) put it in the builder, copy a snippet and paste it into your page.</p>
 
+  <h2 id="request">1. Request an API key</h2>
+  <form class="card" id="req-form" novalidate>
+    <div class="row2">
+      <label>Your name or organisation <input type="text" id="r-name" maxlength="100" autocomplete="organization" required></label>
+      <label>Email (the key is sent here) <input type="email" id="r-email" maxlength="200" autocomplete="email" required></label>
+    </div>
+    <div class="row2">
+      <label>Website the radar goes on <input type="text" id="r-website" maxlength="300" placeholder="example.com" required></label>
+      <label>Other sites it will be on (optional) <input type="text" id="r-domains" maxlength="300" placeholder="news.example.org, example.net"></label>
+    </div>
+    <label>What it is for (optional) <textarea id="r-use" maxlength="1000" rows="2"></textarea></label>
+    <label class="hp" aria-hidden="true">Company URL <input type="text" id="r-company" tabindex="-1" autocomplete="off"></label>
+    <div class="req-foot">
+      <button type="submit" class="copy" id="r-send">Request a key</button>
+      <span class="muted" id="r-status" role="status"></span>
+    </div>
+    <p class="muted" style="margin:8px 0 0">The key works only on the websites you list (and their subdomains), so nobody else can use it.</p>
+  </form>
+
+  <h2>2. Build your map</h2>
   <div class="grid">
     <div class="card" id="builder">
+      <label>API key <input type="text" id="f-key" placeholder="erx_…" autocomplete="off" spellcheck="false"></label>
       <div class="row2">
         <label>Latitude <input type="number" id="f-lat" step="0.01" value="33.75"></label>
         <label>Longitude <input type="number" id="f-lon" step="0.01" value="-84.39"></label>
@@ -82,7 +111,7 @@
     <div class="preview" id="preview"></div>
   </div>
 
-  <h2>Your snippet</h2>
+  <h2>3. Your snippet</h2>
   <div class="snip">
     <div class="snip-head"><span>Recommended: script tag (resizes to fit your page)</span><button class="copy" data-for="code-script">Copy</button></div>
     <pre id="code-script"></pre>
@@ -95,6 +124,7 @@
   <h2>Settings</h2>
   <table>
     <tr><th>Setting</th><th>Values</th><th>Default</th></tr>
+    <tr><td><code>key</code></td><td>Your API key. Required: without it the map shows a “needs an API key” notice</td><td>—</td></tr>
     <tr><td><code>lat</code>, <code>lon</code></td><td>Map centre in decimal degrees</td><td>The lower 48</td></tr>
     <tr><td><code>zoom</code></td><td>0 (world) to 12 (neighbourhood)</td><td>3.6</td></tr>
     <tr><td><code>site</code></td><td>A NEXRAD radar id, e.g. <code>KFFC</code>: always show that radar</td><td>Nearest to the centre</td></tr>
@@ -106,7 +136,7 @@
     <tr><td><code>interactive</code></td><td><code>1</code> / <code>0</code>: <code>0</code> fixes the view in place</td><td><code>1</code></td></tr>
   </table>
   <p class="muted">With the script tag, put each setting on the element as <code>data-lat="33.75"</code> and so on, plus
-    <code>data-height</code>. With the iframe, add them to the address: <code>https://api.echoradarwx.com/embed?lat=33.75&amp;lon=-84.39&amp;zoom=6</code>.</p>
+    <code>data-height</code>. With the iframe, add them to the address: <code>https://api.echoradarwx.com/embed?key=YOUR_KEY&amp;lat=33.75&amp;lon=-84.39&amp;zoom=6</code>.</p>
 
   <h2>Good to know</h2>
   <p class="muted">Radar data: NOAA NEXRAD Level 2 and MRMS. Warnings: National Weather Service. The radar picks up each new scan
@@ -121,7 +151,7 @@
 (function () {
   var ORIGIN = location.origin;
   var $ = function (id) { return document.getElementById(id); };
-  var keys = ['lat', 'lon', 'zoom', 'site', 'product', 'style'];
+  var keys = ['key', 'lat', 'lon', 'zoom', 'site', 'product', 'style'];
   var flags = ['warnings', 'legend', 'controls', 'interactive'];
   var escHtml = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
   var timer = null;
@@ -137,9 +167,14 @@
     return /^\d+(\.\d+)?(px|vh|em|rem|%)$/.test(h) ? h : (/^\d+$/.test(h) ? h + 'px' : '450px');
   }
   function render() {
+    // The snippets always carry a key (a placeholder until one is typed in);
+    // the preview here needs none.
     var s = settings();
+    var preview = Object.keys(s).map(function (k) { return k + '=' + encodeURIComponent(s[k]); }).join('&');
+    if (!s.key) s = Object.assign({ key: 'YOUR_KEY' }, s);
     var qs = Object.keys(s).map(function (k) { return k + '=' + encodeURIComponent(s[k]); }).join('&');
-    var src = ORIGIN + '/embed' + (qs ? '?' + qs : '');
+    var src = ORIGIN + '/embed?' + qs;
+    var previewSrc = ORIGIN + '/embed' + (preview ? '?' + preview : '');
     var data = Object.keys(s).map(function (k) { return ' data-' + k + '="' + escHtml(s[k]) + '"'; }).join('');
     $('code-script').textContent = '<div data-echoradar' + data + ' data-height="' + height() + '"></div>\n'
       + '<script src="' + ORIGIN + '/embed.js" async><\/script>';
@@ -149,7 +184,7 @@
     timer = setTimeout(function () {
       var box = $('preview');
       box.style.height = height();
-      box.innerHTML = '<iframe title="Preview" src="' + escHtml(src) + '"></iframe>';
+      box.innerHTML = '<iframe title="Preview" src="' + escHtml(previewSrc) + '"></iframe>';
     }, 400);
   }
   document.querySelectorAll('#builder input, #builder select').forEach(function (el) { el.addEventListener('input', render); el.addEventListener('change', render); });
@@ -181,6 +216,26 @@
     render();
   });
   render();
+
+  // Key requests: reviewed by hand, the key is emailed once approved.
+  $('req-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var status = $('r-status'), btn = $('r-send');
+    var say = function (text, kind) { status.textContent = text; status.className = 'muted ' + (kind || ''); };
+    var body = {
+      name: $('r-name').value, email: $('r-email').value, website: $('r-website').value,
+      domains: [$('r-website').value, $('r-domains').value].join(' '), use: $('r-use').value, company_url: $('r-company').value,
+    };
+    if (body.name.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim()) || !body.website.trim()) {
+      say('Please fill in your name, email and website.', 'bad'); return;
+    }
+    btn.disabled = true; say('Sending…');
+    fetch('/embed/request-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || 'Something went wrong. Please try again.'); }); })
+      .then(function () { say('Thanks! We will email your key to ' + body.email.trim() + ' once it is approved.', 'ok'); $('req-form').reset(); })
+      .catch(function (err) { say(err.message, 'bad'); })
+      .then(function () { btn.disabled = false; });
+  });
 })();
 </script>
 </body>

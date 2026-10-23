@@ -1,11 +1,12 @@
 /*
  * Echo Radar WX embed loader — served as https://api.echoradarwx.com/embed.js
  *
- *   <div data-echoradar data-lat="33.75" data-lon="-84.39" data-zoom="7"></div>
+ *   <div data-echoradar data-key="erx_…" data-lat="33.75" data-lon="-84.39" data-zoom="7"></div>
  *   <script src="https://api.echoradarwx.com/embed.js" async></script>
  *
  * Turns every [data-echoradar] element into the live radar (an iframe of
- * /embed). Settings: data-lat, data-lon, data-zoom, data-site (e.g. KFFC),
+ * /embed). data-key is required (request one at api.echoradarwx.com).
+ * Settings: data-lat, data-lon, data-zoom, data-site (e.g. KFFC),
  * data-product (reflectivity|velocity), data-style
  * (dark|light|satellite), data-warnings, data-legend, data-controls,
  * data-interactive (1/0), data-height (CSS length, default 450px).
@@ -15,7 +16,7 @@
     var me = document.currentScript;
     var origin = 'https://api.echoradarwx.com';
     try { if (me && me.src) origin = new URL(me.src).origin; } catch (e) { /* keep default */ }
-    var KEYS = ['lat', 'lon', 'zoom', 'site', 'product', 'style', 'warnings', 'legend', 'controls', 'interactive'];
+    var KEYS = ['key', 'lat', 'lon', 'zoom', 'site', 'product', 'style', 'warnings', 'legend', 'controls', 'interactive'];
 
     function mount(el) {
         if (el.getAttribute('data-echoradar-ready')) return;

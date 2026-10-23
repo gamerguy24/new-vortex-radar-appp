@@ -439,18 +439,23 @@ function setActiveMarker() { keepSiteMarkersOnTop(map); }
 let userSite = null;   // a site the viewer tapped: kept until they pan away from it
 
 // ── warnings ──
+// The map's features carry only what the layers need; the full NWS alert
+// (text, threats, times) is kept here by id for the popup.
+const warningInfo = new Map();
 async function loadWarnings() {
     try {
         const r = await fetch(ALERTS_URL, { headers: { Accept: 'application/geo+json' } });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();
+        warningInfo.clear();
         const features = (j.features || []).filter((f) => f.geometry && /Warning$/.test(f.properties && f.properties.event))
-            .map((f) => {
+            .map((f, i) => {
                 const p = f.properties;
                 const rank = PRIORITY.indexOf(p.event);
+                const id = p.id || f.id || String(i);
+                warningInfo.set(id, p);
                 return { type: 'Feature', geometry: f.geometry, properties: {
-                    event: p.event, area: p.areaDesc || '', ends: p.ends || p.expires || '',
-                    color: WARNING_COLORS[p.event] || FALLBACK_COLOR, rank: rank < 0 ? -1 : rank,
+                    id, event: p.event, color: WARNING_COLORS[p.event] || FALLBACK_COLOR, rank: rank < 0 ? -1 : rank,
                 } };
             });
         const src = map.getSource('erx-warnings');
@@ -471,17 +476,66 @@ function addWarningLayers() {
     map.on('mouseleave', 'erx-warnings-fill', () => { map.getCanvas().style.cursor = ''; });
     map.on('click', 'erx-warnings-fill', (e) => {
         if (map.getLayer(siteMarkersLayerId()) && map.queryRenderedFeatures(e.point, { layers: [siteMarkersLayerId()] }).length) return;
-        const f = (e.features || []).slice().sort((a, b) => (b.properties.rank || -1) - (a.properties.rank || -1))[0];
+        // The most serious warning under the tap.
+        const f = (e.features || []).slice().sort((a, b) => b.properties.rank - a.properties.rank)[0];
         if (!f) return;
-        const p = f.properties;
-        let until = '';
-        if (p.ends) { const t = new Date(p.ends); if (!isNaN(t)) until = 'Until ' + t.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }); }
-        new mapboxgl.Popup({ className: 'erx-popup', maxWidth: '280px' })
+        const popup = new mapboxgl.Popup({ className: 'erx-popup', maxWidth: 'min(340px, calc(100vw - 24px))' })
             .setLngLat(e.lngLat)
-            .setHTML(`<div class="erx-pop-ev"><span class="erx-pop-sw" style="background:${esc(p.color)}"></span>${esc(p.event)}</div>
-                <div class="erx-pop-area">${esc(p.area)}</div>${until ? `<div class="erx-pop-when">${esc(until)}</div>` : ''}`)
+            .setHTML(warningHTML(f.properties.event, f.properties.color, warningInfo.get(f.properties.id) || {}))
             .addTo(map);
+        keepOnScreen(popup);
     });
+}
+// A tap low on a phone screen opens the popup partly off the map: slide the
+// map just enough to bring all of it into view.
+function keepOnScreen(popup) {
+    requestAnimationFrame(() => {
+        const el = popup.getElement();
+        if (!el) return;
+        const box = el.getBoundingClientRect(), view = map.getContainer().getBoundingClientRect();
+        const pad = 8;
+        let dx = 0, dy = 0;
+        if (box.bottom > view.bottom - pad) dy = box.bottom - view.bottom + pad;
+        if (box.top - dy < view.top + pad) dy = box.top - view.top - pad;
+        if (box.right > view.right - pad) dx = box.right - view.right + pad;
+        if (box.left - dx < view.left + pad) dx = box.left - view.left - pad;
+        if (dx || dy) map.panBy([dx, dy], { duration: 250 });
+    });
+}
+const fmtWhen = (iso) => {
+    const t = new Date(iso);
+    return isNaN(t) ? '' : t.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+};
+// NWS text is hard-wrapped at ~70 columns, with blank lines between
+// paragraphs: rejoin the lines, keep the paragraphs.
+const paragraphs = (text) => String(text || '').trim().split(/\n\s*\n/)
+    .map((s) => s.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean)
+    .map((s) => `<p>${esc(s)}</p>`).join('');
+function warningHTML(event, color, p) {
+    const par = p.parameters || {};
+    const first = (k) => (Array.isArray(par[k]) ? par[k][0] : par[k]) || '';
+    const tags = [];
+    const tornado = first('tornadoDetection');
+    if (tornado) tags.push(`Tornado: ${tornado.toLowerCase()}`);
+    const hail = first('maxHailSize');
+    if (hail && +hail > 0) tags.push(`Hail ${hail}"`);
+    const wind = first('maxWindGust');
+    if (wind && !/^0\b/.test(wind)) tags.push(`Wind ${wind}`);
+    const ff = first('flashFloodDetection');
+    if (ff) tags.push(`Flash flood: ${ff.toLowerCase()}`);
+    const threat = first('tornadoDamageThreat') || first('thunderstormDamageThreat') || first('flashFloodDamageThreat');
+    if (threat && !/^none$/i.test(threat)) tags.push(`${threat.toLowerCase()} damage threat`);
+    const issued = p.sent || p.effective, until = p.ends || p.expires;
+    const when = [issued ? `Issued ${fmtWhen(issued)}` : '', until ? `Until ${fmtWhen(until)}` : ''].filter(Boolean).join(' · ');
+    return `<div class="erx-pop-ev"><span class="erx-pop-sw" style="background:${esc(color)}"></span>${esc(event)}</div>
+        ${tags.length ? `<div class="erx-pop-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : ''}
+        ${when ? `<div class="erx-pop-when">${esc(when)}</div>` : ''}
+        ${p.senderName ? `<div class="erx-pop-when">${esc(p.senderName)}</div>` : ''}
+        <div class="erx-pop-body">
+            ${p.areaDesc ? `<div class="erx-pop-area">${esc(p.areaDesc)}</div>` : ''}
+            ${p.description ? `<div class="erx-pop-text">${paragraphs(p.description)}</div>` : ''}
+            ${p.instruction ? `<div class="erx-pop-h">What to do</div><div class="erx-pop-text">${paragraphs(p.instruction)}</div>` : ''}
+        </div>`;
 }
 
 // ── the app's basemap colours ──

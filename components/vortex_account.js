@@ -7,7 +7,7 @@
  *   - reveals the "Admin Panel" menu row for admins and wires "Sign Out"
  */
 
-import { adminPanelStyles, createAdminPanelHTML, initAdminPanel } from './admin_panel.js?v=fb2';
+import { adminPanelStyles, createAdminPanelHTML, initAdminPanel } from './admin_panel.js?v=fb3';
 
 // --- styles ------------------------------------------------------------------
 const style = document.createElement('style');
