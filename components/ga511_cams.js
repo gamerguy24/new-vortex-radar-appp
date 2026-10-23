@@ -34,9 +34,7 @@
  */
 
 const REGIONS = {
-  // GDOT now serves a "No live camera feed" placeholder for every 511GA snapshot and only
-  // plays its video on 511ga.org: say so and link there (backend/ga511 adds the `w` link).
-  ga: { credit: 'Georgia 511 · GDOT', host: 'https://511ga.org', linkOnly: true },
+  ga: { credit: 'Georgia 511 · GDOT', host: 'https://511ga.org' },
   nc: { credit: 'DriveNC · NCDOT', host: 'https://www.drivenc.gov' },
   tn: { credit: 'SmartWay · TDOT', host: null },
   al: { credit: 'ALGO Traffic · ALDOT', host: null },
@@ -279,10 +277,6 @@ function showCamera(L, p, token) {
       ${String(p.w || '').startsWith('https://') ?`<a class="ga511-pop-link" href="${esc(p.w)}" target="_blank" rel="noopener">Watch live video on ${esc(L.cfg.credit.split(' · ')[0])} ↗</a>` : ''}
     </div>`;
   popupState.popup.setHTML(html);
-  if (L.cfg.linkOnly) {
-    showMessage(`${L.cfg.credit.split(' · ')[0]} only shows its cameras on its own website right now. Use the link below to watch this one there.`);
-    return;
-  }
 
   // Views: OKTraffic sends several per pole (`vs`), MDOT's are fetched per
   // site (`x`), the rest have one.

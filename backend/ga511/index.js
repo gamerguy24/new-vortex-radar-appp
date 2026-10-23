@@ -61,9 +61,7 @@ const OK_FILTER = JSON.stringify({ include: [{ relation: 'mapCameras', scope: { 
   where: { status: { neq: 'Out Of Service' }, type: 'Web', blockAtis: { neq: '1' } } } }] });
 
 const REGIONS = {
-  // Since October 2026 every 511GA snapshot is GDOT's "No live camera feed" placeholder and the
-  // video is tokened and refused to other sites, so the popup links to 511GA instead (`w`).
-  ga: { name: 'Georgia 511', api: 'https://511ga.org/api/v2/get/cameras', keyEnv: 'GA511_API_KEY', parse: parse511, watch: 'https://511ga.org/cctv' },
+  ga: { name: 'Georgia 511', api: 'https://511ga.org/api/v2/get/cameras', keyEnv: 'GA511_API_KEY', parse: parse511 },
   nc: { name: 'DriveNC', api: 'https://www.drivenc.gov/api/v2/get/cameras', keyEnv: 'NC511_API_KEY', parse: parse511 },
   tn: { name: 'TDOT SmartWay', api: 'https://www.tdot.tn.gov/opendata/api/public/RoadwayCameras', keyEnv: 'TN511_API_KEY', keyHeader: 'ApiKey', parse: parseTdot, fallbackKey: smartwayKey },
   // ALDOT's ALGO Traffic API is open: no key, Cache-Control 300 s upstream.
@@ -889,7 +887,7 @@ function parseWv511(list) {
 }
 
 // Shared 511 platform (GA, NC): cameras with Views, snapshot at /map/Cctv/<viewId>.
-function parse511(list, cfg) {
+function parse511(list) {
   const features = [];
   for (const cam of list) {
     const lat = +cam.Latitude, lon = +cam.Longitude;
@@ -903,7 +901,6 @@ function parse511(list, cfg) {
         r: cam.Roadway || '',
         d: cam.Direction && cam.Direction !== 'Unknown' ? cam.Direction : '',
         ...(cam.County ? { c: cam.County } : {}),
-        ...(cfg.watch ? { w: cfg.watch } : {}),
       }));
     }
   }
