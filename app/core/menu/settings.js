@@ -181,3 +181,10 @@ armFunctions.toggleswitchFunctions($('#armrRoadShieldsBtnSwitchElem'),
     function() { road_shields.enable(); },
     function() { road_shields.disable(); }
 );
+// Globe View (see globe_view.js). Off unless the user turned it on; remembered.
+const globe_view = require('../map/globe_view');
+$('#armrGlobeViewBtnSwitchElem').prop('checked', globe_view.isEnabled());
+armFunctions.toggleswitchFunctions($('#armrGlobeViewBtnSwitchElem'),
+    function() { globe_view.enable(); },
+    function() { globe_view.disable(); }
+);

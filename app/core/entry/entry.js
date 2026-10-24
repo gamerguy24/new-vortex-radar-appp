@@ -14,6 +14,9 @@ function load() {
     // highway route shields (I-75, US-41, state routes) above the radar
     require('../map/road_shields').install();
 
+    // globe instead of a flat map, if the user turned Globe View on
+    require('../map/globe_view').install();
+
     // Live rotation detection on the displayed volume (experimental Tornado
     // Potential). Registers window.VortexLiveRotation; stays idle until the
     // Tornado Potential layer is switched on.
