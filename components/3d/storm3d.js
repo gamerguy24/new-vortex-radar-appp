@@ -10,6 +10,12 @@
  * The box is centred where the map is looking (when that is within range of
  * the radar), sized from the map's zoom, and changeable from the Area menu.
  *
+ * Look: shells are shaded with normals from the field's gradient (smooth, not
+ * faceted), in the radar table's exact sRGB colours, and see-through face-on
+ * but solid at their edges, so each layer reads as a volume and the core shows
+ * through. Under the storm is a satellite or dark map of the box (Mapbox
+ * tiles, the app's own token), with the lowest tilt painted over it.
+ *
  * (c) David Wallis, Twistcaster Live Media LLC 2026
  */
 
@@ -22,6 +28,13 @@ const VERT_EXAG = 3.0;          // vertical exaggeration (storms read taller)
 const KFT_TO_M = 304.8;
 const AREAS_KM = [40, 80, 120, 180, 230];   // box half-width choices
 const SHELL_STEP = { REF: 10 };             // layered shells every N units above the threshold
+const BASEMAPS = {
+  satellite: { label: 'Satellite', style: 'satellite-streets-v12', dim: 0.38 },
+  dark: { label: 'Dark', style: 'dark-v11', dim: 0 },
+  none: { label: 'Off' },
+};
+const BASEMAP_KEY = 'storm3dBasemap';
+const BASEMAP_PX = 2048;                    // texture size across the box
 
 const PRODUCT_UI = {
   REF: { label: 'Reflectivity',     min: 10,  max: 70,  step: 1,    def: 25,  unit: 'dBZ',  decimals: 0 },
@@ -53,6 +66,8 @@ export default class Storm3D {
     this._pointMarkers = [];
     this._preview = null;
     this._clickStart = null;
+    this.basemap = 'satellite';
+    try { if (BASEMAPS[localStorage.getItem(BASEMAP_KEY)]) this.basemap = localStorage.getItem(BASEMAP_KEY); } catch { /* keep the default */ }
     this._build();
   }
 
@@ -86,6 +101,12 @@ export default class Storm3D {
               ${AREAS_KM.map((km) => `<option value="${km}"${km === areaKm ? ' selected' : ''}>${km * 2} km</option>`).join('')}
             </select>
           </label>
+          <label class="s3d-product">
+            <span>Map</span>
+            <select id="s3d-basemap">
+              ${Object.entries(BASEMAPS).map(([k, v]) => `<option value="${k}"${k === this.basemap ? ' selected' : ''}>${v.label}</option>`).join('')}
+            </select>
+          </label>
           <label class="s3d-thresh">
             <span id="s3d-thresh-label">Lowest shell</span>
             <input type="range" id="s3d-threshold">
@@ -95,7 +116,7 @@ export default class Storm3D {
           <button id="s3d-close" class="s3d-btn s3d-close" title="Close"><i class="ti ti-x"></i></button>
         </div>
       </div>
-      <div class="s3d-canvas-wrap"><canvas id="s3d-canvas"></canvas><div class="s3d-legend" id="s3d-legend"></div></div>
+      <div class="s3d-canvas-wrap"><canvas id="s3d-canvas"></canvas><div class="s3d-legend" id="s3d-legend"></div><div class="s3d-attrib" id="s3d-attrib"></div></div>
       <div class="s3d-loading" id="s3d-loading">
         <div class="s3d-spinner"></div>
         <div class="s3d-loading-text">Downloading the latest ${this.station || ''} volume...</div>
@@ -120,6 +141,7 @@ export default class Storm3D {
     this.productSelect.addEventListener('change', (e) => this._onProduct(e.target.value));
     root.querySelector('#s3d-style').addEventListener('change', (e) => this._onStyle(e.target.value === 'layered'));
     root.querySelector('#s3d-area').addEventListener('change', (e) => this._onArea(Number(e.target.value)));
+    root.querySelector('#s3d-basemap').addEventListener('change', (e) => this._onBasemap(e.target.value));
     this._applyProductUI(this.product);
     root.querySelector('#s3d-box-tool').addEventListener('click', () => this._toggleTool('box'));
     root.querySelector('#s3d-xsect-tool').addEventListener('click', () => this._toggleTool('xsect'));
@@ -144,8 +166,8 @@ export default class Storm3D {
     this.renderer.setSize(w, h, false);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a0d12);
-    this.scene.fog = new THREE.Fog(0x0a0d12, 600, 2000);
+    this.scene.background = skyTexture();
+    this.scene.fog = new THREE.Fog(0x0b0f16, 700, 2200);
 
     this.camera = new THREE.PerspectiveCamera(50, w / h, 0.5, 5000);
     this.camera.position.set(-180, 120, 220);
@@ -155,13 +177,15 @@ export default class Storm3D {
     this.controls.dampingFactor = 0.08;
     this.controls.target.set(0, 20, 0);
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    const key = new THREE.DirectionalLight(0xffffff, 0.9);
-    key.position.set(-1, 2, 1);
+    // Sky above, dim ground bounce below, a low sun from the south-west and a
+    // cool fill from behind: tops catch the light, flanks fall into shade.
+    this.scene.add(new THREE.HemisphereLight(0xe8f0ff, 0x1a1c22, 1.1));
+    const key = new THREE.DirectionalLight(0xfff4e6, 2.2);
+    key.position.set(-1.2, 1.6, 1.0);
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0xffffff, 0.35);
-    rim.position.set(1, 0.6, -1);
-    this.scene.add(rim);
+    const fill = new THREE.DirectionalLight(0xb8ccff, 0.6);
+    fill.position.set(1, 0.4, -1.2);
+    this.scene.add(fill);
 
     // Invisible ground plane for tool raycasting (click-to-place)
     this._pickPlane = new THREE.Mesh(
@@ -202,7 +226,7 @@ export default class Storm3D {
       const ab = u8.slice().buffer;
 
       this._showSpinner('Building 3D volume...');
-      this.worker = new Worker(new URL('./storm3d_worker.js?v=s3d2', import.meta.url), { type: 'module' });
+      this.worker = new Worker(new URL('./storm3d_worker.js?v=s3d3', import.meta.url), { type: 'module' });
       this.worker.onmessage = (e) => this._onWorker(e.data);
       this.worker.onerror = (e) => this._fail(e.message || 'Worker error');
       this.worker.postMessage({
@@ -228,6 +252,7 @@ export default class Storm3D {
       this._clearXsect();
       this._buildAxes(msg.meta);
       this._buildGround(msg.ground);
+      this._buildBasemap();
       this._buildRadarMarker(msg.meta);
       this._buildShells(msg.shells);
       const t = msg.meta.tilts;
@@ -267,53 +292,73 @@ export default class Storm3D {
   _isLayered() { return this.layered && !!SHELL_STEP[this.product]; }
 
   _disposeShells() {
-    for (const m of this.shellMeshes) { this.scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    const geos = new Set();
+    for (const m of this.shellMeshes) { this.scene.remove(m); geos.add(m.geometry); m.material.dispose(); }
+    geos.forEach((g) => g.dispose());
     this.shellMeshes = [];
   }
 
   /*
    * Layered: one shell per level in that level's colour from the radar page's
-   * table, more opaque toward the core so the strongest echo reads through
-   * the weaker ones. Single: one shell coloured by height.
+   * table. The outer shells are see-through face-on and solid edge-on (a rim),
+   * so they read as soft envelopes with the stronger echo showing through;
+   * the core is solid. Single: one shell coloured by height.
+   *
+   * Each see-through shell is drawn twice, its far side then its near side, so
+   * it blends in the right order without sorting triangles. Draw order runs
+   * from the core outward.
    */
   _buildShells(shells) {
     this._disposeShells();
     const layered = this._isLayered();
-    const n = shells.length;
-    shells.forEach((shell, k) => {
-      const src = shell.positions;
-      if (!src || !src.length) return;
+    const live = shells.filter((sh) => sh.positions && sh.positions.length);
+    const n = live.length;
+    const zTop = this.meta ? this.meta.zTopM : 20000;
+    live.forEach((shell, k) => {
+      const src = shell.positions, nrm = shell.normals;
       const pos = new Float32Array(src.length);
+      const nor = new Float32Array(src.length);
       const col = layered ? null : new Float32Array(src.length);
-      const zTop = this.meta ? this.meta.zTopM : 20000;
+      const tmp = new THREE.Color();
       for (let i = 0; i < src.length; i += 3) {
         pos[i]     = this._toScene(src[i]);
         pos[i + 1] = this._toSceneZ(src[i + 2]);
         pos[i + 2] = -this._toScene(src[i + 1]);
-        if (col) { const [r, g, b] = heightColor(src[i + 2] / zTop); col[i] = r; col[i + 1] = g; col[i + 2] = b; }
+        // Normals scale by the inverse of the vertical stretch.
+        const nx = nrm[i], ny = nrm[i + 2] / VERT_EXAG, nz = -nrm[i + 1];
+        const len = Math.hypot(nx, ny, nz) || 1;
+        nor[i] = nx / len; nor[i + 1] = ny / len; nor[i + 2] = nz / len;
+        if (col) {
+          const [r, g, b] = heightColor(src[i + 2] / zTop);
+          tmp.setRGB(r, g, b, THREE.SRGBColorSpace);
+          col[i] = tmp.r; col[i + 1] = tmp.g; col[i + 2] = tmp.b;
+        }
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
       if (col) geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      geo.computeVertexNormals();
 
       const rank = n > 1 ? k / (n - 1) : 0;           // 0 = outermost, 1 = core
-      const rgb = layered ? (lutRgb(this.lut, shell.level) || [0.8, 0.8, 0.8]) : null;
-      const mat = new THREE.MeshStandardMaterial({
-        vertexColors: !layered,
-        color: layered ? new THREE.Color(rgb[0], rgb[1], rgb[2]) : 0xffffff,
-        transparent: true,
-        opacity: layered ? 0.22 + 0.68 * rank * rank : 0.42,
-        side: THREE.DoubleSide, depthWrite: layered && k === n - 1 && n > 1,
-        roughness: 0.75, metalness: 0.0,
+      const core = layered && n > 1 && k === n - 1;
+      const color = new THREE.Color();
+      if (layered) { const rgb = lutRgb(this.lut, shell.level) || [0.8, 0.8, 0.8]; color.setRGB(rgb[0], rgb[1], rgb[2], THREE.SRGBColorSpace); }
+      else color.set(0xffffff);
+      // opacity: at the rim; face: share of it left face-on
+      const opacity = core ? 1 : layered ? 0.5 + 0.4 * rank : 0.75;
+      const face = core ? 1 : layered ? 0.16 + 0.5 * rank * rank : 0.4;
+      const order = (n - k) * 2;                       // core first, outer shells last
+      const passes = core ? [THREE.DoubleSide] : [THREE.BackSide, THREE.FrontSide];
+      passes.forEach((side, j) => {
+        const mat = shellMaterial({ color, vertexColors: !layered, opacity, face, side, solid: core });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.renderOrder = order + j;
+        if (this._boxPlanes) mat.clippingPlanes = this._boxPlanes;
+        this.scene.add(mesh);
+        this.shellMeshes.push(mesh);
       });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.renderOrder = n - k;                        // core first, outer shells blend over it
-      if (this._boxPlanes) mat.clippingPlanes = this._boxPlanes;
-      this.scene.add(mesh);
-      this.shellMeshes.push(mesh);
     });
-    this._renderLegend(shells.filter((s) => s.positions && s.positions.length).map((s) => s.level));
+    this._renderLegend(live.map((sh) => sh.level));
   }
 
   _renderLegend(levels) {
@@ -346,10 +391,11 @@ export default class Storm3D {
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.magFilter = THREE.NearestFilter;
     tex.minFilter = THREE.LinearFilter;
+    tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
     tex.needsUpdate = true;
     const side = 2 * this._toScene(this.meta.halfExtentM);
     const geo = new THREE.PlaneGeometry(side, side);
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthWrite: false });
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthWrite: false });
     this.groundMesh = new THREE.Mesh(geo, mat);
     // PlaneGeometry is in XY with +Y up the texture; lay it flat so the
     // texture's top edge (north) points to scene -Z.
@@ -358,6 +404,89 @@ export default class Storm3D {
     this.groundMesh.renderOrder = -1;
     if (this._boxPlanes) mat.clippingPlanes = this._boxPlanes;
     this.scene.add(this.groundMesh);
+  }
+
+  /*
+   * The map under the box: Mapbox raster tiles (the app's token) stitched in
+   * Web Mercator, then resampled row by row into the box's own flat
+   * east/north frame so roads and towns sit under the right echoes.
+   */
+  async _buildBasemap() {
+    const token = this._basemapToken = (this._basemapToken || 0) + 1;
+    this._clearBasemap();
+    const cfg = BASEMAPS[this.basemap];
+    const accessToken = window.mapboxgl && window.mapboxgl.accessToken;
+    const attrib = this.root.querySelector('#s3d-attrib');
+    if (attrib) attrib.textContent = '';
+    if (!cfg || !cfg.style || !accessToken || !this.meta || !this.meta.site) return;
+    this._basemapPending = true;
+    try {
+      const { site, centre, halfExtentM } = this.meta;
+      const cosLat = Math.cos(site.lat * Math.PI / 180);
+      const lonAt = (east) => site.lon + east / (cosLat * 111320);
+      const latAt = (north) => site.lat + north / 110574;
+      const west = lonAt(centre.east - halfExtentM), east = lonAt(centre.east + halfExtentM);
+      const south = latAt(centre.north - halfExtentM), north = latAt(centre.north + halfExtentM);
+
+      // Zoom giving about BASEMAP_PX pixels across, in 512 px tiles.
+      const z = Math.max(3, Math.min(12, Math.round(Math.log2((BASEMAP_PX * 360) / (512 * (east - west))))));
+      const scale = 512 * 2 ** z;
+      const mx = (lon) => ((lon + 180) / 360) * scale;
+      const my = (lat) => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * scale; };
+      const tx0 = Math.floor(mx(west) / 512), tx1 = Math.floor(mx(east) / 512);
+      const ty0 = Math.floor(my(north) / 512), ty1 = Math.floor(my(south) / 512);
+
+      const mosaic = document.createElement('canvas');
+      mosaic.width = (tx1 - tx0 + 1) * 512; mosaic.height = (ty1 - ty0 + 1) * 512;
+      const mctx = mosaic.getContext('2d');
+      const jobs = [];
+      for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+        const url = `https://api.mapbox.com/styles/v1/mapbox/${cfg.style}/tiles/512/${z}/${tx}/${ty}?access_token=${encodeURIComponent(accessToken)}`;
+        jobs.push(loadImage(url).then((img) => mctx.drawImage(img, (tx - tx0) * 512, (ty - ty0) * 512, 512, 512)).catch(() => {}));
+      }
+      await Promise.all(jobs);
+      if (token !== this._basemapToken || !this.scene) return;
+
+      // Columns are linear in longitude in both frames; rows are not, so copy one row at a time.
+      const out = document.createElement('canvas');
+      out.width = out.height = BASEMAP_PX;
+      const octx = out.getContext('2d');
+      const sx = mx(west) - tx0 * 512, sw = mx(east) - mx(west);
+      for (let py = 0; py < BASEMAP_PX; py++) {
+        const lat = latAt(centre.north + halfExtentM - ((py + 0.5) / BASEMAP_PX) * 2 * halfExtentM);
+        octx.drawImage(mosaic, sx, my(lat) - ty0 * 512, sw, 1, 0, py, BASEMAP_PX, 1);
+      }
+      // Dim busy imagery so the echoes stay the brightest thing on screen.
+      if (cfg.dim) { octx.fillStyle = `rgba(4,8,14,${cfg.dim})`; octx.fillRect(0, 0, BASEMAP_PX, BASEMAP_PX); }
+
+      const tex = new THREE.CanvasTexture(out);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+      const side = 2 * this._toScene(halfExtentM);
+      const mat = new THREE.MeshBasicMaterial({ map: tex, fog: true });
+      if (this._boxPlanes) mat.clippingPlanes = this._boxPlanes;
+      this.basemapMesh = new THREE.Mesh(new THREE.PlaneGeometry(side, side), mat);
+      this.basemapMesh.rotation.x = -Math.PI / 2;
+      this.basemapMesh.renderOrder = -2;
+      this.scene.add(this.basemapMesh);
+      if (attrib) attrib.textContent = cfg.style.startsWith('satellite') ? '\u00a9 Mapbox \u00a9 OpenStreetMap \u00a9 Maxar' : '\u00a9 Mapbox \u00a9 OpenStreetMap';
+    } finally {
+      if (token === this._basemapToken) this._basemapPending = false;
+    }
+  }
+
+  _clearBasemap() {
+    if (!this.basemapMesh) return;
+    this.scene.remove(this.basemapMesh);
+    this.basemapMesh.geometry.dispose(); this.basemapMesh.material.map?.dispose(); this.basemapMesh.material.dispose();
+    this.basemapMesh = null;
+  }
+
+  _onBasemap(key) {
+    if (!BASEMAPS[key]) return;
+    this.basemap = key;
+    try { localStorage.setItem(BASEMAP_KEY, key); } catch { /* not remembered, still applied */ }
+    this._buildBasemap();
   }
 
   _buildRadarMarker(meta) {
@@ -391,8 +520,19 @@ export default class Storm3D {
     gg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ring), 3));
     group.add(new THREE.LineSegments(gg, gmat));
 
-    const cx = -half, cz = half;
-    const amat = new THREE.LineBasicMaterial({ color: 0x55617a });
+    // The box itself: twelve edges, as in GR2Analyst.
+    const frame = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(2 * half, top, 2 * half)),
+      new THREE.LineBasicMaterial({ color: 0xc8d2e0, transparent: true, opacity: 0.55 }),
+    );
+    frame.position.y = top / 2;
+    group.add(frame);
+
+    // Height scale on the north-west corner, guide lines round the north and
+    // east walls: the far side from the default south-west view, so the
+    // labels sit behind the storm instead of across it.
+    const cx = -half, cz = -half;
+    const amat = new THREE.LineBasicMaterial({ color: 0x8a96aa });
     const vline = new THREE.BufferGeometry();
     vline.setAttribute('position', new THREE.BufferAttribute(new Float32Array([cx, 0, cz, cx, top, cz]), 3));
     group.add(new THREE.LineSegments(vline, amat));
@@ -405,9 +545,9 @@ export default class Storm3D {
       tick.setAttribute('position', new THREE.BufferAttribute(new Float32Array([cx, y, cz, cx - 6 * labelScale, y, cz]), 3));
       group.add(new THREE.LineSegments(tick, amat));
       const guide = new THREE.BufferGeometry();
-      guide.setAttribute('position', new THREE.BufferAttribute(new Float32Array([cx, y, cz, cx, y, -cz, half, y, -cz]), 3));
-      group.add(new THREE.Line(guide, new THREE.LineBasicMaterial({ color: 0x222a35 })));
-      group.add(this._label(`${kft} kft`, cx - 16 * labelScale, y, cz, 0.7 * labelScale));
+      guide.setAttribute('position', new THREE.BufferAttribute(new Float32Array([cx, y, cz, half, y, cz, half, y, -cz]), 3));
+      group.add(new THREE.Line(guide, new THREE.LineBasicMaterial({ color: 0x8a96aa, transparent: true, opacity: 0.35 })));
+      group.add(this._label(`${kft} kft`, cx - 22 * labelScale, y, cz, 1.25 * labelScale));
     }
 
     const off = 10 * labelScale;
@@ -463,14 +603,14 @@ export default class Storm3D {
     for (let i = 0; i < q.length; i += 9) radii.push(Math.hypot(this._toScene(q[i]) - cx, -this._toScene(q[i + 1]) - cz));
     radii.sort((a, b) => a - b);
     const spread = radii[Math.floor(radii.length * 0.6)] || 30;
-    const dist = Math.max(110, Math.min(spread * 3.4, this._toScene(this.meta.halfExtentM) * 2.4));
+    const dist = Math.max(140, Math.min(spread * 4.2, this._toScene(this.meta.halfExtentM) * 2.6));
     // Aim at the outer shell's mid-height so a tall tower fits the frame.
     let top = 0;
     for (let i = 2; i < outer.positions.length; i += 9) top = Math.max(top, outer.positions[i]);
     const aimY = Math.min(45, Math.max(10, this._toSceneZ(top) * 0.45));
     this._home = {
       target: new THREE.Vector3(cx, aimY, cz),
-      pos: new THREE.Vector3(cx - dist * 0.7, dist * 0.5, cz + dist * 0.8),
+      pos: new THREE.Vector3(cx - dist * 0.7, dist * 0.42, cz + dist * 0.8),
     };
     this._resetView();
   }
@@ -681,6 +821,7 @@ export default class Storm3D {
     this._boxPlanes = planes;
     for (const m of this.shellMeshes) m.material.clippingPlanes = planes;
     if (this.groundMesh) this.groundMesh.material.clippingPlanes = planes;
+    if (this.basemapMesh) this.basemapMesh.material.clippingPlanes = planes;
 
     this._activeTool = null;
     this._updateToolUI();
@@ -696,6 +837,7 @@ export default class Storm3D {
     this._boxPlanes = null;
     for (const m of this.shellMeshes) m.material.clippingPlanes = [];
     if (this.groundMesh) this.groundMesh.material.clippingPlanes = [];
+    if (this.basemapMesh) this.basemapMesh.material.clippingPlanes = [];
     this._removePointMarkers();
     this._updateToolUI();
     this.root.querySelector('.s3d-hint').textContent = 'Drag to orbit \u00b7 scroll to zoom \u00b7 right-drag to pan';
@@ -726,6 +868,7 @@ export default class Storm3D {
     const top = this._toSceneZ(this.meta?.zTopM || 22000);
 
     const tex = new THREE.DataTexture(new Uint8Array(rgba), width, height, THREE.RGBAFormat);
+    tex.colorSpace = THREE.SRGBColorSpace;
     tex.needsUpdate = true;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
@@ -775,7 +918,8 @@ export default class Storm3D {
   }
 
   close() {
-    this._cancelTool(); this._clearBox(); this._clearXsect();
+    this._cancelTool(); this._clearBox(); this._clearXsect(); this._clearBasemap();
+    this._basemapToken = (this._basemapToken || 0) + 1;
     if (this._raf) cancelAnimationFrame(this._raf);
     clearTimeout(this._remarchTimer);
     document.removeEventListener('keydown', this._escHandler);
@@ -863,4 +1007,56 @@ function heightColor(t) {
     }
   }
   return [0.3, 0.75, 0.2];
+}
+
+/*
+ * Shell material: standard lighting, plus a rim term on the alpha. Face-on the
+ * shell keeps `face` of its opacity, edge-on all of it, which is what makes a
+ * translucent isosurface read as a solid volume rather than a film.
+ */
+function shellMaterial({ color, vertexColors, opacity, face, side, solid }) {
+  const mat = new THREE.MeshStandardMaterial({
+    color, vertexColors, side,
+    transparent: !solid, opacity, depthWrite: solid,
+    roughness: 0.62, metalness: 0,
+    emissive: color, emissiveIntensity: vertexColors ? 0 : 0.12,
+  });
+  if (!solid) {
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uS3dFace = { value: face };
+      shader.fragmentShader = shader.fragmentShader
+        .replace('void main() {', 'uniform float uS3dFace;\nvoid main() {')
+        .replace('#include <opaque_fragment>', `
+          float s3dRim = 1.0 - abs(dot(normalize(normal), normalize(vViewPosition)));
+          diffuseColor.a = opacity * mix(uS3dFace, 1.0, pow(s3dRim, 1.6));
+          #include <opaque_fragment>`);
+    };
+    mat.customProgramCacheKey = () => 's3d-rim';
+  }
+  return mat;
+}
+
+// Night-sky gradient behind the scene.
+function skyTexture() {
+  const c = document.createElement('canvas');
+  c.width = 2; c.height = 256;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#1b2638');
+  g.addColorStop(0.55, '#0d121b');
+  g.addColorStop(1, '#06080c');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 2, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('tile failed'));
+    img.src = url;
+  });
 }

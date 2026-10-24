@@ -145,6 +145,8 @@ export function gridVolume(sweeps, product, { centre, halfExtentM, zTopM, nx, ny
       }
     }
   }
+  // Two passes: rounder, cloud-like shells; one left them lumpy between tilts.
+  smooth121(grid, nx, ny, nz);
   smooth121(grid, nx, ny, nz);
   return { grid, dx, dy, dz };
 }

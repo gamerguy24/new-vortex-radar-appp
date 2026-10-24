@@ -18,7 +18,7 @@
 import { Buffer } from 'https://esm.sh/node/buffer.mjs';
 import { Level2Radar } from '../../parse/level2/src/index.js';
 import { marchingCubes } from './marching_cubes.js';
-import { collectSweeps, gridVolume, groundImage, offsetFromRadar } from './storm3d_grid.js?v=s3d2';
+import { collectSweeps, gridVolume, groundImage, offsetFromRadar } from './storm3d_grid.js?v=s3d3';
 
 const Z_TOP_M = 20000;              // ~66 kft ceiling
 const NX = 240, NY = 240, NZ = 56;  // ~0.4–1.9 km horizontal (by area), 364 m vertical
@@ -27,7 +27,9 @@ const RECENTRE_LIMIT_M = 300000;    // map centre farther than this → centre o
 const MS_TO_KT = 1.94384;
 
 const PRODUCTS = {
-  REF: { prop: 'reflect',  xform: (v) => v,                       floor: 5,   clear: -10, color: dbzColor },
+  // groundFloor: weakest value painted on the floor. Below 20 dBZ the lowest tilt is
+  // mostly clutter and noise, which speckled the whole floor grey.
+  REF: { prop: 'reflect',  xform: (v) => v,                       floor: 5,   clear: -10, color: dbzColor, groundFloor: 20 },
   VEL: { prop: 'velocity', xform: (v) => Math.abs(v * MS_TO_KT),  floor: 1,   clear: 0,   color: velColor, signed: (v) => v * MS_TO_KT },
   CC:  { prop: 'rho',      xform: (v) => v,                       floor: 0.2, clear: 0,   color: ccColor },
   ZDR: { prop: 'zdr',      xform: (v) => v,                       floor: -7,  clear: -8,  color: zdrColor },
@@ -59,7 +61,7 @@ self.onmessage = (e) => {
       postBuilt(msg.product || _product, msg.levels);
     } else if (msg.type === 'remarch' && _grid) {
       const shells = contour(msg.levels);
-      self.postMessage({ type: 'shells', shells }, shells.map((s) => s.positions.buffer));
+      self.postMessage({ type: 'shells', shells }, shellBuffers(shells));
     } else if (msg.type === 'crossSection' && _grid) {
       const result = buildCrossSection(msg.p1, msg.p2);
       self.postMessage(result, [result.rgba.buffer]);
@@ -110,28 +112,62 @@ function postBuilt(productKey, levels) {
     nx: NX, ny: NY, nz: NZ, dx: g.dx, dy: g.dy, dz: g.dz, halfExtentM, zTopM: Z_TOP_M,
     // Where the radar is, in box coordinates (metres from the box centre).
     radar: { east: -centre.east, north: -centre.north },
+    // Where the box is on the earth, for the map under it.
+    site: _site, centre,
     tilts: sweeps.map((s) => +s.angle.toFixed(1)),
   };
 
   // The floor shows the signed field for velocity (inbound vs outbound).
   const groundCfg = cfg.signed
     ? { ...cfg, xform: cfg.signed, floor: -Infinity, clear: NaN }
-    : cfg;
+    : { ...cfg, floor: cfg.groundFloor ?? cfg.floor };
   const groundSweeps = cfg.signed ? collectSweeps(_radar, groundCfg).slice(0, 1) : sweeps;
   const rgba = groundImage(groundSweeps, groundCfg, { centre, halfExtentM, size: GROUND_PX }, colourFn(_product));
 
   const shells = contour(levels);
   self.postMessage(
     { type: 'built', product: _product, meta: _meta, shells, ground: { rgba, size: GROUND_PX } },
-    [...shells.map((s) => s.positions.buffer), rgba.buffer],
+    [...shellBuffers(shells), rgba.buffer],
   );
 }
 
 function contour(levels) {
   return (levels || []).map((level) => {
     const { positions } = marchingCubes(_grid, NX, NY, NZ, level);
-    return { level, positions: gridToWorld(positions) };
+    return { level, positions: gridToWorld(positions), normals: fieldNormals(positions) };
   });
+}
+const shellBuffers = (shells) => shells.flatMap((s) => [s.positions.buffer, s.normals.buffer]);
+
+/*
+ * Smooth normals from the field itself: the outward normal of an isosurface is
+ * minus the gradient of the value there. Marching cubes hands back separate
+ * triangles, so normals computed from the triangles shade every facet flat --
+ * the chiselled look. Sampling the gradient at each vertex shades the shells
+ * as the smooth surfaces they are.
+ *
+ * In: grid-index positions. Out: unit normals in (east, north, up) metres.
+ */
+function fieldNormals(p) {
+  const out = new Float32Array(p.length);
+  const { dx, dy, dz } = _meta;
+  for (let i = 0; i < p.length; i += 3) {
+    const x = p[i], y = p[i + 1], z = p[i + 2];
+    let gx = (trilinear(x + 1, y, z) - trilinear(x - 1, y, z)) / dx;
+    let gy = (trilinear(x, y + 1, z) - trilinear(x, y - 1, z)) / dy;
+    let gz = (trilinear(x, y, z + 1) - trilinear(x, y, z - 1)) / dz;
+    const len = Math.hypot(gx, gy, gz) || 1;
+    out[i] = -gx / len; out[i + 1] = -gy / len; out[i + 2] = -gz / len;
+  }
+  return out;
+}
+function trilinear(x, y, z) {
+  x = Math.min(NX - 1.001, Math.max(0, x)); y = Math.min(NY - 1.001, Math.max(0, y)); z = Math.min(NZ - 1.001, Math.max(0, z));
+  const x0 = x | 0, y0 = y | 0, z0 = z | 0, fx = x - x0, fy = y - y0, fz = z - z0;
+  const g = _grid, sx = 1, sy = NX, sz = NX * NY, o = x0 + NX * (y0 + NY * z0);
+  const c00 = g[o] * (1 - fx) + g[o + sx] * fx, c10 = g[o + sy] * (1 - fx) + g[o + sy + sx] * fx;
+  const c01 = g[o + sz] * (1 - fx) + g[o + sz + sx] * fx, c11 = g[o + sz + sy] * (1 - fx) + g[o + sz + sy + sx] * fx;
+  return (c00 * (1 - fy) + c10 * fy) * (1 - fz) + (c01 * (1 - fy) + c11 * fy) * fz;
 }
 
 // Grid index space → metres from the box centre (east, north, height).

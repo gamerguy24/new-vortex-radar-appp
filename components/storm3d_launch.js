@@ -25,7 +25,7 @@ async function open3D() {
         return;
     }
     try {
-        const { default: Storm3D } = await import('./3d/storm3d.js?v=s3d2');
+        const { default: Storm3D } = await import('./3d/storm3d.js?v=s3d3');
         if (_viewer) { try { _viewer.close(); } catch (e) {} }
         _viewer = new Storm3D(station);
     } catch (err) {

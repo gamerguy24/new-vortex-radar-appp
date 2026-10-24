@@ -24,6 +24,7 @@ const CHANGELOG = [
     {
         date: 'October 23, 2026',
         items: [
+            { title: 'A sharper 3D Storm View', desc: 'The 3D Storm View has a new look. Storms are drawn as smooth, rounded shells in the same colours as the radar instead of faded, blocky ones, and the outer shells are see-through so you can watch the strongest core inside the storm. The storm now stands on a satellite map of the area, so you can see which towns and roads are underneath it; pick Satellite, Dark or Off under Map at the top, and Echo Radar remembers your choice. A box frames the storm with heights marked every 10,000 feet along the back, the view opens far enough out to fit the whole storm, and faint ground clutter no longer speckles the floor.' },
             { title: 'All traffic cameras under one switch', desc: 'The 45 state traffic camera switches under Cameras & More are now one: Traffic Cams (All States), with about 47,000 DOT cameras across 44 states on the map at once. It also turns on much faster and no longer freezes the map while the cameras load. Tap a camera and its picture or live video opens just as before. Free for everyone.' },
         ],
     },

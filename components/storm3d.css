@@ -101,3 +101,10 @@
 .s3d-legend-title { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.85em; color: var(--vx-text-3, var(--vx-text-2)); }
 .s3d-legend-item { display: inline-flex; align-items: center; gap: 5px; color: var(--vx-text); }
 .s3d-legend-item i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+/* Map credit, required while Mapbox tiles are under the storm. */
+.s3d-attrib {
+    position: absolute; right: 10px; bottom: 8px;
+    font-size: 0.7em; color: rgba(255,255,255,0.55); pointer-events: none;
+}
+.s3d-attrib:empty { display: none; }
