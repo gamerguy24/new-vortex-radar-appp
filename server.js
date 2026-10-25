@@ -1751,14 +1751,23 @@ app.get('/api/featured-streams', requireAuth, (req, res) => {
         if (!u.streamApproved) continue;
         const links = (u.streamRequest && Array.isArray(u.streamRequest.links)) ? u.streamRequest.links : [];
         const live = liveSessions.get(u.id);
-        for (const link of links) {
-            const info = streamLinkInfo(link);
-            if (info) list.push({ id: u.id, name: info.handle, platform: info.platform, url: info.url, live: !!live, approvedAt: (u.streamRequest && u.streamRequest.decidedAt) || null });
+        const approvedAt = (u.streamRequest && u.streamRequest.decidedAt) || null;
+        const infos = links.map(streamLinkInfo).filter(Boolean);
+        // Streaming to Echo Radar's own server (Moblin, OBS…): that is the
+        // video to watch, not the channel links from their application, which
+        // are only where they might also be live.
+        const ing = streamConfigs[u.id] && streamConfigs[u.id].ingest;
+        if (ing && streamIngest.livePids.has(ing.publicId)) {
+            const name = (infos.find((i) => i.platform !== 'web') || {}).handle || (u.email || '').split('@')[0];
+            list.push({ id: u.id, name, platform: 'echo radar', url: `/live/${ing.publicId}/index.m3u8`, live: true, echo: true, approvedAt });
+        }
+        for (const info of infos) {
+            list.push({ id: u.id, name: info.handle, platform: info.platform, url: info.url, live: !!live, approvedAt });
         }
     }
-    // Live first, then whoever was approved most recently.
-    list.sort((a, b) => (b.live - a.live) || String(b.approvedAt || '').localeCompare(String(a.approvedAt || '')));
-    res.json({ streams: list.map(({ approvedAt, ...s }) => s) });
+    // On Echo Radar's server first, then live, then whoever was approved most recently.
+    list.sort((a, b) => (!!b.echo - !!a.echo) || (b.live - a.live) || String(b.approvedAt || '').localeCompare(String(a.approvedAt || '')));
+    res.json({ streams: list.map(({ approvedAt, echo, ...s }) => s) });
 });
 
 // ─── Chase-stream access: request + admin approval ───────────────────────────

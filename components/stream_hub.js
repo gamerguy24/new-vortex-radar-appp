@@ -177,10 +177,12 @@ async function refreshOtherChasers() {
 
 // ─── GPS while live ───────────────────────────────────────────────────────────
 function currentStreamUrl() {
+    // Echo Radar's server says it is receiving us (OBS, Moblin…): that is the
+    // stream, whatever link is typed below.
+    if (ingest && ingest.enabled && ingest.live) return location.origin + ingest.watchPath;
     const typed = ($('vrsh-stream-url') && $('vrsh-stream-url').value.trim()) || '';
     if (typed) return typed;
-    // Streaming to Echo Radar's server (it says it is receiving us, or OBS is
-    // pointed at it from here): the watch link is ours.
+    // OBS is pointed at Echo Radar's server from here: the watch link is ours.
     const rtmpUrl = ($('vrsh-rtmp-url') && $('vrsh-rtmp-url').value.trim()) || (cfg && cfg.rtmp && cfg.rtmp.url) || '';
     return (ingest && ingest.enabled && (ingest.live || rtmpUrl === ingest.server)) ? location.origin + ingest.watchPath : '';
 }
@@ -555,6 +557,7 @@ function openPanel() {
     $('vrsh-obs-test').onclick = testObs;
     $('vrsh-ingest-copy-server').onclick = () => ingest && copyText(ingest.server, 'Server');
     $('vrsh-ingest-copy-key').onclick = () => ingest && copyText(ingest.key, 'Stream key');
+    $('vrsh-ingest-copy-url').onclick = () => ingest && ingest.url && copyText(ingest.url, 'URL');
     $('vrsh-ingest-show').onclick = (e) => { const b = e.currentTarget; b.dataset.on = b.dataset.on === '1' ? '' : '1'; b.textContent = b.dataset.on ? 'Hide' : 'Show'; renderIngest(); };
     $('vrsh-ingest-use').onclick = useIngest;
     $('vrsh-ingest-reset').onclick = resetIngestKey;
@@ -607,8 +610,11 @@ function renderIngest() {
     $('vrsh-ingest-server').textContent = ingest.server;
     const show = $('vrsh-ingest-show').dataset.on === '1';
     $('vrsh-ingest-key').textContent = show ? ingest.key : '•'.repeat(24);
+    // The URL ends in the key, so it is hidden with it.
+    $('vrsh-ingest-url').textContent = show ? (ingest.url || '') : ingest.server + '/' + '•'.repeat(24);
+    $('vrsh-ingest-codec').hidden = !(ingest.live && ingest.notH264);
     const [txt, col] = ingest.live ? ['Receiving your stream', 'var(--vx-ok)']
-        : ingest.serverUp ? ['Waiting for OBS', 'var(--vx-text-2)'] : ['Server offline', 'var(--vx-bad)'];
+        : ingest.serverUp ? ['Waiting for your stream','var(--vx-text-2)'] : ['Server offline', 'var(--vx-bad)'];
     st.textContent = txt; st.style.color = col;
 }
 // The old select-and-copy first: it runs inside the click, so browsers and app
@@ -718,8 +724,11 @@ function panelHTML() {
         <div id="vrsh-ingest-body">
           <div class="vrsh-kv"><span class="vrsh-kv-k">Server</span><code id="vrsh-ingest-server"></code><button id="vrsh-ingest-copy-server" class="vrsh-mini" type="button">Copy</button></div>
           <div class="vrsh-kv"><span class="vrsh-kv-k">Stream key</span><code id="vrsh-ingest-key"></code><button id="vrsh-ingest-show" class="vrsh-mini" type="button">Show</button><button id="vrsh-ingest-copy-key" class="vrsh-mini" type="button">Copy</button></div>
+          <div class="vrsh-kv"><span class="vrsh-kv-k">One-line URL</span><code id="vrsh-ingest-url"></code><button id="vrsh-ingest-copy-url" class="vrsh-mini" type="button">Copy</button></div>
+          <div id="vrsh-ingest-codec" class="vrsh-hint" style="color:var(--vx-bad)" hidden>We are getting your stream, but its video is not H.264, so viewers get no picture. In Moblin: Settings ▸ Streams ▸ your stream ▸ Video ▸ Codec <b>H.264/AVC</b>, then stop and start the stream.</div>
           <div class="vrsh-actions" style="margin-top:8px"><button id="vrsh-ingest-use" class="vrsh-mini" type="button">Use for Go Live</button><button id="vrsh-ingest-reset" class="vrsh-mini vrsh-mini-danger" type="button">New key</button></div>
           <div class="vrsh-hint">In OBS: Settings ▸ Stream ▸ Service <b>Custom</b>, then paste the Server and Stream key. Keep OBS's normal H.264 video and AAC audio, with a 2 s keyframe interval. Or press <b>Use for Go Live</b> and Echo Radar puts them into OBS for you. People watch you inside Echo Radar from your live marker. Keep the key secret; <b>New key</b> replaces it if it leaks.</div>
+          <div class="vrsh-hint">On a phone (Moblin, Larix…): paste the <b>One-line URL</b> as the stream URL, and set the video codec to <b>H.264</b>. Moblin starts on H.265/HEVC, which streams here but shows no picture. Press <b>Go Live</b> here too, so your marker shows on the map.</div>
           <div class="vrsh-field" style="margin-top:10px"><label>Your Spotter Network name or callsign (optional)</label><input id="vrsh-spotter" type="text" maxlength="80" placeholder="e.g. Nathan Bradley" /></div>
           <div class="vrsh-hint">While you stream here, your Spotter Network beacon on the map gets a live ring and plays this stream, and viewers' players follow your beacon. Use your name exactly as it shows on Spotter Network, then <b>Save settings</b>.</div>
         </div>

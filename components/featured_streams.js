@@ -12,7 +12,8 @@
  *  • Everyone an admin has approved to stream, from /api/featured-streams.
  *    Approving someone in the admin panel is what puts them here; revoking
  *    takes them off. Each channel link they gave when they applied is a row,
- *    named by its handle. Live streamers (broadcasting through the Chase
+ *    named by its handle, and while they stream to Echo Radar's own server
+ *    (stream_ingest.js) that stream is a row of its own, first. Live streamers (broadcasting through the Chase
  *    Stream Hub) sort first, are marked LIVE, and the map follows them while
  *    you watch.
  *
@@ -69,7 +70,7 @@ function injectStyles() {
 }
 
 function platformIcon(p) {
-  return p === 'tiktok' ? 'TT' : p === 'youtube' ? 'YT' : p === 'twitch' ? 'TW' : p === 'kick' ? 'KK' : p === 'facebook' ? 'FB' : '●';
+  return p === 'echo radar' ? 'ER' : p === 'tiktok' ? 'TT' : p === 'youtube' ? 'YT' : p === 'twitch' ? 'TW' : p === 'kick' ? 'KK' : p === 'facebook' ? 'FB' : '●';
 }
 
 // A streamer broadcasting through the Chase Stream Hub reports their position

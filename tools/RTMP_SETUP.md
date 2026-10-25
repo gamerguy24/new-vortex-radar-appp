@@ -112,6 +112,14 @@ OBS settings that work: Output ▸ Keyframe Interval **2 s**, video bitrate
 H.264) and audio **AAC**, which are OBS's defaults. HEVC/AV1 streams connect
 but do not play.
 
+Phone apps with a single URL box (Moblin, Larix): paste the Hub's
+**One-line URL** (`rtmp://193.122.152.119/live/<id>?pass=erx_…`). Moblin
+starts every new stream on **H.265/HEVC**, which nginx accepts but cannot turn
+into HLS, so viewers get no picture: set Settings ▸ Streams ▸ the stream ▸
+Video ▸ Codec to **H.264/AVC**. The Hub shows a red warning while it is
+receiving a stream that is not H.264. The streamer still presses **Go Live**
+in the Hub (on the phone or another device) for their map marker.
+
 ## Notes
 
 - If the Oracle box's public IP ever changes, set `RTMP_PUBLIC_URL` and

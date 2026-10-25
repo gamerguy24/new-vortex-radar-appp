@@ -74,13 +74,20 @@ function attachStreamIngest(app, { streamConfigs, saveStreamConfigs, findById, c
         enabled: true,
         server: RTMP_URL,
         key: `${ing.publicId}?pass=${ing.key}`,   // exactly what goes in OBS's Stream Key box
+        // Server and key in one, for apps with a single URL box (Moblin, Larix…).
+        // They send everything after the last "/" as the key, ?pass= included.
+        url: `${RTMP_URL}/${ing.publicId}?pass=${ing.key}`,
         watchPath: watchPath(ing.publicId),
         live: livePids.has(ing.publicId),
+        notH264: notH264.has(ing.publicId),
         serverUp,
     });
 
     // Which streams nginx is receiving right now, from its rtmp_stat page.
     const livePids = new Set();
+    // Live streams whose video is not H.264. nginx's HLS only carries H.264,
+    // so these play without a picture; Moblin sends HEVC unless told not to.
+    const notH264 = new Set();
     let serverUp = false;
     async function poll() {
         try {
@@ -89,14 +96,22 @@ function attachStreamIngest(app, { streamConfigs, saveStreamConfigs, findById, c
             const xml = await r.text();
             if (!xml.includes('<rtmp>')) throw new Error('not the stat page');
             livePids.clear();
+            notH264.clear();
             for (const block of xml.split('<stream>').slice(1)) {
                 const m = /<name>([a-f0-9]{10})<\/name>/.exec(block);
-                if (m && block.includes('<publishing/>')) livePids.add(m[1]);
+                if (!m || !block.includes('<publishing/>')) continue;
+                livePids.add(m[1]);
+                // <video> has a width once the stream's metadata is in; its
+                // <codec> is "H264", or another name or none for anything else.
+                const v = /<video>([\s\S]*?)<\/video>/.exec(block);
+                const width = v && +((/<width>(\d+)<\/width>/.exec(v[1]) || [])[1] || 0);
+                if (width && !/<codec>H264<\/codec>/.test(v[1])) notH264.add(m[1]);
             }
             serverUp = true;
         } catch (e) {
             serverUp = false;
             livePids.clear();
+            notH264.clear();
         }
     }
     if (enabled) { poll(); setInterval(poll, POLL_MS).unref(); }
