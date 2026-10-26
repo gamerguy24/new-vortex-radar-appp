@@ -26,7 +26,7 @@ const LAYER = 'radar-sites-layer';
 // From app/core/map/icons/icons.js — keep in step with it.
 const PILL = {
   blue_station: '#009dff',
-  orange_station: '#b0801a',
+  orange_station: '#e0a030',
   red_station: '#ff4e4e',
 };
 
@@ -34,8 +34,9 @@ const STATUS_URL = 'https://api.weather.gov/radar/stations';
 const DOWN_AFTER_MS = 15 * 60 * 1000;     // the app's own threshold
 
 function pillSvg(fill) {
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">'
-    + `<rect width="200" height="100" rx="20" fill="${fill}" /></svg>`;
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">'
+    + '<polygon points="24,5 176,5 195,24 195,76 176,95 24,95 5,76 5,24" fill="#0b1626" fill-opacity="0.92"'
+    + ` stroke="${fill}" stroke-width="9" stroke-linejoin="miter" /></svg>`;
 }
 
 function addPill(map, name, fill) {

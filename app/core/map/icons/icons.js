@@ -41,35 +41,11 @@ function add_icon_svg(icons_array, callback, i = 0, target_map) {
 }
 
 const icons = {
-    grey_station_marker: 
-    `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
-        <!-- Simple rectangle with blue fill -->
-        <rect width="200" height="100" rx="20" fill="#969696" />
-    </svg>`,
-
-    blue_station_marker: 
-    `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
-        <!-- Simple rectangle with blue fill -->
-        <rect width="200" height="100" rx="20" fill="#009dff" />
-    </svg>`,
-
-    red_station_marker: 
-    `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
-        <!-- Simple rectangle with blue fill -->
-        <rect width="200" height="100" rx="20" fill="#ff4e4e" />
-    </svg>`,
-
-    orange_station_marker: 
-    `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
-        <!-- Simple rectangle with blue fill -->
-        <rect width="200" height="100" rx="20" fill="#b0801a" />
-    </svg>`,
-
-    dark_grey_station_marker: 
-    `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
-        <!-- Simple rectangle with blue fill -->
-        <rect width="200" height="100" rx="20" fill="#696969" />
-    </svg>`,
+    grey_station_marker: _station_badge('#969696'),
+    blue_station_marker: _station_badge('#009dff'),
+    red_station_marker: _station_badge('#ff4e4e'),
+    orange_station_marker: _station_badge('#e0a030'),
+    dark_grey_station_marker: _station_badge('#696969'),
 
     tornado_icon: 
     `<?xml version="1.0" encoding="utf-8"?>
@@ -142,6 +118,19 @@ const icons = {
     hurricane_OTHER: _hurricane_color('OTHER'),
     hurricane_UNKNOWN: _hurricane_color('UNKNOWN'),
     hurricane_NONTROPICAL: _hurricane_color('NONTROPICAL'),
+}
+
+/*
+ * Echo Radar's radar-site badge: a dark body with angled corners and the
+ * status colour as the outline. Deliberately not a solid rounded pill — that
+ * shape is what other radar apps use. Same 200x100 box as before, so the
+ * icon-size ramps in station_markers.js still fit the ICAO label.
+ */
+function _station_badge(color) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
+        <polygon points="24,5 176,5 195,24 195,76 176,95 24,95 5,76 5,24"
+            fill="#0b1626" fill-opacity="0.92" stroke="${color}" stroke-width="9" stroke-linejoin="miter" />
+    </svg>`;
 }
 
 function _hurricane_color(status) {

@@ -33,17 +33,17 @@ export function loadRadarSites() {
   return sitesPromise;
 }
 
+// Angled-corner badge, matching the app's radar-site markers (icons.js).
 function pill(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + r);
   ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + w - r, y + h);
   ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + h - r);
   ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
 }
 
@@ -116,17 +116,17 @@ export function radarSitesLayer({ sites: list, fontSize = 15, highlight = null, 
         ctx.shadowBlur = 4;
         ctx.shadowOffsetY = 1;
         pill(ctx, bx, by, w, h, 4);
-        ctx.fillStyle = fill;
+        ctx.fillStyle = 'rgba(11,22,38,0.92)';
         ctx.fill();
         ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
         ctx.shadowOffsetY = 0;
 
-        if (isHi) {
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-          ctx.stroke();
-        }
+        // Status colour is the outline, not the fill; the picked site gets a heavier one.
+        ctx.lineWidth = isHi ? 2.5 : 1.75;
+        ctx.lineJoin = 'miter';
+        ctx.strokeStyle = fill;
+        ctx.stroke();
 
         ctx.fillStyle = ink;
         ctx.fillText(s.id, bx + padX, y + 0.5);
