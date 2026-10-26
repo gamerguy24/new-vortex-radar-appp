@@ -6,7 +6,8 @@
  *
  * Billing fields live on each user object:
  *   tier ('free'|'tier1'|'tier2'|'tier3'), stripeCustomerId,
- *   stripeSubscriptionId, subscriptionStatus, subscriptionCurrentPeriodEnd
+ *   stripeSubscriptionId, subscriptionStatus, subscriptionCurrentPeriodEnd,
+ *   subscriptionAmount (cents a month, kept so the app can show it)
  *
  * What is sold: ONE plan, pay what you want. A subscriber picks any monthly
  * amount from PLAN.min to PLAN.max and every amount unlocks everything
@@ -85,6 +86,21 @@ function createBilling({ store }) {
         return productIdPromise;
     }
 
+    // The amount a request asks for, in whole cents, or null when it is not one
+    // the plan allows. Refused rather than clamped: a bad amount is a bug or a
+    // tampered request, not something to quietly round.
+    function readAmount(body) {
+        const amount = Number(body && body.amount);
+        return Number.isInteger(amount) && amount >= PLAN.min && amount <= PLAN.max ? amount : null;
+    }
+    const amountError = () => `Choose an amount from ${money(PLAN.min)} to ${money(PLAN.max)}.`;
+
+    // What a subscription charges a month, in cents.
+    function subAmount(sub) {
+        const item = sub && sub.items && sub.items.data && sub.items.data[0];
+        return (item && item.price && item.price.unit_amount) || null;
+    }
+
     const notConfigured = (res) => res.status(503).json({ error: 'Billing is not configured on this server.' });
 
     // Map a stored tier string to a cumulative numeric access level. Higher
@@ -115,6 +131,9 @@ function createBilling({ store }) {
             subscriptionStatus: user.subscriptionStatus || null,
             currentPeriodEnd: user.subscriptionCurrentPeriodEnd || null,
             hasStripeCustomer: !!user.stripeCustomerId,
+            // A live subscription whose amount can be changed (POST /amount).
+            hasSubscription: !!(user.stripeSubscriptionId && ACTIVE_STATUSES.has(user.subscriptionStatus)),
+            amount: user.subscriptionAmount || null,
             alerts: { active: hasAlerts(user), free: true },
         };
     }
@@ -199,6 +218,7 @@ function createBilling({ store }) {
                         stripeSubscriptionId: subscriptionId,
                         subscriptionStatus: status,
                         subscriptionCurrentPeriodEnd: periodEnd,
+                        subscriptionAmount: subAmount(sub),
                         tier,
                     });
                     console.log(`[billing] user ${userId} upgraded to ${tier} (status=${status})`);
@@ -219,6 +239,7 @@ function createBilling({ store }) {
                         stripeSubscriptionId: data.id,
                         subscriptionStatus: status,
                         subscriptionCurrentPeriodEnd: periodEnd,
+                        subscriptionAmount: subAmount(data),
                         tier,
                     });
                 } else {
@@ -231,7 +252,7 @@ function createBilling({ store }) {
         }
     }
 
-    // ── JSON API: status / checkout / portal ──────────────────────────────────
+    // ── JSON API: status / checkout / amount / portal ──────────────────────────────────
     function apiRouter() {
         const router = express.Router();
         router.use(express.json({ limit: '10kb' })); // no-op if body already parsed
@@ -253,11 +274,13 @@ function createBilling({ store }) {
             if (!isBillingConfigured) return notConfigured(res);
             if (!req.user) return res.status(401).json({ error: 'Sign in first' });
             try {
-                // The chosen amount, in whole cents. This is the check that
-                // counts: anything outside the range is refused, not clamped.
-                const amount = Number(req.body && req.body.amount);
-                if (!Number.isInteger(amount) || amount < PLAN.min || amount > PLAN.max) {
-                    return res.status(400).json({ error: `Choose an amount from ${money(PLAN.min)} to ${money(PLAN.max)}.` });
+                // The chosen amount, in whole cents. The client keeps to the
+                // range too; this is the check that counts.
+                const amount = readAmount(req.body);
+                if (amount == null) return res.status(400).json({ error: amountError() });
+                // A second checkout would start a second subscription.
+                if (billingState(req.user).hasSubscription) {
+                    return res.status(409).json({ error: 'You already have Pro. Change your amount from Manage Subscription.' });
                 }
                 const product = await planProductId();
 
@@ -288,6 +311,49 @@ function createBilling({ store }) {
             } catch (err) {
                 console.error('[billing] checkout error', err);
                 res.status(500).json({ error: 'Could not start checkout' });
+            }
+        });
+
+        /*
+         * Change what an existing subscriber pays. The subscription keeps its
+         * product and swaps its one item to a new price for the new amount.
+         * No proration: the new amount starts with the next bill, and nothing
+         * is charged or refunded now, which is the least surprising thing
+         * when someone is simply choosing to pay a bit more or less.
+         */
+        router.post('/amount', async (req, res) => {
+            if (!isBillingConfigured) return notConfigured(res);
+            if (!req.user) return res.status(401).json({ error: 'Sign in first' });
+            const amount = readAmount(req.body);
+            if (amount == null) return res.status(400).json({ error: amountError() });
+            const user = req.user;
+            if (!billingState(user).hasSubscription) return res.status(400).json({ error: 'You have no subscription to change.' });
+            try {
+                const sub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+                // Trust Stripe over the stored copy: it may have been cancelled
+                // since, and it must belong to this user's customer.
+                if (!ACTIVE_STATUSES.has(sub.status) || sub.customer !== user.stripeCustomerId) {
+                    return res.status(400).json({ error: 'You have no subscription to change.' });
+                }
+                const item = sub.items.data[0];
+                const product = typeof item.price.product === 'string' ? item.price.product : item.price.product.id;
+                const updated = await stripe.subscriptions.update(sub.id, {
+                    items: [{
+                        id: item.id,
+                        price_data: { currency: PLAN.currency, product, unit_amount: amount, recurring: { interval: PLAN.interval } },
+                    }],
+                    proration_behavior: 'none',
+                    metadata: { tier: PLAN_TIER, amount: String(amount) },
+                });
+                const periodEnd = updated.current_period_end ? new Date(updated.current_period_end * 1000).toISOString() : null;
+                // The customer.subscription.updated webhook says the same; this
+                // just makes the app show it without waiting for that.
+                store.update(user, { subscriptionAmount: subAmount(updated) || amount, subscriptionCurrentPeriodEnd: periodEnd });
+                console.log(`[billing] user ${user.id} changed amount to ${money(amount)}`);
+                res.json({ amount, currentPeriodEnd: periodEnd });
+            } catch (err) {
+                console.error('[billing] amount change error', err);
+                res.status(500).json({ error: 'Could not change your amount' });
             }
         });
 

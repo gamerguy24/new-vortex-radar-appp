@@ -74,7 +74,7 @@ function ensurePickerStyles() {
     .vtp-choose{width:100%;background:var(--vx-accent);color:var(--vx-accent-ink);border:none;border-radius:var(--vx-r-2);padding:11px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;}
     .vtp-choose:hover{filter:brightness(1.08);}
     .vtp-choose:disabled{opacity:0.5;cursor:default;filter:none;}
-    .vtp-foot{display:flex;justify-content:center;padding:12px 18px 18px;}
+    .vtp-foot{display:flex;justify-content:center;gap:10px;padding:12px 18px 18px;}
     .vtp-notnow{background:none;border:1px solid rgba(255,255,255,0.18);color:var(--vx-text-2);border-radius:var(--vx-r-2);padding:8px 22px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;}
     .vtp-notnow:hover{color:var(--vx-text);border-color:rgba(255,255,255,0.35);}`;
   document.head.appendChild(s);
@@ -85,33 +85,52 @@ function ensurePickerStyles() {
  * exact amount, kept in step. The slider moves in 50-cent steps from the
  * minimum ($2.99, $3.49 … $10.99); the box takes any cent in the range. The
  * server checks the range again, so this is for the user, not for safety.
+ *
+ * Two jobs, one dialog. A free user picks an amount and goes to Checkout. A
+ * subscriber (state.hasSubscription) gets it as "Your Pro plan": it opens on
+ * what they pay now, changes the amount in place (POST /api/billing/amount,
+ * from the next bill), and links to Stripe's portal for card, invoices and
+ * cancelling.
  */
 function openTierPicker() {
   const plan = state && state.billingConfigured && state.plan;
   if (!plan) { toast('Upgrades are not available right now.', 'warn'); return; }
+  const changing = !!state.hasSubscription;
+  const current = changing && state.amount ? state.amount : null;
+  const start = current != null ? Math.min(plan.max, Math.max(plan.min, current)) : plan.default;
 
   ensurePickerStyles();
   const old = document.getElementById('vortexTierPicker');
   if (old) old.remove();
 
+  const range = `${dollars(plan.min)} to ${dollars(plan.max)}`;
+  const title = changing ? 'Your Pro plan' : 'Upgrade to Pro';
+  const lede = !changing
+    ? `Pay what you want, from ${range} a ${plan.interval}. Every amount unlocks every Pro feature.`
+    : (current != null ? `You pay ${dollars(current)} a ${plan.interval}. ` : '')
+      + `Choose a new amount from ${range}. It starts with your next bill, and nothing is charged today.`;
+  const foot = changing
+    ? '<button class="vtp-notnow vtp-portal">Billing &amp; cancel</button><button class="vtp-notnow vtp-close">Close</button>'
+    : '<button class="vtp-notnow vtp-close">Not now</button>';
+
   const overlay = document.createElement('div');
   overlay.id = 'vortexTierPicker';
-  overlay.innerHTML = `<div class="vtp-panel" role="dialog" aria-label="Upgrade to Pro">
-      <div class="vtp-head"><span>Upgrade to Pro</span><button class="vtp-x" aria-label="Close">&times;</button></div>
+  overlay.innerHTML = `<div class="vtp-panel" role="dialog" aria-label="${title}">
+      <div class="vtp-head"><span>${title}</span><button class="vtp-x vtp-close" aria-label="Close">&times;</button></div>
       <div class="vtp-body">
-        <p class="vtp-lede">Pay what you want, from ${dollars(plan.min)} to ${dollars(plan.max)} a ${plan.interval}. Every amount unlocks every Pro feature.</p>
+        <p class="vtp-lede">${lede}</p>
         <div class="vtp-amount">
           <span class="vtp-cur">$</span>
-          <input id="vtpAmount" type="number" inputmode="decimal" min="${plan.min / 100}" max="${plan.max / 100}" step="0.01" value="${(plan.default / 100).toFixed(2)}" aria-label="Monthly amount in dollars">
+          <input id="vtpAmount" type="number" inputmode="decimal" min="${plan.min / 100}" max="${plan.max / 100}" step="0.01" value="${(start / 100).toFixed(2)}" aria-label="Monthly amount in dollars">
           <span class="vtp-per">/ ${plan.interval}</span>
         </div>
-        <input id="vtpSlider" class="vtp-slider" type="range" min="${plan.min}" max="${plan.max}" step="50" value="${plan.default}" aria-label="Monthly amount">
+        <input id="vtpSlider" class="vtp-slider" type="range" min="${plan.min}" max="${plan.max}" step="50" value="${start}" aria-label="Monthly amount">
         <div class="vtp-range"><span>${dollars(plan.min)}</span><span>${dollars(plan.max)}</span></div>
         <div class="vtp-msg" id="vtpMsg"></div>
-        <ul class="vtp-feats">${PRO_FEATURES.map((f) => `<li>${f}</li>`).join('')}</ul>
+        ${changing ? '' : `<ul class="vtp-feats">${PRO_FEATURES.map((f) => `<li>${f}</li>`).join('')}</ul>`}
         <button class="vtp-choose" id="vtpChoose"></button>
       </div>
-      <div class="vtp-foot"><button class="vtp-notnow">Not now</button></div>
+      <div class="vtp-foot">${foot}</div>
     </div>`;
   document.body.appendChild(overlay);
 
@@ -127,10 +146,14 @@ function openTierPicker() {
   };
   const show = (cents) => {
     const ok = cents != null;
+    const same = ok && changing && cents === current;
     box.classList.toggle('vtp-bad', !ok);
-    msg.textContent = ok ? '' : `Enter an amount from ${dollars(plan.min)} to ${dollars(plan.max)}.`;
-    choose.disabled = !ok;
-    choose.textContent = ok ? `Subscribe for ${dollars(cents)}/${plan.interval}` : 'Subscribe';
+    msg.textContent = ok ? '' : `Enter an amount from ${range}.`;
+    choose.disabled = !ok || same;
+    choose.textContent = !ok ? (changing ? 'Change amount' : 'Subscribe')
+      : same ? 'This is what you pay now'
+      : changing ? `Change to ${dollars(cents)}/${plan.interval}`
+      : `Subscribe for ${dollars(cents)}/${plan.interval}`;
   };
 
   slider.addEventListener('input', () => {
@@ -144,21 +167,46 @@ function openTierPicker() {
   });
   // Tidy to two decimals once they leave the box, if it is valid.
   box.addEventListener('change', () => { const c = boxCents(); if (c != null) box.value = (c / 100).toFixed(2); });
-  show(plan.default);
+  show(start);
 
   const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true); };
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey, true);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay || e.target.classList.contains('vtp-x') || e.target.classList.contains('vtp-notnow')) { close(); return; }
-    if (e.target === choose) {
-      const cents = boxCents();
-      if (cents == null) { show(null); return; }
-      choose.disabled = true;
+  overlay.addEventListener('click', async (e) => {
+    if (e.target === overlay || e.target.classList.contains('vtp-close')) { close(); return; }
+    if (e.target.classList.contains('vtp-portal')) { close(); go('portal'); return; }
+    if (e.target !== choose) return;
+    const cents = boxCents();
+    if (cents == null) { show(null); return; }
+    choose.disabled = true;
+    if (!changing) {
       choose.textContent = 'Opening checkout…';
       go('checkout', { amount: cents }).finally(() => { if (overlay.isConnected) show(boxCents()); });
+      return;
     }
+    choose.textContent = 'Saving…';
+    if (await changeAmount(cents)) close();
+    else if (overlay.isConnected) show(boxCents());
   });
+}
+
+// Subscriber changes their monthly amount. True when it worked.
+async function changeAmount(cents) {
+  try {
+    const r = await fetch('/api/billing/amount', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: cents }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { toast(d.error || 'Could not change your amount.', 'warn'); return false; }
+    state.amount = d.amount;
+    toast(`Done. You will pay ${dollars(d.amount)} a month from your next bill.`, 'good');
+    return true;
+  } catch (e) {
+    toast('Network error changing your amount.', 'warn');
+    return false;
+  }
 }
 
 async function loadStatus() {
@@ -188,23 +236,21 @@ function apply() {
   if (!rw) return;
   if (!state.signedIn) { rw.style.display = 'none'; return; }
 
-  // Anyone who already has paid/pro access must NEVER be shown "Upgrade to Pro":
-  //   - admins (pro by role),
-  //   - any paid tier (Tier One+ / legacy "pro"),
-  //   - anyone with a Stripe customer record.
-  const alreadyHasAccess = !!(state.isPro || state.isAdmin || (state.tierLevel || 0) >= 1 || state.hasStripeCustomer);
+  // A paying subscriber: their plan dialog (change amount, or Stripe's portal
+  // for card, invoices and cancelling).
+  if (state.hasSubscription) {
+    rw.style.display = '';
+    if (label()) label().textContent = 'Manage Subscription';
+    rw.dataset.action = 'manage';
+    return;
+  }
 
-  if (alreadyHasAccess) {
-    if (state.hasStripeCustomer) {
-      // A real Stripe subscriber — let them manage/change their plan in the portal.
-      rw.style.display = '';
-      if (label()) label().textContent = 'Manage Subscription';
-      rw.dataset.action = 'portal';
-    } else {
-      // Pro by admin grant or admin role — nothing to manage in Stripe, and they
-      // must not be prompted to upgrade, so hide the row entirely.
-      rw.style.display = 'none';
-    }
+  // Pro without paying (admin role or an admin grant): nothing to manage in
+  // Stripe, and they must never be prompted to upgrade, so hide the row.
+  // Someone who subscribed and then cancelled is neither, so they fall
+  // through to Upgrade and can subscribe again.
+  if (state.isPro || state.isAdmin || (state.tierLevel || 0) >= 1) {
+    rw.style.display = 'none';
     return;
   }
 
@@ -232,8 +278,10 @@ function init() {
       const menu = $('vortexRadarMenu');
       if (menu) menu.style.display = 'none';
       const action = rw.dataset.action || 'checkout';
-      if (action === 'checkout') openTierPicker();  // free user -> pick an amount
-      else go(action);                              // subscriber -> portal
+      // Free user picks an amount; a subscriber gets the same dialog as
+      // "Your Pro plan" (openTierPicker tells them apart).
+      if (action === 'checkout' || action === 'manage') openTierPicker();
+      else go(action);
     });
   }
 
