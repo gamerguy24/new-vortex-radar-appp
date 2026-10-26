@@ -318,7 +318,7 @@ export function initAdminPanel(root) {
             else if (u.isAdmin) badges.push('<span class="admin-panel-badge admin">admin</span>');
             if (u.isLocked) badges.push('<span class="admin-panel-badge locked">locked</span>');
             if (u.mustChangePassword) badges.push('<span class="admin-panel-badge must-change">must reset</span>');
-            const TIER_LABELS = { free: 'Free', tier1: 'Tier One', tier2: 'Tier Two', tier3: 'Tier Three' };
+            const TIER_LABELS = { free: 'Free', tier1: 'Tier One', tier2: 'Tier Two', tier3: 'Pro (everything)' };
             const curTier = (u.tier === 'pro' ? 'tier3' : (u.tier || 'free'));
             if (curTier !== 'free') badges.push(`<span class="admin-panel-badge tier">${TIER_LABELS[curTier] || curTier}</span>`);
             // Echo Pro licence. Shows the organisation's own name, not the

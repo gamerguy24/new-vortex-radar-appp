@@ -2215,7 +2215,7 @@ app.get('/api/proxy', requireAuth, async (req, res) => {
     const blocked = proxyTierBlock(req.user, host, pathname);
     if (blocked) {
         return res.status(402).json({
-            error: blocked.name + ' requires Tier ' + blocked.tier + '.',
+            error: blocked.name + ' is part of Pro.',
             requiredTier: blocked.tier,
             feature: blocked.name,
             upgrade: '/api/billing/checkout',

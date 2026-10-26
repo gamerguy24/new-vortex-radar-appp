@@ -1,7 +1,9 @@
 /*
  * components/pro_gates.js
  * Client-side subscription gating for the paid features, organized into three
- * cumulative tiers (a higher tier unlocks everything below it):
+ * cumulative levels (a higher level unlocks everything below it). What is sold
+ * is one pay-what-you-want Pro plan that grants level 3, so to a subscriber all
+ * of these are simply "Pro"; the lower levels exist for admin grants.
  *
  *   Tier One   (level 1) — Live Lightning, Surface Fronts, Tide Stations,
  *                          Buoys, BuoyCAMs, Power Outages
@@ -18,7 +20,6 @@
  * Reads the viewer's tier from window.vortexBilling (components/billing_ui.js).
  */
 
-const TIER_NAMES = { 1: 'Tier One', 2: 'Tier Two', 3: 'Tier Three' };
 
 // Feature button id -> required tier level. Cumulative: a viewer at or above
 // the listed level may use the feature.
@@ -69,19 +70,17 @@ function isLocked(requiredTier) {
 function upgradeToast(name, requiredTier) {
   const existing = document.getElementById('proGateToast');
   if (existing) existing.remove();
-  const tierName = TIER_NAMES[requiredTier] || 'a higher tier';
   const el = document.createElement('div');
   el.id = 'proGateToast';
   el.className = 'pro-toast';
   el.setAttribute('role', 'status');
-  el.innerHTML = `<span><b>${name}</b> requires ${tierName}.</span><button class="pro-toast-btn">Upgrade</button><button class="pro-toast-dismiss" aria-label="Dismiss">Dismiss</button>`;
+  el.innerHTML = `<span><b>${name}</b> is part of Pro.</span><button class="pro-toast-btn">Upgrade</button><button class="pro-toast-dismiss" aria-label="Dismiss">Dismiss</button>`;
   // Dismiss (button or Escape) just closes it; nothing else happens.
   const close = () => { el.remove(); clearTimeout(timer); document.removeEventListener('keydown', onKey, true); };
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   el.querySelector('.pro-toast-btn').onclick = () => {
     close();
-    // Open the plan picker with the tier this feature needs pre-highlighted.
-    if (window.vortexBilling && window.vortexBilling.startCheckout) window.vortexBilling.startCheckout('tier' + requiredTier);
+    if (window.vortexBilling && window.vortexBilling.startCheckout) window.vortexBilling.startCheckout();
   };
   el.querySelector('.pro-toast-dismiss').onclick = close;
   document.addEventListener('keydown', onKey, true);

@@ -433,7 +433,7 @@ async function loadOutages() {
   try {
     const r = await fetch('/api/outages/live', { cache: 'no-store' });
     if (!r.ok) {
-      $('outage-body').innerHTML = `<div class="empty">${r.status === 403 ? 'Requires a Tier One subscription.' : 'Outage feed unavailable.'}</div>`;
+      $('outage-body').innerHTML = `<div class="empty">${r.status === 403 ? 'Requires a Pro subscription.' : 'Outage feed unavailable.'}</div>`;
       return;
     }
     const j = await r.json();

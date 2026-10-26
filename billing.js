@@ -5,8 +5,14 @@
  * the custom signed-cookie session (req.user set by server.js middleware).
  *
  * Billing fields live on each user object:
- *   tier ('free'|'pro'), stripeCustomerId, stripeSubscriptionId,
- *   subscriptionStatus, subscriptionCurrentPeriodEnd
+ *   tier ('free'|'tier1'|'tier2'|'tier3'), stripeCustomerId,
+ *   stripeSubscriptionId, subscriptionStatus, subscriptionCurrentPeriodEnd
+ *
+ * What is sold: ONE plan, pay what you want. A subscriber picks any monthly
+ * amount from PLAN.min to PLAN.max and every amount unlocks everything
+ * (tier3). Owner's decision, 2026-10-26; it replaced three fixed tiers
+ * ($9.99 / $15.99 / $25.99) that never had a subscriber. tier1/tier2 survive
+ * only as levels an admin can grant by hand.
  *
  * The Stripe secret never leaves this process — read from STRIPE_SECRET_KEY at
  * boot. If billing env isn't set, the routers still mount but paid endpoints
@@ -24,31 +30,24 @@ function createBilling({ store }) {
     const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
     const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
-    // One Stripe price per subscription tier. STRIPE_PRICE_ID is kept as a
-    // legacy alias for the Tier Three price so old single-price setups keep
-    // working. Set only the tiers you actually sell.
-    const PRICE_BY_TIER = {
-        tier1: process.env.STRIPE_PRICE_TIER1 || null,
-        tier2: process.env.STRIPE_PRICE_TIER2 || null,
-        tier3: process.env.STRIPE_PRICE_TIER3 || process.env.STRIPE_PRICE_ID || null,
-    };
-    // Reverse lookup (price id -> tier) so the webhook can tell which plan was
-    // bought, including plan changes made through the customer portal.
-    const TIER_BY_PRICE = {};
-    for (const [t, p] of Object.entries(PRICE_BY_TIER)) { if (p) TIER_BY_PRICE[p] = t; }
-    // Configured tiers, lowest -> highest.
-    const configuredTiers = ['tier1', 'tier2', 'tier3'].filter((t) => PRICE_BY_TIER[t]);
+    // Amounts in cents. The client's slider keeps to this range; checkout
+    // enforces it.
+    const PLAN = { min: 299, max: 1099, default: 299, currency: 'usd', interval: 'month' };
+    // Every paid subscription gets this, whatever amount was chosen.
+    const PLAN_TIER = 'tier3';
 
     let stripe = null;
     if (STRIPE_SECRET) {
         try { stripe = new (require('stripe'))(STRIPE_SECRET); }
         catch (e) { console.error('[billing] Stripe init failed:', e.message); }
     }
-    const isBillingConfigured = !!(stripe && configuredTiers.length);
+    // No Price ids to configure: each checkout makes its own price (see
+    // planProductId), so the secret key is all billing needs.
+    const isBillingConfigured = !!stripe;
     if (!isBillingConfigured) {
-        console.log('[billing] Not configured (set STRIPE_SECRET_KEY + at least one of STRIPE_PRICE_TIER1/2/3). Endpoints return 503.');
+        console.log('[billing] Not configured (set STRIPE_SECRET_KEY). Endpoints return 503.');
     } else {
-        console.log(`[billing] Configured tiers: ${configuredTiers.join(', ')}`);
+        console.log(`[billing] Pay what you want: ${money(PLAN.min)}-${money(PLAN.max)}/${PLAN.interval}`);
     }
 
     /*
@@ -62,38 +61,28 @@ function createBilling({ store }) {
         return !!user;
     }
 
-    // Lazily fetch + cache each configured price's amount/currency/interval so
-    // the client can show a real price on the plan picker. Cached after first hit.
-    let catalogCache = null;
-    async function getCatalog() {
-        if (!stripe || !configuredTiers.length) return [];
-        if (catalogCache) return catalogCache;
-        const out = [];
-        for (const t of configuredTiers) {
-            const pid = PRICE_BY_TIER[t];
-            let amount = null, currency = null, interval = null;
-            try {
-                const price = await stripe.prices.retrieve(pid);
-                amount = price.unit_amount;
-                currency = price.currency;
-                interval = price.recurring && price.recurring.interval;
-            } catch (e) { console.error('[billing] price retrieve failed', pid, e.message); }
-            out.push({ tier: t, level: tierToLevel(t), amount, currency, interval });
+    /*
+     * The Stripe product every pay-what-you-want price hangs off. Checkout
+     * builds the price itself (price_data) from the amount the subscriber
+     * chose, and Stripe requires that to name an existing product.
+     * STRIPE_PRODUCT_ID pins one; otherwise the product tagged echo_plan=pwyw
+     * is found, or made the first time anyone checks out, so a fresh account
+     * needs no setup.
+     */
+    let productIdPromise = null;
+    function planProductId() {
+        if (process.env.STRIPE_PRODUCT_ID) return Promise.resolve(process.env.STRIPE_PRODUCT_ID.trim());
+        if (!productIdPromise) {
+            productIdPromise = (async () => {
+                const found = await stripe.products.search({ query: "active:'true' AND metadata['echo_plan']:'pwyw'", limit: 1 });
+                if (found.data.length) return found.data[0].id;
+                const made = await stripe.products.create({ name: 'Echo Radar Pro', metadata: { echo_plan: 'pwyw' } });
+                console.log(`[billing] created Stripe product ${made.id} for pay-what-you-want`);
+                return made.id;
+            })();
+            productIdPromise.catch(() => { productIdPromise = null; });   // try again next checkout
         }
-        catalogCache = out;
-        return out;
-    }
-
-    // Which tier a subscription grants, derived from its price (survives portal
-    // upgrades/downgrades). Falls back to the tier stamped at checkout time.
-    function tierFromSubscription(sub) {
-        try {
-            const pid = sub && sub.items && sub.items.data && sub.items.data[0]
-                && sub.items.data[0].price && sub.items.data[0].price.id;
-            if (pid && TIER_BY_PRICE[pid]) return TIER_BY_PRICE[pid];
-        } catch (e) { /* fall through */ }
-        if (sub && sub.metadata && sub.metadata.tier && PRICE_BY_TIER[sub.metadata.tier]) return sub.metadata.tier;
-        return configuredTiers[configuredTiers.length - 1] || 'tier3';
+        return productIdPromise;
     }
 
     const notConfigured = (res) => res.status(503).json({ error: 'Billing is not configured on this server.' });
@@ -202,9 +191,7 @@ function createBilling({ store }) {
                 const sub = subscriptionId ? await stripe.subscriptions.retrieve(subscriptionId) : null;
                 const status = (sub && sub.status) || 'active';
                 const periodEnd = sub && sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
-                const paidTier = sub ? tierFromSubscription(sub)
-                    : ((data.metadata && data.metadata.tier) || configuredTiers[configuredTiers.length - 1] || 'tier3');
-                const tier = ACTIVE_STATUSES.has(status) ? paidTier : 'free';
+                const tier = ACTIVE_STATUSES.has(status) ? PLAN_TIER : 'free';
                 const user = store.getById(userId);
                 if (user) {
                     store.update(user, {
@@ -225,7 +212,7 @@ function createBilling({ store }) {
             case 'customer.subscription.deleted': {
                 const status = data.status;
                 const periodEnd = data.current_period_end ? new Date(data.current_period_end * 1000).toISOString() : null;
-                const tier = ACTIVE_STATUSES.has(status) ? tierFromSubscription(data) : 'free';
+                const tier = ACTIVE_STATUSES.has(status) ? PLAN_TIER : 'free';
                 const user = store.getByStripeCustomer(data.customer);
                 if (user) {
                     store.update(user, {
@@ -249,12 +236,12 @@ function createBilling({ store }) {
         const router = express.Router();
         router.use(express.json({ limit: '10kb' })); // no-op if body already parsed
 
-        router.get('/status', async (req, res) => {
-            const tiers = await getCatalog().catch(() => []);
+        router.get('/status', (req, res) => {
+            const plan = isBillingConfigured ? PLAN : null;
             if (!req.user) {
-                return res.json({ signedIn: false, isPro: false, isAdmin: false, tier: 'free', tierLevel: 0, billingConfigured: isBillingConfigured, tiers });
+                return res.json({ signedIn: false, isPro: false, isAdmin: false, tier: 'free', tierLevel: 0, billingConfigured: isBillingConfigured, plan });
             }
-            res.json({ signedIn: true, email: req.user.email, billingConfigured: isBillingConfigured, tiers, ...billingState(req.user) });
+            res.json({ signedIn: true, email: req.user.email, billingConfigured: isBillingConfigured, plan, ...billingState(req.user) });
         });
 
         // Email alerts are free: this only says so (the client asks before showing the sign-up).
@@ -266,13 +253,13 @@ function createBilling({ store }) {
             if (!isBillingConfigured) return notConfigured(res);
             if (!req.user) return res.status(401).json({ error: 'Sign in first' });
             try {
-                // Resolve which tier's price to charge. Default to the highest
-                // configured tier if the client didn't ask for a specific one.
-                let tier = String((req.body && req.body.tier) || '').toLowerCase();
-                if (tier === 'pro') tier = 'tier3';
-                if (!PRICE_BY_TIER[tier]) tier = configuredTiers[configuredTiers.length - 1];
-                const priceId = PRICE_BY_TIER[tier];
-                if (!priceId) return res.status(400).json({ error: 'That plan is not available.' });
+                // The chosen amount, in whole cents. This is the check that
+                // counts: anything outside the range is refused, not clamped.
+                const amount = Number(req.body && req.body.amount);
+                if (!Number.isInteger(amount) || amount < PLAN.min || amount > PLAN.max) {
+                    return res.status(400).json({ error: `Choose an amount from ${money(PLAN.min)} to ${money(PLAN.max)}.` });
+                }
+                const product = await planProductId();
 
                 const origin = `${req.protocol}://${req.get('host')}`;
                 const user = req.user;
@@ -285,11 +272,14 @@ function createBilling({ store }) {
                 const session = await stripe.checkout.sessions.create({
                     mode: 'subscription',
                     payment_method_types: ['card'],
-                    line_items: [{ price: priceId, quantity: 1 }],
+                    line_items: [{
+                        price_data: { currency: PLAN.currency, product, unit_amount: amount, recurring: { interval: PLAN.interval } },
+                        quantity: 1,
+                    }],
                     customer: customerId,
                     client_reference_id: String(user.id),
-                    metadata: { tier },
-                    subscription_data: { metadata: { tier } },
+                    metadata: { tier: PLAN_TIER, amount: String(amount) },
+                    subscription_data: { metadata: { tier: PLAN_TIER, amount: String(amount) } },
                     success_url: process.env.STRIPE_SUCCESS_URL || `${origin}/?upgrade=success`,
                     cancel_url: process.env.STRIPE_CANCEL_URL || `${origin}/?upgrade=cancelled`,
                     allow_promotion_codes: true,
@@ -323,6 +313,10 @@ function createBilling({ store }) {
     }
 
     return { webhookRouter, apiRouter, requirePro, requireProPage, requireTier, hasTier, hasAlerts, billingState, isBillingConfigured };
+}
+
+function money(cents) {
+    return '$' + (cents / 100).toFixed(2);
 }
 
 module.exports = { createBilling };

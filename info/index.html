@@ -237,7 +237,7 @@ section { scroll-margin-top: 72px; }
 /* plans */
 .plans { display: grid; gap: 14px; grid-template-columns: 1fr; }
 @media (min-width: 700px) { .plans { grid-template-columns: repeat(2, 1fr); } }
-@media (min-width: 1080px) { .plans { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.plans { max-width: 860px; margin-inline: auto; }
 .plan { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; }
 .plan.feature { border-color: var(--accent-line); background: linear-gradient(180deg, rgba(232,134,43,.07), var(--surface) 40%); }
 .plan h3 { font-size: 21px; font-weight: 800; }
@@ -437,7 +437,7 @@ footer .safety { max-width: 70ch; }
               <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Loops up to 75 frames</b> and a Live button that keeps you on the newest scan</span></li>
               <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Tornado vortex (TVS) and hail signature</b> markers</span></li>
               <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Data inspector</b>: point at a storm to read its dBZ, speed and beam height</span></li>
-              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>National radar (MRMS)</b> with 25 products, and split screen for two storms at once <span class="badge">Tier Two</span></span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>National radar (MRMS)</b> with 25 products, and split screen for two storms at once <span class="badge">Pro</span></span></li>
             </ul>
           </div>
           <div class="shot"><img src="img/radar_polygon.jpg" alt="Super-res base reflectivity loop over northern Arizona with a warning polygon and radar site markers" width="1600" height="820" loading="lazy" style="object-position:62% 50%"></div>
@@ -465,7 +465,7 @@ footer .safety { max-width: 70ch; }
             <ul class="checks">
               <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>15, 30, 45 and 60 minute</b> markers along the path</span></li>
               <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Impact Times</b>: the communities in the path and their population</span></li>
-              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Manual Storm Track</b> for any cell you choose <span class="badge">Tier Two</span></span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Manual Storm Track</b> for any cell you choose <span class="badge">Pro</span></span></li>
             </ul>
           </div>
           <div class="shot"><img src="img/storm_track.jpg" alt="A storm track projected from a warning, with 15, 30, 45 and 60 minute markers and the Impact Times panel" width="1600" height="822" loading="lazy" style="object-position:55% 40%"></div>
@@ -493,7 +493,7 @@ footer .safety { max-width: 70ch; }
             <ul class="checks">
               <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>GOES-19 satellite</b>: GeoColor and every infrared band, 7 through 16</span></li>
               <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Surface obs</b> with dew point, <b>wind particles</b> and <b>wildfire perimeters</b></span></li>
-              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Live lightning, surface fronts, power outages, buoys and tides</b> <span class="badge">Tier One</span></span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Live lightning, surface fronts, power outages, buoys and tides</b> <span class="badge">Pro</span></span></li>
               <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Chance of tropical development</b> on the map</span></li>
             </ul>
           </div>
@@ -506,9 +506,9 @@ footer .safety { max-width: 70ch; }
             <p>Look ahead with outlooks, forecast models and soundings, then build a graphic to share it, all in the same app.</p>
             <ul class="checks">
               <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>SPC severe and fire weather outlooks</b>, and NHC hurricanes with spaghetti models and Hurricane Hunters</span></li>
-              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Models &amp; Forecast</b>: HRRR, NAM 3 km, ECMWF and more, with CAPE, shear and severe parameters <span class="badge">Tier Three</span></span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Models &amp; Forecast</b>: HRRR, NAM 3 km, ECMWF and more, with CAPE, shear and severe parameters <span class="badge">Pro</span></span></li>
               <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>Soundings on every model</b></span></li>
-              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>3D Storm View</b> and the <b>Echo Graphics</b> studio <span class="badge">Tier Three</span></span></li>
+              <li><svg width="16" height="16"><use href="#i-check"/></svg><span><b>3D Storm View</b> and the <b>Echo Graphics</b> studio <span class="badge">Pro</span></span></li>
             </ul>
           </div>
           <div class="shot"><img src="img/storm3d.jpg" alt="3D Storm View showing a thunderstorm core in reflectivity colours" width="1400" height="918" loading="lazy"></div>
@@ -589,8 +589,8 @@ footer .safety { max-width: 70ch; }
     <div class="wrap">
       <div class="sec-head center">
         <div class="kicker">Plans</div>
-        <h2>Start free. Add tools when you want them.</h2>
-        <p>Every account gets live radar, warnings and alerts. Each paid tier includes everything below it.</p>
+        <h2>Start free. Pay what you want for the rest.</h2>
+        <p>Every account gets live radar, warnings and alerts. Pro unlocks every other tool, at a price you choose.</p>
       </div>
       <div class="plans">
         <div class="plan feature">
@@ -609,46 +609,22 @@ footer .safety { max-width: 70ch; }
           <a class="btn btn-primary" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Create free account</a>
         </div>
         <div class="plan">
-          <h3>Tier One</h3>
-          <div class="price"><small>More layers</small></div>
-          <p class="for">For weather watchers who want more on the map.</p>
+          <h3>Pro</h3>
+          <div class="price">$2.99 <small>to $10.99 a month</small></div>
+          <p class="for">Pay what you want. Every amount unlocks everything.</p>
           <ul>
             <li class="inc"><svg width="14" height="14"><use href="#i-check"/></svg>Everything in Free</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>Live lightning</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>Surface fronts</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>Power outages</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>Tide stations and buoys</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>BuoyCAMs</li>
-          </ul>
-          <a class="btn btn-ghost" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Start free, upgrade in app</a>
-        </div>
-        <div class="plan">
-          <h3>Tier Two</h3>
-          <div class="price"><small>For chasers</small></div>
-          <p class="for">Follow the storm you pick, two at a time.</p>
-          <ul>
-            <li class="inc"><svg width="14" height="14"><use href="#i-check"/></svg>Everything in Tier One</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>Manual Storm Track</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>Split screen</li>
-          </ul>
-          <a class="btn btn-ghost" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Start free, upgrade in app</a>
-        </div>
-        <div class="plan">
-          <h3>Tier Three</h3>
-          <div class="price"><small>Everything</small></div>
-          <p class="for">The full forecasting and graphics toolkit.</p>
-          <ul>
-            <li class="inc"><svg width="14" height="14"><use href="#i-check"/></svg>Everything in Tier Two</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Live lightning, surface fronts and power outages</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Tide stations, buoys and BuoyCAMs</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Manual Storm Track and split screen</li>
             <li><svg width="14" height="14"><use href="#i-check"/></svg>Models &amp; Forecast</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>3D Storm View</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>Echo Graphics studio</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>Warning Graphic</li>
-            <li><svg width="14" height="14"><use href="#i-check"/></svg>My Locations</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>3D Storm View and the Echo Graphics studio</li>
+            <li><svg width="14" height="14"><use href="#i-check"/></svg>Warning Graphic and My Locations</li>
           </ul>
           <a class="btn btn-ghost" data-app="/login.html?signup" href="https://echoradarwx.com/login.html?signup">Start free, upgrade in app</a>
         </div>
       </div>
-      <p class="fine">Prices are shown in the app when you choose a plan. Manage or cancel your plan any time from your account.</p>
+      <p class="fine">Choose your amount in the app when you upgrade. Cancel any time from your account.</p>
     </div>
   </section>
 
