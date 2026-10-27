@@ -302,7 +302,7 @@ export default function openCams(highlightName = null) {
     }
 
     const camsContent = `
-        <p style="margin-bottom: 16px; color: var(--text-muted, var(--vx-text-2));">Live camera feeds from the Twistcaster Live Media team.</p>
+        <p style="margin-bottom: 16px; color: var(--text-muted, var(--vx-text-2));">Live camera feeds from around the USA.</p>
         <div id="cams-list">${listHtml}</div>
     `;
 

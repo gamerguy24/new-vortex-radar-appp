@@ -9,7 +9,7 @@
  */
 
 import openSponsors from './sponsors.js?v=echo2';
-import openCams, { addCamMarkers, removeCamMarkers } from './cams.js';
+import openCams, { addCamMarkers, removeCamMarkers } from './cams.js?v=usa1';
 import openWeatherReport, { addWeatherReportMarkers, removeWeatherReportMarkers } from './weather_report.js';
 import { addSpotterMarkers, removeSpotterMarkers } from './spotters.js?v=beacon6';
 // Versioned specifiers: an ES import is cached by URL, so a changed module
