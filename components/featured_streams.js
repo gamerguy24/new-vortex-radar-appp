@@ -30,7 +30,9 @@ import { openMiniPlayer, trackedPosition } from './stream_player.js?v=hls2';
 import { BEACON_STREAMS, beaconStreamForUrl, beaconTrack } from './beacon_streams.js?v=beacon3';
 
 // The creator card at the top of the panel. Set to null to remove it.
-const FEATURED_CREATOR = { handle: 'westgacountryboy' };
+// Removed 2026-10-26: West GA Country Boy is in the list below instead, and
+// his row plays in the app's own player.
+const FEATURED_CREATOR = null;
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
