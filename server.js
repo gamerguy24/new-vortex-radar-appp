@@ -75,7 +75,8 @@ const SMTP_SECURE = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true'
 const MAIL_FROM = process.env.MAIL_FROM || SMTP_USER;
 const APP_NAME = process.env.APP_NAME || 'Echo Radar';
 // Shown in the email so the recipient knows where to sign in.
-const APP_URL = process.env.APP_URL || '';
+// No trailing slash, so `${APP_URL}/login.html` never has a double one.
+const APP_URL = (process.env.APP_URL || '').replace(/\/+$/, '');
 // How long an emailed temporary password stays valid.
 const TEMP_PASSWORD_TTL_MS = (parseInt(process.env.TEMP_PASSWORD_TTL_MINUTES, 10) || 60) * 60 * 1000;
 
@@ -264,14 +265,33 @@ function tempPasswordEmail(email, password, { expires }) {
     };
 }
 
+/*
+ * The self-service reset email: a one-time link, not a password. Nothing about
+ * the account changes until the link is used, so an email that is delayed,
+ * filtered as spam or sent to a dead address (or a reset someone else asked
+ * for) leaves the current password working.
+ */
+function resetLinkEmail(link) {
+    const minutes = Math.round(TEMP_PASSWORD_TTL_MS / 60000);
+    return {
+        subject: `${APP_NAME} — reset your password`,
+        text:
+            `A password reset was requested for your ${APP_NAME} account.\n\n` +
+            `Choose a new password here:\n\n  ${link}\n\n` +
+            `This link works once and expires in ${minutes} minutes.\n\n` +
+            `If you did not ask for this, ignore this email. Your password has not changed.\n\n` +
+            `— ${APP_NAME}\n`,
+    };
+}
+
 async function sendTempPasswordEmail(user, password, opts = {}) {
     const { subject, text } = tempPasswordEmail(user.email, password, { expires: !!opts.expires });
     return sendMail({ to: user.email, subject, text });
 }
 
 // ─── Reset request rate limiting ─────────────────────────────────────────────
-// /auth/forgot replaces the account's password, so an unthrottled endpoint would
-// let anyone repeatedly lock a user out. Per-account limits are tight; the
+// /auth/forgot sends mail to the account's address, so an unthrottled endpoint
+// would let anyone flood a user's inbox. Per-account limits are tight; the
 // per-IP budget is looser because several users can share one address.
 const resetHits = new Map();
 function rateLimited(key, max, windowMs) {
@@ -647,24 +667,41 @@ app.post('/auth/forgot', async (req, res) => {
         return res.status(429).json({ error: 'Too many reset requests. Try again in an hour.' });
     }
 
-    // With mail configured this is fully self-service: issue a temporary
-    // password and send it to the address on the account. It is never returned
-    // to the browser, so only someone with access to that inbox can use it.
+    /*
+     * With mail configured this is fully self-service: email a one-time link
+     * that opens the set-a-new-password form. Holding the link is the proof
+     * of identity, so its request is created already approved. The link's
+     * token goes only into the email (the browser's claimToken stays inert),
+     * and the password is NOT touched here. It used to be replaced with a
+     * temporary one at this point, which locked people out whenever the email
+     * did not arrive, and let anyone lock out any account by its address.
+     */
     let emailed = mailReady();
     let handledByEmail = false;
 
     if (user && mailReady()) {
-        const tempPassword = issueTempPassword(user, { expires: true });
-        handledByEmail = await sendTempPasswordEmail(user, tempPassword, { expires: true });
+        const linkToken = crypto.randomBytes(32).toString('hex');
+        const base = APP_URL || `${req.protocol}://${req.get('host')}`;
+        const { subject, text } = resetLinkEmail(`${base}/login.html?reset=${linkToken}`);
+        handledByEmail = await sendMail({ to: user.email, subject, text });
         emailed = handledByEmail;
         if (handledByEmail) {
-            // Resolved without an admin, so drop any queued request for this user.
+            // One live reset per account: a new link replaces any older one.
             resetRequests = resetRequests.filter((x) => x.email !== email);
+            resetRequests.push({
+                id: crypto.randomUUID(),
+                email,
+                via: 'email',
+                requestedAt: new Date().toISOString(),
+                status: 'approved',
+                approvedAt: new Date().toISOString(),
+                expiresAt: new Date(Date.now() + TEMP_PASSWORD_TTL_MS).toISOString(),
+                tokenHash: crypto.createHash('sha256').update(linkToken).digest('hex'),
+            });
             saveResets();
         } else {
-            // Delivery failed after the password was already rotated, so fall
-            // through to the admin queue rather than stranding the user.
-            console.error(`[mail] temp password for ${email} undeliverable; falling back to admin approval.`);
+            // The mail server refused it: queue it for an admin instead.
+            console.error(`[mail] reset link for ${email} undeliverable; falling back to admin approval.`);
         }
     }
 
@@ -676,6 +713,8 @@ app.post('/auth/forgot', async (req, res) => {
         r.status = 'pending';
         r.tokenHash = tokenHash;
         r.approvedAt = null;
+        // An earlier emailed link for this account becomes an admin request.
+        delete r.via; delete r.expiresAt;
         saveResets();
         // Also open a support ticket so there's a thread waiting once they're back.
         try { openPasswordResetTicket(user, req.body.message); } catch (e) { /* non-fatal */ }
@@ -696,9 +735,12 @@ app.post('/auth/reset/status', (req, res) => {
     if (!token) return res.json({ status: 'none' });
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const r = resetRequests.find((x) => x.tokenHash === tokenHash);
-    if (!r) return res.json({ status: 'none' });
+    if (!r || resetExpired(r)) return res.json({ status: 'none' });
     res.json({ status: r.status || 'pending', email: r.email });
 });
+
+// Emailed links expire; admin-approved requests do not.
+const resetExpired = (r) => !!(r.expiresAt && Date.parse(r.expiresAt) < Date.now());
 
 app.post('/auth/reset/complete', (req, res) => {
     const token = String(req.body.claimToken || '');
@@ -707,6 +749,7 @@ app.post('/auth/reset/complete', (req, res) => {
     if (next.length < 10) return res.status(400).json({ error: 'New password must be at least 10 characters.' });
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const r = resetRequests.find((x) => x.tokenHash === tokenHash);
+    if (r && resetExpired(r)) return res.status(403).json({ error: 'This reset link has expired. Request a new one.' });
     if (!r || r.status !== 'approved') return res.status(403).json({ error: 'This reset has not been approved by an admin yet.' });
     const user = findByEmail(r.email);
     if (!user) { resetRequests = resetRequests.filter((x) => x.id !== r.id); saveResets(); return res.status(404).json({ error: 'That account no longer exists.' }); }
@@ -922,7 +965,8 @@ app.post('/admin/users/:id/reset-password', requireAdmin, async (req, res) => {
 
 app.get('/admin/reset-requests', requireAdmin, (req, res) => {
     // Never expose the token hash to the client; include the approval status.
-    const list = [...resetRequests]
+    const list = resetRequests
+        .filter((r) => r.via !== 'email')   // emailed links need no admin
         .sort((a, b) => new Date(a.requestedAt) - new Date(b.requestedAt))
         .map((r) => ({ id: r.id, email: r.email, requestedAt: r.requestedAt, status: r.status || 'pending', approvedAt: r.approvedAt || null }));
     res.json({ requests: list });

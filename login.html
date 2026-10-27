@@ -390,12 +390,13 @@
         return;
       }
       if (data && data.claimToken) setResetToken(data.claimToken);
-      // When mail is configured the temporary password has already been sent,
-      // so there is nothing to wait on — they just sign in with it.
+      // When mail is configured a reset link has been emailed; the link, not
+      // this device, carries on from here.
       if (data && data.emailed) {
+        setResetToken('');
         setMsg('forgot-msg',
-          'If that email is registered, a temporary password is on its way to it. ' +
-          'Check your inbox (and spam folder), then sign in with it — you\'ll be asked to pick a new password straight away.',
+          'If that email is registered, a link to reset your password is on its way. ' +
+          'Check your inbox and spam folder. Your current password keeps working until you set a new one.',
           'success');
         return;
       }
@@ -567,7 +568,22 @@
     // the saved-profile chooser (if any), else the sign-in forms.
     // ?signup (the info site's "Create free account") opens straight on Create account.
     const wantsSignup = /[?&]signup\b/.test(location.search) || location.hash === '#register';
-    if (getResetToken()) { showRecovery('pending'); checkResetStatus(true); }
+    // ?reset=<token> is the link from a reset email. Take the token off the
+    // address bar (so it is not left in history or shared by accident) and go
+    // straight to choosing a new password, or explain that the link is spent.
+    const resetLink = new URLSearchParams(location.search).get('reset');
+    if (resetLink) {
+      history.replaceState({}, '', location.pathname);
+      setResetToken(resetLink);
+      postJson('/auth/reset/status', { claimToken: resetLink }).then(({ data }) => {
+        if (data && data.status === 'approved') { showRecovery('set'); document.getElementById('reset-password').focus(); return; }
+        setResetToken('');
+        showForms(false);
+        activateTab('forgot');
+        setMsg('forgot-msg', 'That reset link has expired or was already used. Enter your email to get a new one.', 'error');
+      });
+    }
+    else if (getResetToken()) { showRecovery('pending'); checkResetStatus(true); }
     else if (wantsSignup) { showForms(true); activateTab('register'); document.getElementById('register-email').focus(); }
     else if (loadProfiles().length) showChooser(); else showForms(false);
 
