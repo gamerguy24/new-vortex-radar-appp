@@ -67,6 +67,10 @@ function injectStyles() {
   .vfs-live{color:#fff;background:var(--vx-bad,#e5484d);border-radius:var(--vx-r-1);padding:0 5px;font-weight:800;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
   .vfs-watch{font-size:11px;font-weight:800;color:var(--vx-accent-ink);background:var(--vx-accent);border-radius:var(--vx-r-2);padding:5px 10px;flex:0 0 auto}
   .vfs-note{padding:14px;font-size:12.5px;color:var(--vx-text-2);line-height:1.45}
+  .vfs-embed{padding:0 10px 10px;border-bottom:1px solid rgba(255,255,255,.05)}
+  .vfs-embed iframe{display:block;width:100%;height:min(560px,62vh);border:0;border-radius:var(--vx-r-2);background:#000}
+  .vfs-embed a{display:block;padding-top:6px;font-size:11.5px;color:var(--vx-text-2);text-align:right}
+  .vfs-row.vfs-open .vfs-watch{background:rgba(255,255,255,.12);color:var(--vx-text)}
   `;
   document.head.appendChild(s);
 }
@@ -82,6 +86,38 @@ function trackFor(s) {
   if (s.live) return { kind: 'hub', id: s.id };
   const b = beaconStreamForUrl(s.url);
   return b ? beaconTrack(b) : null;
+}
+
+/*
+ * TikTok LIVE plays in the row's own slot, in TikTok's live embed. The
+ * channel's /@handle/live page cannot be framed (TikTok sends
+ * X-Frame-Options: SAMEORIGIN), but /embed/live/<handle> is the same stream
+ * made for framing. Pressing Watch again folds it away.
+ */
+function tiktokLiveEmbed(s) {
+  if (s.platform !== 'tiktok') return '';
+  let u;
+  try { u = new URL(s.url); } catch { return ''; }
+  const handle = (u.pathname.match(/@([\w.\-]+)/) || [])[1];
+  return handle ? 'https://www.tiktok.com/embed/live/' + encodeURIComponent(handle) : '';
+}
+
+function toggleInline(row, s, src) {
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains('vfs-embed')) {
+    next.remove();
+    row.classList.remove('vfs-open');
+    row.querySelector('.vfs-watch').textContent = 'Watch';
+    return;
+  }
+  const box = document.createElement('div');
+  box.className = 'vfs-embed';
+  box.innerHTML = `<iframe src="${esc(src)}" title="${esc(s.name)} on TikTok LIVE"
+      allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="origin"></iframe>
+    <a href="${esc(s.url)}" target="_blank" rel="noopener">Nothing playing? Open on TikTok ↗</a>`;
+  row.after(box);
+  row.classList.add('vfs-open');
+  row.querySelector('.vfs-watch').textContent = 'Close';
 }
 
 function openStream(s) {
@@ -190,7 +226,12 @@ async function togglePanel() {
   if (!p.isConnected) return;
   listEl.innerHTML = rowsHtml(list);
   listEl.querySelectorAll('.vfs-row').forEach((row) => {
-    row.onclick = () => { const s = list[+row.getAttribute('data-i')]; if (s) openStream(s); };
+    row.onclick = () => {
+      const s = list[+row.getAttribute('data-i')];
+      if (!s) return;
+      const inline = tiktokLiveEmbed(s);
+      if (inline) toggleInline(row, s, inline); else openStream(s);
+    };
   });
   markGpsRows(p, list);
 }
