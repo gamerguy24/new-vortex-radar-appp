@@ -12,7 +12,7 @@
  * player opens by itself and follows it (unless something else is already
  * playing — then it just says so); when it goes off, following stops.
  */
-import { beaconStreamFor, beaconTrack, isSpotter, refreshEchoBeacons } from './beacon_streams.js?v=beacon3';
+import { beaconStreamFor, beaconTrack, isSpotter, refreshEchoBeacons } from './beacon_streams.js?v=beacon4';
 import { openMiniPlayer, isPlayerOpen, playerTrack, endTracking } from './stream_player.js?v=hls2';
 
 const SPOTTER_APP_ID = '55f78b6ed31f5';

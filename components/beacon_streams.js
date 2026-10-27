@@ -25,8 +25,10 @@
 export const BEACON_STREAMS = [
     // Joseph Pisani streams on the Extreme Weather Videos YouTube channel.
     { spotter: 'Joseph Pisani', name: 'Extreme Weather Videos', url: 'https://www.youtube.com/@Extremeweathervideos/live', platform: 'YouTube' },
-    // Nathan Bradley streams on TikTok as West GA Country Boy.
-    { spotter: 'Nathan Bradley', name: 'West GA Country Boy', url: 'https://www.tiktok.com/@westgacountryboy/live', platform: 'TikTok' },
+    // Nathan Bradley (West GA Country Boy). His TikTok was taken off
+    // 2026-10-26: TikTok LIVE will not play inside the app. Kept for his name
+    // and beacon key when he streams to Echo Radar's own server.
+    { spotter: 'Nathan Bradley', name: 'West GA Country Boy', url: '', platform: '' },
 ];
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
